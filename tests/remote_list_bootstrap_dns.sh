@@ -54,13 +54,29 @@ cat >"$WORK_DIR/bin/sleep" <<'SH'
 #!/bin/sh
 exit 0
 SH
+cat >"$WORK_DIR/bin/dig" <<'SH'
+#!/bin/sh
+server=''
+for arg in "$@"; do
+  case "$arg" in
+    @*) server="${arg#@}" ;;
+  esac
+done
+printf '%s\n' "${server:-system}" >>"$DIG_LOG"
+if [ -n "$server" ]; then
+  [ "${BOOTSTRAP_UP:-0}" = 1 ] || exit 9
+else
+  [ "${SYSTEM_DNS_UP:-0}" = 1 ] || exit 9
+fi
+printf '203.0.113.10\n'
+SH
 cat >"$WORK_DIR/bin/logger" <<'SH'
 #!/bin/sh
 exit 0
 SH
 chmod +x "$WORK_DIR/bin/"*
 export PATH="$WORK_DIR/bin:$PATH" FORKOP_LIB
-export DNS_LOG="$WORK_DIR/dns.log" CURL_LOG="$WORK_DIR/curl.log"
+export DNS_LOG="$WORK_DIR/dns.log" CURL_LOG="$WORK_DIR/curl.log" DIG_LOG="$WORK_DIR/dig.log"
 export FORKOP_UCI_STATE_FILE="$WORK_DIR/uci.state"
 printf 'forkop.settings=settings\nforkop.settings.bootstrap_dns_server=1.1.1.1 8.8.8.8\n' >"$FORKOP_UCI_STATE_FILE"
 reset_logs() { : >"$DNS_LOG"; : >"$CURL_LOG"; }
@@ -122,6 +138,31 @@ fi
 [ ! -s "$DNS_LOG" ] || fail 'ruleset proxy path bypassed proxy DNS'
 grep -Fq -- '--proxy http://127.0.0.1:18080' "$CURL_LOG" || fail 'ruleset proxy lost'
 grep -Rq 'resolved.example' "$WORK_DIR/cache" "$WORK_DIR/runtime" || fail 'working cache lost after failure'
+
+# A configured Bootstrap server is not a reachable one: the pre-download DNS
+# probe may only shorten the cold-boot grace period when it actually answers.
+dns_probe() {
+  : >"$DIG_LOG"
+  ucode -L "$FORKOP_LIB" "$FORKOP_LIB/components/updates.uc" list-dns-probe "${1:-}"
+}
+
+SYSTEM_DNS_UP=1 dns_probe || fail 'working system DNS must pass the probe'
+grep -Fxq 'system' "$DIG_LOG" || fail 'system resolver was not probed'
+grep -Fxq '1.1.1.1' "$DIG_LOG" && fail 'Bootstrap probed while system DNS worked'
+
+SYSTEM_DNS_UP=0 BOOTSTRAP_UP=1 dns_probe || fail 'reachable Bootstrap DNS must let the list update continue'
+[ "$(grep -Fxc 'system' "$DIG_LOG")" = 1 ] || fail 'reachable Bootstrap must not extend the grace period'
+grep -Fxq '1.1.1.1' "$DIG_LOG" || fail 'Bootstrap resolver was not probed'
+
+if SYSTEM_DNS_UP=0 BOOTSTRAP_UP=0 dns_probe; then
+  fail 'unreachable Bootstrap DNS must not report a passing probe'
+fi
+[ "$(grep -Fxc 'system' "$DIG_LOG")" = 10 ] || fail 'the cold-boot DNS grace period was abandoned'
+[ "$(grep -Fxc '1.1.1.1' "$DIG_LOG")" = 2 ] || fail 'Bootstrap must be probed on the first and last attempt only'
+[ "$(grep -Fxc '8.8.8.8' "$DIG_LOG")" = 2 ] || fail 'every configured Bootstrap server must be probed'
+
+dns_probe 127.0.0.1:18080 || fail 'proxied list downloads must skip the DNS probe'
+[ ! -s "$DIG_LOG" ] || fail 'proxied probe must not query a resolver directly'
 
 ucode -L "$FORKOP_LIB" -e '
 let url = require("core.url");

@@ -3849,6 +3849,30 @@ function finish_list_update(status, applied, generation_changed) {
     exit(status == 0 ? 0 : 1);
 }
 
+function resolver_answers(server) {
+    server = as_string(server);
+    let args = server == ""
+        ? [ "dig", "+short", "openwrt.org", "A", "+timeout=3", "+tries=1" ]
+        : [ "dig", "@" + server, "+short", "openwrt.org", "A", "+timeout=3", "+tries=1" ];
+
+    for (let line in split(command_output_from_args(args), "\n"))
+        if (match(as_string(line), /^[0-9]+\./) != null)
+            return true;
+
+    return false;
+}
+
+function bootstrap_dns_probe_passed() {
+    // Configured is not the same as reachable. A cold boot with an unfinished
+    // WAN answers on neither resolver, and skipping the grace period there
+    // would abandon the update until the next scheduled run.
+    for (let server in list_bootstrap_dns_servers())
+        if (resolver_answers(server))
+            return true;
+
+    return false;
+}
+
 function dns_probe_passed(proxy_address) {
     if (as_string(proxy_address) != "") {
         log_message("DNS check skipped because list downloads use service proxy", "info");
@@ -3858,16 +3882,18 @@ function dns_probe_passed(proxy_address) {
     let bootstrap_available = length(list_bootstrap_dns_servers()) > 0;
     let attempt = 1;
     while (attempt <= 10) {
-        let output = command_output_from_args([ "dig", "+short", "openwrt.org", "A", "+timeout=3", "+tries=1" ]);
-        for (let line in split(output, "\n")) {
-            if (match(as_string(line), /^[0-9]+\./) != null) {
-                log_message("DNS check passed", "info");
-                return true;
-            }
+        if (resolver_answers("")) {
+            log_message("DNS check passed", "info");
+            return true;
         }
 
-        if (bootstrap_available) {
-            log_message("System DNS is unavailable; continuing list update with configured Bootstrap DNS fallback", "warn");
+        // Probe Bootstrap on the first and the last attempt only: the first
+        // covers a broken system resolver on an already reachable network, the
+        // last covers a WAN that finished coming up during the grace period.
+        // This keeps the worker's hold on the reload lock bounded.
+        if (bootstrap_available && (attempt == 1 || attempt == 10) &&
+            bootstrap_dns_probe_passed()) {
+            log_message("System DNS is unavailable; continuing list update with reachable Bootstrap DNS", "warn");
             return true;
         }
 
@@ -4482,6 +4508,8 @@ else if (mode == "persist-list-cache")
     exit(persist_list_cache(int(ARGV[1])) ? 0 : 1);
 else if (mode == "download-list-file")
     exit(download_to_file_network(ARGV[1], ARGV[2], ARGV[3]) ? 0 : 1);
+else if (mode == "list-dns-probe")
+    exit(dns_probe_passed(ARGV[1]) ? 0 : 1);
 else if (mode == "apply-list-cache")
     exit(apply_persistent_list_cache() ? 0 : 1);
 else if (mode == "invalidate-list-cache")

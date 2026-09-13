@@ -117,6 +117,11 @@ grep -Fxq 'stop-with-route-table' "$WORK_DIR/stop-order.log" ||
 [ ! -s "$WORK_DIR/rt_tables_stop_order" ] ||
   fail "package prerm must remove the routing table name after Forkop stops"
 
+# The preceding case stops a running Forkop, so prerm correctly records a
+# restart for postinst. The configuration-recovery cases below own no init
+# double, so start from an explicit clean slate instead of inheriting it.
+rm -f "$FORKOP_PACKAGE_UPGRADE_STATE"
+
 printf '%s\n' "config settings 'settings'" >"$WORK_DIR/default-forkop"
 printf '%s\n' 'forkop.settings=settings' >"$WORK_DIR/config.state"
 mkdir -p "$WORK_DIR/component-update-checks"

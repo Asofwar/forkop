@@ -37,7 +37,8 @@ done
 [ "${CURL_FAILURE:-6}" = 6 ] || exit "$CURL_FAILURE"
 [ -n "$resolved" ] || exit 6
 if [ "${PAYLOAD_KIND:-list}" = json ]; then
-  printf '{"version":1,"rules":[{"domain_suffix":["resolved.example"]}]}\n' >"$output"
+  printf '{"version":1,"rules":[{"domain_suffix":["resolved.example","%s.example"]}]}\n' \
+    "${PAYLOAD_TAG:-base}" >"$output"
 else
   printf 'resolved.example\n' >"$output"
 fi
@@ -129,8 +130,13 @@ reset_logs
 PAYLOAD_KIND=json ucode -L "$FORKOP_LIB" "$FORKOP_LIB/singbox/ruleset_cache.uc" refresh || fail 'ruleset Bootstrap refresh failed'
 grep -Fq -- '--resolve lists.example:443:203.0.113.8' "$CURL_LOG" || fail 'ruleset DNS fallback absent'
 reset_logs
-DNS_MIXED_FAILURE=1 PAYLOAD_KIND=json ucode -L "$FORKOP_LIB" "$FORKOP_LIB/singbox/ruleset_cache.uc" refresh || fail 'ruleset valid A answer lost after failed AAAA query'
+# A distinct payload keeps this a real refresh: an identical one is committed by
+# the previous case, and refresh_manifest reports "nothing changed" as exit 1.
+DNS_MIXED_FAILURE=1 PAYLOAD_KIND=json PAYLOAD_TAG=mixed \
+  ucode -L "$FORKOP_LIB" "$FORKOP_LIB/singbox/ruleset_cache.uc" refresh ||
+  fail 'ruleset valid A answer lost after failed AAAA query'
 grep -Fq -- '--resolve lists.example:443:203.0.113.8' "$CURL_LOG" || fail 'mixed DNS ruleset response not used'
+grep -Rq 'mixed.example' "$WORK_DIR/cache" "$WORK_DIR/runtime" || fail 'mixed DNS ruleset payload was not committed'
 reset_logs
 if PAYLOAD_KIND=json ucode -L "$FORKOP_LIB" "$FORKOP_LIB/singbox/ruleset_cache.uc" refresh '127.0.0.1:18080'; then
   fail 'failed proxy refresh must fail'

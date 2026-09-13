@@ -58,6 +58,7 @@ let fs = { stat: function(path) {
 } };
 function as_string(value) { return value == null ? "" : "" + value; }
 function bool_text(value) { return value == "1"; }
+function die(message) { warn("FAIL: " + message + "\n"); exit(1); }
 function check(condition, message) { if (!condition) die(message); }
 function sing_box_single_owned_service_runtime() { return health[0]; }
 function sing_box_service_stable(age) {

@@ -52,14 +52,16 @@ let retry_status = 0;
 let retry_running = false;
 let retry_enabled = true;
 let retry_pending = true;
-let fs = { stat: function(path) {
-    check(path == MANAGED_UPGRADE_SING_BOX_MARKER, "unexpected stat");
-    return marker_present ? {} : null;
-} };
 function as_string(value) { return value == null ? "" : "" + value; }
 function bool_text(value) { return value == "1"; }
 function die(message) { warn("FAIL: " + message + "\n"); exit(1); }
 function check(condition, message) { if (!condition) die(message); }
+// Declared after check(): unlike sibling declarations, a closure that captures
+// a name which is not declared yet never resolves it.
+let fs = { stat: function(path) {
+    check(path == MANAGED_UPGRADE_SING_BOX_MARKER, "unexpected stat");
+    return marker_present ? {} : null;
+} };
 function sing_box_single_owned_service_runtime() { return health[0]; }
 function sing_box_service_stable(age) {
     check(age == RUNTIME_STABLE_MIN_AGE, "stable age changed");

@@ -13,20 +13,20 @@ import re
 import sys
 
 root = pathlib.Path(sys.argv[1]) / 'forkop/files/usr/lib/service'
-functions = []
-for filename, names in [
-    ('state.uc', ['forkop_stably_running']),
-    ('lifecycle.uc', ['start']),
-    ('initd.uc', ['retry_start_on_wan_up_action', 'retry_start_on_wan_up']),
-]:
-    source = (root / filename).read_text()
-    for name in names:
-        match = re.search(r'^function ' + name + r'\([^\n]*\) \{\n.*?^\}', source, re.M | re.S)
-        if not match:
-            raise SystemExit('missing service function: ' + name)
-        functions.append(match.group())
 
-prelude = r'''
+
+def extract(filename, name):
+    source = (root / filename).read_text()
+    found = re.search(r'^function ' + name + r'\([^\n]*\) \{\n.*?^\}', source, re.M | re.S)
+    if not found:
+        raise SystemExit('missing service function: ' + name)
+    return found.group()
+
+
+# ucode compiles a reference to a not-yet-declared name as a global load, and a
+# top-level `function name()` declares a local. The doubles are therefore split
+# so that every part of the probe is emitted below everything it calls.
+runtime_doubles = r'''
 const STATE_UC = "state.uc";
 const RT_TABLE_NAME = "forkop";
 const NFT_TABLE_NAME = "forkop";
@@ -74,6 +74,10 @@ function forkop_runtime_network_configured(rt, nft, mark) {
         "network readiness parameters changed");
     return health[4];
 }
+'''
+
+# Emitted below forkop_stably_running: module_success() dispatches into it.
+service_doubles = r'''
 function module_success(path, args) {
     check(path == STATE_UC, "unexpected start helper");
     push(calls, args[0]);
@@ -178,7 +182,15 @@ for (let skipped in ["running", "disabled", "no-retry"]) {
 }
 print("idempotent start and retry outcome checks passed\n");
 '''
-pathlib.Path(sys.argv[2]).write_text(prelude + '\n\n'.join(functions) + cases)
+pathlib.Path(sys.argv[2]).write_text('\n'.join([
+    runtime_doubles,
+    extract('state.uc', 'forkop_stably_running'),
+    service_doubles,
+    extract('lifecycle.uc', 'start'),
+    extract('initd.uc', 'retry_start_on_wan_up_action'),
+    extract('initd.uc', 'retry_start_on_wan_up'),
+    cases,
+]))
 PY
 
 ucode "$WORK_DIR/probe.uc"

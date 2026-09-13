@@ -852,6 +852,23 @@ function sing_box_binary_signature() {
     return stat == null ? "" : join(":", [ stat.inode, stat.size, stat.mtime, stat.ctime ]);
 }
 
+function sing_box_package_from_manifest(installed) {
+    for (let package_name in [ "sing-box-extended", "sing-box-tiny", "sing-box" ])
+        for (let line in split(as_string(installed), "\n"))
+            if (split(trim(as_string(line)), /[ \t]+/)[0] == package_name)
+                return package_name;
+    return "";
+}
+
+function sing_box_installed_package_name() {
+    let package_name = sing_box_package_from_manifest(command_output_from_args([
+        "apk", "list", "--installed", "--manifest"
+    ]));
+    if (package_name != "")
+        return package_name;
+    return sing_box_package_from_manifest(command_output_from_args([ "opkg", "list-installed" ]));
+}
+
 function system_info_cache_is_valid() {
     let cache = read_json_file(SYSTEM_INFO_CACHE_FILE);
     if (type(cache) != "object")
@@ -916,23 +933,6 @@ function sing_box_marker_is(expected) {
 
 function sing_box_component_action_running() {
     return module_success(SERVICE_UI_UC, [ "component-action-running-for", "sing_box" ]);
-}
-
-function sing_box_package_from_manifest(installed) {
-    for (let package_name in [ "sing-box-extended", "sing-box-tiny", "sing-box" ])
-        for (let line in split(as_string(installed), "\n"))
-            if (split(trim(as_string(line)), /[ \t]+/)[0] == package_name)
-                return package_name;
-    return "";
-}
-
-function sing_box_installed_package_name() {
-    let package_name = sing_box_package_from_manifest(command_output_from_args([
-        "apk", "list", "--installed", "--manifest"
-    ]));
-    if (package_name != "")
-        return package_name;
-    return sing_box_package_from_manifest(command_output_from_args([ "opkg", "list-installed" ]));
 }
 
 function sing_box_live_probe_disabled(package_name) {

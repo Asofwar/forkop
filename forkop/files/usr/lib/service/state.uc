@@ -300,6 +300,15 @@ function lock_dir_write_owner(lock_dir, owner_pid) {
     return write_text_file(as_string(lock_dir) + "/pid", as_string(owner_pid) + "\n");
 }
 
+function release_runtime_dir_lock(lock_dir) {
+    lock_dir = as_string(lock_dir);
+    if (lock_dir == "")
+        return;
+
+    command_success_from_args([ "rm", "-f", lock_dir + "/pid" ]);
+    command_success_from_args([ "rmdir", lock_dir ]);
+}
+
 function acquire_runtime_dir_lock(lock_dir, owner_pid) {
     lock_dir = as_string(lock_dir);
     owner_pid = as_string(owner_pid);
@@ -342,15 +351,6 @@ function acquire_runtime_dir_lock_wait(lock_dir, owner_pid, timeout) {
     }
 
     return true;
-}
-
-function release_runtime_dir_lock(lock_dir) {
-    lock_dir = as_string(lock_dir);
-    if (lock_dir == "")
-        return;
-
-    command_success_from_args([ "rm", "-f", lock_dir + "/pid" ]);
-    command_success_from_args([ "rmdir", lock_dir ]);
 }
 
 function write_reload_state(path, values) {

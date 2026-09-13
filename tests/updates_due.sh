@@ -119,11 +119,8 @@ assert_eq 'https://raw.githubusercontent.com/Greeg0ry/b4geoip-forkop/main/srs/va
 assert_eq '' \
   "$(updates_ucode jsdelivr-fallback-url https://example.com/custom.lst)" \
   "custom lists must not be rewritten to jsDelivr"
-grep -Fq '[ "wget", "--proxy=on", "-T", "20", "-O", filepath, url ]' "$UPDATES_UC" ||
-  fail "list downloads must use the OpenWrt BusyBox wget-compatible command"
-if grep -Fq '"wget", "-T", "20", "-t", "1"' "$UPDATES_UC"; then
-  fail "list downloads must not use GNU wget-only retry options"
-fi
+grep -Fq 'command_from_args(list_curl_args(url, filepath, proxy_address, resolve))' "$UPDATES_UC" ||
+  fail "list downloads must use the bounded curl downloader with explicit proxy and DNS fallback"
 awk '
   /function list_update\(\)/ { in_update = 1 }
   in_update && /acquire_runtime_lock\(RELOAD_LOCK_DIR, true\)/ { acquire_line = NR }

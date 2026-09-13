@@ -34,6 +34,7 @@ import { isActiveLuciTab } from '../../helpers/isActiveLuciTab';
 import { isTransientRpcError } from '../../helpers/isTransientRpcError';
 import { shouldShowLoadingForRestoredAction } from '../../helpers/restoredActionLoading';
 import { getServiceAvailability } from '../../helpers/serviceAvailability';
+import { createPriorityMembersState } from './priorityMembersState';
 
 const SECTIONS_REFRESH_INTERVAL_MS = 10000;
 const LATENCY_TEST_BUTTON_CLASS = 'dashboard-sections-grid-item-test-latency';
@@ -52,6 +53,8 @@ const followedSubscriptionJobs = new Set<string>();
 const followedLatencyJobs = new Set<string>();
 const handledSubscriptionJobs = new Set<string>();
 const handledLatencyJobs = new Set<string>();
+// Cards are replaced on each refresh; keep disclosure state outside their DOM.
+const priorityMembersState = createPriorityMembersState();
 
 if (typeof window !== 'undefined') {
   window.addEventListener('pagehide', () => {
@@ -1565,6 +1568,8 @@ async function renderSectionsWidget() {
       latencyProgress: undefined,
       subscriptionUpdating: false,
       selectorSwitchingTag: undefined,
+      isPriorityMembersExpanded: () => false,
+      onPriorityMembersToggle: () => {},
     });
 
     return preserveScrollForPage(() => {
@@ -1587,6 +1592,15 @@ async function renderSectionsWidget() {
       ),
       selectorSwitchingTag:
         sectionsWidget.selectorSwitchingSections[section.sectionName],
+      isPriorityMembersExpanded: (outbound) =>
+        priorityMembersState.isExpanded(section.sectionName, outbound.code),
+      onPriorityMembersToggle: (outbound, open) => {
+        priorityMembersState.setExpanded(
+          section.sectionName,
+          outbound.code,
+          open,
+        );
+      },
       onTestLatency: (tag) => {
         if (section.withTagSelect) {
           if (Array.isArray(tag)) {

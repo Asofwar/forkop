@@ -858,6 +858,8 @@ function system_info_cache_is_valid() {
         return false;
     if (cache.sing_box_binary_signature != sing_box_binary_signature())
         return false;
+    if (cache.sing_box_package != sing_box_installed_package_name())
+        return false;
     let now = int(clock()[0]);
     let generated_at = arg_number(cache.generated_at || 0);
     if (now > 0 && generated_at > 0 && SYSTEM_INFO_CACHE_TTL > 0 && now - generated_at >= SYSTEM_INFO_CACHE_TTL)
@@ -916,39 +918,57 @@ function sing_box_component_action_running() {
     return module_success(SERVICE_UI_UC, [ "component-action-running-for", "sing_box" ]);
 }
 
-function sing_box_live_probe_disabled() {
-    return sing_box_marker_is("extended") ||
-        sing_box_marker_is("extended-compressed") ||
-        sing_box_component_action_running();
+function sing_box_package_from_manifest(installed) {
+    for (let package_name in [ "sing-box-extended", "sing-box-tiny", "sing-box" ])
+        for (let line in split(as_string(installed), "\n"))
+            if (split(trim(as_string(line)), /[ \t]+/)[0] == package_name)
+                return package_name;
+    return "";
 }
 
-function sing_box_tiny_package_installed() {
-    return module_success(PACKAGES_UC, [ "installed", "sing-box-tiny" ]);
+function sing_box_installed_package_name() {
+    let package_name = sing_box_package_from_manifest(command_output_from_args([
+        "apk", "list", "--installed", "--manifest"
+    ]));
+    if (package_name != "")
+        return package_name;
+    return sing_box_package_from_manifest(command_output_from_args([ "opkg", "list-installed" ]));
 }
 
-function sing_box_capability_flags(sing_box_version, sing_box_version_output) {
+function sing_box_live_probe_disabled(package_name) {
+    // Never execute a binary while the component worker may be replacing it,
+    // including a regular package with a stale Extended marker.
+    if (sing_box_component_action_running())
+        return true;
+    return package_name == "sing-box-extended" || (package_name == "" &&
+        (sing_box_marker_is("extended") || sing_box_marker_is("extended-compressed")));
+}
+
+function sing_box_capability_flags(sing_box_version, sing_box_version_output, package_name) {
     let extended = 0;
     let tiny = 0;
     let tailscale = 0;
 
-    if (sing_box_marker_is("extended") ||
+    if (package_name == "sing-box-extended" || (package_name == "" && (sing_box_marker_is("extended") ||
         sing_box_marker_is("extended-compressed") ||
-        module_success(SINGBOX_RUNTIME_UC, [ "is-extended", sing_box_version ]))
+        module_success(SINGBOX_RUNTIME_UC, [ "is-extended", sing_box_version ]))))
         extended = 1;
 
-    if (extended == 0 && (sing_box_marker_is("tiny") || sing_box_tiny_package_installed()))
+    if (package_name == "sing-box-tiny" || (package_name == "" && extended == 0 && sing_box_marker_is("tiny")))
         tiny = 1;
 
     if (extended == 1)
         tailscale = 1;
-    else if (as_string(sing_box_version_output) != "") {
-        if (module_success(SINGBOX_RUNTIME_UC, [ "supports-tailscale", sing_box_version, sing_box_version_output ]))
-            tailscale = 1;
+    else if (tiny == 0 && as_string(sing_box_version_output) != "") {
+        // Parse the measured tags, not a helper that trusts stale markers.
+        for (let line in split(as_string(sing_box_version_output), "\n"))
+            if (substr(line, 0, 5) == "Tags:" && match(substr(line, 5), /(^|[,: \t])with_tailscale([, \t]|$)/) != null)
+                tailscale = 1;
     }
-    else if (tiny == 0 && sing_box_component_action_running())
+    else if (package_name == "" && tiny == 0 && sing_box_component_action_running())
         tailscale = 1;
 
-    return { extended, tiny, tailscale };
+    return { extended, tiny, tailscale, package_name };
 }
 
 function provider_version(runtime_uc) {
@@ -979,9 +999,10 @@ function build_system_info() {
     let luci_app_version = get_luci_app_version();
     let sing_box_version = "";
     let sing_box_version_output = "";
+    let package_name = sing_box_installed_package_name();
 
     if (command_exists("sing-box")) {
-        if (sing_box_live_probe_disabled()) {
+        if (sing_box_live_probe_disabled(package_name)) {
             sing_box_version = replace(module_output(SINGBOX_RUNTIME_UC, [ "read-version-state" ]), /[\r\n]+$/g, "");
             sing_box_version_output = "";
         }
@@ -997,8 +1018,8 @@ function build_system_info() {
         sing_box_version_output = "";
     }
 
-    let flags = sing_box_capability_flags(sing_box_version, sing_box_version_output);
-    let sing_box_compressed = flags.extended == 1 && sing_box_marker_is("extended-compressed") ? 1 : 0;
+    let flags = sing_box_capability_flags(sing_box_version, sing_box_version_output, package_name);
+    let sing_box_compressed = package_name == "" && flags.extended == 1 && sing_box_marker_is("extended-compressed") ? 1 : 0;
 
     let zapret_installed = provider_installed(ZAPRET_RUNTIME_UC) ? 1 : 0;
     let zapret_version = zapret_installed ? provider_version(ZAPRET_RUNTIME_UC) : "not installed";
@@ -1031,6 +1052,7 @@ function build_system_info() {
         sing_box_tiny: flags.tiny,
         sing_box_compressed,
         sing_box_tailscale: flags.tailscale,
+        sing_box_package: flags.package_name,
         zapret_version,
         zapret_installed,
         zapret2_version,

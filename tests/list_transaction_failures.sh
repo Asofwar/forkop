@@ -13,13 +13,13 @@ cat >"$WORK_DIR/bin/dig" <<'SH'
 #!/bin/sh
 printf '192.0.2.1\n'
 SH
-cat >"$WORK_DIR/bin/wget" <<'SH'
+cat >"$WORK_DIR/bin/curl" <<'SH'
 #!/bin/sh
 printf 'download\n' >>"$CASE_DIR/network.log"
 [ "$FAIL_PHASE" != download ] || exit 1
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    -O) output="$2"; shift 2 ;;
+    -o) output="$2"; shift 2 ;;
     *) shift ;;
   esac
 done

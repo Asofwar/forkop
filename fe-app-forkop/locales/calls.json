@@ -3917,8 +3917,8 @@
     ]
   },
   {
-    "call": "Stop Forkop",
-    "key": "Stop Forkop",
+    "call": "Stop Forkop X",
+    "key": "Stop Forkop X",
     "places": [
       "src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:62"
     ]
@@ -3988,8 +3988,8 @@
     ]
   },
   {
-    "call": "Support report downloaded",
-    "key": "Support report downloaded",
+    "call": "Support report contains confidential information. Do not share it in public chats.",
+    "key": "Support report contains confidential information. Do not share it in public chats.",
     "places": [
       "src/forkop/tabs/diagnostic/initController.ts:183"
     ]

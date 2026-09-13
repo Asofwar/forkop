@@ -74,7 +74,8 @@ cat >"$rt_tables" <<'EOF'
 200 custom
 EOF
 FORKOP_PACKAGE_TEST_MODE=1 FORKOP_RT_TABLES="$rt_tables" \
-  ucode -L "$FORKOP_LIB" "$PACKAGE_UC" prerm
+  ucode -L "$FORKOP_LIB" "$PACKAGE_UC" prerm ||
+    fail "package prerm (case 1) exited non-zero"
 if grep -Fq '105 forkop' "$rt_tables"; then
   fail "package prerm must remove the Forkop routing table entry"
 fi
@@ -83,8 +84,15 @@ grep -Fq '200 custom' "$rt_tables" ||
 
 cat >"$WORK_DIR/forkop-init" <<'SH'
 #!/usr/bin/env bash
-grep -Fq '105 forkop' "${FORKOP_RT_TABLES:?}" || exit 1
-printf '%s\n' 'stop-with-route-table' >>"${FORKOP_STOP_LOG:?}"
+# Model a real init script: only "stop" tears anything down, and "status"
+# reports whether the service is running so prerm can decide about a restart.
+case "$1" in
+  status) exit "${FORKOP_FAKE_STATUS:-0}" ;;
+  stop)
+    grep -Fq '105 forkop' "${FORKOP_RT_TABLES:?}" || exit 1
+    printf '%s\n' 'stop-with-route-table' >>"${FORKOP_STOP_LOG:?}"
+    ;;
+esac
 SH
 chmod 0755 "$WORK_DIR/forkop-init"
 cat >"$WORK_DIR/stop-order.state" <<'EOF_UCI'
@@ -102,7 +110,8 @@ FORKOP_SING_BOX_INIT="$WORK_DIR/missing-sing-box-init" \
 FORKOP_SING_BOX_BIN="$WORK_DIR/missing-sing-box-bin" \
 FORKOP_SING_BOX_CRONET="$WORK_DIR/missing-cronet" \
 FORKOP_RT_TABLES="$WORK_DIR/rt_tables_stop_order" \
-  ucode -L "$FORKOP_LIB" "$PACKAGE_UC" prerm
+  ucode -L "$FORKOP_LIB" "$PACKAGE_UC" prerm ||
+    fail "package prerm (case 2) exited non-zero"
 grep -Fxq 'stop-with-route-table' "$WORK_DIR/stop-order.log" ||
   fail "package prerm must stop Forkop before removing its routing table name"
 [ ! -s "$WORK_DIR/rt_tables_stop_order" ] ||
@@ -119,7 +128,8 @@ FORKOP_DEFAULT_CONFIG_PATH="$WORK_DIR/default-forkop" \
 FORKOP_UCI_STATE_FILE="$WORK_DIR/config.state" \
 FORKOP_COMPONENT_UPDATE_CHECK_CACHE_DIR="$WORK_DIR/component-update-checks" \
 FORKOP_COMPONENT_UPDATE_CHECK_STATE_FILE="$WORK_DIR/component-update-check.timestamp" \
-  ucode -L "$FORKOP_LIB" "$PACKAGE_UC" postinst
+  ucode -L "$FORKOP_LIB" "$PACKAGE_UC" postinst ||
+    fail "package postinst (case 3) exited non-zero"
 cmp -s "$WORK_DIR/default-forkop" "$WORK_DIR/config-forkop" ||
   fail "package postinst must restore a missing Forkop configuration from packaged defaults"
 [ ! -e "$WORK_DIR/component-update-checks/forkop.json" ] ||
@@ -133,7 +143,8 @@ FORKOP_PACKAGE_TEST_MODE=1 \
 FORKOP_CONFIG_PATH="$WORK_DIR/config-forkop" \
 FORKOP_DEFAULT_CONFIG_PATH="$WORK_DIR/default-forkop" \
 FORKOP_UCI_STATE_FILE="$WORK_DIR/config.state" \
-  ucode -L "$FORKOP_LIB" "$PACKAGE_UC" postinst
+  ucode -L "$FORKOP_LIB" "$PACKAGE_UC" postinst ||
+    fail "package postinst (case 4) exited non-zero"
 cmp -s "$WORK_DIR/config-forkop.expected" "$WORK_DIR/config-forkop" ||
   fail "package postinst must preserve an existing user configuration"
 
@@ -147,7 +158,8 @@ FORKOP_PACKAGE_TEST_MODE=1 \
 FORKOP_CONFIG_PATH="$WORK_DIR/config-forkop" \
 FORKOP_DEFAULT_CONFIG_PATH="$WORK_DIR/default-forkop" \
 FORKOP_UCI_STATE_FILE="$WORK_DIR/config.state" \
-  ucode -L "$FORKOP_LIB" "$PACKAGE_UC" postinst
+  ucode -L "$FORKOP_LIB" "$PACKAGE_UC" postinst ||
+    fail "package postinst (case 5) exited non-zero"
 cmp -s "$WORK_DIR/config-forkop-1.0.5.expected" "$WORK_DIR/config-forkop" ||
   fail "1.0.5 package upgrade must preserve the existing user configuration"
 cp "$WORK_DIR/config-forkop.expected" "$WORK_DIR/config-forkop"
@@ -198,7 +210,8 @@ FORKOP_SING_BOX_INIT="$WORK_DIR/missing-sing-box-init" \
 FORKOP_SING_BOX_BIN="$WORK_DIR/missing-sing-box-bin" \
 FORKOP_SING_BOX_CRONET="$WORK_DIR/missing-cronet" \
 FORKOP_RT_TABLES="$WORK_DIR/rt_tables_dont_touch" \
-  ucode -L "$FORKOP_LIB" "$PACKAGE_UC" prerm
+  ucode -L "$FORKOP_LIB" "$PACKAGE_UC" prerm ||
+    fail "package prerm (case 8) exited non-zero"
 [ ! -s "$WORK_DIR/restore-dont-touch.log" ] ||
   fail "package prerm must skip dnsmasq restore when dont_touch_dhcp is enabled"
 
@@ -216,7 +229,8 @@ FORKOP_SING_BOX_INIT="$WORK_DIR/missing-sing-box-init" \
 FORKOP_SING_BOX_BIN="$WORK_DIR/missing-sing-box-bin" \
 FORKOP_SING_BOX_CRONET="$WORK_DIR/missing-cronet" \
 FORKOP_RT_TABLES="$WORK_DIR/rt_tables_restore" \
-  ucode -L "$FORKOP_LIB" "$PACKAGE_UC" prerm
+  ucode -L "$FORKOP_LIB" "$PACKAGE_UC" prerm ||
+    fail "package prerm (case 9) exited non-zero"
 grep -Fxq 'restore_dnsmasq' "$WORK_DIR/restore.log" ||
   fail "package prerm must restore dnsmasq when dont_touch_dhcp is disabled"
 
@@ -234,7 +248,8 @@ FORKOP_PACKAGE_TEST_MODE=1 \
 FORKOP_INIT="$WORK_DIR/upgrade-init" \
 FORKOP_START_LOG="$WORK_DIR/upgrade-start.log" \
 FORKOP_RT_TABLES="$WORK_DIR/rt_tables_upgrade" \
-  ucode -L "$FORKOP_LIB" "$PACKAGE_UC" prerm upgrade
+  ucode -L "$FORKOP_LIB" "$PACKAGE_UC" prerm upgrade ||
+    fail "package prerm upgrade (case 10) exited non-zero"
 [ -f "$FORKOP_PACKAGE_UPGRADE_STATE" ] ||
   fail "package pre-upgrade must remember a running service"
 FORKOP_PACKAGE_TEST_MODE=1 \
@@ -243,7 +258,8 @@ FORKOP_START_LOG="$WORK_DIR/upgrade-start.log" \
 FORKOP_CONFIG_PATH="$WORK_DIR/config-forkop" \
 FORKOP_DEFAULT_CONFIG_PATH="$WORK_DIR/default-forkop" \
 FORKOP_UCI_STATE_FILE="$WORK_DIR/config.state" \
-  ucode -L "$FORKOP_LIB" "$PACKAGE_UC" postinst
+  ucode -L "$FORKOP_LIB" "$PACKAGE_UC" postinst ||
+    fail "package postinst (case 11) exited non-zero"
 grep -Fxq start "$WORK_DIR/upgrade-start.log" ||
   fail "package postinst must restart a service that was running before upgrade"
 [ ! -e "$FORKOP_PACKAGE_UPGRADE_STATE" ] ||
@@ -253,7 +269,8 @@ FORKOP_PACKAGE_TEST_MODE=1 \
 FORKOP_FAKE_STATUS=1 \
 FORKOP_INIT="$WORK_DIR/upgrade-init" \
 FORKOP_RT_TABLES="$WORK_DIR/rt_tables_upgrade" \
-  ucode -L "$FORKOP_LIB" "$PACKAGE_UC" prerm upgrade
+  ucode -L "$FORKOP_LIB" "$PACKAGE_UC" prerm upgrade ||
+    fail "package prerm upgrade (case 12) exited non-zero"
 [ ! -e "$FORKOP_PACKAGE_UPGRADE_STATE" ] ||
   fail "package pre-upgrade must not mark an already stopped service"
 
@@ -262,7 +279,8 @@ FORKOP_RT_TABLES="$WORK_DIR/rt_tables_upgrade" \
 FORKOP_PACKAGE_TEST_MODE=1 \
 FORKOP_INIT="$WORK_DIR/upgrade-init" \
 FORKOP_RT_TABLES="$WORK_DIR/rt_tables_upgrade" \
-  ucode -L "$FORKOP_LIB" "$PACKAGE_UC" prerm
+  ucode -L "$FORKOP_LIB" "$PACKAGE_UC" prerm ||
+    fail "package prerm (case 13) exited non-zero"
 [ -f "$FORKOP_PACKAGE_UPGRADE_STATE" ] ||
   fail "prerm without an action must remember a running service"
 
@@ -270,7 +288,8 @@ FORKOP_PACKAGE_TEST_MODE=1 \
 FORKOP_FAKE_STATUS=1 \
 FORKOP_INIT="$WORK_DIR/upgrade-init" \
 FORKOP_RT_TABLES="$WORK_DIR/rt_tables_upgrade" \
-  ucode -L "$FORKOP_LIB" "$PACKAGE_UC" prerm
+  ucode -L "$FORKOP_LIB" "$PACKAGE_UC" prerm ||
+    fail "package prerm (case 14) exited non-zero"
 [ ! -e "$FORKOP_PACKAGE_UPGRADE_STATE" ] ||
   fail "prerm without an action must not mark an already stopped service"
 
@@ -278,7 +297,8 @@ FORKOP_RT_TABLES="$WORK_DIR/rt_tables_upgrade" \
 FORKOP_PACKAGE_TEST_MODE=1 \
 FORKOP_INIT="$WORK_DIR/upgrade-init" \
 FORKOP_RT_TABLES="$WORK_DIR/rt_tables_upgrade" \
-  ucode -L "$FORKOP_LIB" "$PACKAGE_UC" prerm remove
+  ucode -L "$FORKOP_LIB" "$PACKAGE_UC" prerm remove ||
+    fail "package prerm remove (case 15) exited non-zero"
 [ ! -e "$FORKOP_PACKAGE_UPGRADE_STATE" ] ||
   fail "package removal must not schedule a restart"
 

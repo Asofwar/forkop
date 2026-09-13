@@ -67,9 +67,20 @@ jobs:
           failed=0
           for test_file in tests/*.sh; do
             printf 'Running %s\n' "$test_file"
-            if ! bash "$test_file"; then
-              echo "::error file=$test_file::Backend regression failed"
-              failed=1
+            if output="$(bash "$test_file" 2>&1)"; then
+              printf '%s\n' "$output"
+              continue
             fi
+            printf '%s\n' "$output"
+            # Job logs need repository access; annotations and the run summary
+            # do not. Carry the failure reason into both.
+            reason="$(printf '%s' "$output" | tail -n 5 | tr '\r\n' '  ' | sed 's/%/%25/g')"
+            echo "::error file=$test_file::Backend regression failed: ${reason}"
+            {
+              printf '### %s\n\n```\n' "$test_file"
+              printf '%s\n' "$output" | tail -n 40
+              printf '```\n'
+            } >>"$GITHUB_STEP_SUMMARY"
+            failed=1
           done
           exit "$failed"

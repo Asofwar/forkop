@@ -2159,9 +2159,10 @@ function support_report() {
 
     support_report_heading("Generated sing-box configuration (raw)");
     show_sing_box_config("raw");
-    let sing_box_config_path = option(settings(), "config_path", "");
-    if (sing_box_config_path != "")
-        support_report_command("sing-box check", [ SING_BOX_BIN_PATH, "check", "-c", sing_box_config_path ]);
+    // A full "sing-box check" parses every outbound eagerly and briefly uses
+    // far more memory than the running runtime. Collecting a support report
+    // must not risk the OOM killer on a 256 MiB router while sing-box is live;
+    // the raw configuration above already shows what would be checked.
 
     support_report_command("System uptime", [ "uptime" ]);
     support_report_command("Memory", [ "free" ]);

@@ -257,4 +257,29 @@ FORKOP_RT_TABLES="$WORK_DIR/rt_tables_upgrade" \
 [ ! -e "$FORKOP_PACKAGE_UPGRADE_STATE" ] ||
   fail "package pre-upgrade must not mark an already stopped service"
 
+# opkg calls prerm without an action argument on some OpenWrt 24 builds, an
+# ordinary upgrade included. The running service must still be restored.
+FORKOP_PACKAGE_TEST_MODE=1 \
+FORKOP_INIT="$WORK_DIR/upgrade-init" \
+FORKOP_RT_TABLES="$WORK_DIR/rt_tables_upgrade" \
+  ucode -L "$FORKOP_LIB" "$PACKAGE_UC" prerm
+[ -f "$FORKOP_PACKAGE_UPGRADE_STATE" ] ||
+  fail "prerm without an action must remember a running service"
+
+FORKOP_PACKAGE_TEST_MODE=1 \
+FORKOP_FAKE_STATUS=1 \
+FORKOP_INIT="$WORK_DIR/upgrade-init" \
+FORKOP_RT_TABLES="$WORK_DIR/rt_tables_upgrade" \
+  ucode -L "$FORKOP_LIB" "$PACKAGE_UC" prerm
+[ ! -e "$FORKOP_PACKAGE_UPGRADE_STATE" ] ||
+  fail "prerm without an action must not mark an already stopped service"
+
+# An explicit removal stays unambiguous: nothing is restored afterwards.
+FORKOP_PACKAGE_TEST_MODE=1 \
+FORKOP_INIT="$WORK_DIR/upgrade-init" \
+FORKOP_RT_TABLES="$WORK_DIR/rt_tables_upgrade" \
+  ucode -L "$FORKOP_LIB" "$PACKAGE_UC" prerm remove
+[ ! -e "$FORKOP_PACKAGE_UPGRADE_STATE" ] ||
+  fail "package removal must not schedule a restart"
+
 printf 'package lifecycle checks passed\n'

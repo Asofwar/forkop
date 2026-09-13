@@ -120,13 +120,22 @@ function remove_managed_sing_box() {
 }
 
 function remember_upgrade_state(action) {
-    if (as_string(action) != "upgrade") {
+    // An explicit removal is unambiguous: nothing should be restored later.
+    if (as_string(action) == "remove") {
         unlink_if_exists(PACKAGE_UPGRADE_STATE);
         return;
     }
 
+    // opkg invokes prerm without an action argument on some OpenWrt 24 builds,
+    // including an ordinary version upgrade. Treating an empty action as "not
+    // an upgrade" erased the only hand-off telling postinst to restart a
+    // service that prerm had just stopped, so the router came back with Forkop
+    // down. Service state is authoritative here: record a restart only when
+    // Forkop was actually running immediately before prerm.
     if (command_success_from_args([ INIT_PATH, "status" ]))
         fs.writefile(PACKAGE_UPGRADE_STATE, "1\n");
+    else
+        unlink_if_exists(PACKAGE_UPGRADE_STATE);
 }
 
 function prerm_cleanup(action) {

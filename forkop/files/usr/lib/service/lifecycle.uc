@@ -1003,6 +1003,19 @@ function start_impl() {
 function stop_main() {
     let status = 0;
 
+    // A stop must never tear down Forkop's DNS, nftables and routing state
+    // before it has proved that the live sing-box belongs to the managed procd
+    // service. This function removes the policy before the controlled sing-box
+    // stop would reject ambiguous ownership, so without this gate a stop could
+    // discard the fail-closed policy while an unknown process stays alive.
+    // procd can also briefly report an old PID while replacing its child;
+    // treat that unsettled observation exactly like a foreign process and let
+    // the serialized caller retry once ownership has converged.
+    if (module_success(STATE_UC, [ "sing-box-process-conflict" ])) {
+        log_message("Refusing Forkop stop: sing-box process ownership is ambiguous; preserving the existing runtime", "fatal");
+        return 1;
+    }
+
     log_message("Stopping Forkop", "info");
     module_success(DNS_FAILOVER_UC, [ "stop-runtime" ]);
     module_success(PRIORITY_UC, [ "stop-runtime" ]);
@@ -1445,11 +1458,16 @@ function reload(reason) {
     if (status != 0)
         return status;
 
+    // This gate must precede every reload-state capture and candidate nft
+    // operation. A reload can otherwise rebuild the live dataplane before a
+    // later sing-box transition notices that procd ownership is unsettled.
+    // Preserve the coherent runtime until ownership has converged instead.
+    if (module_success(STATE_UC, [ "sing-box-process-conflict" ])) {
+        log_message("Reload refused: multiple or non-procd sing-box processes were detected; preserving the existing runtime", "fatal");
+        return finish_reload_status(1, reload_config_fingerprint);
+    }
+
     if (!module_success(STATE_UC, [ "forkop-running", RT_TABLE_NAME, NFT_TABLE_NAME, NFT_FAKEIP_MARK ])) {
-        if (module_success(STATE_UC, [ "sing-box-process-conflict" ])) {
-            log_message("Reload refused: multiple or non-procd sing-box processes were detected; preserving the existing runtime", "fatal");
-            return finish_reload_status(1, reload_config_fingerprint);
-        }
         log_message("Runtime state is incomplete; restarting Forkop runtime", "info");
         return finish_reload_status(restart_runtime_for_reload(), reload_config_fingerprint);
     }

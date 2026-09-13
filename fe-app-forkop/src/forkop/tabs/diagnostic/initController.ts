@@ -180,7 +180,13 @@ async function handleDownloadSupportReport() {
     }
 
     downloadSupportReport(String(report.data ?? ''));
-    showToast(_('Support report downloaded'), 'success');
+    showToast(
+      _(
+        'Support report contains confidential information. Do not share it in public chats.',
+      ),
+      'error',
+      10000,
+    );
   } catch (error) {
     logger.error('[DIAGNOSTIC]', 'handleDownloadSupportReport - e', error);
     showToast(_('Failed to create support report'), 'error');

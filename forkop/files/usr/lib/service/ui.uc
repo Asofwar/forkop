@@ -807,6 +807,11 @@ function action_state_from_dirs() {
     };
 }
 
+function release_dir_lock(lock_dir) {
+    remove_file(as_string(lock_dir) + "/pid");
+    command_success_from_args([ "rmdir", lock_dir ]);
+}
+
 function acquire_dir_lock(lock_dir) {
     lock_dir = as_string(lock_dir);
     let owner_pid = current_pid();
@@ -842,11 +847,6 @@ function acquire_dir_lock(lock_dir) {
     return false;
 }
 
-function release_dir_lock(lock_dir) {
-    remove_file(as_string(lock_dir) + "/pid");
-    command_success_from_args([ "rmdir", lock_dir ]);
-}
-
 function service_enabled() {
     return file_executable("/etc/rc.d/S99" + SERVICE_NAME);
 }
@@ -880,16 +880,22 @@ function marker_is(expected) {
     return first_line(SING_BOX_VARIANT_STATE_FILE) == as_string(expected);
 }
 
-function tiny_package_installed() {
-    if (command_success_from_args([ "sh", "-c", "command -v apk" ]))
-        return command_success_from_args([ "apk", "info", "-e", "sing-box-tiny" ]);
+function sing_box_package_from_manifest(installed) {
+    for (let package_name in [ "sing-box-extended", "sing-box-tiny", "sing-box" ])
+        for (let line in split(as_string(installed), "\n"))
+            if (split(trim(as_string(line)), /[ \t]+/)[0] == package_name)
+                return package_name;
+    return "";
+}
 
-    let installed = command_output_from_args([ "opkg", "list-installed" ]);
-    for (let line in split(installed, "\n"))
-        if (split(trim(as_string(line)), /[ \t]+/)[0] == "sing-box-tiny")
-            return true;
-
-    return false;
+function installed_sing_box_package_name() {
+    // Virtual APK provides are not package identities: Tiny provides sing-box.
+    let package_name = sing_box_package_from_manifest(command_output_from_args([
+        "apk", "list", "--installed", "--manifest"
+    ]));
+    if (package_name != "")
+        return package_name;
+    return sing_box_package_from_manifest(command_output_from_args([ "opkg", "list-installed" ]));
 }
 
 function component_action_running_for(component) {
@@ -1017,13 +1023,32 @@ function capability_flags() {
         sing_box_tiny: 0,
         sing_box_compressed: 0,
         sing_box_tailscale: 0,
+        sing_box_package: "",
         zapret_installed: file_executable(ZAPRET_PROVIDER_NFQWS_BIN) ? 1 : 0,
         zapret2_installed: file_executable(ZAPRET2_PROVIDER_NFQWS2_BIN) ? 1 : 0,
         byedpi_installed: file_executable(BYEDPI_BIN) ? 1 : 0
     };
 
     if (file_executable(SING_BOX_BIN_PATH)) {
-        if (marker_is("extended-compressed")) {
+        result.sing_box_package = installed_sing_box_package_name();
+        // Package-manager identity supersedes a marker left by a previous
+        // variant. Never inspect the changing binary during replacement.
+        if (result.sing_box_package == "sing-box-extended") {
+            result.sing_box_extended = 1;
+            result.sing_box_tailscale = 1;
+        }
+        else if (result.sing_box_package == "sing-box-tiny") {
+            result.sing_box_tiny = 1;
+        }
+        else if (result.sing_box_package == "sing-box") {
+            // A regular build without Tailscale is still not a Tiny package.
+            if (!component_action_running_for("sing_box")) {
+                let info = sing_box_version_info();
+                if (info != null && match(info.tags, /(^|[,: \t])with_tailscale([, \t]|$)/) != null)
+                    result.sing_box_tailscale = 1;
+            }
+        }
+        else if (marker_is("extended-compressed")) {
             result.sing_box_extended = 1;
             result.sing_box_compressed = 1;
             result.sing_box_tailscale = 1;
@@ -1032,7 +1057,7 @@ function capability_flags() {
             result.sing_box_extended = 1;
             result.sing_box_tailscale = 1;
         }
-        else if (marker_is("tiny") || tiny_package_installed()) {
+        else if (marker_is("tiny")) {
             result.sing_box_tiny = 1;
         }
         else if (component_action_running_for("sing_box")) {
@@ -1047,8 +1072,6 @@ function capability_flags() {
             else if (info != null) {
                 if (match(info.tags, /(^|[,: \t])with_tailscale([, \t]|$)/) != null)
                     result.sing_box_tailscale = 1;
-                if (result.sing_box_tailscale == 0)
-                    result.sing_box_tiny = 1;
             }
         }
     }

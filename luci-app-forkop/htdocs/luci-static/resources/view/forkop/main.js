@@ -1935,7 +1935,9 @@ function renderDefaultState({
   latencyFetching,
   latencyProgress,
   subscriptionUpdating,
-  selectorSwitchingTag
+  selectorSwitchingTag,
+  isPriorityMembersExpanded,
+  onPriorityMembersToggle
 }) {
   function renderPriorityMembers(outbound) {
     const members = outbound.priorityInfo?.outbounds || [];
@@ -1986,11 +1988,12 @@ function renderDefaultState({
         )
       );
     });
-    return E(
+    const details = E(
       "details",
       {
         class: "fkp_dashboard-page__priority-members",
-        open: true,
+        // LuCI E() writes false as an attribute too; absent means collapsed.
+        open: isPriorityMembersExpanded(outbound) ? true : void 0,
         click: (event) => event.stopPropagation()
       },
       [
@@ -2002,6 +2005,10 @@ function renderDefaultState({
         )
       ]
     );
+    details.addEventListener("toggle", () => {
+      onPriorityMembersToggle(outbound, details.open);
+    });
+    return details;
   }
   function testLatency() {
     if (section.withTagSelect) {
@@ -2341,7 +2348,10 @@ function render() {
             latencyFetching: false,
             latencyProgress: void 0,
             subscriptionUpdating: false,
-            selectorSwitchingTag: void 0
+            selectorSwitchingTag: void 0,
+            isPriorityMembersExpanded: () => false,
+            onPriorityMembersToggle: () => {
+            }
           })
         )
       ])
@@ -5558,6 +5568,25 @@ function getServiceAvailability({
   return running ? "running" : "stopped";
 }
 
+// src/forkop/tabs/dashboard/priorityMembersState.ts
+function createPriorityMembersState() {
+  const expanded = /* @__PURE__ */ new Set();
+  const key = (sectionName, outboundCode) => JSON.stringify([sectionName, outboundCode]);
+  return {
+    isExpanded(sectionName, outboundCode) {
+      return expanded.has(key(sectionName, outboundCode));
+    },
+    setExpanded(sectionName, outboundCode, open) {
+      const stateKey = key(sectionName, outboundCode);
+      if (open) {
+        expanded.add(stateKey);
+      } else {
+        expanded.delete(stateKey);
+      }
+    }
+  };
+}
+
 // src/forkop/tabs/dashboard/initController.ts
 var SECTIONS_REFRESH_INTERVAL_MS = 1e4;
 var LATENCY_TEST_BUTTON_CLASS = "dashboard-sections-grid-item-test-latency";
@@ -5575,6 +5604,7 @@ var followedSubscriptionJobs = /* @__PURE__ */ new Set();
 var followedLatencyJobs = /* @__PURE__ */ new Set();
 var handledSubscriptionJobs = /* @__PURE__ */ new Set();
 var handledLatencyJobs = /* @__PURE__ */ new Set();
+var priorityMembersState = createPriorityMembersState();
 if (typeof window !== "undefined") {
   window.addEventListener("pagehide", () => {
     pageUnloading = true;
@@ -6772,7 +6802,10 @@ async function renderSectionsWidget() {
       latencyFetching: false,
       latencyProgress: void 0,
       subscriptionUpdating: false,
-      selectorSwitchingTag: void 0
+      selectorSwitchingTag: void 0,
+      isPriorityMembersExpanded: () => false,
+      onPriorityMembersToggle: () => {
+      }
     });
     return preserveScrollForPage(() => {
       container.replaceChildren(renderedWidget);
@@ -6791,6 +6824,14 @@ async function renderSectionsWidget() {
         sectionsWidget.subscriptionUpdatingSections[section.sectionName]
       ),
       selectorSwitchingTag: sectionsWidget.selectorSwitchingSections[section.sectionName],
+      isPriorityMembersExpanded: (outbound) => priorityMembersState.isExpanded(section.sectionName, outbound.code),
+      onPriorityMembersToggle: (outbound, open) => {
+        priorityMembersState.setExpanded(
+          section.sectionName,
+          outbound.code,
+          open
+        );
+      },
       onTestLatency: (tag) => {
         if (section.withTagSelect) {
           if (Array.isArray(tag)) {
@@ -8976,7 +9017,7 @@ function renderAvailableActions({
         classNames: ["cbi-button-remove"],
         onClick: stop.onClick,
         icon: renderCircleStopIcon24,
-        text: _("Stop Forkop"),
+        text: _("Stop Forkop X"),
         loading: stop.loading,
         disabled: stop.disabled
       })
@@ -9860,7 +9901,13 @@ async function handleDownloadSupportReport() {
       throw new Error(report.error || "Support report collection failed");
     }
     downloadSupportReport(String(report.data ?? ""));
-    showToast(_("Support report downloaded"), "success");
+    showToast(
+      _(
+        "Support report contains confidential information. Do not share it in public chats."
+      ),
+      "error",
+      1e4
+    );
   } catch (error) {
     logger.error("[DIAGNOSTIC]", "handleDownloadSupportReport - e", error);
     showToast(_("Failed to create support report"), "error");

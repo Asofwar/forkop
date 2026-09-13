@@ -1134,6 +1134,31 @@ function start() {
         return 1;
     }
 
+    // A package install can queue a second start while the first one is
+    // building its runtime. initd serializes both with reload.lock; once the
+    // second call acquires it, accept only the complete, sole procd-owned
+    // runtime. Never adopt a partial runtime or bypass the ownership guards.
+    if (module_success(STATE_UC, [
+        "forkop-stably-running",
+        RT_TABLE_NAME,
+        NFT_TABLE_NAME,
+        NFT_FAKEIP_MARK,
+        as_string(RUNTIME_STABLE_MIN_AGE)
+    ])) {
+        // This fork retains a drop guard when a coordinated rollback fails.
+        // Table/route readiness alone must not report that state as recovered.
+        if (command_success_from_args([
+            "nft", "list", "chain", "inet", NFT_TABLE_NAME, "forkop_transition_guard"
+        ])) {
+            log_message("Refusing duplicate Forkop start: the failed-transition guard is still active; preserving the fail-closed runtime", "fatal");
+            release_start_subscription_update_lock();
+            return 1;
+        }
+        log_message("Forkop is already stably running; treating duplicate start as successful", "info");
+        release_start_subscription_update_lock();
+        return 0;
+    }
+
     let status = start_impl();
     release_start_subscription_update_lock();
 

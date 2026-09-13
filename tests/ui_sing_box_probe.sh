@@ -33,11 +33,27 @@ if [ "${FORKOP_TEST_SING_BOX_PROBE_MODE:-fast}" = "slow" ]; then
   exec sleep 30
 fi
 printf 'sing-box version 1.13.14\n\n'
-printf 'Tags: with_quic,with_tailscale\n'
+printf 'Tags: %s\n' "${FORKOP_TEST_SING_BOX_PROBE_TAGS:-with_quic,with_tailscale}"
 SH
 chmod 755 "$PROBE_BIN"
+cat >"$WORK_DIR/apk" <<'SH'
+#!/bin/sh
+if [ "$1" = "list" ] && [ "$2" = "--installed" ] && [ "$3" = "--manifest" ]; then
+  printf '%s\n' "${FORKOP_TEST_APK_MANIFEST:-}"
+  exit 0
+fi
+# Tiny provides the virtual sing-box dependency. info -e cannot distinguish it.
+if [ "$1" = "info" ] && [ "$2" = "-e" ]; then
+  exit 0
+fi
+exit 1
+SH
+chmod 755 "$WORK_DIR/apk"
 cat >"$WORK_DIR/opkg" <<'SH'
 #!/bin/sh
+if [ "$1" = "list-installed" ]; then
+  printf '%s\n' "${FORKOP_TEST_OPKG_MANIFEST:-}"
+fi
 exit 0
 SH
 chmod 755 "$WORK_DIR/opkg"
@@ -116,5 +132,63 @@ while IFS= read -r pid; do
   fi
 done <"$PROBE_PIDS"
 : >"$PROBE_PIDS"
+
+assert_capabilities() {
+  local output="$1" package="$2" extended="$3" tiny="$4" compressed="$5" tailscale="$6"
+  JSON_VALUE="$output" node - "$package" "$extended" "$tiny" "$compressed" "$tailscale" <<'NODE'
+const value = JSON.parse(process.env.JSON_VALUE);
+const fields = ['sing_box_package', 'sing_box_extended', 'sing_box_tiny', 'sing_box_compressed', 'sing_box_tailscale'];
+const expected = process.argv.slice(2).map((v, i) => i ? Number(v) : v);
+for (let i = 0; i < fields.length; i++) {
+  if (value[fields[i]] !== expected[i]) {
+    console.error(`${fields[i]}: expected ${expected[i]}, got ${value[fields[i]]}`);
+    process.exit(1);
+  }
+}
+NODE
+}
+
+# Exact package names supersede all old variant markers. Regular packages use
+# the bounded, cached probe only to inspect build capabilities, not identity.
+: >"$PROBE_COUNT"
+rm -f "$CACHE_FILE"
+for marker in tiny extended extended-compressed; do
+  printf '%s\n' "$marker" >"$WORK_DIR/missing-variant"
+  regular="$(FORKOP_TEST_APK_MANIFEST='sing-box 1.13.14-r1' ui_capabilities)"
+  assert_capabilities "$regular" sing-box 0 0 0 1
+done
+[ "$(wc -l <"$PROBE_COUNT")" -eq 1 ] || fail "regular package build capabilities must be cached across stale markers"
+tiny="$(FORKOP_TEST_APK_MANIFEST='sing-box-tiny 1.13.14-r1' ui_capabilities)"
+assert_capabilities "$tiny" sing-box-tiny 0 1 0 0
+extended="$(FORKOP_TEST_APK_MANIFEST='sing-box-extended 1.13.14-r1' ui_capabilities)"
+assert_capabilities "$extended" sing-box-extended 1 0 0 1
+regular_opkg="$(FORKOP_TEST_OPKG_MANIFEST='sing-box - 1.13.14-r1' ui_capabilities)"
+assert_capabilities "$regular_opkg" sing-box 0 0 0 1
+tiny_opkg="$(FORKOP_TEST_OPKG_MANIFEST='sing-box-tiny - 1.13.14-r1' ui_capabilities)"
+assert_capabilities "$tiny_opkg" sing-box-tiny 0 1 0 0
+[ "$(wc -l <"$PROBE_COUNT")" -eq 1 ] || fail "Tiny/Extended identity and cached regular capabilities must not trigger extra probes"
+
+rm -f "$CACHE_FILE"
+regular_without_tailscale="$(FORKOP_TEST_SING_BOX_PROBE_TAGS=with_quic FORKOP_TEST_APK_MANIFEST='sing-box 1.13.14-r1' ui_capabilities)"
+assert_capabilities "$regular_without_tailscale" sing-box 0 0 0 0
+regular_without_tailscale_cached="$(FORKOP_TEST_SING_BOX_PROBE_TAGS=with_quic FORKOP_TEST_APK_MANIFEST='sing-box 1.13.14-r1' ui_capabilities)"
+[ "$regular_without_tailscale" = "$regular_without_tailscale_cached" ] || fail "regular package without Tailscale must retain cached capabilities"
+[ "$(wc -l <"$PROBE_COUNT")" -eq 2 ] || fail "regular package without Tailscale must use exactly one fresh probe"
+
+rm -f "$WORK_DIR/missing-variant"
+unknown="$(FORKOP_TEST_SING_BOX_PROBE_TAGS=with_quic FORKOP_TEST_APK_MANIFEST='sing-box-tools 1.0-r1' ui_capabilities)"
+assert_capabilities "$unknown" '' 0 0 0 0
+
+# A regular package must not bypass the component-update guard; unknown
+# identity also retains the existing no-probe behavior during replacement.
+rm -f "$CACHE_FILE"
+: >"$PROBE_COUNT"
+mkdir -p "$WORK_DIR/components"
+printf '%s\n' '{"running":true,"component":"sing_box"}' >"$WORK_DIR/components/update.json"
+updating_regular="$(FORKOP_TEST_SING_BOX_PROBE_MODE=slow FORKOP_TEST_APK_MANIFEST='sing-box 1.13.14-r1' ui_capabilities)"
+assert_capabilities "$updating_regular" sing-box 0 0 0 0
+updating_unknown="$(FORKOP_TEST_SING_BOX_PROBE_MODE=slow ui_capabilities)"
+assert_capabilities "$updating_unknown" '' 0 0 0 1
+[ ! -s "$PROBE_COUNT" ] || fail "component replacement must not execute the changing sing-box binary"
 
 printf 'UI sing-box probe checks passed\n'

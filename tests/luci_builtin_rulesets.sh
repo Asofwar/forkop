@@ -24,7 +24,8 @@ for (const option of ["russia_inside", "russia_outside", "ukraine_inside"]) {
 const currentSecondaryOptions = [
   "adobe", "anthropic", "apple", "blizzard", "bungie", "ccp",
   "electronicarts", "epicgames", "google", "nintendo", "riot",
-  "roblox", "sony", "taketwo", "ubisoft", "valve", "wargaming", "xbox",
+  "roblox", "sony", "taketwo", "twitch", "ubisoft", "valve", "wargaming",
+  "xbox",
 ];
 
 // These entries are supported by the current upstream Forkop catalogue.

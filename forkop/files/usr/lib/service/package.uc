@@ -24,6 +24,8 @@ const SING_BOX_BIN = env("FORKOP_SING_BOX_BIN", "/usr/bin/sing-box");
 const SING_BOX_CRONET = env("FORKOP_SING_BOX_CRONET", "/usr/lib/libcronet.so");
 const SING_BOX_MANAGED_MARKER = env("SB_MANAGED_SERVICE_MARKER", "Forkop managed sing-box service for binary variants");
 const PACKAGE_UPGRADE_STATE = env("FORKOP_PACKAGE_UPGRADE_STATE", "/tmp/forkop-package-was-running");
+const UPGRADE_SING_BOX_WAIT_SECONDS = int(env("FORKOP_UPGRADE_SING_BOX_WAIT_SECONDS", "15"));
+const PROC_DIR = env("FORKOP_PROC_DIR", "/proc");
 const COMPONENT_UPDATE_CHECK_CACHE_DIR = env("FORKOP_COMPONENT_UPDATE_CHECK_CACHE_DIR", "/var/run/forkop/component-update-checks");
 const COMPONENT_UPDATE_CHECK_STATE_FILE = env("FORKOP_COMPONENT_UPDATE_CHECK_STATE_FILE", "/var/run/forkop/component-update-check.timestamp");
 const PACKAGE_TEST_MODE = env("FORKOP_PACKAGE_TEST_MODE", "") != "";
@@ -50,6 +52,38 @@ function command_success_from_args(args) {
 
 function path_exists(path) {
     return fs.stat(as_string(path)) != null;
+}
+
+function path_basename(path) {
+    path = as_string(path);
+    let slash = rindex(path, "/");
+    return slash >= 0 ? substr(path, slash + 1) : path;
+}
+
+function sing_box_process_count() {
+    let count = 0;
+    for (let exe_path in fs.glob(PROC_DIR + "/[0-9]*/exe"))
+        if (path_basename(as_string(fs.readlink(exe_path))) == "sing-box")
+            count++;
+    return count;
+}
+
+function wait_for_upgrade_sing_box_exit() {
+    let timeout = UPGRADE_SING_BOX_WAIT_SECONDS;
+
+    // prerm stops the old service, but its sing-box child exits asynchronously.
+    // postinst would otherwise reach the guarded start while that process is
+    // still present, and the start refuses an ambiguous runtime by design -
+    // leaving Forkop stopped after an ordinary package upgrade. Wait for the
+    // process to leave on its own; never kill anything by name.
+    while (sing_box_process_count() > 0) {
+        if (timeout <= 0)
+            return false;
+        command_success_from_args([ "sleep", "1" ]);
+        timeout--;
+    }
+
+    return true;
 }
 
 function unlink_if_exists(path) {
@@ -178,6 +212,12 @@ function postinst_restore() {
 
     if (!path_exists(PACKAGE_UPGRADE_STATE))
         return true;
+
+    if (!wait_for_upgrade_sing_box_exit()) {
+        warn("Timed out waiting for the previous Forkop sing-box runtime to exit; startup was not attempted.
+");
+        return false;
+    }
 
     if (!command_success_from_args([ INIT_PATH, "start" ]))
         return false;

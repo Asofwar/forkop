@@ -47,8 +47,9 @@ grep -Fq 'const CRONTAB_FILE' "$UPDATES_UC" ||
   fail "the crontab path must be overridable for tests"
 
 # Filtering itself must keep foreign jobs and drop only Forkop's own marker.
+# filter-cron-markers reads the crontab from stdin; the arguments are markers.
 filtered=$(ucode -L "$FORKOP_LIB" "$UPDATES_UC" filter-cron-markers \
-  "$(cat "$WORK_DIR/crontab.root")" '# forkop-list-update')
+  '# forkop-list-update' <"$WORK_DIR/crontab.root")
 printf '%s' "$filtered" | grep -Fq '/usr/local/bin/backup.sh' ||
   fail "an unrelated backup job must survive the rewrite"
 printf '%s' "$filtered" | grep -Fq '/root/watchdog.sh' ||

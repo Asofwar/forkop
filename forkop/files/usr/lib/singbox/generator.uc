@@ -339,7 +339,7 @@ function ensure_custom_ruleset(config, reference) {
 
     if (runtime_rulesets.is_community(reference)) {
         tag_name = "builtin-" + reference + "-ruleset";
-        kind = "domains";
+        kind = runtime_rulesets.community_kind(reference);
         if (!ruleset_registered(config, tag_name)) {
             let rule_set = {
                 type: "remote",
@@ -2365,7 +2365,7 @@ function ensure_community_ruleset(config, section_name, community) {
     }
     return {
         tag: tag_name,
-        kind: "domains"
+        kind: runtime_rulesets.community_kind(community)
     };
 }
 
@@ -2483,7 +2483,7 @@ function rebuild_local_domain_ip_list_ruleset(section_name, references, domains_
     }
 }
 
-function add_domain_ip_list_ruleset(config, section_name, rule_set_tags, dns_rule_set_tags, references, domains_only) {
+function add_domain_ip_list_ruleset(config, section_name, rule_set_tags, dns_query_tags, dns_response_tags, references, domains_only) {
     if (length(references) == 0)
         return;
 
@@ -2505,8 +2505,14 @@ function add_domain_ip_list_ruleset(config, section_name, rule_set_tags, dns_rul
 
     if (!domains_only)
         push(rule_set_tags, tag_name);
-    if (source_rulesets.has_domain_matchers(ruleset_path))
-        push(dns_rule_set_tags, tag_name);
+    let has_domains = source_rulesets.has_domain_matchers(ruleset_path);
+    let has_addresses = source_rulesets.has_ip_matchers(ruleset_path);
+    if (runtime_supports_dns_response_matching && has_addresses)
+        push(dns_response_tags, tag_name);
+    else if (has_domains)
+        // Below 1.14 an address-only list cannot match a query, and it was
+        // never placed in the DNS rules. Keep it out.
+        push(dns_query_tags, tag_name);
 }
 
 function legacy_condition_values(section, key) {
@@ -2712,6 +2718,87 @@ function add_section_dns_matcher_rule(config, section, matchers, rewrite_ttl) {
     push_dns_matcher_rule(config, matchers);
 }
 
+// Which DNS tag list a rule-set belongs to.
+//
+// Below 1.14 there is no response matching, so the pre-1.14 behaviour has to be
+// reproduced exactly, and it differed by source: a community list always joined
+// the DNS rule, while a custom rule-set joined it only when it carried domains.
+// Returning null means "keep it out of the DNS rules", as before.
+function dns_tags_for_ruleset_kind(kind, query_tags, response_tags, legacy_always) {
+    if (as_string(kind) == "domains")
+        return query_tags;
+    if (runtime_supports_dns_response_matching)
+        return response_tags;
+    return legacy_always ? query_tags : null;
+}
+
+function append_unique_tags(values, additions) {
+    let seen = {};
+    for (let value in values)
+        seen[value] = true;
+    for (let value in additions) {
+        if (!seen[value]) {
+            seen[value] = true;
+            push(values, value);
+        }
+    }
+}
+
+// sing-box 1.14 refuses to use an address rule-set as a DNS query filter: the
+// addresses only exist once the answer is known. Ask it to resolve first, then
+// route the answer when the rule-set matches the response.
+function add_response_ruleset_dns_rule(config, section, tags, rewrite_ttl, server_tag) {
+    if (length(tags) == 0)
+        return;
+
+    let source_ip_cidr = legacy_condition_values(section, "source_ip_cidr");
+
+    let evaluate = {};
+    add_source_dns_matchers(evaluate, source_ip_cidr);
+    evaluate = exclude_sources_from_matchers(evaluate, section);
+    evaluate.action = "evaluate";
+    evaluate.server = runtime_constants.DNS_SERVER_TAG;
+    push_dns_matcher_rule(config, evaluate);
+
+    let response = {
+        rule_set: single_or_array(tags),
+        match_response: true
+    };
+    add_source_dns_matchers(response, source_ip_cidr);
+    response = exclude_sources_from_matchers(response, section);
+    response.action = "route";
+    response.server = server_tag;
+    response.rewrite_ttl = rewrite_ttl;
+    push_dns_matcher_rule(config, response);
+}
+
+function add_ruleset_dns_query_rule(config, section, tags, rewrite_ttl, server_tag) {
+    if (length(tags) == 0)
+        return;
+
+    if (server_tag == section_dns_server(section)) {
+        add_section_dns_matcher_rule(config, section, { rule_set: single_or_array(tags) }, rewrite_ttl);
+        return;
+    }
+
+    let query = { rule_set: single_or_array(tags), action: "route", server: server_tag, rewrite_ttl };
+    add_source_dns_matchers(query, legacy_condition_values(section, "source_ip_cidr"));
+    push_dns_matcher_rule(config, exclude_sources_from_matchers(query, section));
+}
+
+function add_section_ruleset_dns_rules(config, section, query_tags, response_tags, rewrite_ttl, server_tag) {
+    // Below 1.14 there is no response matching, so both kinds collapse back
+    // into the single query rule this fork has always emitted.
+    if (!runtime_supports_dns_response_matching) {
+        append_unique_tags(query_tags, response_tags);
+        add_ruleset_dns_query_rule(config, section, query_tags, rewrite_ttl, server_tag);
+        return;
+    }
+
+    add_ruleset_dns_query_rule(config, section, query_tags, rewrite_ttl, server_tag);
+    add_response_ruleset_dns_rule(config, section, response_tags, rewrite_ttl, server_tag);
+}
+
 function source_aware_dns_sources(sections) {
     let seen = {};
     let values = [];
@@ -2795,33 +2882,36 @@ function add_dns_action_rules_for_section(config, section) {
     let domain_suffix = domains.domain_suffix;
     let domain_keyword = domains.domain_keyword;
     let domain_regex = domains.domain_regex;
-    let rule_set_tags = [];
+    let dns_query_rule_set_tags = [];
+    let dns_response_rule_set_tags = [];
     let section_name = section[".name"];
     let source_ip_cidr = legacy_condition_values(section, "source_ip_cidr");
     let fully_routed_ips = list_option(section, "fully_routed_ips");
 
     for (let community in connections.community_lists(section)) {
         let ensured = ensure_community_ruleset(config, section_name, as_string(community));
-        push(rule_set_tags, ensured.tag);
+        push(dns_tags_for_ruleset_kind(ensured.kind, dns_query_rule_set_tags, dns_response_rule_set_tags, true), ensured.tag);
     }
     for (let reference in connections.rule_sets(section)) {
         let ensured = ensure_custom_ruleset(config, as_string(reference));
-        if (ensured.kind == "domains")
-            push(rule_set_tags, ensured.tag);
+        let dns_tags = dns_tags_for_ruleset_kind(ensured.kind, dns_query_rule_set_tags, dns_response_rule_set_tags, false);
+        if (dns_tags != null)
+            push(dns_tags, ensured.tag);
     }
     add_remote_list_rulesets(
         config,
         section,
         "remote_domain_lists",
         "domains",
-        rule_set_tags,
-        rule_set_tags
+        dns_query_rule_set_tags,
+        dns_query_rule_set_tags
     );
     add_domain_ip_list_ruleset(
         config,
         section_name,
         [],
-        rule_set_tags,
+        dns_query_rule_set_tags,
+        dns_response_rule_set_tags,
         list_option(section, "domain_ip_lists"),
         true
     );
@@ -2855,18 +2945,16 @@ function add_dns_action_rules_for_section(config, section) {
         dns_rule = exclude_sources_from_matchers(dns_rule, section);
         push_dns_matcher_rule(config, dns_rule);
     }
-    if (length(rule_set_tags) > 0) {
-        let dns_rule = {
-            action: "route",
-            server: server_tag,
-            rewrite_ttl,
-            rule_set: single_or_array(rule_set_tags)
-        };
-        add_source_dns_matchers(dns_rule, source_ip_cidr);
-        dns_rule = exclude_sources_from_matchers(dns_rule, section);
-        push_dns_matcher_rule(config, dns_rule);
-    }
-    if (!has_inline_domains && length(rule_set_tags) == 0 && length(fully_routed_ips) == 0)
+    add_section_ruleset_dns_rules(
+        config,
+        section,
+        dns_query_rule_set_tags,
+        dns_response_rule_set_tags,
+        rewrite_ttl,
+        server_tag
+    );
+    if (!has_inline_domains && length(dns_query_rule_set_tags) == 0 &&
+        length(dns_response_rule_set_tags) == 0 && length(fully_routed_ips) == 0)
         runtime_generate_unsupported("DNS action '" + section_name + "' has no domain matchers");
 }
 
@@ -2958,7 +3046,8 @@ function add_combined_route_for_section(config, section) {
     let ip_cidr = legacy_condition_values(section, "ip_cidr");
     let source_ip_cidr = legacy_condition_values(section, "source_ip_cidr");
     let rule_set_tags = [];
-    let dns_rule_set_tags = [];
+    let dns_query_rule_set_tags = [];
+    let dns_response_rule_set_tags = [];
     let section_name = section[".name"];
 
     add_fully_routed_ips_rules(config, section);
@@ -2966,19 +3055,21 @@ function add_combined_route_for_section(config, section) {
     for (let community in connections.community_lists(section)) {
         let ensured = ensure_community_ruleset(config, section_name, as_string(community));
         push(rule_set_tags, ensured.tag);
-        push(dns_rule_set_tags, ensured.tag);
+        push(dns_tags_for_ruleset_kind(ensured.kind, dns_query_rule_set_tags, dns_response_rule_set_tags, true), ensured.tag);
     }
     for (let reference in connections.rule_sets(section)) {
         let ensured = ensure_custom_ruleset(config, as_string(reference));
         push(rule_set_tags, ensured.tag);
-        if (ensured.kind == "domains")
-            push(dns_rule_set_tags, ensured.tag);
+        let dns_tags = dns_tags_for_ruleset_kind(ensured.kind, dns_query_rule_set_tags, dns_response_rule_set_tags, false);
+        if (dns_tags != null)
+            push(dns_tags, ensured.tag);
     }
     for (let reference in connections.rule_sets_with_subnets(section)) {
         let ensured = ensure_custom_ruleset(config, as_string(reference));
         push(rule_set_tags, ensured.tag);
-        if (ensured.kind == "domains")
-            push(dns_rule_set_tags, ensured.tag);
+        let dns_tags = dns_tags_for_ruleset_kind(ensured.kind, dns_query_rule_set_tags, dns_response_rule_set_tags, false);
+        if (dns_tags != null)
+            push(dns_tags, ensured.tag);
     }
     add_remote_list_rulesets(
         config,
@@ -2986,7 +3077,7 @@ function add_combined_route_for_section(config, section) {
         "remote_domain_lists",
         "domains",
         rule_set_tags,
-        dns_rule_set_tags
+        dns_query_rule_set_tags
     );
     add_remote_list_rulesets(
         config,
@@ -3000,7 +3091,8 @@ function add_combined_route_for_section(config, section) {
         config,
         section_name,
         rule_set_tags,
-        dns_rule_set_tags,
+        dns_query_rule_set_tags,
+        dns_response_rule_set_tags,
         list_option(section, "domain_ip_lists"),
         false
     );
@@ -3058,11 +3150,14 @@ function add_combined_route_for_section(config, section) {
         add_domain_array(dns_rule, "domain_regex", domain_regex);
         add_section_dns_matcher_rule(config, section, dns_rule, rewrite_ttl);
     }
-    if (length(dns_rule_set_tags) > 0) {
-        add_section_dns_matcher_rule(config, section, {
-            rule_set: single_or_array(dns_rule_set_tags)
-        }, rewrite_ttl);
-    }
+    add_section_ruleset_dns_rules(
+        config,
+        section,
+        dns_query_rule_set_tags,
+        dns_response_rule_set_tags,
+        rewrite_ttl,
+        section_dns_server(section)
+    );
 }
 
 function unsupported_matcher_key(section) {

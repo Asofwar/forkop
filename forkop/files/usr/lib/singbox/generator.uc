@@ -2509,7 +2509,9 @@ function add_domain_ip_list_ruleset(config, section_name, rule_set_tags, dns_que
     let has_addresses = source_rulesets.has_ip_matchers(ruleset_path);
     if (runtime_supports_dns_response_matching && has_addresses)
         push(dns_response_tags, tag_name);
-    else if (has_domains || has_addresses)
+    else if (has_domains)
+        // Below 1.14 an address-only list cannot match a query, and it was
+        // never placed in the DNS rules. Keep it out.
         push(dns_query_tags, tag_name);
 }
 

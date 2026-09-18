@@ -76,10 +76,28 @@ awk '
 if grep -Fq 'dns_rule_set_tags' "$GENERATOR_UC"; then
   fail "every DNS rule-set caller must use the query/response pair"
 fi
-grep -Fq 'push(ensured.kind == "domains" ? dns_query_rule_set_tags : dns_response_rule_set_tags' "$GENERATOR_UC" ||
+grep -Fq 'dns_tags_for_ruleset_kind(ensured.kind, dns_query_rule_set_tags, dns_response_rule_set_tags' "$GENERATOR_UC" ||
   fail "rule-set tags must be routed by kind"
 
-# 5. Local domain+ip lists only take the response path when the runtime has it.
+# 5. Below 1.14 the pre-existing behaviour differed by source, and both halves
+#    must be preserved: a community list always joined the DNS rule, a custom
+#    rule-set only when it carried domains. Collapsing that into one rule once
+#    added eight address-only sets to the DNS rules of a live configuration.
+awk '
+  /^function dns_tags_for_ruleset_kind\(/ { inside = 1 }
+  inside && /if \(as_string\(kind\) == "domains"\)/ { domains = NR }
+  inside && /if \(runtime_supports_dns_response_matching\)/ { modern = NR }
+  inside && /return legacy_always \? query_tags : null;/ { legacy = NR }
+  inside && /^}/ { done = 1; exit }
+  END { exit done && domains && modern && legacy && domains < modern && modern < legacy ? 0 : 1 }
+' "$GENERATOR_UC" || fail "the pre-1.14 placement must depend on where the rule-set came from"
+
+grep -Fq 'dns_response_rule_set_tags, true), ensured.tag);' "$GENERATOR_UC" ||
+  fail "community lists must keep joining the DNS rule below 1.14"
+grep -Fq 'dns_response_rule_set_tags, false);' "$GENERATOR_UC" ||
+  fail "custom rule-sets must stay out of the DNS rules below 1.14 unless they carry domains"
+
+# 6. Local domain+ip lists only take the response path when the runtime has it.
 awk '
   /^function add_domain_ip_list_ruleset\(/ { inside = 1 }
   inside && /runtime_supports_dns_response_matching && has_addresses/ { gated = NR }

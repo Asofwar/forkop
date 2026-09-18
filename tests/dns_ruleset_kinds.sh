@@ -15,23 +15,25 @@ fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 # has always emitted - that backward compatibility is the point of the test.
 
 # 1. Classification of the built-in lists.
-ucode -L "$FORKOP_LIB" -e '
+# These modules only return their exports when loaded from a file, so the
+# probes are written out instead of passed with -e.
+cat >"$WORK_DIR/kinds.uc" <<'UC'
 let rs = require("singbox.rulesets");
-// Lists that carry addresses next to domains.
 for (let name in [ "discord", "telegram", "cloudflare", "meta", "twitter", "roblox" ])
     if (rs.community_kind(name) != "mixed") {
-        warn(name + " must be classified as mixed, got " + rs.community_kind(name) + "\n");
+        warn(name + " must be classified as mixed, got " + rs.community_kind(name));
         exit(1);
     }
-// Purely domain-based lists keep the query path.
 for (let name in [ "russia_inside", "youtube", "porn", "news", "anime" ])
     if (rs.community_kind(name) != "domains") {
-        warn(name + " must stay a domain list, got " + rs.community_kind(name) + "\n");
+        warn(name + " must stay a domain list, got " + rs.community_kind(name));
         exit(1);
     }
 if (rs.community_kind("not-a-list") != "unknown")
     exit(1);
-' || fail "community lists must be classified as domain-only or mixed"
+UC
+ucode -L "$FORKOP_LIB" "$WORK_DIR/kinds.uc" ||
+  fail "community lists must be classified as domain-only or mixed"
 
 # 2. Address detection inside a local rule-set file.
 printf '%s\n' '{"version":1,"rules":[{"domain_suffix":["example.com"]}]}' >"$WORK_DIR/domains.json"
@@ -39,16 +41,17 @@ printf '%s\n' '{"version":1,"rules":[{"ip_cidr":["203.0.113.0/24"]}]}' >"$WORK_D
 printf '%s\n' '{"version":1,"rules":[{"domain_suffix":["example.com"],"ip_cidr":["203.0.113.0/24"]}]}' >"$WORK_DIR/mixed.json"
 printf '%s\n' '{"version":1,"rules":[{"ip_cidr":[]}]}' >"$WORK_DIR/empty-ip.json"
 
-ucode -L "$FORKOP_LIB" -e '
+cat >"$WORK_DIR/matchers.uc" <<UC
 let rs = require("routing.rulesets");
-let base = "'"$WORK_DIR"'";
+let base = "$WORK_DIR";
 if (rs.has_ip_matchers(base + "/domains.json")) exit(1);
 if (!rs.has_ip_matchers(base + "/addresses.json")) exit(1);
 if (!rs.has_ip_matchers(base + "/mixed.json")) exit(1);
-// An empty ip_cidr array is not an address matcher.
 if (rs.has_ip_matchers(base + "/empty-ip.json")) exit(1);
 if (!rs.has_domain_matchers(base + "/mixed.json")) exit(1);
-' || fail "address matchers must be detected inside a rule-set file"
+UC
+ucode -L "$FORKOP_LIB" "$WORK_DIR/matchers.uc" ||
+  fail "address matchers must be detected inside a rule-set file"
 
 # 3. The generator contract: the split exists and is gated on the runtime flag.
 awk '

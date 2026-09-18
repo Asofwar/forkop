@@ -2509,7 +2509,7 @@ function add_domain_ip_list_ruleset(config, section_name, rule_set_tags, dns_que
     let has_addresses = source_rulesets.has_ip_matchers(ruleset_path);
     if (runtime_supports_dns_response_matching && has_addresses)
         push(dns_response_tags, tag_name);
-    else if (has_domains)
+    else if (has_domains || has_addresses)
         push(dns_query_tags, tag_name);
 }
 
@@ -2716,6 +2716,20 @@ function add_section_dns_matcher_rule(config, section, matchers, rewrite_ttl) {
     push_dns_matcher_rule(config, matchers);
 }
 
+// Which DNS tag list a rule-set belongs to.
+//
+// Below 1.14 there is no response matching, so the pre-1.14 behaviour has to be
+// reproduced exactly, and it differed by source: a community list always joined
+// the DNS rule, while a custom rule-set joined it only when it carried domains.
+// Returning null means "keep it out of the DNS rules", as before.
+function dns_tags_for_ruleset_kind(kind, query_tags, response_tags, legacy_always) {
+    if (as_string(kind) == "domains")
+        return query_tags;
+    if (runtime_supports_dns_response_matching)
+        return response_tags;
+    return legacy_always ? query_tags : null;
+}
+
 function append_unique_tags(values, additions) {
     let seen = {};
     for (let value in values)
@@ -2874,11 +2888,13 @@ function add_dns_action_rules_for_section(config, section) {
 
     for (let community in connections.community_lists(section)) {
         let ensured = ensure_community_ruleset(config, section_name, as_string(community));
-        push(ensured.kind == "domains" ? dns_query_rule_set_tags : dns_response_rule_set_tags, ensured.tag);
+        push(dns_tags_for_ruleset_kind(ensured.kind, dns_query_rule_set_tags, dns_response_rule_set_tags, true), ensured.tag);
     }
     for (let reference in connections.rule_sets(section)) {
         let ensured = ensure_custom_ruleset(config, as_string(reference));
-        push(ensured.kind == "domains" ? dns_query_rule_set_tags : dns_response_rule_set_tags, ensured.tag);
+        let dns_tags = dns_tags_for_ruleset_kind(ensured.kind, dns_query_rule_set_tags, dns_response_rule_set_tags, false);
+        if (dns_tags != null)
+            push(dns_tags, ensured.tag);
     }
     add_remote_list_rulesets(
         config,
@@ -3037,17 +3053,21 @@ function add_combined_route_for_section(config, section) {
     for (let community in connections.community_lists(section)) {
         let ensured = ensure_community_ruleset(config, section_name, as_string(community));
         push(rule_set_tags, ensured.tag);
-        push(ensured.kind == "domains" ? dns_query_rule_set_tags : dns_response_rule_set_tags, ensured.tag);
+        push(dns_tags_for_ruleset_kind(ensured.kind, dns_query_rule_set_tags, dns_response_rule_set_tags, true), ensured.tag);
     }
     for (let reference in connections.rule_sets(section)) {
         let ensured = ensure_custom_ruleset(config, as_string(reference));
         push(rule_set_tags, ensured.tag);
-        push(ensured.kind == "domains" ? dns_query_rule_set_tags : dns_response_rule_set_tags, ensured.tag);
+        let dns_tags = dns_tags_for_ruleset_kind(ensured.kind, dns_query_rule_set_tags, dns_response_rule_set_tags, false);
+        if (dns_tags != null)
+            push(dns_tags, ensured.tag);
     }
     for (let reference in connections.rule_sets_with_subnets(section)) {
         let ensured = ensure_custom_ruleset(config, as_string(reference));
         push(rule_set_tags, ensured.tag);
-        push(ensured.kind == "domains" ? dns_query_rule_set_tags : dns_response_rule_set_tags, ensured.tag);
+        let dns_tags = dns_tags_for_ruleset_kind(ensured.kind, dns_query_rule_set_tags, dns_response_rule_set_tags, false);
+        if (dns_tags != null)
+            push(dns_tags, ensured.tag);
     }
     add_remote_list_rulesets(
         config,

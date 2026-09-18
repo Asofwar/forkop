@@ -1868,22 +1868,16 @@ function nft_add_json_ruleset_subnets_for_section(section, json_path, label, tab
 }
 
 function nft_community_subnet_lines(path, service, keep_shared_cloudflare) {
-    let data = fs.readfile(path);
-    if (data == null)
-        return [];
-
     let discord = as_string(service) == "discord";
     let result = [];
-    for (let line in split(as_string(data), "
-")) {
-        line = trim(replace(as_string(line), //g, ""));
-        if (line == "" || substr(line, 0, 1) == "#")
-            continue;
-        // Only the Discord list is split. Every other service keeps its own
-        // ranges intact, including the dedicated Cloudflare list itself.
-        let shared = discord && core_ip.is_cloudflare_shared_cidr(line);
+    // Tokenise exactly like the ordinary subnet path, so splitting the list
+    // cannot change how any individual value is parsed.
+    for (let value in nft_trimmed_lines(path)) {
+        // Only the Discord list is split. Every other service keeps its ranges
+        // intact, including the dedicated Cloudflare list itself.
+        let shared = discord && core_ip.is_cloudflare_shared_cidr(value);
         if (shared == keep_shared_cloudflare)
-            push(result, line);
+            push(result, value);
     }
     return result;
 }

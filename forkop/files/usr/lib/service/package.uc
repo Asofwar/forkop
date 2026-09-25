@@ -60,10 +60,18 @@ function path_basename(path) {
     return slash >= 0 ? substr(path, slash + 1) : path;
 }
 
+// A package replacement renames the executable link of an already running
+// sing-box to "sing-box (deleted)". That process still holds the runtime, so
+// the upgrade must keep counting it instead of concluding it has exited.
+function sing_box_exe_path(path) {
+    let basename = path_basename(path);
+    return basename == "sing-box" || basename == "sing-box (deleted)";
+}
+
 function sing_box_process_count() {
     let count = 0;
     for (let exe_path in fs.glob(PROC_DIR + "/[0-9]*/exe"))
-        if (path_basename(as_string(fs.readlink(exe_path))) == "sing-box")
+        if (sing_box_exe_path(as_string(fs.readlink(exe_path))))
             count++;
     return count;
 }
@@ -265,6 +273,8 @@ else if (mode == "remove-rt-tables-entry")
     exit(remove_rt_tables_entry() ? 0 : 1);
 else if (mode == "luci-postinst")
     exit(luci_postinst() ? 0 : 1);
+else if (mode == "sing-box-exe-path-fixture")
+    exit(sing_box_exe_path(ARGV[1]) ? 0 : 1);
 else {
     warn("Usage: service/package.uc <prerm|postinst|remove-rt-tables-entry|luci-postinst>\n");
     exit(1);

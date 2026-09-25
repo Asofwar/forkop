@@ -12,6 +12,7 @@ const STATE_UC = LIB_DIR + "/service/state.uc";
 const UI_UC = LIB_DIR + "/service/ui.uc";
 const STATE_DIR = getenv("FORKOP_UI_STATE_DIR") || "/var/run/forkop/ui-state";
 const PENDING_RELOAD_FILE = getenv("FORKOP_PENDING_RELOAD_FILE") || "/var/run/forkop/reload.pending";
+const START_IN_PROGRESS_FILE = getenv("FORKOP_START_IN_PROGRESS_FILE") || "/var/run/forkop/start.in-progress";
 const SERVICE_ACTION_DIR = getenv("FORKOP_UI_SERVICE_ACTION_DIR") || STATE_DIR + "/service-actions";
 const SERVICE_ACTION_LOCK_DIR = getenv("FORKOP_UI_SERVICE_ACTION_LOCK_DIR") || STATE_DIR + "/service-actions.lock";
 const LATENCY_ACTION_DIR = getenv("FORKOP_UI_LATENCY_ACTION_DIR") || STATE_DIR + "/latency-actions";
@@ -702,6 +703,10 @@ function pid_running(pid) {
     return job_pid_valid(pid) && command_success_from_args([ "kill", "-0", pid ]);
 }
 
+function start_worker_running() {
+    return pid_running(trim(as_string(fs.readfile(START_IN_PROGRESS_FILE))));
+}
+
 function current_pid() {
     let stat = as_string(fs.readfile("/proc/self/stat"));
     let separator = index(stat, " ");
@@ -1095,7 +1100,10 @@ function current_ui_state_json() {
     let sing_box_status = service_status_text(sing_box_is_running, sing_box_is_enabled);
     let active_action = active_service_action_value();
 
-    if (active_action == "start")
+    // The init.d UI action can fail to register when a stop has only just
+    // completed. Track the actual lifecycle worker so a cold start still
+    // reports "starting" and keeps the start/restart button blocked.
+    if (start_worker_running() || active_action == "start")
         forkop_status = "starting";
     else if (active_action == "stop")
         forkop_status = "stopping";
@@ -1377,6 +1385,11 @@ function service_action_async(action) {
     action = as_string(action);
     if (!service_action_valid(action)) {
         action_start_response(false, "", "Invalid service action");
+        exit(1);
+    }
+
+    if ((action == "start" || action == "restart") && start_worker_running()) {
+        action_start_response(false, "", "Forkop startup is still in progress");
         exit(1);
     }
 

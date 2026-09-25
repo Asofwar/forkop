@@ -26,6 +26,7 @@ const TORRSERVER_DIRECT_UC = LIB_DIR + "/torrserver/direct.uc";
 let tmp_dir = "";
 let lock_held = false;
 let forkop_was_running = false;
+let last_logged_output = "";
 let forkop_stopped_for_sing_box_change = false;
 
 function as_string(value) {
@@ -333,7 +334,8 @@ function run_logged(description, command) {
 
     updates_log(description);
     let status = command_status(as_string(command) + " >" + shell_quote(output_file) + " 2>&1");
-    for (let line in split(read_file(output_file), "\n"))
+    last_logged_output = read_file(output_file);
+    for (let line in split(last_logged_output, "\n"))
         if (trim(as_string(line)) != "")
             updates_log(line);
     remove_file(output_file);
@@ -404,6 +406,62 @@ function pkg_install_files_command(files) {
     for (let file in files)
         push(args, file);
     return command_from_args(args) + " </dev/null";
+}
+
+function array_has(values, needle) {
+    for (let value in values)
+        if (as_string(value) == as_string(needle))
+            return true;
+    return false;
+}
+
+// opkg refuses a package whose dependencies are not installed yet, and the
+// sing-box variant switch removes the current package first. Resolve the
+// dependencies from a dry run and install them while the old variant is still
+// in place, so a missing dependency cannot leave the router without sing-box.
+// Returns null when the dry run itself could not be interpreted.
+function opkg_sing_box_dependencies_to_install(package_path, package_name) {
+    if (is_apk())
+        return [];
+
+    let simulation = command_from_args([
+        "opkg", "--noaction", "--force-space", "install", "--force-overwrite", "--force-downgrade", package_path
+    ]);
+    if (!run_logged("Checking sing-box package dependencies", simulation)) {
+        let pending = "";
+        let missing = [];
+        for (let line in split(last_logged_output, "\n")) {
+            line = trim(line);
+            if (match(line, /^[A-Za-z0-9][A-Za-z0-9._+-]*:$/) != null)
+                pending = replace(line, /:$/, "");
+            if (match(line, /masked in: --no-network/) != null && pending != "") {
+                if (!array_has(missing, pending))
+                    push(missing, pending);
+                pending = "";
+            }
+        }
+        return length(missing) > 0 ? missing : null;
+    }
+
+    let dependencies = [];
+    for (let line in split(last_logged_output, "\n")) {
+        let parsed = match(trim(line), /^Installing ([A-Za-z0-9][A-Za-z0-9._+-]*) \(/);
+        if (parsed != null && parsed[1] != as_string(package_name) && !array_has(dependencies, parsed[1]))
+            push(dependencies, parsed[1]);
+    }
+    return dependencies;
+}
+
+function install_opkg_sing_box_dependencies(package_path, package_name) {
+    let dependencies = opkg_sing_box_dependencies_to_install(package_path, package_name);
+    if (dependencies == null)
+        return false;
+    for (let dependency in dependencies) {
+        if (!run_logged("Installing required sing-box dependency " + dependency,
+            pkg_install_name_command(dependency)))
+            return false;
+    }
+    return true;
 }
 
 function pkg_install_files(files) {
@@ -833,7 +891,10 @@ function wait_forkop_running_after_sing_box_change() {
         return false;
 
     let waited = 0;
-    while (waited < 60) {
+    // A cold start after a package upgrade can take minutes on slow routers:
+    // lists, rule-sets and the runtime config are all rebuilt. Giving up too
+    // early reported a failure for a start that was still making progress.
+    while (waited < 180) {
         if (forkop_status_running_with_timeout()) {
             command_success_from_args([ "sleep", "8" ]);
             if (forkop_status_running_with_timeout())
@@ -1250,8 +1311,20 @@ function restore_file_backup(target_path, backup_path) {
 }
 
 function restore_sing_box_service_from_marker(marker) {
-    if (as_string(marker) == "extended-compressed" ||
-        (!file_exists("/etc/init.d/sing-box") && file_nonempty("/usr/bin/sing-box")))
+    if (as_string(marker) == "extended-compressed")
+        return install_managed_sing_box_service_script();
+    // apk parks the package's own init script as .apk-new when Forkop's
+    // managed script occupies the path. Hand the path back to the package
+    // variant instead of leaving it managed by Forkop.
+    if (sing_box_variant_is_package_managed(as_string(marker)) && is_apk() &&
+        file_exists("/etc/init.d/sing-box.apk-new") &&
+        (managed_sing_box_service_installed() || !file_exists("/etc/init.d/sing-box"))) {
+        remove_managed_sing_box_service_script();
+        if (!move_file_portable("/etc/init.d/sing-box.apk-new", "/etc/init.d/sing-box"))
+            return false;
+        return command_success_from_args([ "chmod", "0755", "/etc/init.d/sing-box" ]);
+    }
+    if (!file_exists("/etc/init.d/sing-box") && file_nonempty("/usr/bin/sing-box"))
         return install_managed_sing_box_service_script();
     remove_managed_sing_box_service_script();
     return true;
@@ -1499,6 +1572,11 @@ function install_sing_box_extended_package(action) {
 
     if (!run_logged("Updating package lists before sing-box-extended package installation", pkg_list_update_command()))
         action_fail("sing_box", action, "Failed to update package lists", current_version, latest_version);
+
+    // Pull the dependencies in before the current variant is removed: a
+    // failure here still leaves the router with a working sing-box.
+    if (!install_opkg_sing_box_dependencies(package_file, "sing-box-extended"))
+        action_fail("sing_box", action, "Failed to install required sing-box dependencies; the current sing-box variant was kept", current_version, latest_version);
 
     stop_forkop_before_sing_box_change();
     prepare_sing_box_package_service_install();

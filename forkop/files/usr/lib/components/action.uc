@@ -2054,6 +2054,9 @@ function install_forkop_opkg_set(latest_version, backend_file, app_file, i18n_fi
         command_success_from_args([ "rm", "-rf", FORKOP_OPKG_RECOVERY_DIR ]);
     if (file_exists(FORKOP_OPKG_RECOVERY_DIR))
         return "Failed to clear incomplete Forkop package-set staging";
+    let recovery_parent = trim(command_output_from_args([ "dirname", FORKOP_OPKG_RECOVERY_DIR ]));
+    if (recovery_parent == "" || !ensure_dir(recovery_parent))
+        return "Failed to prepare Forkop package-set recovery storage";
     if (!command_success_from_args([ "mkdir", "-m", "0700", FORKOP_OPKG_RECOVERY_DIR ]))
         return "Failed to reserve Forkop package-set recovery storage";
     let old_backend = FORKOP_OPKG_RECOVERY_DIR + "/backend.ipk";

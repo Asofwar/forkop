@@ -54,6 +54,8 @@ function previous_forkop_release(version) {
 }
 function download_with_retry(url, path, label) { push(downloads, path); return true; }
 function command_from_args(args) { return join(" ", args); }
+function command_output_from_args(args) { check(args[0] == "dirname", "unexpected path command"); return "/"; }
+function ensure_dir(path) { return path == "/"; }
 function path_basename(path) { let parts = split(path, "/"); return parts[length(parts) - 1]; }
 function updates_log(message, level) { push(events, message); }
 function run_logged(description, command) {

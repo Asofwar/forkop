@@ -1,0 +1,13 @@
+let snapshot = require("providers.runtime_snapshot");
+let mode = ARGV[0];
+let library = ARGV[1];
+let runtime = ARGV[2];
+let pid_dir = ARGV[3];
+let child_pid_dir = ARGV[4];
+let log_dir = ARGV[5];
+let path = ARGV[6];
+if (mode == "snapshot")
+    exit(snapshot.snapshot(pid_dir, child_pid_dir, runtime, library, path) ? 0 : 1);
+if (mode == "restore")
+    exit(snapshot.restore(path, pid_dir, child_pid_dir, log_dir, runtime, library) ? 0 : 1);
+exit(2);

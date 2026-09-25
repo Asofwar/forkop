@@ -4,6 +4,7 @@ let fs = require("fs");
 let constants = require("core.constants");
 let uci_core = require("core.uci");
 let runtime_constants = require("singbox.constants");
+let runtime_snapshot = require("providers.runtime_snapshot");
 
 const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || constants.FORKOP_CONFIG_NAME || "forkop";
 const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
@@ -453,16 +454,26 @@ function start_rule(cfg, section, index_value) {
     }
 
     let child_pid = file_first_line(child_pidfile);
-    if (child_pid == "" || !runtime_pid_running(child_pid))
-        log_message(cfg.binary_name + " supervisor started for rule '" + name + "', but " + cfg.binary_name + " is not running yet. Check " + logfile + ".", "warn");
+    for (let attempt = 0; attempt < 4 && (child_pid == "" || !runtime_pid_running(child_pid)); attempt++) {
+        command_success_from_args([ "sleep", "1" ]);
+        child_pid = file_first_line(child_pidfile);
+    }
+    if (child_pid == "" || !runtime_pid_running(child_pid)) {
+        log_message(cfg.binary_name + " supervisor started for rule '" + name + "', but " + cfg.binary_name + " is not running. Check " + logfile + ". Aborted.", "fatal");
+        exit(1);
+    }
 }
 
 function start_runtime(cfg) {
     stop_runtime(cfg);
 
     let sections = enabled_sections(cfg);
-    if (length(sections) == 0 || !provider_available(cfg))
+    if (length(sections) == 0)
         return;
+    if (!provider_available(cfg)) {
+        log_message(cfg.binary_name + " is required by enabled rules but is not executable. Aborted.", "fatal");
+        exit(1);
+    }
 
     cleanup_legacy_runtime(cfg);
     if (!ensure_runtime_dirs(cfg)) {
@@ -680,6 +691,12 @@ function run(provider, argv) {
         start_runtime(cfg);
     else if (mode == "stop-runtime")
         stop_runtime(cfg);
+    else if (mode == "snapshot-runtime")
+        exit(runtime_snapshot.snapshot(cfg.pid_dir, cfg.child_pid_dir, cfg.runtime_path, LIB_DIR, argv[1]) ? 0 : 1);
+    else if (mode == "restore-runtime") {
+        stop_runtime(cfg);
+        exit(runtime_snapshot.restore(argv[1], cfg.pid_dir, cfg.child_pid_dir, cfg.log_dir, cfg.runtime_path, LIB_DIR) ? 0 : 1);
+    }
     else if (mode == "create-nft-rules")
         create_nft_rules(cfg);
     else if (mode == "status")

@@ -131,6 +131,13 @@ let nft_populate_enabled = NFT_POPULATE_ENABLED_DEFAULT;
 let nft_candidate_batch_file = "";
 let rule_condition_cache_enabled = 0;
 let startup_config_fingerprint = "";
+let dpi_snapshot_dir = "";
+let dpi_switch_started = false;
+let dpi_restart_plan = null;
+let dpi_nft_rollback_file = "";
+let dpi_nft_committed = false;
+let dpi_singbox_backup = "";
+let dpi_guard_active = false;
 
 function shell_quote(value) {
     return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
@@ -1032,6 +1039,7 @@ function stop_main() {
     module_success(ZAPRET_UC, [ "stop-runtime" ]);
     module_success(ZAPRET2_UC, [ "stop-runtime" ]);
     module_success(BYEDPI_UC, [ "stop-runtime" ]);
+    module_success(NFT_UC, [ "remove-dpi-transition-guard", NFT_TABLE_NAME ]);
 
     if (command_success_from_args([ "nft", "list", "table", "inet", NFT_TABLE_NAME ]))
         command_success_from_args([ "nft", "delete", "table", "inet", NFT_TABLE_NAME ]);
@@ -1079,17 +1087,165 @@ function cleanup_failed_runtime() {
     return status;
 }
 
+function discard_dpi_snapshot() {
+    if (dpi_snapshot_dir != "")
+        command_success_from_args([ "rm", "-rf", dpi_snapshot_dir ]);
+    dpi_snapshot_dir = "";
+    dpi_switch_started = false;
+    dpi_restart_plan = null;
+    dpi_nft_rollback_file = "";
+    dpi_nft_committed = false;
+    dpi_singbox_backup = "";
+}
+
+function snapshot_dpi_runtime(plan) {
+    if (plan.needs_zapret_restart != 1 && plan.needs_zapret2_restart != 1 && plan.needs_byedpi_restart != 1)
+        return true;
+    dpi_snapshot_dir = trim(command_output_from_args([ "mktemp", "-d" ]));
+    if (dpi_snapshot_dir == "")
+        return false;
+    dpi_restart_plan = plan;
+    let providers = [
+        [ plan.needs_zapret_restart, ZAPRET_UC, "zapret" ],
+        [ plan.needs_zapret2_restart, ZAPRET2_UC, "zapret2" ],
+        [ plan.needs_byedpi_restart, BYEDPI_UC, "byedpi" ]
+    ];
+    for (let provider in providers) {
+        if (provider[0] == 1 && module_status(provider[1], [ "snapshot-runtime", dpi_snapshot_dir + "/" + provider[2] + ".json" ]) != 0) {
+            log_message("Could not snapshot the previous " + provider[2] + " runtime; preserving the live DPI processes", "fatal");
+            discard_dpi_snapshot();
+            return false;
+        }
+    }
+    if (plan.needs_nft_rebuild == 1 && !(plan.changed_list == 1 && plan.needs_list_update == 1)) {
+        let table_file = dpi_snapshot_dir + "/nft.table";
+        dpi_nft_rollback_file = dpi_snapshot_dir + "/nft.rollback";
+        if (system(command_from_args([ "nft", "list", "table", "inet", NFT_TABLE_NAME ]) + " >" + shell_quote(table_file)) != 0 ||
+            !write_file(dpi_nft_rollback_file, "delete table inet " + NFT_TABLE_NAME + "\n") ||
+            system("cat " + shell_quote(table_file) + " >>" + shell_quote(dpi_nft_rollback_file)) != 0 ||
+            !module_success(NFT_UC, [ "nft-validate-candidate-batch", dpi_nft_rollback_file ])) {
+            log_message("Could not prepare an atomic rollback of the previous nft table; preserving the live DPI processes", "fatal");
+            discard_dpi_snapshot();
+            return false;
+        }
+        remove_file(table_file);
+    }
+    return true;
+}
+
+function restore_dpi_runtime() {
+    if (!dpi_switch_started || dpi_restart_plan == null)
+        return true;
+    let providers = [
+        [ dpi_restart_plan.needs_zapret_restart, ZAPRET_UC, "zapret" ],
+        [ dpi_restart_plan.needs_zapret2_restart, ZAPRET2_UC, "zapret2" ],
+        [ dpi_restart_plan.needs_byedpi_restart, BYEDPI_UC, "byedpi" ]
+    ];
+    let restored = true;
+    if (dpi_nft_committed && dpi_nft_rollback_file != "") {
+        if (system(command_from_args([ "nft", "-f", dpi_nft_rollback_file ])) != 0) {
+            log_message("Failed to restore the previous nft table during DPI rollback", "fatal");
+            return false;
+        }
+    }
+    for (let provider in providers) {
+        if (provider[0] == 1 && module_status(provider[1], [ "restore-runtime", dpi_snapshot_dir + "/" + provider[2] + ".json" ]) != 0) {
+            log_message("Failed to restore the previous " + provider[2] + " runtime", "fatal");
+            restored = false;
+        }
+    }
+    return restored;
+}
+
+function switch_dpi_runtime(plan) {
+    if (dpi_snapshot_dir == "")
+        return 0;
+    if (!module_success(NFT_UC, [ "install-dpi-transition-guard", NFT_TABLE_NAME ])) {
+        log_message("Could not install the fail-closed DPI transition guard; preserving the previous runtime", "fatal");
+        return 1;
+    }
+    dpi_guard_active = true;
+    dpi_switch_started = true;
+    let providers = [
+        [ plan.needs_zapret_restart, ZAPRET_UC, "Zapret" ],
+        [ plan.needs_zapret2_restart, ZAPRET2_UC, "Zapret2" ],
+        [ plan.needs_byedpi_restart, BYEDPI_UC, "ByeDPI" ]
+    ];
+    for (let provider in providers) {
+        if (provider[0] != 1)
+            continue;
+        let status = module_status(provider[1], [ "stop-runtime" ]);
+        if (status != 0)
+            return status;
+        status = module_status(provider[1], [ "start-runtime" ]);
+        if (status != 0) {
+            log_message("Failed to start " + provider[2] + " runtime during reload", "fatal");
+            return status;
+        }
+    }
+    return 0;
+}
+
 function abort_reload(status, runtime_changed) {
     status = int(status || 0);
     if (status == 0)
         status = 1;
 
-    if (runtime_changed)
+    if (dpi_switch_started && !dpi_guard_active) {
+        if (!module_success(NFT_UC, [ "install-dpi-transition-guard", NFT_TABLE_NAME ])) {
+            log_message("Could not re-install the DPI guard for post-commit rollback; keeping the current runtime", "fatal");
+            remove_file(RELOAD_STATE_SNAPSHOT_FILE);
+            return status;
+        }
+        dpi_guard_active = true;
+    }
+
+    if (dpi_singbox_backup != "") {
+        if (!module_success(NFT_UC, [ "install-transition-guard", NFT_TABLE_NAME, NFT_FAKEIP_MARK ]) ||
+            !restore_guarded_singbox_runtime(dpi_singbox_backup, false)) {
+            log_message("Post-commit sing-box rollback failed; retaining the fail-closed transition guard", "fatal");
+            remove_file(RELOAD_STATE_SNAPSHOT_FILE);
+            return status;
+        }
+    }
+
+    let dpi_rollback_attempted = dpi_switch_started;
+    let dpi_restored = restore_dpi_runtime();
+    if (!dpi_restored) {
+        log_message("DPI reload rollback failed; preserving the fail-closed guards and rollback snapshot " + dpi_snapshot_dir, "fatal");
+        remove_file(RELOAD_STATE_SNAPSHOT_FILE);
+        return status;
+    }
+    if (dpi_singbox_backup != "" && dpi_nft_rollback_file == "" &&
+        !module_success(NFT_UC, [ "remove-transition-guard", NFT_TABLE_NAME, NFT_FAKEIP_MARK ])) {
+        log_message("Could not remove the sing-box transition guard after rollback", "fatal");
+        remove_file(RELOAD_STATE_SNAPSHOT_FILE);
+        return status;
+    }
+    if (dpi_guard_active && !module_success(NFT_UC, [ "remove-dpi-transition-guard", NFT_TABLE_NAME ])) {
+        log_message("Could not remove the DPI transition guard after rollback", "fatal");
+        remove_file(RELOAD_STATE_SNAPSHOT_FILE);
+        return status;
+    }
+    dpi_guard_active = false;
+    discard_dpi_snapshot();
+
+    if (runtime_changed && !(dpi_rollback_attempted && dpi_restored))
         cleanup_failed_runtime();
     else
         remove_file(RELOAD_STATE_SNAPSHOT_FILE);
 
     return status;
+}
+
+function abort_reload_after_dns_failure(status) {
+    // DNS apply may have changed dnsmasq before reporting failure. Keep the
+    // existing service-wide fail-safe cleanup for that separate live state.
+    if (dpi_singbox_backup != "")
+        remove_file(dpi_singbox_backup);
+    discard_dpi_snapshot();
+    cleanup_failed_runtime();
+    return status == 0 ? 1 : status;
 }
 
 function abort_guarded_transition(status, stage_path, backup_path, guard_active) {
@@ -1567,12 +1723,8 @@ function reload(reason) {
     if (actions != "")
         log_message("Applying reload changes: " + actions, "info");
 
-    if (plan.needs_zapret_restart == 1)
-        module_success(ZAPRET_UC, [ "stop-runtime" ]);
-    if (plan.needs_zapret2_restart == 1)
-        module_success(ZAPRET2_UC, [ "stop-runtime" ]);
-    if (plan.needs_byedpi_restart == 1)
-        module_success(BYEDPI_UC, [ "stop-runtime" ]);
+    if (!snapshot_dpi_runtime(plan))
+        return abort_reload(1, false);
 
     // A staged config and a checked nft batch must both exist before the
     // first live transition. The old sing-box process keeps its in-memory
@@ -1644,18 +1796,30 @@ function reload(reason) {
         }
         // When sing-box also changes, retain this checked candidate until the
         // new process is ready behind the temporary fail-closed guard.
-        if (needs_singbox_transition && !nft_candidate_validate()) {
+        if ((needs_singbox_transition || dpi_snapshot_dir != "") && !nft_candidate_validate()) {
             nft_candidate_finish(false);
             discard_singbox_config_stage(staged_singbox_config);
             log_message("Candidate nftables policy failed validation; active policy was left unchanged", "fatal");
             return abort_reload(1, runtime_changed);
         }
-        if (!needs_singbox_transition && !nft_candidate_finish(true, false)) {
-            if (status == 0)
-                log_message("Candidate nftables policy failed validation or apply; active policy was left unchanged", "fatal");
-            return abort_reload(status == 0 ? 1 : status, runtime_changed);
+    }
+
+    if (!needs_singbox_transition) {
+        status = switch_dpi_runtime(plan);
+        if (status != 0) {
+            nft_candidate_finish(false);
+            return abort_reload(status, false);
         }
-        if (!needs_singbox_transition)
+        if (nft_candidate_batch_file != "" && !nft_candidate_finish(true, false)) {
+            log_message("Candidate nftables policy failed validation or apply; restoring the previous DPI runtime", "fatal");
+            return abort_reload(1, false);
+        }
+        if (dpi_nft_rollback_file != "")
+            dpi_nft_committed = true;
+        if (dpi_guard_active && !module_success(NFT_UC, [ "remove-dpi-transition-guard", NFT_TABLE_NAME ]))
+            return abort_reload(1, runtime_changed);
+        dpi_guard_active = false;
+        if (plan.needs_nft_rebuild == 1 && !(plan.changed_list == 1 && plan.needs_list_update == 1))
             runtime_changed = true;
     }
 
@@ -1697,44 +1861,46 @@ function reload(reason) {
             log_message("Reload verification failed after sing-box was reloaded; restoring the previous coherent runtime", "fatal");
             return abort_guarded_transition(status, staged_singbox_config, staged_singbox_backup, transition_guard_active);
         }
-        if (nft_candidate_batch_file != "" && !nft_candidate_finish(true, true))
-            return abort_guarded_transition(1, staged_singbox_config, staged_singbox_backup, transition_guard_active);
-        if (nft_candidate_batch_file == "" && !module_success(NFT_UC, [ "remove-transition-guard", NFT_TABLE_NAME, NFT_FAKEIP_MARK ]))
-            return abort_guarded_transition(1, staged_singbox_config, staged_singbox_backup, transition_guard_active);
-        transition_guard_active = false;
-        remove_file(staged_singbox_backup);
-        runtime_changed = true;
         status = module_status(PRIORITY_UC, [ "start-runtime" ]);
         if (status != 0) {
             log_message("Failed to start Priority runtime after sing-box reload", "fatal");
-            cleanup_failed_runtime();
-            return status;
+            return abort_guarded_transition(status, staged_singbox_config, staged_singbox_backup, transition_guard_active);
         }
         status = module_status(DNS_FAILOVER_UC, [ "start-runtime" ]);
         if (status != 0) {
             log_message("Failed to restart DNS failover runtime after sing-box reload", "fatal");
-            cleanup_failed_runtime();
-            return status;
+            return abort_guarded_transition(status, staged_singbox_config, staged_singbox_backup, transition_guard_active);
         }
+        status = switch_dpi_runtime(plan);
+        if (status != 0)
+            return abort_guarded_transition(status, staged_singbox_config, staged_singbox_backup, transition_guard_active);
+        if (nft_candidate_batch_file != "" && !nft_candidate_finish(true, true))
+            return abort_guarded_transition(1, staged_singbox_config, staged_singbox_backup, transition_guard_active);
+        if (dpi_nft_rollback_file != "")
+            dpi_nft_committed = true;
+        if (nft_candidate_batch_file == "" && !module_success(NFT_UC, [ "remove-transition-guard", NFT_TABLE_NAME, NFT_FAKEIP_MARK ]))
+            return abort_guarded_transition(1, staged_singbox_config, staged_singbox_backup, transition_guard_active);
+        if (dpi_guard_active && !module_success(NFT_UC, [ "remove-dpi-transition-guard", NFT_TABLE_NAME ]))
+            return abort_guarded_transition(1, staged_singbox_config, staged_singbox_backup, transition_guard_active);
+        dpi_guard_active = false;
+        transition_guard_active = false;
+        if (dpi_snapshot_dir != "")
+            dpi_singbox_backup = staged_singbox_backup;
+        else
+            remove_file(staged_singbox_backup);
+        runtime_changed = true;
     }
-
-    if (plan.needs_zapret_restart == 1)
-        module_success(ZAPRET_UC, [ "start-runtime" ]);
-    if (plan.needs_zapret2_restart == 1)
-        module_success(ZAPRET2_UC, [ "start-runtime" ]);
-    if (plan.needs_byedpi_restart == 1)
-        module_success(BYEDPI_UC, [ "start-runtime" ]);
 
     if (plan.needs_dnsmasq_configure == 1) {
         status = dnsmasq_configure(true);
         if (status != 0)
-            return abort_reload(status, true);
+            return abort_reload_after_dns_failure(status);
         module_success(STATE_UC, [ "capture-reload-state", RELOAD_STATE_SNAPSHOT_FILE, as_string(RELOAD_STATE_FORMAT) ]);
     }
     else if (plan.needs_dnsmasq_restore == 1) {
         status = dnsmasq_restore(true);
         if (status != 0)
-            return abort_reload(status, true);
+            return abort_reload_after_dns_failure(status);
         module_success(STATE_UC, [ "capture-reload-state", RELOAD_STATE_SNAPSHOT_FILE, as_string(RELOAD_STATE_FORMAT) ]);
     }
 
@@ -1754,7 +1920,10 @@ function reload(reason) {
         "1"
     ]), reload_config_fingerprint);
     if (status != 0)
-        return status;
+        return abort_reload(status, runtime_changed);
+    if (dpi_singbox_backup != "")
+        remove_file(dpi_singbox_backup);
+    discard_dpi_snapshot();
 
     // Clear the durable retry request only after the complete local apply
     // committed its reload state. A failed candidate/guarded transition

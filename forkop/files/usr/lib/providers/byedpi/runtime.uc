@@ -3,6 +3,7 @@
 let fs = require("fs");
 let uci_core = require("core.uci");
 let runtime_constants = require("singbox.constants");
+let runtime_snapshot = require("providers.runtime_snapshot");
 let validator_module = null;
 
 const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || "forkop";
@@ -308,16 +309,26 @@ function start_rule(section, index_value) {
     }
 
     let child_pid = file_first_line(child_pidfile);
-    if (child_pid == "" || !runtime_pid_running(child_pid))
-        log_message("ciadpi supervisor started for rule '" + name + "', but ciadpi is not running yet. Check " + logfile + ".", "warn");
+    for (let attempt = 0; attempt < 4 && (child_pid == "" || !runtime_pid_running(child_pid)); attempt++) {
+        command_success_from_args([ "sleep", "1" ]);
+        child_pid = file_first_line(child_pidfile);
+    }
+    if (child_pid == "" || !runtime_pid_running(child_pid)) {
+        log_message("ciadpi supervisor started for rule '" + name + "', but ciadpi is not running. Check " + logfile + ". Aborted.", "fatal");
+        exit(1);
+    }
 }
 
 function start_runtime() {
     stop_runtime();
 
     let sections = enabled_byedpi_sections();
-    if (length(sections) == 0 || !provider_available())
+    if (length(sections) == 0)
         return;
+    if (!provider_available()) {
+        log_message("ciadpi is required by enabled rules but is not executable. Aborted.", "fatal");
+        exit(1);
+    }
 
     if (standalone_service_enabled())
         log_message("Standalone byedpi service is enabled. Forkop manages ciadpi itself for action 'byedpi'; disable standalone byedpi autostart to avoid boot-time port conflicts.", "warn");
@@ -535,6 +546,12 @@ if (mode == "start-runtime")
     start_runtime();
 else if (mode == "stop-runtime")
     stop_runtime();
+else if (mode == "snapshot-runtime")
+    exit(runtime_snapshot.snapshot(BYEDPI_PID_DIR, BYEDPI_CHILD_PID_DIR, LIB_DIR + "/providers/byedpi/runtime.uc", LIB_DIR, ARGV[1]) ? 0 : 1);
+else if (mode == "restore-runtime") {
+    stop_runtime();
+    exit(runtime_snapshot.restore(ARGV[1], BYEDPI_PID_DIR, BYEDPI_CHILD_PID_DIR, BYEDPI_LOG_DIR, LIB_DIR + "/providers/byedpi/runtime.uc", LIB_DIR) ? 0 : 1);
+}
 else if (mode == "supervisor")
     supervisor(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
 else if (mode == "status")

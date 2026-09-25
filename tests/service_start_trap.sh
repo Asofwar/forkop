@@ -79,14 +79,15 @@ awk '
 require_pattern 'function abort_reload(status, runtime_changed)' \
   "reload failures must share one cleanup decision owner"
 require_pattern 'return abort_reload_after_dns_failure(status);' \
-  "DNS apply failures after runtime mutation must use fail-safe cleanup"
+  "DNS apply failures after runtime mutation must enter rollback"
 awk '
-  /^function abort_reload_after_dns_failure\(status\)/ { in_abort = 1 }
-  in_abort && /cleanup_failed_runtime\(\)/ { cleaned = 1 }
-  in_abort && /^}/ { exit cleaned ? 0 : 1 }
+  /^function abort_reload\(status, runtime_changed\)/ { in_abort = 1 }
+  in_abort && /restore_dnsmasq_reload_config\(\)/ { restored = 1 }
+  in_abort && /cleanup_failed_runtime\(\)/ { fallback = 1 }
+  in_abort && /^}/ { exit restored && fallback ? 0 : 1 }
   END { if (!in_abort) exit 1 }
 ' "$LIFECYCLE_UC" ||
-  fail "DNS apply failure must clean the partial runtime"
+  fail "DNS apply failure must restore prior DNS or use fail-safe cleanup"
 cleanup_function_line="$(grep -nF 'function cleanup_failed_runtime()' "$LIFECYCLE_UC" | head -n1 | cut -d: -f1)"
 abort_function_line="$(grep -nF 'function abort_reload(status, runtime_changed)' "$LIFECYCLE_UC" | head -n1 | cut -d: -f1)"
 [ -n "$cleanup_function_line" ] && [ -n "$abort_function_line" ] &&

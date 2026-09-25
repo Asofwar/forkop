@@ -29,6 +29,7 @@ let cleaned = 0;
 let removed_state = 0;
 let nft_restores = 0;
 let fault = ARGV[0];
+let dns_restore_ok = fault != "dns-rollback-fail";
 function command_output_from_args(args) { return ARGV[1]; }
 function command_from_args(args) { return join(" ", args); }
 function command_success_from_args(args) { return true; }
@@ -36,6 +37,7 @@ function system(command) { nft_restores++; return 0; }
 function log_message(message, level) {}
 function module_success(path, args) { return true; }
 function cleanup_failed_runtime() { cleaned++; }
+function restore_dnsmasq_reload_config() { return dns_restore_ok; }
 function remove_file(path) { removed_state++; }
 function module_status(path, args) {
     if (args[0] == "snapshot-runtime") {
@@ -65,6 +67,15 @@ cat >> "$STATE_DIR/fault.uc" <<'UCODE'
 let plan = { needs_zapret_restart: 1, needs_zapret2_restart: 1, needs_byedpi_restart: 1 };
 if (!snapshot_dpi_runtime(plan))
     exit(10);
+if (fault == "dns" || fault == "dns-rollback-fail") {
+    if (switch_dpi_runtime(plan) != 0 || abort_reload_after_dns_failure(1) == 0)
+        exit(18);
+    if (fault == "dns" && (restored != 3 || cleaned != 0))
+        exit(19);
+    if (fault == "dns-rollback-fail" && (restored != 0 || cleaned != 1))
+        exit(20);
+    exit(0);
+}
 if (fault == "postcommit") {
     dpi_switch_started = true;
     dpi_guard_active = false;
@@ -89,7 +100,7 @@ if (fault == BYEDPI_UC && started != 3)
     exit(16);
 UCODE
 
-for fault in after-stop zapret zapret2 byedpi postcommit; do
+for fault in after-stop zapret zapret2 byedpi postcommit dns dns-rollback-fail; do
     ucode "$STATE_DIR/fault.uc" "$fault" "$STATE_DIR" || {
         printf 'dpi_reload_faults: FAIL (%s)\n' "$fault" >&2
         exit 1

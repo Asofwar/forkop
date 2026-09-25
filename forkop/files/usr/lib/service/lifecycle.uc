@@ -137,6 +137,8 @@ let dpi_restart_plan = null;
 let dpi_nft_rollback_file = "";
 let dpi_nft_committed = false;
 let dpi_singbox_backup = "";
+let dns_reload_backup = "";
+const DNSMASQ_CONFIG_FILE = getenv("FORKOP_DNSMASQ_CONFIG_FILE") || "/etc/config/dhcp";
 let dpi_guard_active = false;
 
 function shell_quote(value) {
@@ -579,6 +581,39 @@ function dnsmasq_restore_fail_safe() {
 
 function dnsmasq_has_forkop_managed_state() {
     return dns_apply_success([ "has-managed-state" ]);
+}
+
+function snapshot_dnsmasq_reload_config() {
+    if (dns_reload_backup != "")
+        return true;
+    if (fs.stat(DNSMASQ_CONFIG_FILE) == null)
+        return false;
+    let backup = trim(command_output_from_args([ "mktemp" ]));
+    if (backup == "")
+        return false;
+    if (!command_success_from_args([ "cp", DNSMASQ_CONFIG_FILE, backup ])) {
+        remove_file(backup);
+        return false;
+    }
+    dns_reload_backup = backup;
+    return true;
+}
+
+function restore_dnsmasq_reload_config() {
+    if (dns_reload_backup == "")
+        return true;
+    if (!command_success_from_args([ "cp", dns_reload_backup, DNSMASQ_CONFIG_FILE ]) ||
+        !command_success_from_args([ getenv("DNSMASQ_INIT") || "/etc/init.d/dnsmasq", "restart" ]))
+        return false;
+    remove_file(dns_reload_backup);
+    dns_reload_backup = "";
+    return true;
+}
+
+function discard_dnsmasq_reload_config() {
+    if (dns_reload_backup != "")
+        remove_file(dns_reload_backup);
+    dns_reload_backup = "";
 }
 
 function validate_start_config() {
@@ -1200,6 +1235,16 @@ function abort_reload(status, runtime_changed) {
         dpi_guard_active = true;
     }
 
+    if (!restore_dnsmasq_reload_config()) {
+        log_message("Could not restore the previous dnsmasq configuration; stopping the partial runtime", "fatal");
+        if (dpi_singbox_backup != "")
+            remove_file(dpi_singbox_backup);
+        discard_dpi_snapshot();
+        cleanup_failed_runtime();
+        remove_file(RELOAD_STATE_SNAPSHOT_FILE);
+        return status;
+    }
+
     if (dpi_singbox_backup != "") {
         if (!module_success(NFT_UC, [ "install-transition-guard", NFT_TABLE_NAME, NFT_FAKEIP_MARK ]) ||
             !restore_guarded_singbox_runtime(dpi_singbox_backup, false)) {
@@ -1239,13 +1284,7 @@ function abort_reload(status, runtime_changed) {
 }
 
 function abort_reload_after_dns_failure(status) {
-    // DNS apply may have changed dnsmasq before reporting failure. Keep the
-    // existing service-wide fail-safe cleanup for that separate live state.
-    if (dpi_singbox_backup != "")
-        remove_file(dpi_singbox_backup);
-    discard_dpi_snapshot();
-    cleanup_failed_runtime();
-    return status == 0 ? 1 : status;
+    return abort_reload(status, false);
 }
 
 function abort_guarded_transition(status, stage_path, backup_path, guard_active) {
@@ -1891,6 +1930,10 @@ function reload(reason) {
         runtime_changed = true;
     }
 
+    if ((plan.needs_dnsmasq_configure == 1 || plan.needs_dnsmasq_restore == 1) &&
+        !snapshot_dnsmasq_reload_config())
+        return abort_reload(1, false);
+
     if (plan.needs_dnsmasq_configure == 1) {
         status = dnsmasq_configure(true);
         if (status != 0)
@@ -1924,6 +1967,7 @@ function reload(reason) {
     if (dpi_singbox_backup != "")
         remove_file(dpi_singbox_backup);
     discard_dpi_snapshot();
+    discard_dnsmasq_reload_config();
 
     // Clear the durable retry request only after the complete local apply
     // committed its reload state. A failed candidate/guarded transition

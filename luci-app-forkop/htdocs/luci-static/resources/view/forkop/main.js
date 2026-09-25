@@ -2379,39 +2379,6 @@ function showToast(message, type, duration = 3e3) {
   }, duration);
 }
 
-// src/forkop/methods/custom/getConfigSections.ts
-async function getConfigSections() {
-  return uci.load(FORKOP_UCI_PACKAGE).then(() => uci.sections(FORKOP_UCI_PACKAGE));
-}
-
-// src/forkop/runtimeTags.ts
-var RESERVED_RUNTIME_TAGS = /* @__PURE__ */ new Set([
-  "dns-server",
-  "fakeip-server",
-  "bootstrap-dns-server",
-  "fakeip-dns-rule-tag",
-  "fakeip-ruleset-dns-rule-tag",
-  "service-fakeip-dns-rule-tag",
-  "tproxy-in",
-  "tproxy6-in",
-  "dns-in",
-  "service-mixed-in",
-  "direct-out",
-  "bypass-out"
-]);
-function allocateRuntimeTag(base, postfix) {
-  let suffix = 1;
-  let candidate = `${base}-${postfix}`;
-  while (RESERVED_RUNTIME_TAGS.has(candidate)) {
-    candidate = `${base}-${postfix}-${suffix}`;
-    suffix += 1;
-  }
-  return candidate;
-}
-function getOutboundTagBySection(sectionName) {
-  return allocateRuntimeTag(sectionName, "out");
-}
-
 // src/forkop/methods/shell/callBaseMethod.ts
 async function callBaseMethod(method, args = [], command = "/usr/bin/forkop", options = {}) {
   try {
@@ -2482,6 +2449,8 @@ var Forkop;
     AvailableMethods2["GET_SYSTEM_INFO"] = "get_system_info";
     AvailableMethods2["GET_UI_CAPABILITIES"] = "get_ui_capabilities";
     AvailableMethods2["GET_UI_STATE"] = "get_ui_state";
+    AvailableMethods2["GET_READONLY_CONFIG_SECTIONS"] = "get_readonly_config_sections";
+    AvailableMethods2["GET_DASHBOARD_RUNTIME_METADATA"] = "get_dashboard_runtime_metadata";
     AvailableMethods2["SERVICE_ACTION_ASYNC"] = "service_action_async";
     AvailableMethods2["SERVICE_ACTION_STATUS"] = "service_action_status";
     AvailableMethods2["LATENCY_TEST_ASYNC"] = "latency_test_async";
@@ -2682,6 +2651,12 @@ var ForkopShellMethods = {
     Forkop.AvailableMethods.CHECK_BYEDPI_RUNTIME
   ),
   getStatus: async () => callBaseMethod(Forkop.AvailableMethods.GET_STATUS),
+  getReadonlyConfigSections: async () => callBaseMethod(
+    Forkop.AvailableMethods.GET_READONLY_CONFIG_SECTIONS
+  ),
+  getDashboardRuntimeMetadata: async () => callBaseMethod(
+    Forkop.AvailableMethods.GET_DASHBOARD_RUNTIME_METADATA
+  ),
   getOutboundMetadata: async (section) => callBaseMethod(
     Forkop.AvailableMethods.GET_OUTBOUND_METADATA,
     [section]
@@ -3104,6 +3079,45 @@ var ForkopShellMethods = {
     }
   }
 };
+
+// src/forkop/methods/custom/getConfigSections.ts
+async function getConfigSections() {
+  try {
+    await uci.load(FORKOP_UCI_PACKAGE);
+    return await uci.sections(FORKOP_UCI_PACKAGE);
+  } catch (_error) {
+    const response = await ForkopShellMethods.getReadonlyConfigSections();
+    return response.success ? response.data : [];
+  }
+}
+
+// src/forkop/runtimeTags.ts
+var RESERVED_RUNTIME_TAGS = /* @__PURE__ */ new Set([
+  "dns-server",
+  "fakeip-server",
+  "bootstrap-dns-server",
+  "fakeip-dns-rule-tag",
+  "fakeip-ruleset-dns-rule-tag",
+  "service-fakeip-dns-rule-tag",
+  "tproxy-in",
+  "tproxy6-in",
+  "dns-in",
+  "service-mixed-in",
+  "direct-out",
+  "bypass-out"
+]);
+function allocateRuntimeTag(base, postfix) {
+  let suffix = 1;
+  let candidate = `${base}-${postfix}`;
+  while (RESERVED_RUNTIME_TAGS.has(candidate)) {
+    candidate = `${base}-${postfix}-${suffix}`;
+    suffix += 1;
+  }
+  return candidate;
+}
+function getOutboundTagBySection(sectionName) {
+  return allocateRuntimeTag(sectionName, "out");
+}
 
 // src/forkop/methods/custom/getDashboardSections.ts
 var DASHBOARD_SECTION_CACHE_DIR = "/var/run/forkop/section-cache";
@@ -3609,35 +3623,9 @@ function getUrlTestGroups(dashboardCache) {
   }
   return groups;
 }
-async function readRuntimeMetadata(configSections) {
-  const configPath = getSettingsSection(configSections)?.config_path || "/etc/sing-box/config.json";
-  try {
-    const parsed = JSON.parse(
-      await fs.read(configPath)
-    );
-    const groups = {};
-    for (const outbound of Array.isArray(parsed?.outbounds) ? parsed.outbounds : []) {
-      const tag = `${outbound?.tag || ""}`;
-      if (!tag) {
-        continue;
-      }
-      if (outbound?.type !== "urltest") {
-        continue;
-      }
-      groups[tag] = {
-        displayName: tag,
-        outbounds: Array.isArray(outbound.outbounds) ? outbound.outbounds : [],
-        url: outbound.url,
-        interval: outbound.interval,
-        tolerance: outbound.tolerance,
-        idle_timeout: outbound.idle_timeout,
-        interrupt_exist_connections: outbound.interrupt_exist_connections
-      };
-    }
-    return { urltestGroups: groups };
-  } catch (_error) {
-    return { urltestGroups: {} };
-  }
+async function readRuntimeMetadata() {
+  const response = await ForkopShellMethods.getDashboardRuntimeMetadata();
+  return response.success ? response.data : { urltestGroups: {} };
 }
 function mergeUrlTestGroups(cachedGroups, runtimeGroups) {
   const merged = { ...cachedGroups };
@@ -4005,7 +3993,7 @@ async function getDashboardSections() {
   const configSections = hydrateConfigSections(await getConfigSections());
   const [clashProxies, runtimeMetadata] = await Promise.all([
     getClashApiProxies(configSections),
-    readRuntimeMetadata(configSections)
+    readRuntimeMetadata()
   ]);
   if (!clashProxies.success || !clashProxies.data?.proxies) {
     return {

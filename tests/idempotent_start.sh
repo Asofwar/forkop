@@ -38,6 +38,7 @@ const MANAGED_UPGRADE_SING_BOX_MARKER_MAX_AGE_SECONDS = 120;
 const SERVICE_INIT = "/etc/init.d/forkop";
 const SERVICE_NAME = "forkop";
 const START_RETRY_FILE = "/test/start.retry";
+const START_IN_PROGRESS_FILE = "/test/start.in-progress";
 let marker_present = false;
 let marker_resolved = true;
 let conflict = false;
@@ -52,6 +53,7 @@ let retry_status = 0;
 let retry_running = false;
 let retry_enabled = true;
 let retry_pending = true;
+let start_marker_present = false;
 function as_string(value) { return value == null ? "" : "" + value; }
 function bool_text(value) { return value == "1"; }
 function die(message) { warn("FAIL: " + message + "\n"); exit(1); }
@@ -62,7 +64,7 @@ let fs = { stat: function(path) {
     check(path == MANAGED_UPGRADE_SING_BOX_MARKER, "unexpected stat");
     return marker_present ? {} : null;
 } };
-function sing_box_single_owned_service_runtime() { return health[0]; }
+function sing_box_current_owned_service_runtime() { return health[0]; }
 function sing_box_service_stable(age) {
     check(age == RUNTIME_STABLE_MIN_AGE, "stable age changed");
     return health[1];
@@ -109,11 +111,24 @@ function command_success_from_args(args) {
     push(logs, join(" ", args));
     return true;
 }
+function owner_pid() { return 4321; }
+function write_file(path, value) {
+    check(path == START_IN_PROGRESS_FILE, "unexpected file write during start");
+    check(trim(as_string(value)) == "4321", "start marker did not name the lifecycle worker");
+    start_marker_present = true;
+    return true;
+}
+function remove_file(path) {
+    check(path == START_IN_PROGRESS_FILE, "unexpected file removal during start");
+    start_marker_present = false;
+    return true;
+}
 function reset_probe() {
     marker_present = false; marker_resolved = true; conflict = false; transition_guard = false;
     health = [true, true, true, true, true];
     calls = []; logs = []; released = 0; cold_starts = 0; cleanups = 0;
     retry_status = 0; retry_running = false; retry_enabled = true; retry_pending = true;
+    start_marker_present = false;
 }
 '''
 cases = r'''
@@ -123,10 +138,14 @@ check(join(",", calls) == "sing-box-process-conflict,forkop-stably-running",
     "stable check bypassed ownership guard");
 check(released == 1 && cold_starts == 0 && cleanups == 0,
     "duplicate stable start changed existing runtime or leaked subscription lock");
+// The UI reads this marker to keep the start button blocked. It must not
+// survive a start that has already returned, on any outcome.
+check(!start_marker_present, "start left its in-progress marker behind");
 
 reset_probe();
 transition_guard = true;
 check(start() == 1, "retained fail-closed guard was reported as successful recovery");
+check(!start_marker_present, "failed start left its in-progress marker behind");
 check(released == 1 && cold_starts == 0 && cleanups == 0,
     "duplicate start altered the retained fail-closed runtime");
 
@@ -186,6 +205,7 @@ pathlib.Path(sys.argv[2]).write_text('\n'.join([
     runtime_doubles,
     extract('state.uc', 'forkop_stably_running'),
     service_doubles,
+    extract('lifecycle.uc', 'start_inner'),
     extract('lifecycle.uc', 'start'),
     extract('initd.uc', 'retry_start_on_wan_up_action'),
     extract('initd.uc', 'retry_start_on_wan_up'),

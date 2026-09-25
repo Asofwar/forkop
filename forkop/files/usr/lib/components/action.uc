@@ -1310,6 +1310,10 @@ function restore_file_backup(target_path, backup_path) {
     return true;
 }
 
+function sing_box_variant_is_package_managed(variant) {
+    return variant == "stable" || variant == "tiny" || variant == "extended";
+}
+
 function restore_sing_box_service_from_marker(marker) {
     if (as_string(marker) == "extended-compressed")
         return install_managed_sing_box_service_script();
@@ -1459,10 +1463,6 @@ function restore_sing_box_package_variant(previous_variant) {
         return true;
     }
     return false;
-}
-
-function sing_box_variant_is_package_managed(variant) {
-    return variant == "stable" || variant == "tiny" || variant == "extended";
 }
 
 function restore_sing_box_install_backup(previous_variant, backup_binary) {

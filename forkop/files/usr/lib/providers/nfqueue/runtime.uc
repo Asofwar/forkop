@@ -5,6 +5,7 @@ let constants = require("core.constants");
 let uci_core = require("core.uci");
 let runtime_constants = require("singbox.constants");
 let runtime_snapshot = require("providers.runtime_snapshot");
+let process_identity = require("core.process_identity");
 
 const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || constants.FORKOP_CONFIG_NAME || "forkop";
 const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
@@ -252,17 +253,13 @@ function file_first_line(path) {
     return trim(newline >= 0 ? substr(data, 0, newline) : data);
 }
 
-function kill_pidfile_process(path, signal) {
-    let pid = file_first_line(path);
-    if (pid == "")
-        return;
-    if (signal == "9") {
-        if (runtime_pid_running(pid))
-            command_success_from_args([ "kill", "-9", pid ]);
-    }
-    else {
-        command_success_from_args([ "kill", pid ]);
-    }
+function kill_pidfile_process(cfg, path, signal, supervisor_pid) {
+    let name = replace(replace(path, /^.*\//, ""), /\.pid$/, "");
+    let expected_exe = supervisor_pid ? "ucode" : cfg.binary;
+    let expected_args = supervisor_pid
+        ? [ "ucode", "-L", LIB_DIR, cfg.runtime_path, "supervisor", name ]
+        : [ cfg.binary ];
+    process_identity.signal(path, expected_exe, expected_args, false, signal == "9" ? "KILL" : "TERM", !supervisor_pid);
 }
 
 function pidfiles_in_dir(path) {
@@ -381,7 +378,9 @@ function supervisor_command(cfg, queue, raw_opt, child_pidfile) {
     for (let word in strategy_words(raw_opt))
         push(args, word);
 
-    return command_from_args(args) + " & child=$!; echo $child > " + shell_quote(child_pidfile) + "; wait $child; rc=$?; rm -f " + shell_quote(child_pidfile) + "; exit $rc";
+    return command_from_args(args) + " & child=$!; " +
+        command_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/core/pidfile_cli.uc", "record" ]) +
+        " \"$child\" " + shell_quote(child_pidfile) + "; wait $child; rc=$?; rm -f " + shell_quote(child_pidfile) + "; exit $rc";
 }
 
 function supervisor(cfg, section, queue, raw_opt, child_pidfile) {
@@ -399,17 +398,25 @@ function supervisor(cfg, section, queue, raw_opt, child_pidfile) {
 }
 
 function stop_runtime(cfg) {
+    for (let child_pidfile in pidfiles_in_dir(cfg.child_pid_dir)) {
+        let name = replace(replace(child_pidfile, /^.*\//, ""), /\.pid$/, "");
+        process_identity.promote_legacy_child(
+            child_pidfile, cfg.pid_dir + "/" + name + ".pid",
+            [ "ucode", "-L", LIB_DIR, cfg.runtime_path, "supervisor", name ],
+            cfg.binary, [ cfg.binary ]
+        );
+    }
     for (let pidfile in pidfiles_in_dir(cfg.pid_dir))
-        kill_pidfile_process(pidfile, "");
+        kill_pidfile_process(cfg, pidfile, "", true);
     for (let pidfile in pidfiles_in_dir(cfg.child_pid_dir))
-        kill_pidfile_process(pidfile, "");
+        kill_pidfile_process(cfg, pidfile, "", false);
 
     command_success_from_args([ "sleep", "1" ]);
 
     for (let pidfile in pidfiles_in_dir(cfg.pid_dir))
-        kill_pidfile_process(pidfile, "9");
+        kill_pidfile_process(cfg, pidfile, "9", true);
     for (let pidfile in pidfiles_in_dir(cfg.child_pid_dir))
-        kill_pidfile_process(pidfile, "9");
+        kill_pidfile_process(cfg, pidfile, "9", false);
 
     let remove_args = [ "rm", "-rf", cfg.pid_dir, cfg.child_pid_dir, cfg.log_dir ];
     if (cfg.hostlist_dir != "")
@@ -442,7 +449,7 @@ function start_rule(cfg, section, index_value) {
         child_pidfile
     ]) + " >>" + shell_quote(logfile) + " 2>&1 1000>&- & echo $!";
     let pid = trim(command_output("sh -c " + shell_quote(command)));
-    if (pid == "" || fs.writefile(pidfile, pid + "\n") == null) {
+    if (pid == "" || !process_identity.record(pidfile, pid)) {
         log_message(cfg.binary_name + " failed to start for rule '" + name + "'. Check " + logfile + ". Aborted.", "fatal");
         exit(1);
     }

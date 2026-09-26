@@ -105,7 +105,12 @@ function optionListValues(option, section_id) {
     .filter(Boolean);
 }
 
-function configureDnsList(option, choices, defaultValue, validate = main.validateDNS) {
+function configureDnsList(
+  option,
+  choices,
+  defaultValue,
+  validate = main.validateDNS,
+) {
   Object.entries(choices).forEach(([key, label]) => {
     option.value(key, _(label));
   });
@@ -194,6 +199,7 @@ function createSettingsContent(section, capabilities) {
           },
           true,
         );
+        node.appendChild(renderSnapshotTools());
         return node;
       },
     );
@@ -724,6 +730,119 @@ function createSettingsContent(section, capabilities) {
   );
   o.default = "0";
   o.rmempty = false;
+}
+
+function renderSnapshotTools() {
+  const result = E("div", { role: "status" });
+  const list = E("div");
+  const button = (label, action) =>
+    E(
+      "button",
+      {
+        type: "button",
+        class: "btn cbi-button",
+        click: action,
+      },
+      label,
+    );
+  const show = (message) => {
+    result.textContent = message;
+  };
+  const refresh = async () => {
+    const response = await main.ForkopShellMethods.snapshotList();
+    list.replaceChildren();
+    if (!response.success || !Array.isArray(response.data)) {
+      show(_("Could not load configuration snapshots"));
+      return;
+    }
+    for (const item of response.data.slice().reverse()) {
+      const row = E("div", { style: "margin: .5em 0" }, [
+        E(
+          "strong",
+          {},
+          `${new Date(item.created_at * 1000).toLocaleString()} · ${item.kind}`,
+        ),
+        button(_("Review saved changes"), async () => {
+          const diff = await main.ForkopShellMethods.snapshotDiff(item.id);
+          show(
+            diff.success && Array.isArray(diff.data)
+              ? diff.data.length
+                ? diff.data
+                    .map(
+                      (change) =>
+                        `${change.section}.${change.option}: ${change.before} → ${change.after}`,
+                    )
+                    .join("\n")
+                : _("No saved changes since this snapshot")
+              : _("Could not compare configurations"),
+          );
+        }),
+        button(_("Restore"), async () => {
+          if (
+            !window.confirm(
+              _("Restore this configuration snapshot and reload Forkop?"),
+            )
+          )
+            return;
+          show(_("Restoring configuration"));
+          const restore = await main.ForkopShellMethods.snapshotRestore(
+            item.id,
+          );
+          show(
+            restore.data?.status === "success"
+              ? _("Configuration restored and reloaded")
+              : restore.data?.status === "recovered"
+                ? _(
+                    "Restore failed; previous configuration and runtime recovered",
+                  )
+                : _("Restore failed; inspect Safety Center before retrying"),
+          );
+          await refresh();
+        }),
+        button(_("Delete"), async () => {
+          if (!window.confirm(_("Delete this configuration snapshot?"))) return;
+          const deleted = await main.ForkopShellMethods.snapshotDelete(item.id);
+          show(
+            deleted.data?.status === "deleted"
+              ? _("Snapshot deleted")
+              : _("Could not delete snapshot"),
+          );
+          await refresh();
+        }),
+      ]);
+      list.appendChild(row);
+    }
+  };
+  const content = E(
+    "section",
+    {
+      class: "forkop-config-snapshots",
+      style: "margin: 1em 0; white-space: pre-line",
+    },
+    [
+      E("h3", {}, _("Configuration snapshots")),
+      E(
+        "p",
+        {},
+        _(
+          "Review compares saved configuration with a snapshot. Unsaved form edits are not included.",
+        ),
+      ),
+      button(_("Create snapshot"), async () => {
+        const created = await main.ForkopShellMethods.snapshotCreate();
+        show(
+          created.data?.status === "created"
+            ? _("Snapshot saved")
+            : _("Could not create snapshot"),
+        );
+        await refresh();
+      }),
+      result,
+      list,
+    ],
+  );
+  void refresh();
+  return content;
 }
 
 const EntryPoint = {

@@ -204,11 +204,7 @@ const EntryPoint = {
         main.ForkopShellMethods.checkZapret2Runtime(),
         main.ForkopShellMethods.checkByedpiRuntime(),
       ]).then(
-        ([
-          zapretRuntimeResult,
-          zapret2RuntimeResult,
-          byedpiRuntimeResult,
-        ]) => {
+        ([zapretRuntimeResult, zapret2RuntimeResult, byedpiRuntimeResult]) => {
           const zapretRuntime =
             zapretRuntimeResult.status === "fulfilled"
               ? zapretRuntimeResult.value
@@ -303,14 +299,34 @@ const EntryPoint = {
       });
       return rendered;
     }
-    const forkopMap = new form.Map(
-      UCI_PACKAGE,
-      _("Forkop X Settings"),
-      null,
-    );
+    const forkopMap = new form.Map(UCI_PACKAGE, _("Forkop X Settings"), null);
     forkopMap.tabbed = true;
     const originalHandleSaveApply = forkopMap.handleSaveApply;
-    forkopMap.handleSaveApply = function (ev, mode) {
+    forkopMap.handleSaveApply = async function (ev, mode) {
+      const applyStartedAt = Math.floor(Date.now() / 1000);
+      const snapshot =
+        await main.ForkopShellMethods.snapshotCreate("automatic");
+      if (
+        !snapshot.success ||
+        !["created", "existing"].includes(snapshot.data?.status)
+      ) {
+        ui.addNotification(
+          null,
+          E(
+            "p",
+            {},
+            _(
+              "Could not save a pre-apply configuration snapshot. Changes were not applied.",
+            ),
+          ),
+          "error",
+        );
+        return;
+      }
+      const beforeHealth = await main.ForkopShellMethods.getHealthStatus();
+      const previousReloadAt = beforeHealth.success
+        ? beforeHealth.data?.last_reload?.timestamp || 0
+        : 0;
       const refreshUiState = function () {
         main.ForkopShellMethods.getUiState()
           .then((response) => {
@@ -338,8 +354,37 @@ const EntryPoint = {
       }
 
       return Promise.resolve(originalHandleSaveApply.call(this, ev, mode))
-        .then((result) => {
+        .then(async (result) => {
           window.setTimeout(refreshUiState, 250);
+
+          const [diff, health] = await Promise.all([
+            main.ForkopShellMethods.snapshotDiff(snapshot.data.snapshot.id),
+            main.ForkopShellMethods.getHealthStatus(),
+          ]);
+          const reload = health.success ? health.data?.last_reload : null;
+          const confirmed =
+            reload &&
+            reload.timestamp >= applyStartedAt &&
+            reload.timestamp > previousReloadAt &&
+            reload.status === "success";
+          const changes =
+            diff.success && Array.isArray(diff.data) ? diff.data : [];
+          const message = confirmed
+            ? [
+                _("Configuration applied successfully"),
+                ...changes.map(
+                  (change) =>
+                    `${change.section}.${change.option}: ${change.before} → ${change.after}`,
+                ),
+              ].join("\n")
+            : _(
+                "Configuration saved. Runtime reload has not been confirmed; check Safety Center.",
+              );
+          ui.addNotification(
+            null,
+            E("p", { style: "white-space: pre-line" }, message),
+            confirmed ? "info" : "warning",
+          );
 
           return result;
         })

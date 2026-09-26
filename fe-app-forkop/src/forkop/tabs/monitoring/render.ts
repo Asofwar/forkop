@@ -38,6 +38,34 @@ export function render() {
               },
               [E('option', { value: 'all' }, _('All'))],
             ),
+            ...[
+              ['protocol', _('Protocol')],
+              ['route', _('Route')],
+              ['outbound', _('Outbound')],
+              ['rule', _('Rule')],
+            ].map(([id, label]) =>
+              E('input', {
+                id: `monitoring-${id}-filter`,
+                class: 'cbi-input-text',
+                placeholder: label,
+                'aria-label': label,
+              }),
+            ),
+            E(
+              'select',
+              {
+                id: 'monitoring-sort',
+                class: 'cbi-input-select',
+                'aria-label': _('Sort connections'),
+              },
+              [
+                E('option', { value: 'start' }, _('Start time')),
+                E('option', { value: 'duration' }, _('Duration')),
+                E('option', { value: 'download' }, _('Download')),
+                E('option', { value: 'upload' }, _('Upload')),
+                E('option', { value: 'total' }, _('Total traffic')),
+              ],
+            ),
             E('label', { class: 'fkp_monitoring-page__search' }, [
               E('span', { class: 'fkp_monitoring-page__search-icon' }, []),
               E('input', {
@@ -89,6 +117,7 @@ export function render() {
             ),
           ],
         ),
+        E('div', { id: 'monitoring-connection-details', role: 'region' }),
       ]),
     ],
   );

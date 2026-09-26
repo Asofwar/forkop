@@ -23,6 +23,7 @@ let dpi_nft_committed = false;
 let dpi_singbox_backup = "";
 let dpi_guard_active = false;
 let restored = 0;
+let owned_stops = 0;
 let stopped = 0;
 let started = 0;
 let cleaned = 0;
@@ -46,7 +47,13 @@ function module_status(path, args) {
     }
     if (args[0] == "restore-runtime") {
         restored++;
-        return 0;
+        return fault == "rollback-restore-fail" && path == ZAPRET2_UC ? 1 : 0;
+    }
+    if (args[0] == "preflight-runtime")
+        return fault == "rollback-preflight-fail" && path == ZAPRET2_UC ? 1 : 0;
+    if (args[0] == "stop-owned-runtime") {
+        owned_stops++;
+        return fault == "rollback-stop-fail" && path == ZAPRET_UC ? 1 : 0;
     }
     if (args[0] == "stop-runtime") {
         stopped++;
@@ -72,7 +79,7 @@ if (fault == "dns" || fault == "dns-rollback-fail") {
         exit(18);
     if (fault == "dns" && (restored != 3 || cleaned != 0))
         exit(19);
-    if (fault == "dns-rollback-fail" && (restored != 0 || cleaned != 1))
+    if (fault == "dns-rollback-fail" && (restored != 0 || cleaned != 0 || !dpi_guard_active || dpi_snapshot_dir == ""))
         exit(20);
     exit(0);
 }
@@ -86,6 +93,17 @@ if (fault == "postcommit") {
     exit(0);
 }
 let status = switch_dpi_runtime(plan);
+if ((fault == "rollback-stop-fail" || fault == "rollback-preflight-fail" || fault == "rollback-restore-fail") && status == 0) {
+    if (abort_reload(1, false) == 0 || !dpi_guard_active || dpi_snapshot_dir == "")
+        exit(21);
+    if (fault == "rollback-preflight-fail" && (restored != 0 || owned_stops != 0))
+        exit(22);
+    if (fault == "rollback-stop-fail" && (restored != 0 || owned_stops != 1))
+        exit(23);
+    if (fault == "rollback-restore-fail" && (restored != 2 || owned_stops != 4))
+        exit(24);
+    exit(0);
+}
 if (status == 0 || abort_reload(status, false) == 0)
     exit(11);
 if (restored != 3 || cleaned != 0 || removed_state != 1)
@@ -100,7 +118,7 @@ if (fault == BYEDPI_UC && started != 3)
     exit(16);
 UCODE
 
-for fault in after-stop zapret zapret2 byedpi postcommit dns dns-rollback-fail; do
+for fault in after-stop zapret zapret2 byedpi postcommit dns dns-rollback-fail rollback-preflight-fail rollback-stop-fail rollback-restore-fail; do
     ucode "$STATE_DIR/fault.uc" "$fault" "$STATE_DIR" || {
         printf 'dpi_reload_faults: FAIL (%s)\n' "$fault" >&2
         exit 1

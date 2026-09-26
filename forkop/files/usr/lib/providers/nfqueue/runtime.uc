@@ -700,9 +700,14 @@ function run(provider, argv) {
         stop_runtime(cfg);
     else if (mode == "snapshot-runtime")
         exit(runtime_snapshot.snapshot(cfg.pid_dir, cfg.child_pid_dir, cfg.runtime_path, LIB_DIR, argv[1]) ? 0 : 1);
+    else if (mode == "preflight-runtime")
+        exit(runtime_snapshot.valid_entries(argv[1], cfg.child_pid_dir, cfg.runtime_path, LIB_DIR) != null ? 0 : 1);
+    else if (mode == "stop-owned-runtime")
+        exit(runtime_snapshot.stop_owned(cfg.pid_dir, cfg.child_pid_dir,
+            cfg.runtime_path, LIB_DIR, cfg.binary, [ cfg.binary ]) ? 0 : 1);
     else if (mode == "restore-runtime") {
-        stop_runtime(cfg);
-        exit(runtime_snapshot.restore(argv[1], cfg.pid_dir, cfg.child_pid_dir, cfg.log_dir, cfg.runtime_path, LIB_DIR) ? 0 : 1);
+        exit(runtime_snapshot.restore(argv[1], cfg.pid_dir, cfg.child_pid_dir, cfg.log_dir,
+            cfg.runtime_path, LIB_DIR, cfg.binary, [ cfg.binary ]) ? 0 : 1);
     }
     else if (mode == "create-nft-rules")
         create_nft_rules(cfg);

@@ -145,4 +145,4 @@ function promote_legacy_child(child_path, supervisor_path, supervisor_argv, chil
     return record(child_path, child_pid);
 }
 
-return { start_ticks, record, read_record, matches, signal, promote_legacy_child };
+return { start_ticks, descendant_of, record, read_record, matches, signal, promote_legacy_child };

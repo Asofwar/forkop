@@ -20,13 +20,6 @@ function command_success(args) {
     return system(command_from_args(args) + " >/dev/null 2>&1") == 0;
 }
 
-function first_line(path) {
-    let data = fs.readfile(path);
-    if (data == null)
-        return "";
-    return trim(split(data, "\n")[0]);
-}
-
 function pidfiles(path) {
     if (fs.stat(path) == null)
         return [];
@@ -45,7 +38,10 @@ function pidfiles(path) {
 }
 
 function running(pid) {
-    return match(as_string(pid), /^[0-9]+$/) != null && command_success([ "kill", "-0", pid ]);
+    if (match(as_string(pid), /^[0-9]+$/) == null || !command_success([ "kill", "-0", pid ]))
+        return false;
+    let stat = fs.readfile("/proc/" + pid + "/stat");
+    return stat != null && !match(stat, /\) Z /);
 }
 
 function snapshot(pid_dir, child_pid_dir, runtime_path, library_path, output_path) {
@@ -97,47 +93,225 @@ function snapshot(pid_dir, child_pid_dir, runtime_path, library_path, output_pat
     return fs.writefile(output_path, sprintf("%J\n", entries)) != null;
 }
 
-function restore(input_path, pid_dir, child_pid_dir, log_dir, runtime_path, library_path) {
+function valid_entries(input_path, child_pid_dir, runtime_path, library_path) {
     let data = fs.readfile(input_path);
     if (data == null)
-        return false;
+        return null;
     let entries;
     try { entries = json(data); }
-    catch (e) { return false; }
+    catch (e) { return null; }
     if (type(entries) != "array")
-        return false;
-    if (!command_success([ "mkdir", "-p", pid_dir, child_pid_dir, log_dir ]))
-        return false;
-    let stale = false;
+        return null;
+    let names = {};
     for (let entry in entries) {
-        if (entry && type(entry.stale) == "string" &&
-            match(entry.stale, /^[A-Za-z0-9_.-]+$/) != null) {
-            stale = true;
-            continue;
-        }
+        if (type(entry) != "object" || length(keys(entry)) != 2 || entry.stale != null)
+            return null;
         let name = entry && entry.name;
         let args = entry && entry.args;
         if (type(name) != "string" || !match(name, /^[A-Za-z0-9_.-]+$/) ||
+            names[name] ||
             type(args) != "array" || length(args) != 9 ||
-            !match(args[0], /(^|\/)ucode$/) || args[1] != "-L" ||
+            type(args[0]) != "string" || !match(args[0], /(^|\/)ucode$/) || args[1] != "-L" ||
             args[2] != library_path || args[3] != runtime_path ||
             args[4] != "supervisor" || args[5] != name ||
             args[8] != child_pid_dir + "/" + name + ".pid")
+            return null;
+        for (let arg in args)
+            if (type(arg) != "string")
+                return null;
+        names[name] = true;
+    }
+    return entries;
+}
+
+function owned_process(path, executable, args) {
+    let saved = process_identity.read_record(path);
+    if (saved == null)
+        return null;
+    if (!running(saved.pid))
+        return { path, pid: saved.pid, ticks: saved.ticks, executable, args, live: false };
+    if (saved.ticks == "" || process_identity.matches(path, executable, args, false, true) != saved.pid)
+        return null;
+    return { path, pid: saved.pid, ticks: saved.ticks, executable, args, live: true };
+}
+
+function same_live(item) {
+    return running(item.pid) && process_identity.start_ticks(item.pid) == item.ticks;
+}
+
+function descendant_children(supervisor, directory, child_executable, child_args, already) {
+    let found = [];
+    let stream = fs.popen("find /proc -mindepth 1 -maxdepth 1 -type d", "r");
+    if (stream == null)
+        return found;
+    let path;
+    while ((path = stream.read("line")) != null) {
+        let pid = replace(trim(path), /^.*\//, "");
+        if (!match(pid, /^[1-9][0-9]*$/) || !process_identity.descendant_of(pid, supervisor.pid))
+            continue;
+        let known = false;
+        for (let item in already)
+            if (item.pid == pid)
+                known = true;
+        if (known)
+            continue;
+        let ticks = process_identity.start_ticks(pid);
+        if (ticks == "")
+            continue;
+        let identity = directory + "/.restore-child-" + supervisor.pid + "-" + pid + ".identity";
+        if (fs.writefile(identity, pid + "\n" + ticks + "\n") == null)
+            continue;
+        if (process_identity.matches(identity, child_executable, child_args, false, true) == pid)
+            push(found, { path: identity, pid, ticks, executable: child_executable, args: child_args, live: true, temporary: true });
+        else
+            fs.unlink(identity);
+    }
+    stream.close();
+    return found;
+}
+
+function stop_owned(pid_dir, child_pid_dir, runtime_path, library_path, child_executable, child_args) {
+    let processes = [];
+    for (let path in pidfiles(pid_dir)) {
+        let name = replace(replace(path, /^.*\//, ""), /\.pid$/, "");
+        if (!match(name, /^[A-Za-z0-9_.-]+$/))
             return false;
+        let item = owned_process(path, "ucode", [ "ucode", "-L", library_path, runtime_path, "supervisor", name ]);
+        if (item == null)
+            return false;
+        push(processes, item);
+    }
+    for (let path in pidfiles(child_pid_dir)) {
+        let name = replace(replace(path, /^.*\//, ""), /\.pid$/, "");
+        if (!match(name, /^[A-Za-z0-9_.-]+$/))
+            return false;
+        let saved = process_identity.read_record(path);
+        if (saved != null && saved.ticks == "" && running(saved.pid))
+            process_identity.promote_legacy_child(path, pid_dir + "/" + name + ".pid",
+                [ "ucode", "-L", library_path, runtime_path, "supervisor", name ],
+                child_executable, child_args);
+        let item = owned_process(path, child_executable, child_args);
+        if (item == null)
+            return false;
+        if (item.live) {
+            let parent_owned = false;
+            for (let parent in processes)
+                if (parent.path == pid_dir + "/" + name + ".pid" && parent.live &&
+                    process_identity.descendant_of(item.pid, parent.pid))
+                    parent_owned = true;
+            if (!parent_owned)
+                return false;
+        }
+        push(processes, item);
+    }
+    for (let parent in processes) {
+        if (!parent.live || parent.executable != "ucode")
+            continue;
+        for (let child in descendant_children(parent, pid_dir, child_executable, child_args, processes))
+            push(processes, child);
+    }
+    for (let item in processes)
+        if (item.live && !process_identity.signal(item.path, item.executable, item.args, false, "TERM", true) && same_live(item))
+            return false;
+    command_success([ "sleep", "1" ]);
+    for (let item in processes) {
+        if (item.live && same_live(item) &&
+            !process_identity.signal(item.path, item.executable, item.args, false, "KILL", true) && same_live(item))
+            return false;
+    }
+    command_success([ "sleep", "1" ]);
+    for (let item in processes)
+        if (item.live && same_live(item))
+            return false;
+    for (let item in processes)
+        if (fs.stat(item.path) != null && !fs.unlink(item.path))
+            return false;
+    return true;
+}
+
+function restore(input_path, pid_dir, child_pid_dir, log_dir, runtime_path, library_path, child_executable, child_args) {
+    let entries = valid_entries(input_path, child_pid_dir, runtime_path, library_path);
+    if (entries == null || !command_success([ "mkdir", "-p", pid_dir, child_pid_dir, log_dir ]) ||
+        !stop_owned(pid_dir, child_pid_dir, runtime_path, library_path, child_executable, child_args))
+        return false;
+    if (length(entries) == 0)
+        return true;
+    let launched = [];
+    for (let entry in entries) {
+        let name = entry.name;
+        let args = entry.args;
         let logfile = log_dir + "/" + name + ".log";
         let launch = command_from_args(args) + " >>" + shell_quote(logfile) + " 2>&1 1000>&- & echo $!";
         let stream = fs.popen("sh -c " + shell_quote(launch), "r");
         if (stream == null)
-            return false;
+            break;
         let pid = trim(stream.read("line") || "");
         stream.close();
-        if (!running(pid) || !process_identity.record(pid_dir + "/" + name + ".pid", pid))
-            return false;
+        if (!running(pid))
+            break;
+        let temporary = log_dir + "/.restore-" + name + ".identity";
+        let ticks = process_identity.start_ticks(pid);
+        for (let attempt = 0; attempt < 5 && ticks == "" && running(pid); attempt++) {
+            command_success([ "sleep", "1" ]);
+            ticks = process_identity.start_ticks(pid);
+        }
+        if (ticks == "" || fs.writefile(temporary, pid + "\n" + ticks + "\n") == null)
+            break;
+        push(launched, { name, args, pid, ticks, temporary });
+        if (!process_identity.record(pid_dir + "/" + name + ".pid", pid))
+            break;
         command_success([ "sleep", "1" ]);
-        if (!running(pid) || !running(first_line(child_pid_dir + "/" + name + ".pid")))
-            return false;
+        let child_file = child_pid_dir + "/" + name + ".pid";
+        let child = process_identity.read_record(child_file);
+        if (child != null && child.ticks == "")
+            process_identity.promote_legacy_child(child_file, temporary, args, child_executable, child_args);
+        child = process_identity.read_record(child_file);
+        if (!running(pid) || child == null || child.ticks == "" ||
+            process_identity.matches(child_file, child_executable, child_args, false, true) != child.pid)
+            break;
+        if (length(launched) == length(entries)) {
+            for (let item in launched)
+                fs.unlink(item.temporary);
+            return true;
+        }
     }
-    return !stale;
+    let cleanup = [];
+    for (let item in launched) {
+        push(cleanup, { path: item.temporary, pid: item.pid, ticks: item.ticks,
+            executable: "ucode", args: item.args, live: true, temporary: true });
+        let child_file = child_pid_dir + "/" + item.name + ".pid";
+        let child = process_identity.read_record(child_file);
+        if (child != null && child.ticks == "")
+            process_identity.promote_legacy_child(child_file, item.temporary, item.args,
+                child_executable, child_args);
+        child = process_identity.read_record(child_file);
+        if (child != null && child.ticks != "") {
+            push(cleanup, { path: child_file, pid: child.pid, ticks: child.ticks,
+                executable: child_executable, args: child_args, live: true });
+        }
+        for (let orphan in descendant_children(item, log_dir, child_executable, child_args, cleanup))
+            push(cleanup, orphan);
+    }
+    for (let item in cleanup)
+        process_identity.signal(item.path, item.executable, item.args, false, "TERM", true);
+    command_success([ "sleep", "1" ]);
+    for (let item in cleanup)
+        if (same_live(item))
+            process_identity.signal(item.path, item.executable, item.args, false, "KILL", true);
+    command_success([ "sleep", "1" ]);
+    for (let item in cleanup)
+        if (!same_live(item) && item.temporary)
+            fs.unlink(item.path);
+    for (let item in launched) {
+        if (!running(item.pid) || process_identity.start_ticks(item.pid) != item.ticks) {
+            fs.unlink(pid_dir + "/" + item.name + ".pid");
+            let child_file = child_pid_dir + "/" + item.name + ".pid";
+            let child = process_identity.read_record(child_file);
+            if (child == null || !running(child.pid) || process_identity.start_ticks(child.pid) != child.ticks)
+                fs.unlink(child_file);
+        }
+    }
+    return false;
 }
 
-return { snapshot, restore };
+return { snapshot, restore, valid_entries, stop_owned };

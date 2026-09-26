@@ -555,9 +555,17 @@ else if (mode == "stop-runtime")
     stop_runtime();
 else if (mode == "snapshot-runtime")
     exit(runtime_snapshot.snapshot(BYEDPI_PID_DIR, BYEDPI_CHILD_PID_DIR, LIB_DIR + "/providers/byedpi/runtime.uc", LIB_DIR, ARGV[1]) ? 0 : 1);
+else if (mode == "preflight-runtime")
+    exit(runtime_snapshot.valid_entries(ARGV[1], BYEDPI_CHILD_PID_DIR,
+        LIB_DIR + "/providers/byedpi/runtime.uc", LIB_DIR) != null ? 0 : 1);
+else if (mode == "stop-owned-runtime")
+    exit(runtime_snapshot.stop_owned(BYEDPI_PID_DIR, BYEDPI_CHILD_PID_DIR,
+        LIB_DIR + "/providers/byedpi/runtime.uc", LIB_DIR, BYEDPI_BIN,
+        [ BYEDPI_BIN, "--ip", BYEDPI_LISTEN_ADDRESS, "--port" ]) ? 0 : 1);
 else if (mode == "restore-runtime") {
-    stop_runtime();
-    exit(runtime_snapshot.restore(ARGV[1], BYEDPI_PID_DIR, BYEDPI_CHILD_PID_DIR, BYEDPI_LOG_DIR, LIB_DIR + "/providers/byedpi/runtime.uc", LIB_DIR) ? 0 : 1);
+    exit(runtime_snapshot.restore(ARGV[1], BYEDPI_PID_DIR, BYEDPI_CHILD_PID_DIR, BYEDPI_LOG_DIR,
+        LIB_DIR + "/providers/byedpi/runtime.uc", LIB_DIR, BYEDPI_BIN,
+        [ BYEDPI_BIN, "--ip", BYEDPI_LISTEN_ADDRESS, "--port" ]) ? 0 : 1);
 }
 else if (mode == "supervisor")
     supervisor(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);

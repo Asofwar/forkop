@@ -1176,7 +1176,12 @@ function restore_dpi_runtime() {
         [ dpi_restart_plan.needs_zapret2_restart, ZAPRET2_UC, "zapret2" ],
         [ dpi_restart_plan.needs_byedpi_restart, BYEDPI_UC, "byedpi" ]
     ];
-    let restored = true;
+    for (let provider in providers) {
+        if (provider[0] == 1 && module_status(provider[1], [ "preflight-runtime", dpi_snapshot_dir + "/" + provider[2] + ".json" ]) != 0) {
+            log_message("Previous " + provider[2] + " runtime cannot be restored; preserving the current runtime under the DPI guard", "fatal");
+            return false;
+        }
+    }
     if (dpi_nft_committed && dpi_nft_rollback_file != "") {
         if (system(command_from_args([ "nft", "-f", dpi_nft_rollback_file ])) != 0) {
             log_message("Failed to restore the previous nft table during DPI rollback", "fatal");
@@ -1184,12 +1189,25 @@ function restore_dpi_runtime() {
         }
     }
     for (let provider in providers) {
-        if (provider[0] == 1 && module_status(provider[1], [ "restore-runtime", dpi_snapshot_dir + "/" + provider[2] + ".json" ]) != 0) {
-            log_message("Failed to restore the previous " + provider[2] + " runtime", "fatal");
-            restored = false;
+        if (provider[0] == 1 && module_status(provider[1], [ "stop-owned-runtime" ]) != 0) {
+            log_message("Could not safely stop the current " + provider[2] + " runtime; old runtime was not started", "fatal");
+            return false;
         }
     }
-    return restored;
+    let restored = [];
+    for (let provider in providers) {
+        if (provider[0] != 1)
+            continue;
+        if (module_status(provider[1], [ "restore-runtime", dpi_snapshot_dir + "/" + provider[2] + ".json" ]) != 0) {
+            log_message("Failed to restore the previous " + provider[2] + " runtime", "fatal");
+            for (let previous in restored)
+                if (module_status(previous[1], [ "stop-owned-runtime" ]) != 0)
+                    log_message("Could not clean up partially restored " + previous[2] + " runtime", "fatal");
+            return false;
+        }
+        push(restored, provider);
+    }
+    return true;
 }
 
 function switch_dpi_runtime(plan) {
@@ -1236,6 +1254,11 @@ function abort_reload(status, runtime_changed) {
     }
 
     if (!restore_dnsmasq_reload_config()) {
+        if (dpi_switch_started) {
+            log_message("Could not restore the previous dnsmasq configuration; preserving the DPI guard and rollback snapshot " + dpi_snapshot_dir, "fatal");
+            remove_file(RELOAD_STATE_SNAPSHOT_FILE);
+            return status;
+        }
         log_message("Could not restore the previous dnsmasq configuration; stopping the partial runtime", "fatal");
         if (dpi_singbox_backup != "")
             remove_file(dpi_singbox_backup);

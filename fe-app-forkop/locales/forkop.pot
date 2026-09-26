@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-26 22:01+0300\n"
-"PO-Revision-Date: 2026-09-26 22:01+0300\n"
+"POT-Creation-Date: 2026-09-26 23:15+0300\n"
+"PO-Revision-Date: 2026-09-26 23:15+0300\n"
 "Last-Translator: Asofwar <7397608+Asofwar@users.noreply.github.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -57,7 +57,7 @@ msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:6753
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:6782
-#: src/forkop/tabs/diagnostic/routeDebugger.ts:9
+#: src/forkop/tabs/diagnostic/routeDebugger.ts:70
 msgid "Action"
 msgstr ""
 
@@ -68,7 +68,6 @@ msgstr ""
 
 #: src/forkop/tabs/monitoring/initController.ts:603
 #: src/forkop/tabs/monitoring/render.ts:20
-#: src/forkop/tabs/diagnostic/safetyCenter.ts:11
 msgid "Active"
 msgstr ""
 
@@ -84,8 +83,16 @@ msgstr ""
 msgid "Active Main DNS"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/forkop.js:408
+#: src/forkop/tabs/diagnostic/safetyCenter.ts:20
+msgid "Active: DPI switch not confirmed"
+msgstr ""
+
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/forkop.js:409
 msgid "Add a section"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/renderDiagnostic.ts:94
+msgid "Add address"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:125
@@ -94,10 +101,6 @@ msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2324
 msgid "Add prefix to nodes"
-msgstr ""
-
-#: src/forkop/tabs/diagnostic/renderDiagnostic.ts:70
-msgid "Add target"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:7646
@@ -120,6 +123,10 @@ msgstr ""
 msgid "Additional marking rules found"
 msgstr ""
 
+#: src/forkop/tabs/diagnostic/renderDiagnostic.ts:134
+msgid "Additional tools"
+msgstr ""
+
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2522
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2732
 msgid "Additionally exclude servers by protocol, transport, and security. Exclude only servers matching the specified parameters."
@@ -128,6 +135,11 @@ msgstr ""
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2505
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2714
 msgid "Additionally filter servers by protocol, transport, and security. Add only servers matching the specified parameters."
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/connectivityMatrix.ts:250
+#: src/forkop/tabs/diagnostic/connectivityMatrix.ts:297
+msgid "Address"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:183
@@ -175,6 +187,10 @@ msgstr ""
 msgid "Allows limiting the list of servers for URLTest"
 msgstr ""
 
+#: src/forkop/tabs/diagnostic/routeDebugger.ts:42
+msgid "Answer of the router DNS"
+msgstr ""
+
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:7690
 msgid "Apply section rules only to the specified local IP addresses"
 msgstr ""
@@ -218,6 +234,10 @@ msgstr ""
 
 #: src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:46
 msgid "Available actions"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/renderDiagnostic.ts:25
+msgid "Available to administrators only."
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:5047
@@ -324,6 +344,10 @@ msgstr ""
 msgid "Cache file path cannot be empty"
 msgstr ""
 
+#: src/forkop/tabs/diagnostic/routeDebugger.ts:19
+msgid "Calculated result"
+msgstr ""
+
 #: src/forkop/tabs/dashboard/initController.ts:1143
 #: src/forkop/tabs/updates/fullUninstall.ts:11
 #: src/forkop/tabs/updates/releaseSelector.ts:50
@@ -349,6 +373,20 @@ msgstr ""
 msgid "Cascade connection"
 msgstr ""
 
+#: src/forkop/tabs/diagnostic/connectivityMatrix.ts:272
+#: src/forkop/tabs/diagnostic/renderDiagnostic.ts:54
+#: src/forkop/tabs/diagnostic/renderDiagnostic.ts:128
+msgid "Check"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/renderDiagnostic.ts:103
+msgid "Check all"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/connectivityMatrix.ts:94
+msgid "Check failed"
+msgstr ""
+
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2410
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2873
 #: src/forkop/tabs/dashboard/initController.ts:1270
@@ -369,7 +407,7 @@ msgstr ""
 msgid "Check URL"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/initController.ts:1051
+#: src/forkop/tabs/diagnostic/initController.ts:1071
 #: src/forkop/tabs/diagnostic/checks/runByedpiCheck.ts:14
 #: src/forkop/tabs/diagnostic/checks/runDnsCheck.ts:15
 #: src/forkop/tabs/diagnostic/checks/runFakeIPCheck.ts:15
@@ -379,6 +417,13 @@ msgstr ""
 #: src/forkop/tabs/diagnostic/checks/runZapret2Check.ts:14
 #: src/forkop/tabs/diagnostic/checks/runZapretCheck.ts:14
 msgid "Checking, please wait"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/connectivityMatrix.ts:104
+#: src/forkop/tabs/diagnostic/dpiPlayground.ts:48
+#: src/forkop/tabs/diagnostic/routeDebugger.ts:112
+#: src/forkop/tabs/diagnostic/statusLabels.ts:27
+msgid "Checking…"
 msgstr ""
 
 #: src/forkop/tabs/diagnostic/helpers/getCheckTitle.ts:2
@@ -398,6 +443,14 @@ msgstr ""
 
 #: src/forkop/tabs/diagnostic/checks/getDnsCheckPresentation.ts:31
 msgid "Checks passed with manual DHCP"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/renderDiagnostic.ts:87
+msgid "Checks run on the router and do not prove the path of a LAN client."
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/renderDiagnostic.ts:15
+msgid "Checks that the parameters are valid. It does not test site reachability or bypass effectiveness."
 msgstr ""
 
 #: src/forkop/tabs/updates/releaseSelector.ts:70
@@ -444,7 +497,7 @@ msgstr ""
 msgid "Component update check interval"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/forkop.js:466
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/forkop.js:467
 msgid "Components"
 msgstr ""
 
@@ -460,15 +513,19 @@ msgstr ""
 msgid "Config File Path"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/forkop.js:374
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/forkop.js:375
 msgid "Configuration applied successfully"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/statusLabels.ts:38
+msgid "Configuration reload"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:793
 msgid "Configuration restored and reloaded"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/forkop.js:380
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/forkop.js:381
 msgid "Configuration saved. Runtime reload has not been confirmed; check Safety Center."
 msgstr ""
 
@@ -492,16 +549,16 @@ msgstr ""
 msgid "Connection details"
 msgstr ""
 
+#: src/forkop/tabs/diagnostic/connectivityMatrix.ts:90
+msgid "Connection refused or host unreachable"
+msgstr ""
+
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:6992
 msgid "Connection URL"
 msgstr ""
 
 #: src/forkop/tabs/monitoring/initController.ts:989
 msgid "Connections are unavailable"
-msgstr ""
-
-#: src/forkop/tabs/diagnostic/renderDiagnostic.ts:58
-msgid "Connectivity matrix"
 msgstr ""
 
 #: src/forkop/tabs/diagnostic/checks/runSectionsCheck.ts:143
@@ -521,7 +578,7 @@ msgid "Copy address"
 msgstr ""
 
 #: src/forkop/tabs/monitoring/initController.ts:794
-#: src/forkop/tabs/diagnostic/partials/renderCheckSection.ts:57
+#: src/forkop/tabs/diagnostic/partials/renderCheckSection.ts:61
 msgid "Copy details"
 msgstr ""
 
@@ -554,7 +611,7 @@ msgstr ""
 msgid "Could not load configuration snapshots"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/forkop.js:318
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/forkop.js:319
 msgid "Could not save a pre-apply configuration snapshot. Changes were not applied."
 msgstr ""
 
@@ -566,7 +623,7 @@ msgstr ""
 msgid "Create snapshot"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/routeDebugger.ts:13
+#: src/forkop/tabs/diagnostic/routeDebugger.ts:73
 msgid "Current runtime"
 msgstr ""
 
@@ -586,8 +643,8 @@ msgstr ""
 msgid "Custom outbound configurations in JSON format"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/forkop.js:290
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/forkop.js:442
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/forkop.js:291
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/forkop.js:443
 msgid "Dashboard"
 msgstr ""
 
@@ -619,11 +676,16 @@ msgstr ""
 msgid "Delete this configuration snapshot?"
 msgstr ""
 
+#: src/forkop/tabs/diagnostic/routeDebugger.ts:17
+msgid "Derived from configuration"
+msgstr ""
+
 #: src/forkop/tabs/monitoring/initController.ts:814
 msgid "Destination"
 msgstr ""
 
 #: src/forkop/tabs/monitoring/initController.ts:776
+#: src/forkop/tabs/diagnostic/partials/renderCheckSection.ts:112
 msgid "Details"
 msgstr ""
 
@@ -652,8 +714,8 @@ msgstr ""
 msgid "DHCP is managed manually"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/forkop.js:293
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/forkop.js:430
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/forkop.js:294
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/forkop.js:431
 msgid "Diagnostics"
 msgstr ""
 
@@ -700,6 +762,14 @@ msgstr ""
 msgid "DNS Check Interval"
 msgstr ""
 
+#: src/forkop/tabs/diagnostic/connectivityMatrix.ts:76
+msgid "DNS check needs a domain name"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/connectivityMatrix.ts:89
+msgid "DNS name did not resolve"
+msgstr ""
+
 #: src/forkop/tabs/diagnostic/checks/runDnsCheck.ts:76
 msgid "DNS on router"
 msgstr ""
@@ -731,10 +801,6 @@ msgstr ""
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:6847
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:310
 msgid "DNS requests through section"
-msgstr ""
-
-#: src/forkop/tabs/diagnostic/routeDebugger.ts:7
-msgid "DNS resolution"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:273
@@ -808,12 +874,24 @@ msgstr ""
 msgid "Do not test specified servers."
 msgstr ""
 
+#: src/forkop/tabs/diagnostic/routeDebugger.ts:30
+msgid "Domain"
+msgstr ""
+
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:7645
 msgid "Domain and IP lists"
 msgstr ""
 
+#: src/forkop/tabs/diagnostic/connectivityMatrix.ts:87
+msgid "Domain does not exist"
+msgstr ""
+
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:7666
 msgid "Domain lists"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/renderDiagnostic.ts:117
+msgid "Domain or IP address"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2350
@@ -884,7 +962,7 @@ msgstr ""
 msgid "Downloaded"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/safetyCenter.ts:11
+#: src/forkop/tabs/diagnostic/safetyCenter.ts:18
 msgid "DPI guard"
 msgstr ""
 
@@ -892,15 +970,15 @@ msgstr ""
 msgid "DPI protection active. Traffic may be intentionally blocked during recovery."
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/routeDebugger.ts:11
+#: src/forkop/tabs/diagnostic/routeDebugger.ts:72
 msgid "DPI provider"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/renderDiagnostic.ts:29
-msgid "DPI Strategy Playground"
+#: src/forkop/tabs/diagnostic/renderDiagnostic.ts:158
+msgid "DPI strategy syntax check"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/forkop.js:402
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/forkop.js:403
 msgid "Drag rows to change priority. The rule at the top is checked first."
 msgstr ""
 
@@ -991,13 +1069,33 @@ msgstr ""
 msgid "Enter a display name"
 msgstr ""
 
+#: src/forkop/tabs/diagnostic/routeDebugger.ts:109
+msgid "Enter a domain or IP address"
+msgstr ""
+
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2651
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2672
 msgid "Enter a level name"
 msgstr ""
 
+#: src/forkop/tabs/diagnostic/connectivityMatrix.ts:78
+msgid "Enter a port"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/dpiPlayground.ts:43
+msgid "Enter a strategy"
+msgstr ""
+
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:6828
 msgid "Enter a valid DNS server address"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/routeDebugger.ts:124
+msgid "Enter a valid domain or IP address"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/connectivityMatrix.ts:73
+msgid "Enter an address"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:7018
@@ -1005,6 +1103,8 @@ msgid "Enter the subscription URL"
 msgstr ""
 
 #: src/forkop/tabs/dashboard/health.ts:17
+#: src/forkop/tabs/diagnostic/statusLabels.ts:25
+#: src/forkop/tabs/diagnostic/statusLabels.ts:70
 msgid "Error"
 msgstr ""
 
@@ -1072,6 +1172,10 @@ msgstr ""
 msgid "External nfqws2 config files bypass Forkop queue management and explicit validation."
 msgstr ""
 
+#: src/forkop/tabs/diagnostic/statusLabels.ts:55
+msgid "Failed"
+msgstr ""
+
 #: src/forkop/tabs/monitoring/initController.ts:1256
 #: src/forkop/tabs/monitoring/initController.ts:1271
 msgid "Failed to close connection"
@@ -1086,7 +1190,7 @@ msgstr ""
 msgid "Failed to copy!"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/initController.ts:196
+#: src/forkop/tabs/diagnostic/initController.ts:198
 msgid "Failed to create support report"
 msgstr ""
 
@@ -1176,8 +1280,8 @@ msgstr ""
 msgid "Forkop X and sing-box have been removed. Original repositories have been restored."
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/forkop.js:285
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/forkop.js:302
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/forkop.js:286
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/forkop.js:303
 msgid "Forkop X Settings"
 msgstr ""
 
@@ -1234,13 +1338,17 @@ msgstr ""
 msgid "Get global check"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/initController.ts:705
+#: src/forkop/tabs/diagnostic/initController.ts:710
 msgid "Global check"
 msgstr ""
 
 #: src/forkop/tabs/dashboard/initController.ts:53
-#: src/forkop/tabs/diagnostic/safetyCenter.ts:34
 msgid "Health status unavailable"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/statusLabels.ts:21
+#: src/forkop/tabs/diagnostic/statusLabels.ts:66
+msgid "Healthy"
 msgstr ""
 
 #: src/partials/modal/renderModal.ts:310
@@ -1259,7 +1367,6 @@ msgstr ""
 #: src/forkop/tabs/monitoring/initController.ts:751
 #: src/forkop/tabs/monitoring/initController.ts:817
 #: src/forkop/tabs/monitoring/initController.ts:918
-#: src/forkop/tabs/diagnostic/connectivityMatrix.ts:49
 msgid "Host"
 msgstr ""
 
@@ -1283,10 +1390,6 @@ msgstr ""
 msgid "HTTP error"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/connectivityMatrix.ts:121
-msgid "HTTPS request (TLS and HTTP)"
-msgstr ""
-
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2449
 #: src/forkop/tabs/dashboard/initController.ts:913
 #: src/forkop/tabs/dashboard/initController.ts:1154
@@ -1301,7 +1404,11 @@ msgstr ""
 msgid "Import URLTest groups returned by this subscription provider"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/safetyCenter.ts:11
+#: src/forkop/tabs/diagnostic/safetyCenter.ts:26
+msgid "In progress"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/safetyCenter.ts:21
 msgid "Inactive"
 msgstr ""
 
@@ -1357,10 +1464,6 @@ msgstr ""
 msgid "Installed version is newer than release"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/routeDebugger.ts:12
-msgid "Interface"
-msgstr ""
-
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:416
 msgid "Interface Monitoring"
 msgstr ""
@@ -1371,6 +1474,10 @@ msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:417
 msgid "Interface monitoring for Bad WAN"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/routeDebugger.ts:57
+msgid "Interface the router itself would use for this address"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2463
@@ -1586,10 +1693,6 @@ msgstr ""
 msgid "Invalid SOCKS URL: parsing failed"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/routeDebugger.ts:41
-msgid "Invalid target or route trace failed"
-msgstr ""
-
 #: src/validators/validateTrojanUrl.ts:16
 msgid "Invalid Trojan URL: must not contain spaces"
 msgstr ""
@@ -1614,6 +1717,10 @@ msgstr ""
 
 #: src/validators/validateVmessUrl.ts:68
 msgid "Invalid VMess URL: parsing failed"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/routeDebugger.ts:30
+msgid "IP address"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:233
@@ -1676,7 +1783,15 @@ msgstr ""
 msgid "Keyword must not contain spaces or commas"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/safetyCenter.ts:17
+#: src/forkop/tabs/diagnostic/partials/renderRunAction.ts:48
+msgid "Last check"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/safetyCenter.ts:24
+msgid "Last recovery"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/safetyCenter.ts:41
 msgid "Last reload"
 msgstr ""
 
@@ -1726,7 +1841,6 @@ msgid "Loading connections"
 msgstr ""
 
 #: src/forkop/tabs/dashboard/render.ts:22
-#: src/forkop/tabs/diagnostic/renderDiagnostic.ts:16
 msgid "Loading health status"
 msgstr ""
 
@@ -1736,6 +1850,10 @@ msgstr ""
 #: src/forkop/tabs/updates/initController.ts:978
 #: src/forkop/tabs/updates/initController.ts:991
 msgid "Loading..."
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/renderDiagnostic.ts:140
+msgid "Loading…"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:710
@@ -1758,7 +1876,7 @@ msgstr ""
 msgid "Match destination ports. Use a single port or a range"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/routeDebugger.ts:8
+#: src/forkop/tabs/diagnostic/routeDebugger.ts:69
 msgid "Matched rule"
 msgstr ""
 
@@ -1794,12 +1912,16 @@ msgstr ""
 msgid "Monitored Interfaces"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/forkop.js:454
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/forkop.js:455
 msgid "Monitoring"
 msgstr ""
 
 #: src/forkop/tabs/dashboard/partials/renderSections.ts:130
 msgid "More details"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/connectivityMatrix.ts:109
+msgid "ms"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2000
@@ -1814,6 +1936,12 @@ msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2668
 msgid "Name shown in the priority level list"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/statusLabels.ts:23
+#: src/forkop/tabs/diagnostic/statusLabels.ts:57
+#: src/forkop/tabs/diagnostic/statusLabels.ts:68
+msgid "Needs attention"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:1815
@@ -1866,6 +1994,10 @@ msgstr ""
 msgid "No active connections"
 msgstr ""
 
+#: src/forkop/tabs/diagnostic/partials/renderRunAction.ts:49
+msgid "No check has been run yet"
+msgstr ""
+
 #: src/forkop/tabs/monitoring/initController.ts:1004
 msgid "No closed connections"
 msgstr ""
@@ -1874,8 +2006,24 @@ msgstr ""
 msgid "No compatible releases available"
 msgstr ""
 
+#: src/forkop/tabs/diagnostic/connectivityMatrix.ts:88
+msgid "No DNS records for this name"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/safetyCenter.ts:100
+msgid "No events recorded yet"
+msgstr ""
+
 #: src/forkop/tabs/diagnostic/checks/runNftCheck.ts:105
 msgid "No other marking rules found"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/safetyCenter.ts:47
+msgid "No reload recorded yet"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/routeDebugger.ts:63
+msgid "No route"
 msgstr ""
 
 #: src/forkop/tabs/diagnostic/checks/runByedpiCheck.ts:79
@@ -1905,16 +2053,18 @@ msgstr ""
 msgid "Nodes"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/safetyCenter.ts:14
-msgid "None"
-msgstr ""
-
 #: src/forkop/tabs/updates/initController.ts:1014
 msgid "Normal mode"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/partials/renderCheckSection.ts:236
-msgid "Not implement yet"
+#: src/forkop/tabs/diagnostic/statusLabels.ts:59
+#: src/forkop/tabs/diagnostic/statusLabels.ts:74
+msgid "Not available for checking"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/connectivityMatrix.ts:102
+#: src/forkop/tabs/diagnostic/statusLabels.ts:29
+msgid "Not checked"
 msgstr ""
 
 #: src/forkop/helpers/singBoxVariant.ts:29
@@ -1926,6 +2076,15 @@ msgstr ""
 msgid "Not installed"
 msgstr ""
 
+#: src/forkop/tabs/diagnostic/safetyCenter.ts:32
+#: src/forkop/tabs/diagnostic/safetyCenter.ts:38
+msgid "Not needed"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/routeDebugger.ts:47
+msgid "Not resolved"
+msgstr ""
+
 #: src/forkop/tabs/diagnostic/checks/runSectionsCheck.ts:88
 #: src/forkop/tabs/diagnostic/checks/runSectionsCheck.ts:115
 #: src/forkop/tabs/diagnostic/checks/runSectionsCheck.ts:121
@@ -1934,19 +2093,19 @@ msgid "Not responding"
 msgstr ""
 
 #: src/forkop/tabs/diagnostic/diagnostic.store.ts:131
-#: src/forkop/tabs/diagnostic/initController.ts:116
-#: src/forkop/tabs/diagnostic/initController.ts:385
-#: src/forkop/tabs/diagnostic/initController.ts:440
-#: src/forkop/tabs/diagnostic/initController.ts:513
+#: src/forkop/tabs/diagnostic/initController.ts:118
+#: src/forkop/tabs/diagnostic/initController.ts:387
+#: src/forkop/tabs/diagnostic/initController.ts:442
+#: src/forkop/tabs/diagnostic/initController.ts:515
 msgid "Not running"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/connectivityMatrix.ts:245
+msgid "not used"
 msgstr ""
 
 #: src/forkop/tabs/monitoring/initController.ts:840
 msgid "Observed from active connection"
-msgstr ""
-
-#: src/forkop/tabs/diagnostic/routeDebugger.ts:48
-msgid "Observed from router; source IP is not applied to the probe and LAN client policy is not proven."
 msgstr ""
 
 #: src/forkop/tabs/dashboard/health.ts:15
@@ -2009,7 +2168,7 @@ msgstr ""
 msgid "Open Project Page"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/partials/renderCheckSection.ts:47
+#: src/forkop/tabs/diagnostic/partials/renderCheckSection.ts:50
 msgid "Open settings"
 msgstr ""
 
@@ -2036,8 +2195,12 @@ msgstr ""
 msgid "Original repositories could not be restored. Removal was cancelled before deleting packages."
 msgstr ""
 
+#: src/forkop/tabs/diagnostic/statusLabels.ts:44
+msgid "Other event"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/routeDebugger.ts:71
 #: src/forkop/tabs/monitoring/render.ts:44
-#: src/forkop/tabs/diagnostic/routeDebugger.ts:10
 msgid "Outbound"
 msgstr ""
 
@@ -2053,11 +2216,7 @@ msgstr ""
 msgid "Output Network Interface"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/safetyCenter.ts:6
-msgid "Overall"
-msgstr ""
-
-#: src/forkop/tabs/diagnostic/safetyCenter.ts:13
+#: src/forkop/tabs/diagnostic/safetyCenter.ts:35
 msgid "Package recovery"
 msgstr ""
 
@@ -2088,7 +2247,6 @@ msgid "Pause updates"
 msgstr ""
 
 #: src/forkop/tabs/diagnostic/diagnostic.store.ts:58
-#: src/forkop/tabs/diagnostic/safetyCenter.ts:14
 msgid "Pending"
 msgstr ""
 
@@ -2101,8 +2259,10 @@ msgstr ""
 msgid "Pin on dashboard"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/renderDiagnostic.ts:96
-msgid "Port (optional)"
+#: src/forkop/tabs/diagnostic/connectivityMatrix.ts:244
+#: src/forkop/tabs/diagnostic/connectivityMatrix.ts:247
+#: src/forkop/tabs/diagnostic/connectivityMatrix.ts:299
+msgid "Port"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:7339
@@ -2114,6 +2274,7 @@ msgid "Port for the local mixed proxy of this section"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:4937
+#: src/forkop/tabs/diagnostic/connectivityMatrix.ts:81
 msgid "Port must be between 1 and 65535"
 msgstr ""
 
@@ -2167,6 +2328,10 @@ msgstr ""
 msgid "Priority settings"
 msgstr ""
 
+#: src/forkop/tabs/diagnostic/connectivityMatrix.ts:93
+msgid "Probe tool is missing on the router"
+msgstr ""
+
 #: src/forkop/tabs/dashboard/partials/renderSections.ts:128
 msgid "Profile"
 msgstr ""
@@ -2174,25 +2339,52 @@ msgstr ""
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:1956
 #: src/forkop/tabs/monitoring/initController.ts:818
 #: src/forkop/tabs/monitoring/render.ts:42
-#: src/forkop/tabs/diagnostic/renderDiagnostic.ts:89
 msgid "Protocol"
 msgstr ""
 
+#: src/forkop/tabs/diagnostic/renderDiagnostic.ts:32
+msgid "Provider"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/renderDiagnostic.ts:86
+msgid "Reachability check"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/connectivityMatrix.ts:109
+msgid "Reachable"
+msgstr ""
+
 #: src/forkop/tabs/dashboard/health.ts:66
-#: src/forkop/tabs/diagnostic/safetyCenter.ts:42
 msgid "Recent activity"
 msgstr ""
 
+#: src/forkop/tabs/diagnostic/safetyCenter.ts:87
+msgid "Recent events"
+msgstr ""
+
 #: src/forkop/tabs/dashboard/health.ts:19
+#: src/forkop/tabs/diagnostic/statusLabels.ts:53
 msgid "Recovered"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/statusLabels.ts:42
+msgid "Recovery"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/renderDiagnostic.ts:139
+msgid "Recovery and protection"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/safetyCenter.ts:74
+msgid "Recovery state is unavailable"
 msgstr ""
 
 #: src/forkop/tabs/dashboard/partials/renderSections.ts:124
 msgid "Refill"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/renderDiagnostic.ts:25
-msgid "Refresh safety status"
+#: src/forkop/tabs/diagnostic/renderDiagnostic.ts:149
+msgid "Refresh state"
 msgstr ""
 
 #: src/forkop/tabs/dashboard/initController.ts:1078
@@ -2207,9 +2399,10 @@ msgstr ""
 msgid "Removal did not finish. See the removal log in /tmp/forkop-uninstall.*/output.log."
 msgstr ""
 
+#: src/forkop/tabs/diagnostic/connectivityMatrix.ts:279
+#: src/forkop/tabs/diagnostic/connectivityMatrix.ts:280
 #: src/forkop/tabs/updates/initController.ts:832
 #: src/forkop/tabs/updates/initController.ts:921
-#: src/forkop/tabs/diagnostic/connectivityMatrix.ts:89
 msgid "Remove"
 msgstr ""
 
@@ -2261,6 +2454,11 @@ msgstr ""
 msgid "Resolve real IP for routing"
 msgstr ""
 
+#: src/forkop/tabs/diagnostic/routeDebugger.ts:40
+#: src/forkop/tabs/diagnostic/routeDebugger.ts:46
+msgid "Resolved IP"
+msgstr ""
+
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:5111
 msgid "Resource selection by hostname inside nfqws is not supported here; sing-box selects resources before NFQUEUE."
 msgstr ""
@@ -2305,11 +2503,16 @@ msgstr ""
 msgid "Restoring configuration"
 msgstr ""
 
+#: src/forkop/tabs/diagnostic/connectivityMatrix.ts:254
+#: src/forkop/tabs/diagnostic/connectivityMatrix.ts:300
+msgid "Result"
+msgstr ""
+
 #: src/forkop/tabs/monitoring/initController.ts:627
 msgid "Resume updates"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/partials/renderCheckSection.ts:35
+#: src/forkop/tabs/diagnostic/partials/renderCheckSection.ts:36
 msgid "Retry"
 msgstr ""
 
@@ -2328,8 +2531,8 @@ msgstr ""
 msgid "Route"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/renderDiagnostic.ts:79
-msgid "Route Debugger"
+#: src/forkop/tabs/diagnostic/renderDiagnostic.ts:110
+msgid "Route check"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:303
@@ -2340,8 +2543,9 @@ msgstr ""
 msgid "Route requests to this DNS server through another section."
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/connectivityMatrix.ts:121
-msgid "router"
+#: src/forkop/tabs/diagnostic/routeDebugger.ts:55
+#: src/forkop/tabs/diagnostic/routeDebugger.ts:62
+msgid "Router kernel route"
 msgstr ""
 
 #: src/forkop/tabs/monitoring/initController.ts:819
@@ -2391,19 +2595,7 @@ msgid "Rules proxy exist"
 msgstr ""
 
 #: src/forkop/tabs/diagnostic/partials/renderRunAction.ts:17
-msgid "Run Diagnostic"
-msgstr ""
-
-#: src/forkop/tabs/diagnostic/renderDiagnostic.ts:75
-msgid "Run tests"
-msgstr ""
-
-#: src/forkop/tabs/diagnostic/renderDiagnostic.ts:52
-msgid "Runtime test is unavailable without changing the active configuration. Comparison covers validation only."
-msgstr ""
-
-#: src/forkop/tabs/diagnostic/renderDiagnostic.ts:12
-msgid "Safety Center"
+msgid "Run full diagnostics"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3211
@@ -2423,7 +2615,7 @@ msgstr ""
 msgid "Secret key for authenticating remote access to YACD when WAN access is enabled."
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/forkop.js:407
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/forkop.js:408
 msgid "Section"
 msgstr ""
 
@@ -2431,12 +2623,16 @@ msgstr ""
 msgid "Section name"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/forkop.js:401
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/forkop.js:402
 msgid "Sections"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:1968
 msgid "Security"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/routeDebugger.ts:15
+msgid "Seen in an active connection"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:7071
@@ -2518,6 +2714,10 @@ msgstr ""
 msgid "Selector and URLTest outbounds must contain a non-empty outbounds array"
 msgstr ""
 
+#: src/forkop/tabs/diagnostic/connectivityMatrix.ts:92
+msgid "Server closed the connection without a response"
+msgstr ""
+
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2481
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2687
 msgid "Server filtering"
@@ -2545,8 +2745,12 @@ msgstr ""
 
 #: src/forkop/methods/shell/index.ts:438
 #: src/forkop/methods/shell/index.ts:488
-#: src/forkop/tabs/diagnostic/initController.ts:617
+#: src/forkop/tabs/diagnostic/initController.ts:622
 msgid "Service action failed"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/initController.ts:943
+msgid "Service control is available to administrators only."
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:7544
@@ -2558,15 +2762,19 @@ msgstr ""
 msgid "Services info"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/forkop.js:418
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/forkop.js:419
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:1124
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:6740
 msgid "Settings"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/initController.ts:774
+#: src/forkop/tabs/diagnostic/initController.ts:779
 #: src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:119
 msgid "Show sing-box config"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/renderDiagnostic.ts:111
+msgid "Shows the address the router DNS returns and the interface of the router kernel route."
 msgstr ""
 
 #: src/forkop/tabs/diagnostic/checks/runSingBoxCheck.ts:77
@@ -2605,6 +2813,10 @@ msgstr ""
 msgid "Snapshot deleted"
 msgstr ""
 
+#: src/forkop/tabs/diagnostic/statusLabels.ts:40
+msgid "Snapshot restore"
+msgstr ""
+
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:835
 msgid "Snapshot saved"
 msgstr ""
@@ -2625,10 +2837,6 @@ msgstr ""
 #: src/forkop/tabs/monitoring/initController.ts:812
 #: src/forkop/tabs/monitoring/initController.ts:924
 msgid "Source"
-msgstr ""
-
-#: src/forkop/tabs/diagnostic/renderDiagnostic.ts:85
-msgid "Source IP (optional)"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:318
@@ -2679,6 +2887,10 @@ msgstr ""
 msgid "Standalone Zapret2 service is inactive"
 msgstr ""
 
+#: src/forkop/tabs/diagnostic/statusLabels.ts:36
+msgid "Start"
+msgstr ""
+
 #: src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:72
 msgid "Start Forkop"
 msgstr ""
@@ -2699,12 +2911,8 @@ msgstr ""
 msgid "Stop Forkop X"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/renderDiagnostic.ts:36
-msgid "Strategy A"
-msgstr ""
-
 #: src/forkop/tabs/diagnostic/renderDiagnostic.ts:40
-msgid "Strategy B"
+msgid "Strategy"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3612
@@ -2740,12 +2948,32 @@ msgstr ""
 msgid "Subscriptions updated"
 msgstr ""
 
+#: src/forkop/tabs/diagnostic/statusLabels.ts:51
+msgid "Succeeded"
+msgstr ""
+
 #: src/forkop/tabs/dashboard/partials/renderSections.ts:129
 msgid "Support"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/initController.ts:188
+#: src/forkop/tabs/diagnostic/initController.ts:190
 msgid "Support report contains confidential information. Do not share it in public chats."
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/statusLabels.ts:72
+msgid "Switching"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/dpiPlayground.ts:14
+msgid "Syntax check is unavailable"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/dpiPlayground.ts:16
+msgid "Syntax is correct"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/renderDiagnostic.ts:66
+msgid "System diagnostics"
 msgstr ""
 
 #: src/forkop/tabs/dashboard/initController.ts:1753
@@ -2758,18 +2986,6 @@ msgstr ""
 
 #: src/forkop/tabs/diagnostic/checks/runNftCheck.ts:69
 msgid "Table exist"
-msgstr ""
-
-#: src/forkop/tabs/diagnostic/routeDebugger.ts:6
-msgid "Target"
-msgstr ""
-
-#: src/forkop/tabs/diagnostic/renderDiagnostic.ts:81
-msgid "Target domain or IP"
-msgstr ""
-
-#: src/forkop/tabs/diagnostic/connectivityMatrix.ts:122
-msgid "Test failed"
 msgstr ""
 
 #: src/forkop/tabs/dashboard/partials/renderSections.ts:231
@@ -2807,13 +3023,13 @@ msgstr ""
 msgid "Testing URL"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/renderDiagnostic.ts:62
-msgid "Tests originate from the router and do not prove LAN client routing."
-msgstr ""
-
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:5123
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:5568
 msgid "The desync fwmark is managed by Forkop for loop prevention and must not be overridden here."
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/routeDebugger.ts:143
+msgid "The Forkop rule and outbound are only known for a real connection. The check runs on the router and does not prove the path of a LAN client."
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:5120
@@ -2821,8 +3037,24 @@ msgstr ""
 msgid "The NFQUEUE number is assigned by Forkop for each rule and must not be overridden here."
 msgstr ""
 
+#: src/forkop/tabs/diagnostic/routeDebugger.ts:48
+msgid "The router DNS returned no address"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/routeDebugger.ts:64
+msgid "The router has no route to this address"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/connectivityMatrix.ts:130
+msgid "The router rejected this check"
+msgstr ""
+
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:7502
 msgid "The rule applies to the domain and all its subdomains. Use full:, keyword:, or regex: prefixes for exact match, keyword match, or regular expression."
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/dpiPlayground.ts:19
+msgid "The strategy contains an error"
 msgstr ""
 
 #: src/forkop/tabs/diagnostic/checks/runByedpiCheck.ts:78
@@ -2880,8 +3112,16 @@ msgstr ""
 msgid "Time in seconds for DNS record caching (default: 60)"
 msgstr ""
 
+#: src/forkop/tabs/diagnostic/connectivityMatrix.ts:86
+msgid "Timed out"
+msgstr ""
+
 #: src/forkop/helpers/singBoxVariant.ts:53
 msgid "tiny"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/connectivityMatrix.ts:91
+msgid "TLS or certificate error"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2422
@@ -2907,12 +3147,11 @@ msgid "Total traffic"
 msgstr ""
 
 #: src/forkop/tabs/monitoring/initController.ts:785
-#: src/forkop/tabs/diagnostic/renderDiagnostic.ts:108
 msgid "Trace"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/routeDebugger.ts:31
-msgid "Tracing route"
+#: src/forkop/tabs/diagnostic/routeDebugger.ts:155
+msgid "Trace a real connection in Monitoring"
 msgstr ""
 
 #: src/forkop/tabs/dashboard/initController.ts:1679
@@ -2952,6 +3191,8 @@ msgstr ""
 msgid "TTL value cannot be empty"
 msgstr ""
 
+#: src/forkop/tabs/diagnostic/connectivityMatrix.ts:251
+#: src/forkop/tabs/diagnostic/connectivityMatrix.ts:298
 #: src/forkop/tabs/monitoring/initController.ts:752
 #: src/forkop/tabs/monitoring/initController.ts:919
 msgid "Type"
@@ -3022,8 +3263,6 @@ msgid "unknown"
 msgstr ""
 
 #: src/forkop/tabs/dashboard/health.ts:20
-#: src/forkop/tabs/diagnostic/routeDebugger.ts:55
-#: src/forkop/tabs/diagnostic/safetyCenter.ts:20
 msgid "Unknown"
 msgstr ""
 
@@ -3184,16 +3423,8 @@ msgstr ""
 msgid "Valid"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/renderDiagnostic.ts:46
-msgid "Validate and compare"
-msgstr ""
-
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:4269
 msgid "Validation errors:"
-msgstr ""
-
-#: src/forkop/tabs/diagnostic/dpiPlayground.ts:30
-msgid "Validation failed"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:4806
@@ -3204,7 +3435,7 @@ msgstr ""
 msgid "Via country.is"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/initController.ts:740
+#: src/forkop/tabs/diagnostic/initController.ts:745
 #: src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:110
 msgid "View logs"
 msgstr ""
@@ -3219,6 +3450,10 @@ msgstr ""
 
 #: src/forkop/tabs/updates/initController.ts:1070
 msgid "Waiting for TorrServer"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/safetyCenter.ts:37
+msgid "Waiting to finish"
 msgstr ""
 
 #: src/forkop/tabs/dashboard/health.ts:16

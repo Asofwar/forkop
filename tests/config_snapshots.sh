@@ -8,6 +8,7 @@ trap 'rm -rf "$WORK"' EXIT HUP INT TERM
 export FORKOP_CONFIG_FILE="$WORK/forkop"
 export FORKOP_SNAPSHOT_DIR="$WORK/snapshots"
 export FORKOP_SNAPSHOT_HASH_DIR="$WORK/hash"
+export FORKOP_SNAPSHOT_LOCK_DIR="$WORK/run/config-snapshot.lock"
 export FORKOP_LIB="$LIB"
 cat > "$FORKOP_CONFIG_FILE" <<'UCI'
 config settings 'settings'
@@ -106,9 +107,195 @@ const result = JSON.parse(fs.readFileSync(process.argv[2]));
 assert.equal(result.status, 'failed');
 assert.equal(result.reason, 'guard_unavailable');
 JS
-mkdir "$FORKOP_SNAPSHOT_DIR/.lock"
+test "$FORKOP_SNAPSHOT_LOCK_DIR" != "$FORKOP_SNAPSHOT_DIR/.lock"
+mkdir -p "$WORK/run"
+export FORKOP_TEST_READY="$WORK/lock-ready"
+cat > "$WORK/hold-version" <<'STUB'
+#!/bin/sh
+: > "$FORKOP_TEST_READY"
+sleep 3
+printf 'test\n'
+STUB
+chmod +x "$WORK/hold-version"
+FORKOP_BIN="$WORK/hold-version" ucode -L "$LIB" "$SCRIPT" create manual > "$WORK/held-create.json" &
+holder=$!
+for n in 1 2 3 4 5 6 7 8 9 10; do
+  [ -f "$FORKOP_TEST_READY" ] && break
+  sleep 0.1
+done
+[ -f "$FORKOP_TEST_READY" ] || exit 1
+ls "$FORKOP_SNAPSHOT_LOCK_DIR"/owner.* >/dev/null || exit 1
 if ucode -L "$LIB" "$SCRIPT" create manual >/dev/null; then exit 1; fi
-rmdir "$FORKOP_SNAPSHOT_DIR/.lock"
+ls "$FORKOP_SNAPSHOT_LOCK_DIR"/owner.* >/dev/null || exit 1
+wait "$holder"
+[ ! -e "$FORKOP_SNAPSHOT_LOCK_DIR" ] || exit 1
+node - "$LIB" "$SCRIPT" "$WORK" <<'JS'
+const fs = require('node:fs');
+const { execFileSync } = require('node:child_process');
+const assert = require('node:assert/strict');
+const [lib, script, work] = process.argv.slice(2);
+function diff(before, after) {
+  fs.writeFileSync(`${work}/before`, `config settings 'settings'\n${before}`);
+  fs.writeFileSync(`${work}/after`, `config settings 'settings'\n${after}`);
+  return JSON.parse(execFileSync('ucode', ['-L', lib, script, 'fixture-diff', `${work}/before`, `${work}/after`]));
+}
+const list = values => values.map(value => ` list dns_server '${value}'\n`).join('');
+const a = ['1.1.1.1', '2.2.2.2'];
+assert.deepEqual(diff(list(a), list([...a, '3.3.3.3']))[0].after, [...a, '3.3.3.3']);
+assert.deepEqual(diff(list(a), list(['1.1.1.1']))[0].before, a);
+assert.deepEqual(diff(list(a), list(['1.1.1.1', '3.3.3.3']))[0], {
+  section: 'settings', option: 'dns_server', kind: 'list', before: a, after: ['1.1.1.1', '3.3.3.3']
+});
+assert.deepEqual(diff(list(a), list([...a].reverse()))[0].after, [...a].reverse());
+assert.deepEqual(diff(list([...a, '2.2.2.2']), list(a))[0].before, [...a, '2.2.2.2']);
+const secret = diff(" list subscription_urls 'https://user:pass@example.com/a'\n", " list subscription_urls 'https://token@example.com/b'\n");
+assert.deepEqual(secret[0].before, ['***']);
+assert.deepEqual(secret[0].after, ['***']);
+assert.equal(JSON.stringify(secret).includes('pass'), false);
+assert.equal(JSON.stringify(secret).includes('token@'), false);
+const lines = (...items) => items.map(item => ` ${item}\n`).join('');
+assert.deepEqual(diff(lines("option dns_server '1.1.1.1'"), lines("option dns_server '8.8.8.8'")), [
+  { section: 'settings', option: 'dns_server', before: '1.1.1.1', after: '8.8.8.8' }
+]);
+assert.deepEqual(diff(list(a), list(a)), []);
+const dup = values => lines(...values.map(value => `list action '${value}'`));
+assert.deepEqual(diff(dup(['a', 'b']), dup(['a', 'a', 'b']))[0].after, ['a', 'a', 'b']);
+assert.deepEqual(diff(dup(['a', 'a', 'b']), dup(['a', 'b']))[0].before, ['a', 'a', 'b']);
+assert.deepEqual(diff(lines("option action 'a'"), lines("list action 'a'")), [
+  { section: 'settings', option: 'action', kind: 'list', before: 'a', after: ['a'] }
+]);
+assert.deepEqual(diff(lines("list action 'a'"), lines("option action 'a'")), [
+  { section: 'settings', option: 'action', kind: 'list', before: ['a'], after: 'a' }
+]);
+assert.deepEqual(diff('', list(a)), [
+  { section: 'settings', option: 'dns_server', kind: 'list', before: [], after: a }
+]);
+assert.deepEqual(diff(list(a), ''), [
+  { section: 'settings', option: 'dns_server', kind: 'list', before: a, after: [] }
+]);
+assert.deepEqual(diff('', lines("option action 'x'")), [
+  { section: 'settings', option: 'action', before: '***', after: 'x' }
+]);
+assert.deepEqual(diff(lines("option action 'x'"), ''), [
+  { section: 'settings', option: 'action', before: 'x', after: '***' }
+]);
+let before = '', after = '';
+for (const option of ['password', 'passwd', 'secret', 'token', 'authorization', 'auth', 'uuid',
+  'proxy_string', 'subscription_url', 'subscription_urls', 'private_key', 'credential']) {
+  const value = `raw-${option}-s3cr3t`;
+  before += lines(`option ${option} '${value}-old'`, `list ${option}_list '${value}-a'`);
+  after += lines(`option ${option} '${value}-new'`, `list ${option}_list '${value}-a'`,
+    `list ${option}_list '${value}-b'`);
+}
+const masked = JSON.stringify(diff(before, after));
+assert.equal(masked.includes('s3cr3t'), false);
+assert.equal(JSON.parse(masked).length, 24);
+JS
+
+(
+# Lock scenarios use their own snapshot store so manual retention stays untouched.
+export FORKOP_SNAPSHOT_DIR="$WORK/lock-snapshots"
+LOCK_DIR="$FORKOP_SNAPSHOT_LOCK_DIR"
+start_ticks() { sed 's/.*) //' "/proc/$1/stat" | awk '{print $20}'; }
+no_lock_leftovers() {
+  [ ! -e "$LOCK_DIR" ] || exit 1
+  for leftover in "$LOCK_DIR".new.*; do [ ! -e "$leftover" ] || exit 1; done
+  rm -f "$FORKOP_SNAPSHOT_DIR"/*.json
+}
+stale_lock() { mkdir "$LOCK_DIR"; printf '%s\n%s\n' "$1" "$2" > "$LOCK_DIR/owner.$1.$2"; }
+
+# Dead PID.
+stale_lock 999999 1
+ucode -L "$LIB" "$SCRIPT" create manual >/dev/null
+no_lock_leftovers
+
+# PID reuse: live PID, different start time; the process is never signalled.
+sleep 30 &
+reused_pid=$!
+reused_ticks="$(start_ticks "$reused_pid")"
+stale_lock "$reused_pid" 1
+ucode -L "$LIB" "$SCRIPT" create manual >/dev/null
+no_lock_leftovers
+kill -0 "$reused_pid"
+
+# Live PID with matching start time but a foreign executable is not an owner.
+stale_lock "$reused_pid" "$reused_ticks"
+ucode -L "$LIB" "$SCRIPT" create manual >/dev/null
+no_lock_leftovers
+kill -0 "$reused_pid"
+
+# Malformed records, a legacy record name and an empty (released mid-way) lock.
+mkdir "$LOCK_DIR"
+printf 'malformed\n' > "$LOCK_DIR/owner"
+printf 'malformed\n' > "$LOCK_DIR/owner.x.1"
+ucode -L "$LIB" "$SCRIPT" create manual >/dev/null
+no_lock_leftovers
+mkdir "$LOCK_DIR"
+ucode -L "$LIB" "$SCRIPT" create manual >/dev/null
+no_lock_leftovers
+printf 'garbage\n' > "$LOCK_DIR"
+ucode -L "$LIB" "$SCRIPT" create manual >/dev/null
+no_lock_leftovers
+mkdir "$WORK/symlink-target"
+: > "$WORK/symlink-target/keep"
+ln -s "$WORK/symlink-target" "$LOCK_DIR"
+ucode -L "$LIB" "$SCRIPT" create manual >/dev/null
+no_lock_leftovers
+[ -f "$WORK/symlink-target/keep" ] || exit 1
+
+# Release must not remove a lock that was replaced while the holder ran.
+rm -f "$FORKOP_TEST_READY"
+FORKOP_BIN="$WORK/hold-version" ucode -L "$LIB" "$SCRIPT" create manual >/dev/null &
+holder=$!
+for n in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+  [ -f "$FORKOP_TEST_READY" ] && break
+  sleep 0.1
+done
+[ -f "$FORKOP_TEST_READY" ] || exit 1
+set -- "$LOCK_DIR"/owner.*
+[ "$#" -eq 1 ] && [ -f "$1" ] || exit 1
+mv "$LOCK_DIR" "$WORK/replaced-lock"
+stale_lock "$reused_pid" "$reused_ticks"
+wait "$holder"
+[ -f "$LOCK_DIR/owner.$reused_pid.$reused_ticks" ] || exit 1
+rm -rf "$WORK/replaced-lock"
+ucode -L "$LIB" "$SCRIPT" create manual >/dev/null
+no_lock_leftovers
+kill -0 "$reused_pid"
+kill "$reused_pid"
+wait "$reused_pid" 2>/dev/null || true
+
+# Another contender's unpublished lock is neither a blocker nor reclaimed.
+mkdir "$LOCK_DIR.new.1.1"
+ucode -L "$LIB" "$SCRIPT" create manual >/dev/null
+[ -d "$LOCK_DIR.new.1.1" ] || exit 1
+rmdir "$LOCK_DIR.new.1.1"
+no_lock_leftovers
+
+# Concurrent acquisition, from a free lock and from a stale one, never overlaps.
+export FORKOP_TEST_CS="$WORK/critical" FORKOP_TEST_OVERLAP="$WORK/overlap"
+cat > "$WORK/critical-version" <<'STUB'
+#!/bin/sh
+mkdir "$FORKOP_TEST_CS" 2>/dev/null || : > "$FORKOP_TEST_OVERLAP"
+sleep 0.5
+rmdir "$FORKOP_TEST_CS" 2>/dev/null
+printf 'test\n'
+STUB
+chmod +x "$WORK/critical-version"
+for round in free free stale stale stale stale; do
+  if [ "$round" = stale ]; then stale_lock 999999 1; fi
+  pids=""
+  for n in 1 2 3 4 5 6 7 8; do
+    FORKOP_BIN="$WORK/critical-version" ucode -L "$LIB" "$SCRIPT" create manual >/dev/null 2>&1 &
+    pids="$pids $!"
+  done
+  won=0
+  for pid in $pids; do if wait "$pid"; then won=$((won + 1)); fi; done
+  [ "$won" -ge 1 ] || exit 1
+  [ ! -e "$FORKOP_TEST_OVERLAP" ] || exit 1
+  no_lock_leftovers
+done
+)
 printf '{invalid' > "$FORKOP_SNAPSHOT_DIR/bad.json"
 if ucode -L "$LIB" "$SCRIPT" diff bad >/dev/null; then exit 1; fi
 for n in 1 2 3 4 5 6 7 8 9 10 11; do

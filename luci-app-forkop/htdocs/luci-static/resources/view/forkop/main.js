@@ -2306,6 +2306,7 @@ function render() {
         )
       ),
       E("div", { class: "fkp_dashboard-page__content" }, [
+        E("div", { id: "dashboard-health" }, _("Loading health status")),
         // Widgets section
         E("div", { class: "fkp_dashboard-page__widgets-section" }, [
           E(
@@ -2476,6 +2477,17 @@ var Forkop;
     AvailableMethods2["GET_SYSTEM_INFO"] = "get_system_info";
     AvailableMethods2["GET_UI_CAPABILITIES"] = "get_ui_capabilities";
     AvailableMethods2["GET_UI_STATE"] = "get_ui_state";
+    AvailableMethods2["GET_HEALTH_STATUS"] = "get_health_status";
+    AvailableMethods2["ROUTE_TRACE"] = "route_trace";
+    AvailableMethods2["CONFIG_SNAPSHOT_CREATE"] = "config_snapshot_create";
+    AvailableMethods2["CONFIG_SNAPSHOT_LIST"] = "config_snapshot_list";
+    AvailableMethods2["CONFIG_SNAPSHOT_DIFF"] = "config_snapshot_diff";
+    AvailableMethods2["CONFIG_SNAPSHOT_RESTORE"] = "config_snapshot_restore";
+    AvailableMethods2["CONFIG_SNAPSHOT_DELETE"] = "config_snapshot_delete";
+    AvailableMethods2["CONNECTIVITY_TEST"] = "connectivity_test";
+    AvailableMethods2["VALIDATE_NFQWS_STRATEGY_JSON"] = "validate_nfqws_strategy_json";
+    AvailableMethods2["VALIDATE_NFQWS2_STRATEGY_JSON"] = "validate_nfqws2_strategy_json";
+    AvailableMethods2["VALIDATE_BYEDPI_STRATEGY_JSON"] = "validate_byedpi_strategy_json";
     AvailableMethods2["GET_READONLY_CONFIG_SECTIONS"] = "get_readonly_config_sections";
     AvailableMethods2["GET_DASHBOARD_RUNTIME_METADATA"] = "get_dashboard_runtime_metadata";
     AvailableMethods2["SERVICE_ACTION_ASYNC"] = "service_action_async";
@@ -2776,6 +2788,46 @@ var ForkopShellMethods = {
     [],
     "/usr/bin/forkop",
     { timeout: GET_UI_STATE_RPC_TIMEOUT_MS }
+  ),
+  getHealthStatus: async () => callBaseMethod(
+    Forkop.AvailableMethods.GET_HEALTH_STATUS
+  ),
+  routeTrace: async (target, source, protocol, port) => callBaseMethod(Forkop.AvailableMethods.ROUTE_TRACE, [
+    target,
+    source,
+    protocol,
+    port
+  ]),
+  snapshotCreate: async (kind = "manual") => callBaseMethod(
+    Forkop.AvailableMethods.CONFIG_SNAPSHOT_CREATE,
+    [kind]
+  ),
+  snapshotList: async () => callBaseMethod(
+    Forkop.AvailableMethods.CONFIG_SNAPSHOT_LIST
+  ),
+  snapshotDiff: async (id) => callBaseMethod(
+    Forkop.AvailableMethods.CONFIG_SNAPSHOT_DIFF,
+    [id]
+  ),
+  snapshotRestore: async (id) => callBaseMethod(
+    Forkop.AvailableMethods.CONFIG_SNAPSHOT_RESTORE,
+    [id],
+    "/usr/bin/forkop",
+    { timeout: 12e4 }
+  ),
+  snapshotDelete: async (id) => callBaseMethod(
+    Forkop.AvailableMethods.CONFIG_SNAPSHOT_DELETE,
+    [id]
+  ),
+  connectivityTest: async (host, type, port) => callBaseMethod(
+    Forkop.AvailableMethods.CONNECTIVITY_TEST,
+    [host, type, port],
+    "/usr/bin/forkop",
+    { timeout: 1e4 }
+  ),
+  validateDpiStrategy: async (provider, strategy) => callBaseMethod(
+    provider === "zapret" ? Forkop.AvailableMethods.VALIDATE_NFQWS_STRATEGY_JSON : provider === "zapret2" ? Forkop.AvailableMethods.VALIDATE_NFQWS2_STRATEGY_JSON : Forkop.AvailableMethods.VALIDATE_BYEDPI_STRATEGY_JSON,
+    [strategy]
   ),
   serviceActionStart: async (action) => {
     const response = await executeShellCommand({
@@ -5603,11 +5655,89 @@ function createPriorityMembersState() {
   };
 }
 
+// src/forkop/tabs/dashboard/health.ts
+function healthItems(health) {
+  return [
+    { label: "Forkop", status: health.service.forkop },
+    { label: "sing-box", status: health.service.sing_box },
+    { label: "DNS", status: health.dns.status },
+    { label: "DPI", status: health.dpi.status },
+    { label: "Lists", status: health.lists.status }
+  ];
+}
+function statusLabel(status) {
+  const labels = {
+    ok: _("OK"),
+    warning: _("Warning"),
+    error: _("Error"),
+    transitioning: _("Transitioning"),
+    recovered: _("Recovered"),
+    unknown: _("Unknown")
+  };
+  return labels[status] || labels.unknown;
+}
+function renderHealth(health) {
+  const guard = health.guard.active;
+  return E("div", { class: "fkp-health" }, [
+    E(
+      "div",
+      { class: "fkp-health__strip", role: "status" },
+      healthItems(health).map(
+        (item) => E(
+          "span",
+          {
+            class: `fkp-health__item fkp-health__item--${item.status}`,
+            title: `${item.label}: ${statusLabel(item.status)}`
+          },
+          `${item.label}: ${statusLabel(item.status)}`
+        )
+      )
+    ),
+    ...guard ? [
+      E(
+        "p",
+        { class: "fkp-health__guard" },
+        _(
+          "DPI protection active. Traffic may be intentionally blocked during recovery."
+        )
+      )
+    ] : [],
+    E(
+      "button",
+      {
+        type: "button",
+        class: "btn cbi-button",
+        click: () => document.querySelector('.cbi-tab[data-tab="diagnostic"]')?.click()
+      },
+      _("Open Diagnostics")
+    ),
+    E("div", { class: "fkp-health__activity" }, [
+      E("strong", {}, _("Recent activity")),
+      ...health.recent_activity.slice(-5).reverse().map(
+        (event) => E(
+          "div",
+          {},
+          `${new Date(event.timestamp * 1e3).toLocaleTimeString()} \xB7 ${event.kind}: ${event.status}`
+        )
+      )
+    ])
+  ]);
+}
+
 // src/forkop/tabs/dashboard/initController.ts
 var SECTIONS_REFRESH_INTERVAL_MS = 1e4;
 var LATENCY_TEST_BUTTON_CLASS = "dashboard-sections-grid-item-test-latency";
 var LATENCY_TEST_BUTTON_LABEL_CLASS = "dashboard-sections-grid-item-test-latency__label";
 var sectionsRefreshTimer = null;
+var healthRefreshTimer = null;
+async function refreshHealth(mountId) {
+  const response = await ForkopShellMethods.getHealthStatus();
+  if (!dashboardMounted || mountId !== dashboardMountId) return;
+  const container = document.getElementById("dashboard-health");
+  if (container && response.success && response.data)
+    container.replaceChildren(renderHealth(response.data));
+  else if (container) container.textContent = _("Health status unavailable");
+}
 var sectionsRefreshPromise = null;
 var sectionsRefreshQueued = false;
 var actionStateUnsubscribe = null;
@@ -7045,6 +7175,8 @@ async function onPageMount() {
   dashboardMounted = true;
   dashboardMountId += 1;
   const mountId = dashboardMountId;
+  void refreshHealth(mountId);
+  healthRefreshTimer = setInterval(() => void refreshHealth(mountId), 1e4);
   const hasRuntimeSnapshot = Boolean(getCachedRuntimeUiState());
   if (!hasRuntimeSnapshot) {
     const uiState = await refreshRuntimeUiState({ force: true });
@@ -7070,6 +7202,8 @@ async function onPageMount() {
 function onPageUnmount() {
   dashboardMounted = false;
   dashboardMountId += 1;
+  if (healthRefreshTimer) clearInterval(healthRefreshTimer);
+  healthRefreshTimer = null;
   stopDashboardDataUpdates();
   stopActionStateWatcher();
   sectionsRefreshQueued = false;
@@ -7127,6 +7261,12 @@ async function initController() {
 
 // src/forkop/tabs/dashboard/styles.ts
 var styles = `
+.fkp-health__strip { display: flex; flex-wrap: wrap; gap: .5rem; margin: 0 0 .5rem; }
+.fkp-health__item { border-radius: 1rem; padding: .25rem .6rem; background: var(--background-color-high, #eee); }
+.fkp-health__item--ok, .fkp-health__item--recovered { border: 1px solid #22863a; }
+.fkp-health__item--warning, .fkp-health__item--transitioning { border: 1px solid #b58900; }
+.fkp-health__item--error { border: 1px solid #c22; }
+.fkp-health__activity { margin: .5rem 0 1rem; }
 @font-face {
     font-family: "Twemoji Country Flags";
     src: url("/luci-static/resources/view/forkop/fonts/TwemojiCountryFlags.woff2") format("woff2");
@@ -7879,6 +8019,107 @@ function render2() {
       })
     ]),
     E("div", { class: "fkp_diagnostic-page__right-bar" }, [
+      E("section", { class: "fkp-tool", id: "safety-center" }, [
+        E("h3", {}, _("Safety Center")),
+        E(
+          "div",
+          { id: "safety-center-state", role: "status" },
+          _("Loading health status")
+        ),
+        E(
+          "button",
+          {
+            id: "safety-center-refresh",
+            type: "button",
+            class: "btn cbi-button"
+          },
+          _("Refresh safety status")
+        )
+      ]),
+      E("section", { class: "fkp-tool", id: "dpi-playground" }, [
+        E("h3", {}, _("DPI Strategy Playground")),
+        E("select", { id: "dpi-provider" }, [
+          E("option", { value: "zapret" }, "Zapret"),
+          E("option", { value: "zapret2" }, "Zapret2"),
+          E("option", { value: "byedpi" }, "ByeDPI")
+        ]),
+        E("label", {}, [
+          _("Strategy A"),
+          E("textarea", { id: "dpi-strategy-a", maxLength: 4096 })
+        ]),
+        E("label", {}, [
+          _("Strategy B"),
+          E("textarea", { id: "dpi-strategy-b", maxLength: 4096 })
+        ]),
+        E(
+          "button",
+          { id: "dpi-validate", type: "button", class: "btn cbi-button" },
+          _("Validate and compare")
+        ),
+        E("div", { id: "dpi-playground-result", role: "status" }),
+        E(
+          "p",
+          {},
+          _(
+            "Runtime test is unavailable without changing the active configuration. Comparison covers validation only."
+          )
+        )
+      ]),
+      E("section", { class: "fkp-tool", id: "connectivity-matrix" }, [
+        E("h3", {}, _("Connectivity matrix")),
+        E(
+          "p",
+          {},
+          _(
+            "Tests originate from the router and do not prove LAN client routing."
+          )
+        ),
+        E("div", { id: "connectivity-rows" }),
+        E(
+          "button",
+          { id: "connectivity-add", type: "button", class: "btn cbi-button" },
+          _("Add target")
+        ),
+        E(
+          "button",
+          { id: "connectivity-run", type: "button", class: "btn cbi-button" },
+          _("Run tests")
+        )
+      ]),
+      E("section", { class: "fkp-tool", id: "route-debugger" }, [
+        E("h3", {}, _("Route Debugger")),
+        E("label", {}, [
+          _("Target domain or IP"),
+          E("input", { id: "trace-target", class: "cbi-input-text" })
+        ]),
+        E("label", {}, [
+          _("Source IP (optional)"),
+          E("input", { id: "trace-source", class: "cbi-input-text" })
+        ]),
+        E("label", {}, [
+          _("Protocol"),
+          E("select", { id: "trace-protocol" }, [
+            E("option", { value: "TCP" }, "TCP"),
+            E("option", { value: "UDP" }, "UDP")
+          ])
+        ]),
+        E("label", {}, [
+          _("Port (optional)"),
+          E("input", {
+            id: "trace-port",
+            class: "cbi-input-text",
+            type: "number",
+            min: "1",
+            max: "65535"
+          })
+        ]),
+        E(
+          "button",
+          { id: "trace-run", class: "btn cbi-button", type: "button" },
+          _("Trace")
+        ),
+        E("div", { id: "trace-result", role: "status" })
+      ]),
       E("div", { id: "fkp_diagnostic-page-wiki" }),
       E("div", { id: "fkp_diagnostic-page-actions" }),
       E("div", { id: "fkp_diagnostic-page-system-info" })
@@ -9108,6 +9349,44 @@ function renderAvailableActions({
 }
 
 // src/forkop/tabs/diagnostic/partials/renderCheckSection.ts
+function diagnosticActionSummary(props) {
+  return [
+    props.title,
+    props.description,
+    ...props.items.map((item) => `${item.key}: ${item.value}`)
+  ].join("\n");
+}
+function renderRecoveryActions(props) {
+  return E("div", { class: "fkp_diagnostic_alert__actions" }, [
+    E(
+      "button",
+      {
+        type: "button",
+        class: "btn cbi-button",
+        click: () => document.querySelector("#fkp_diagnostic-page-run-check button")?.click()
+      },
+      _("Retry")
+    ),
+    E(
+      "button",
+      {
+        type: "button",
+        class: "btn cbi-button",
+        click: () => document.querySelector('.cbi-tab[data-tab="settings"]')?.click()
+      },
+      _("Open settings")
+    ),
+    E(
+      "button",
+      {
+        type: "button",
+        class: "btn cbi-button",
+        click: () => void navigator.clipboard.writeText(diagnosticActionSummary(props))
+      },
+      _("Copy details")
+    )
+  ]);
+}
 function renderCheckSummary(items) {
   if (!items.length) {
     return E("div", {}, "");
@@ -9175,7 +9454,7 @@ function renderWarningState(props) {
           props.description
         )
       ]),
-      E("div", {}, ""),
+      renderRecoveryActions(props),
       renderCheckSummary(props.items)
     ]
   );
@@ -9196,7 +9475,7 @@ function renderErrorState(props) {
           props.description
         )
       ]),
-      E("div", {}, ""),
+      renderRecoveryActions(props),
       renderCheckSummary(props.items)
     ]
   );
@@ -9486,6 +9765,260 @@ async function runSectionsCheck() {
   if (!atLeastOneGood) {
     throw new Error("Rule outbounds checks failed");
   }
+}
+
+// src/forkop/tabs/diagnostic/routeDebugger.ts
+function routeStages(trace) {
+  return [
+    { label: _("Target"), stage: trace.target },
+    { label: _("DNS resolution"), stage: trace.dns },
+    { label: _("Matched rule"), stage: trace.rule },
+    { label: _("Action"), stage: trace.action },
+    { label: _("Outbound"), stage: trace.outbound },
+    { label: _("DPI provider"), stage: trace.dpi },
+    { label: _("Interface"), stage: trace.interface },
+    { label: _("Current runtime"), stage: trace.runtime }
+  ];
+}
+function field(id) {
+  return document.getElementById(id)?.value.trim() || "";
+}
+function initRouteDebugger() {
+  const button = document.getElementById(
+    "trace-run"
+  );
+  if (!button || button.onclick) return;
+  button.onclick = async () => {
+    const container = document.getElementById("trace-result");
+    if (!container) return;
+    container.textContent = _("Tracing route");
+    button.disabled = true;
+    try {
+      const response = await ForkopShellMethods.routeTrace(
+        field("trace-target"),
+        field("trace-source"),
+        field("trace-protocol"),
+        field("trace-port")
+      );
+      if (!response.success || !response.data?.target) {
+        container.textContent = _("Invalid target or route trace failed");
+        return;
+      }
+      container.replaceChildren(
+        E(
+          "p",
+          {},
+          _(
+            "Observed from router; source IP is not applied to the probe and LAN client policy is not proven."
+          )
+        ),
+        ...routeStages(response.data).map(
+          ({ label, stage }) => E("div", { class: "fkp-route-stage" }, [
+            E("strong", {}, label),
+            E("span", {}, String(stage.address || stage.value || _("Unknown"))),
+            E("small", {}, stage.provenance)
+          ])
+        )
+      );
+    } finally {
+      button.disabled = false;
+    }
+  };
+}
+
+// src/forkop/tabs/diagnostic/connectivityMatrix.ts
+var KEY = "forkop.connectivity.targets";
+var DEFAULTS = [
+  { host: "cloudflare.com", type: "TCP", port: "443" },
+  { host: "telegram.org", type: "TCP", port: "443" }
+];
+function loadTargets(storage) {
+  try {
+    const value = JSON.parse(storage.getItem(KEY) || "null");
+    if (Array.isArray(value))
+      return value.slice(0, 10).filter(
+        (item) => typeof item.host === "string" && item.host.length <= 253 && ["DNS", "TCP", "TLS", "HTTP"].includes(item.type) && typeof item.port === "string" && item.port.length <= 5
+      );
+  } catch (_error) {
+  }
+  return DEFAULTS;
+}
+function initConnectivityMatrix() {
+  const root = document.getElementById("connectivity-rows");
+  const add = document.getElementById("connectivity-add");
+  const run = document.getElementById(
+    "connectivity-run"
+  );
+  if (!root || !add || !run || add.onclick) return;
+  const targets = loadTargets(localStorage);
+  const save = () => localStorage.setItem(KEY, JSON.stringify(targets));
+  const render5 = () => {
+    root.replaceChildren(
+      ...targets.map((target, index) => {
+        const host = E("input", {
+          class: "cbi-input-text",
+          value: target.host,
+          placeholder: _("Host")
+        });
+        const type = E(
+          "select",
+          {},
+          ["DNS", "TCP", "TLS", "HTTP"].map(
+            (kind) => E("option", { value: kind, selected: target.type === kind }, kind)
+          )
+        );
+        const port = E("input", {
+          class: "cbi-input-text",
+          value: target.port,
+          type: "number",
+          min: "1",
+          max: "65535"
+        });
+        const result = E("span", { role: "status" });
+        host.onchange = () => {
+          target.host = host.value.trim();
+          save();
+        };
+        type.onchange = () => {
+          target.type = type.value;
+          save();
+        };
+        port.onchange = () => {
+          target.port = port.value;
+          save();
+        };
+        const remove = E(
+          "button",
+          {
+            type: "button",
+            class: "btn cbi-button",
+            click: () => {
+              targets.splice(index, 1);
+              save();
+              render5();
+            }
+          },
+          _("Remove")
+        );
+        return E("div", { class: "fkp-connectivity-row" }, [
+          host,
+          type,
+          port,
+          remove,
+          result
+        ]);
+      })
+    );
+  };
+  add.onclick = () => {
+    if (targets.length >= 10) return;
+    targets.push({ host: "", type: "TCP", port: "443" });
+    save();
+    render5();
+  };
+  run.onclick = async () => {
+    run.disabled = true;
+    const rows = Array.from(root.children);
+    try {
+      for (const [index, target] of targets.entries()) {
+        const result = rows[index]?.lastElementChild;
+        const response = await ForkopShellMethods.connectivityTest(
+          target.host,
+          target.type,
+          target.port
+        );
+        if (result)
+          result.textContent = response.success && response.data ? `${response.data.type === "TLS" ? _("HTTPS request (TLS and HTTP)") : response.data.type}: ${response.data.status} \xB7 ${response.data.latency_ms} ms \xB7 ${_("router")}` : _("Test failed");
+      }
+    } finally {
+      run.disabled = false;
+    }
+  };
+  render5();
+}
+
+// src/forkop/tabs/diagnostic/dpiPlayground.ts
+function initDpiPlayground() {
+  const button = document.getElementById(
+    "dpi-validate"
+  );
+  if (!button || button.onclick) return;
+  button.onclick = async () => {
+    const provider = document.getElementById("dpi-provider").value;
+    const a = document.getElementById("dpi-strategy-a").value;
+    const b = document.getElementById("dpi-strategy-b").value;
+    const result = document.getElementById("dpi-playground-result");
+    if (!result) return;
+    button.disabled = true;
+    try {
+      const values = await Promise.all(
+        [a, b].map(
+          (strategy) => ForkopShellMethods.validateDpiStrategy(provider, strategy)
+        )
+      );
+      result.replaceChildren(
+        ...values.map(
+          (response, index) => E(
+            "div",
+            {},
+            `${index === 0 ? "A" : "B"}: ${JSON.stringify(response.success ? response.data : response.error || _("Validation failed"))}`
+          )
+        )
+      );
+    } finally {
+      button.disabled = false;
+    }
+  };
+}
+
+// src/forkop/tabs/diagnostic/safetyCenter.ts
+function safetyRows(health) {
+  return [
+    [_("Overall"), health.overall],
+    ["Forkop", health.service.forkop],
+    ["sing-box", health.service.sing_box],
+    ["DNS", health.dns.status],
+    ["DPI", health.dpi.status],
+    [_("DPI guard"), health.guard.active ? _("Active") : _("Inactive")],
+    [
+      _("Package recovery"),
+      health.package_recovery.pending ? _("Pending") : _("None")
+    ],
+    [
+      _("Last reload"),
+      health.last_reload ? `${health.last_reload.status} \xB7 ${new Date(health.last_reload.timestamp * 1e3).toLocaleString()}` : _("Unknown")
+    ]
+  ];
+}
+function initSafetyCenter() {
+  const button = document.getElementById(
+    "safety-center-refresh"
+  );
+  const container = document.getElementById("safety-center-state");
+  if (!button || !container || button.onclick) return;
+  const refresh = async () => {
+    const response = await ForkopShellMethods.getHealthStatus();
+    if (!response.success || !response.data) {
+      container.textContent = _("Health status unavailable");
+      return;
+    }
+    const health = response.data;
+    container.replaceChildren(
+      ...safetyRows(health).map(
+        ([label, status]) => E("div", {}, [E("strong", {}, `${label}: `), E("span", {}, status)])
+      ),
+      E("h4", {}, _("Recent activity")),
+      ...health.recent_activity.slice(-10).reverse().map(
+        (event) => E(
+          "div",
+          {},
+          `${new Date(event.timestamp * 1e3).toLocaleString()} \xB7 ${event.kind}: ${event.status}`
+        )
+      )
+    );
+  };
+  button.onclick = () => void refresh();
+  void refresh();
 }
 
 // src/forkop/tabs/diagnostic/serviceTransition.ts
@@ -10805,6 +11338,10 @@ async function initController2() {
   }
   diagnosticControllerInitialized = true;
   onMount("diagnostic-status").then(() => {
+    initRouteDebugger();
+    initConnectivityMatrix();
+    initDpiPlayground();
+    initSafetyCenter();
     logger.debug("[DIAGNOSTIC]", "initController", "onMount");
     registerLifecycleListeners2();
     if (store.get().tabService.current === "diagnostic" || isActiveLuciTab("diagnostic")) {
@@ -10815,6 +11352,18 @@ async function initController2() {
 
 // src/forkop/tabs/diagnostic/styles.ts
 var styles4 = `
+.fkp-tool {
+    border: 1px solid var(--border-color, #777);
+    border-radius: 4px;
+    padding: 10px;
+    overflow-wrap: anywhere;
+}
+.fkp-tool label { display: block; margin: 5px 0; }
+.fkp-tool input, .fkp-tool textarea, .fkp-tool select { max-width: 100%; }
+.fkp-tool textarea { display: block; width: 100%; min-height: 4em; }
+.fkp-tool button { margin: 3px; }
+.fkp-route-stage { display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; padding: 3px 0; }
+.fkp-connectivity-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 5px 0; }
 
 #cbi-${FORKOP_UCI_PACKAGE}-diagnostic-_mount_node > div {
     width: 100%;
@@ -10981,6 +11530,14 @@ var styles4 = `
 
 .fkp_diagnostic_alert__content {}
 
+.fkp_diagnostic_alert__actions {
+    grid-column: 2;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 8px;
+}
+
 .fkp_diagnostic_alert__title {
     display: block;
 }
@@ -11062,6 +11619,34 @@ function render3() {
               },
               [E("option", { value: "all" }, _("All"))]
             ),
+            ...[
+              ["protocol", _("Protocol")],
+              ["route", _("Route")],
+              ["outbound", _("Outbound")],
+              ["rule", _("Rule")]
+            ].map(
+              ([id, label]) => E("input", {
+                id: `monitoring-${id}-filter`,
+                class: "cbi-input-text",
+                placeholder: label,
+                "aria-label": label
+              })
+            ),
+            E(
+              "select",
+              {
+                id: "monitoring-sort",
+                class: "cbi-input-select",
+                "aria-label": _("Sort connections")
+              },
+              [
+                E("option", { value: "start" }, _("Start time")),
+                E("option", { value: "duration" }, _("Duration")),
+                E("option", { value: "download" }, _("Download")),
+                E("option", { value: "upload" }, _("Upload")),
+                E("option", { value: "total" }, _("Total traffic"))
+              ]
+            ),
             E("label", { class: "fkp_monitoring-page__search" }, [
               E("span", { class: "fkp_monitoring-page__search-icon" }, []),
               E("input", {
@@ -11111,10 +11696,25 @@ function render3() {
               _("Loading connections")
             )
           ]
-        )
+        ),
+        E("div", { id: "monitoring-connection-details", role: "region" })
       ])
     ]
   );
+}
+
+// src/forkop/tabs/monitoring/connectionView.ts
+function matchesConnectionFilters(values, filters) {
+  return Object.keys(filters).every(
+    (key) => !filters[key] || values[key]?.toLowerCase().includes(filters[key].toLowerCase())
+  );
+}
+function trafficSortValue(connection, mode) {
+  if (mode === "download") return connection.download || 0;
+  if (mode === "upload") return connection.upload || 0;
+  if (mode === "total")
+    return (connection.download || 0) + (connection.upload || 0);
+  return null;
 }
 
 // src/forkop/tabs/monitoring/initController.ts
@@ -11144,6 +11744,14 @@ var pollingConnections = false;
 var activeTab = "active";
 var selectedDeviceFilter = ALL_FILTER_VALUE;
 var searchQuery = "";
+var extraFilters = {
+  protocol: "",
+  route: "",
+  outbound: "",
+  rule: ""
+};
+var sortMode = "start";
+var MONITORING_PREFS_KEY = "forkop.monitoring.preferences";
 var localDeviceChoices = {};
 var routeDisplayNames = {};
 var routeSections = [];
@@ -11329,6 +11937,10 @@ function getNetwork(connection) {
 }
 function sortConnections(connections, tab) {
   return [...connections].sort((a, b) => {
+    const aTraffic = trafficSortValue(a, sortMode);
+    const bTraffic = trafficSortValue(b, sortMode);
+    if (aTraffic != null && bTraffic != null) return bTraffic - aTraffic;
+    if (sortMode === "duration") return parseStartedAt(a) - parseStartedAt(b);
     if (tab === "closed") {
       return (b.closedAt || 0) - (a.closedAt || 0);
     }
@@ -11365,6 +11977,13 @@ function getVisibleConnections() {
     if (selectedDeviceFilter !== ALL_FILTER_VALUE && sourceIp !== selectedDeviceFilter) {
       return false;
     }
+    const values = {
+      protocol: getNetwork(connection),
+      route: getRoute(connection),
+      outbound: (connection.chains || []).join(" "),
+      rule: normalizeString(connection.rule)
+    };
+    if (!matchesConnectionFilters(values, extraFilters)) return false;
     if (!normalizedSearch) {
       return true;
     }
@@ -11644,9 +12263,103 @@ function renderConnectionRow(connection) {
         renderValue(formatBytes2(connection.upload))
       ]),
       renderTableCell(_("Source"), [renderSourceValue(source)]),
-      renderTableCell(_("Close"), [closeButton])
+      renderTableCell(_("Actions"), [
+        E(
+          "button",
+          {
+            class: "btn cbi-button fkp-monitoring-details",
+            type: "button",
+            value: connection.id
+          },
+          _("Details")
+        ),
+        E(
+          "button",
+          {
+            class: "btn cbi-button fkp-monitoring-trace",
+            type: "button",
+            value: connection.id
+          },
+          _("Trace")
+        ),
+        E(
+          "button",
+          {
+            class: "btn cbi-button fkp-monitoring-copy",
+            type: "button",
+            value: connection.id
+          },
+          _("Copy details")
+        ),
+        closeButton
+      ])
     ]
   );
+}
+function connectionDetails(connection) {
+  const metadata = connection.metadata || {};
+  const safe = (value) => normalizeString(value == null ? "" : String(value)).replace(/\b(?:https?:\/\/)?[^\s@]+@/g, "***@").replace(
+    /(?:token|secret|password|uuid|authorization)=([^&\s]+)/gi,
+    "$1=***"
+  );
+  return [
+    [_("Source"), formatEndpoint(metadata.sourceIP, metadata.sourcePort)],
+    [
+      _("Destination"),
+      formatEndpoint(metadata.destinationIP, metadata.destinationPort)
+    ],
+    [_("Host"), safe(metadata.host)],
+    [_("Protocol"), getNetwork(connection)],
+    [_("Rule"), safe(connection.rule)],
+    [_("Rule payload"), safe(connection.rulePayload)],
+    [_("Route"), getRoute(connection)],
+    [_("Outbound chain"), safe((connection.chains || []).join(" \u2192 "))],
+    [_("Started"), safe(connection.start)],
+    [_("Duration"), formatConnectionDuration(connection)],
+    [_("Upload"), formatBytes2(connection.upload)],
+    [_("Download"), formatBytes2(connection.download)]
+  ];
+}
+function showConnectionDetails(connection, trace) {
+  const container = document.getElementById("monitoring-connection-details");
+  if (!container) return;
+  container.replaceChildren(
+    E(
+      "h3",
+      {},
+      trace ? _("Observed from active connection") : _("Connection details")
+    ),
+    ...connectionDetails(connection).map(
+      ([label, value]) => E("div", {}, [E("strong", {}, `${label}: `), E("span", {}, value)])
+    )
+  );
+}
+function saveMonitoringPreferences() {
+  localStorage.setItem(
+    MONITORING_PREFS_KEY,
+    JSON.stringify({
+      selectedDeviceFilter,
+      sortMode,
+      extraFilters
+    })
+  );
+}
+function loadMonitoringPreferences() {
+  try {
+    const value = JSON.parse(
+      localStorage.getItem(MONITORING_PREFS_KEY) || "{}"
+    );
+    if (typeof value.selectedDeviceFilter === "string")
+      selectedDeviceFilter = value.selectedDeviceFilter;
+    if (["start", "duration", "download", "upload", "total"].includes(
+      value.sortMode
+    ))
+      sortMode = value.sortMode;
+    for (const key of Object.keys(extraFilters))
+      if (typeof value.extraFilters?.[key] === "string")
+        extraFilters[key] = value.extraFilters[key].slice(0, 100);
+  } catch (_error) {
+  }
 }
 function renderStateRow(text, className = "") {
   return E("tr", { class: "fkp_monitoring-page__state-row" }, [
@@ -11684,7 +12397,7 @@ function renderConnectionsTable(connections, state) {
             E("th", {}, `\u2193 ${_("Downloaded")}`),
             E("th", {}, `\u2191 ${_("Uploaded")}`),
             E("th", {}, _("Source")),
-            E("th", {}, _("Close"))
+            E("th", {}, _("Actions"))
           ])
         ]),
         E("tbody", {}, rows)
@@ -12004,6 +12717,30 @@ function bindControls() {
   if (select) {
     select.onchange = () => {
       selectedDeviceFilter = select.value || ALL_FILTER_VALUE;
+      saveMonitoringPreferences();
+      renderConnections();
+    };
+  }
+  for (const key of Object.keys(extraFilters)) {
+    const input = document.getElementById(
+      `monitoring-${key}-filter`
+    );
+    if (!input) continue;
+    input.value = extraFilters[key];
+    input.oninput = () => {
+      extraFilters[key] = input.value.trim();
+      saveMonitoringPreferences();
+      renderConnections();
+    };
+  }
+  const sort = document.getElementById(
+    "monitoring-sort"
+  );
+  if (sort) {
+    sort.value = sortMode;
+    sort.onchange = () => {
+      sortMode = sort.value;
+      saveMonitoringPreferences();
       renderConnections();
     };
   }
@@ -12016,6 +12753,23 @@ function bindControls() {
   if (connectionsContainer) {
     connectionsContainer.onclick = (event) => {
       const target = event.target;
+      const action = target?.closest(
+        ".fkp-monitoring-details, .fkp-monitoring-trace, .fkp-monitoring-copy"
+      );
+      if (action?.value) {
+        const connection = activeConnections.get(action.value) || closedConnections.get(action.value);
+        if (!connection) return;
+        if (action.classList.contains("fkp-monitoring-copy")) {
+          void navigator.clipboard.writeText(
+            connectionDetails(connection).map(([key, value]) => `${key}: ${value}`).join("\n")
+          );
+        } else
+          showConnectionDetails(
+            connection,
+            action.classList.contains("fkp-monitoring-trace")
+          );
+        return;
+      }
       const button = target?.closest(
         ".fkp_monitoring-page__row-action"
       );
@@ -12206,6 +12960,7 @@ async function onPageMount3() {
   monitoringMountId += 1;
   const mountId = monitoringMountId;
   resetMonitoringState();
+  loadMonitoringPreferences();
   bindControls();
   renderControls();
   renderConnections();

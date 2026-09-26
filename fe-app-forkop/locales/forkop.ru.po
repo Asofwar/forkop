@@ -1,15 +1,15 @@
 # RU translations for FORKOP package.
 # Copyright (C) 2026 THE FORKOP COPYRIGHT HOLDER
 # This file is distributed under the same license as the FORKOP package.
-# slayer, 2026.
+# Asofwar, 2026.
 #
 msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-06 21:50+0300\n"
-"PO-Revision-Date: 2026-09-06 21:50+0300\n"
-"Last-Translator: slayer\n"
+"POT-Creation-Date: 2026-09-26 23:01+0300\n"
+"PO-Revision-Date: 2026-09-26 23:01+0300\n"
+"Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
 "MIME-Version: 1.0\n"
@@ -41,6 +41,9 @@ msgstr "✘ Остановлен"
 msgid "Action"
 msgstr "Действие"
 
+msgid "Actions"
+msgstr "Действия"
+
 msgid "Active"
 msgstr "Активные"
 
@@ -61,6 +64,9 @@ msgstr "Добавьте хотя бы один DNS-сервер"
 
 msgid "Add prefix to nodes"
 msgstr "Добавлять префикс к узлам"
+
+msgid "Add target"
+msgstr "Добавить адрес"
 
 msgid "Add URLs or local paths to .lst lists containing domains and subnets."
 msgstr "Добавьте URL или локальные пути к спискам .lst с доменами и подсетями."
@@ -154,6 +160,12 @@ msgstr "Backend-проверка завершилась ошибкой: %s"
 
 msgid "Bootstrap DNS"
 msgstr "Bootstrap DNS"
+
+msgid "Bootstrap DNS server cannot be empty"
+msgstr "Адрес резервного DNS не может быть пустым"
+
+msgid "Bootstrap DNS server must be an IPv4 or IPv6 address with an optional port"
+msgstr "Резервный DNS должен быть адресом IPv4 или IPv6 с необязательным портом"
 
 msgid "Bootstrap DNS Servers"
 msgstr "Bootstrap DNS-серверы"
@@ -287,17 +299,35 @@ msgstr "Условия"
 msgid "Config File Path"
 msgstr "Путь к файлу конфигурации"
 
+msgid "Configuration applied successfully"
+msgstr "Конфигурация успешно применена"
+
+msgid "Configuration restored and reloaded"
+msgstr "Конфигурация восстановлена и применена"
+
+msgid "Configuration saved. Runtime reload has not been confirmed; check Safety Center."
+msgstr "Конфигурация сохранена. Перезагрузка сервиса не подтверждена; проверьте Центр безопасности."
+
+msgid "Configuration snapshots"
+msgstr "Снимки конфигурации"
+
 msgid "Configure User-Agent in the item settings"
 msgstr "Настройте User-Agent в настройках элемента"
 
 msgid "Connect through"
 msgstr "Подключаться через"
 
+msgid "Connection details"
+msgstr "Сведения о соединении"
+
 msgid "Connection URL"
 msgstr "URL подключения"
 
 msgid "Connections are unavailable"
 msgstr "Подключения недоступны"
+
+msgid "Connectivity matrix"
+msgstr "Проверка доступности"
 
 msgid "Connectivity probe failed"
 msgstr "Проверка соединения не прошла"
@@ -311,14 +341,38 @@ msgstr "Копировать"
 msgid "Copy address"
 msgstr "Копировать адрес"
 
+msgid "Copy details"
+msgstr "Копировать сведения"
+
+msgid "Could not compare configurations"
+msgstr "Не удалось сравнить конфигурации"
+
 msgid "Could not compare FakeIP and control public IPs"
 msgstr "Не удалось сравнить публичные IP FakeIP и контрольной проверки"
 
 msgid "Could not confirm completion. Check the removal log before retrying."
 msgstr "Не удалось подтвердить завершение. Перед повторной попыткой проверьте журнал удаления."
 
+msgid "Could not create snapshot"
+msgstr "Не удалось создать снимок"
+
+msgid "Could not delete snapshot"
+msgstr "Не удалось удалить снимок"
+
+msgid "Could not load configuration snapshots"
+msgstr "Не удалось загрузить снимки конфигурации"
+
+msgid "Could not save a pre-apply configuration snapshot. Changes were not applied."
+msgstr "Не удалось сохранить снимок перед применением. Изменения не применены."
+
 msgid "Could not start removal. Another component action may be running."
 msgstr "Не удалось начать удаление. Возможно, выполняется другая операция с компонентами."
+
+msgid "Create snapshot"
+msgstr "Создать снимок"
+
+msgid "Current runtime"
+msgstr "Текущее состояние"
 
 msgid "Current section cannot be used as its own transit section"
 msgstr "Текущую секцию нельзя использовать как транзит для самой себя"
@@ -349,6 +403,18 @@ msgstr "Задержка в миллисекундах перед перезап
 
 msgid "Delay value cannot be empty"
 msgstr "Значение задержки не может быть пустым"
+
+msgid "Delete"
+msgstr "Удалить"
+
+msgid "Delete this configuration snapshot?"
+msgstr "Удалить этот снимок конфигурации?"
+
+msgid "Destination"
+msgstr "Назначение"
+
+msgid "Details"
+msgstr "Сведения"
 
 msgid "Detect server country"
 msgstr "Определять страну сервера"
@@ -422,6 +488,9 @@ msgstr "DNS-протокол, который будет использовать
 msgid "DNS requests through section"
 msgstr "DNS-запросы через секцию"
 
+msgid "DNS resolution"
+msgstr "Разрешение DNS"
+
 msgid "DNS Rewrite TTL"
 msgstr "Перезапись TTL для DNS"
 
@@ -433,9 +502,6 @@ msgstr "Адрес DNS-сервера не может быть пустым"
 
 msgid "DNS server used by the resolver"
 msgstr "DNS-сервер, который будет использовать резолвер"
-
-msgid "DNS server used to obtain IP addresses for upstream DNS and proxies. If multiple servers are selected, a timeout switches to a backup."
-msgstr "DNS-сервер для получения IP вышестоящих DNS и прокси. Если выбрать несколько, то при таймауте произойдёт переключение на резервный."
 
 msgid "DNS Servers"
 msgstr "DNS-серверы"
@@ -530,6 +596,18 @@ msgstr "Скачивать через"
 msgid "Downloaded"
 msgstr "Загружено"
 
+msgid "DPI guard"
+msgstr "Защита DPI"
+
+msgid "DPI protection active. Traffic may be intentionally blocked during recovery."
+msgstr "Защита DPI активна. Во время восстановления трафик может намеренно блокироваться."
+
+msgid "DPI provider"
+msgstr "Провайдер DPI"
+
+msgid "DPI Strategy Playground"
+msgstr "Проверка стратегий DPI"
+
 msgid "Drag rows to change priority. The rule at the top is checked first."
 msgstr "Перетаскивайте строки, чтобы изменить приоритет. Правило сверху проверяется первым."
 
@@ -538,6 +616,9 @@ msgstr "Такой тег JSON outbound уже используется"
 
 msgid "Duplicate value"
 msgstr "Дублирующееся значение"
+
+msgid "Duration"
+msgstr "Длительность"
 
 msgid "Edit"
 msgstr "Изменить"
@@ -598,6 +679,9 @@ msgstr "Укажите корректный адрес DNS-сервера"
 
 msgid "Enter the subscription URL"
 msgstr "Введите URL подписки"
+
+msgid "Error"
+msgstr "Ошибка"
 
 msgid "Exclude by proxy parameters"
 msgstr "Исключить по параметрам прокси"
@@ -758,6 +842,9 @@ msgstr "Получить глобальную проверку"
 msgid "Global check"
 msgstr "Глобальная проверка"
 
+msgid "Health status unavailable"
+msgstr "Состояние недоступно"
+
 msgid "Hide values"
 msgstr "Скрывать значения"
 
@@ -785,6 +872,9 @@ msgstr "Как часто проверять, восстановился ли DN
 msgid "HTTP error"
 msgstr "Ошибка HTTP"
 
+msgid "HTTPS request (TLS and HTTP)"
+msgstr "HTTPS-запрос (TLS и HTTP)"
+
 msgid "Idle timeout"
 msgstr "Таймаут простоя"
 
@@ -793,6 +883,9 @@ msgstr "Добавлять URLTest группы из подписки"
 
 msgid "Import URLTest groups returned by this subscription provider"
 msgstr "Импортировать URLTest группы, если провайдер подписки возвращает их"
+
+msgid "Inactive"
+msgstr "Неактивна"
 
 msgid "Include by proxy parameters"
 msgstr "Включить по параметрам прокси"
@@ -821,6 +914,9 @@ msgstr "Установлен (Mirror edition)"
 msgid "Installed version is newer than release"
 msgstr "Установлена версия новее релиза"
 
+msgid "Interface"
+msgstr "Интерфейс"
+
 msgid "Interface Monitoring"
 msgstr "Мониторинг интерфейса"
 
@@ -841,6 +937,9 @@ msgstr "Прерывать соединения, когда URLTest перекл
 
 msgid "Interval"
 msgstr "Интервал"
+
+msgid "Invalid Bootstrap DNS server port"
+msgstr "Некорректный порт резервного DNS"
 
 msgid "Invalid ByeDPI strategy"
 msgstr "Некорректная стратегия ByeDPI"
@@ -980,6 +1079,9 @@ msgstr "Неверный URL-адрес SOCKS: должен начинаться
 msgid "Invalid SOCKS URL: parsing failed"
 msgstr "Неверный URL SOCKS: парсинг не удался"
 
+msgid "Invalid target or route trace failed"
+msgstr "Некорректный адрес или ошибка трассировки"
+
 msgid "Invalid Trojan URL: must not contain spaces"
 msgstr "Неверный URL Trojan: не должен содержать пробелов"
 
@@ -997,6 +1099,9 @@ msgstr "Неверный URL VLESS: ошибка разбора"
 
 msgid "Invalid VMess URL: parsing failed"
 msgstr "Некорректный VMess URL: ошибка разбора"
+
+msgid "IP address of the DNS server used to resolve upstream DNS and proxies. Hostnames are not supported for Bootstrap DNS. If multiple servers are selected, a timeout switches to a backup."
+msgstr "IP-адрес DNS-сервера для разрешения вышестоящих DNS и прокси. Имена хостов не поддерживаются. Если указано несколько серверов, при тайм-ауте используется резервный."
 
 msgid "IPs"
 msgstr "IP-адреса"
@@ -1037,6 +1142,9 @@ msgstr "Держать URLTest перед серверами, отсортиро
 msgid "Keyword must not contain spaces or commas"
 msgstr "Ключевое слово не должно содержать пробелы или запятые"
 
+msgid "Last reload"
+msgstr "Последняя перезагрузка"
+
 msgid "Latency test failed"
 msgstr "Проверка задержки не удалась"
 
@@ -1064,6 +1172,9 @@ msgstr "Частота обновления списков"
 msgid "Loading connections"
 msgstr "Загрузка подключений"
 
+msgid "Loading health status"
+msgstr "Загрузка состояния"
+
 msgid "Loading..."
 msgstr "Загрузка..."
 
@@ -1081,6 +1192,9 @@ msgstr "Совпадение по IP-адресам или подсетям на
 
 msgid "Match destination ports. Use a single port or a range"
 msgstr "Совпадение по портам назначения. Используйте одиночный порт или диапазон"
+
+msgid "Matched rule"
+msgstr "Совпавшее правило"
 
 msgid "Maximum time to wait for example.com to resolve during a DNS health check."
 msgstr "Максимальное время ожидания разрешения example.com при проверке доступности DNS."
@@ -1169,11 +1283,17 @@ msgstr "Нет правил, использующих Zapret"
 msgid "No rules use Zapret2"
 msgstr "Нет правил, использующих Zapret2"
 
+msgid "No saved changes since this snapshot"
+msgstr "После этого снимка изменений нет"
+
 msgid "Node list is empty"
 msgstr "Список узлов пуст"
 
 msgid "Nodes"
 msgstr "Узлы"
+
+msgid "None"
+msgstr "Нет"
 
 msgid "Normal mode"
 msgstr "Обычный режим"
@@ -1189,6 +1309,15 @@ msgstr "Не отвечает"
 
 msgid "Not running"
 msgstr "Не запущено"
+
+msgid "Observed from active connection"
+msgstr "Наблюдается в активном соединении"
+
+msgid "Observed from router; source IP is not applied to the probe and LAN client policy is not proven."
+msgstr "Наблюдение выполнено на роутере; IP источника не применяется к проверке, а маршрут клиента LAN не подтверждён."
+
+msgid "OK"
+msgstr "Норма"
 
 msgid "Only from the specified countries."
 msgstr "Только из указанных стран."
@@ -1217,6 +1346,9 @@ msgstr "Только указанные серверы."
 msgid "Open"
 msgstr "Открыть"
 
+msgid "Open Diagnostics"
+msgstr "Открыть диагностику"
+
 msgid "Open LuCI"
 msgstr "Открыть LuCI"
 
@@ -1225,6 +1357,9 @@ msgstr "Откройте настройки приоритета и укажит
 
 msgid "Open Project Page"
 msgstr "Открыть страницу проекта"
+
+msgid "Open settings"
+msgstr "Открыть настройки"
 
 msgid "Operation timed out"
 msgstr "Время ожидания истекло"
@@ -1241,11 +1376,23 @@ msgstr "Необязательные значения здесь должны з
 msgid "Original repositories could not be restored. Removal was cancelled before deleting packages."
 msgstr "Не удалось восстановить исходные репозитории. Удаление отменено до удаления пакетов."
 
+msgid "Outbound"
+msgstr "Выход"
+
+msgid "Outbound chain"
+msgstr "Цепочка выходов"
+
 msgid "outbounds must be a non-empty array of strings"
 msgstr "outbounds должен быть непустым массивом строк"
 
 msgid "Output Network Interface"
 msgstr "Выходной сетевой интерфейс"
+
+msgid "Overall"
+msgstr "Общее состояние"
+
+msgid "Package recovery"
+msgstr "Восстановление пакетов"
 
 msgid "Password cannot be empty"
 msgstr "Пароль не может быть пустым"
@@ -1273,6 +1420,9 @@ msgstr "Периодически проверять текущий уровен�
 
 msgid "Pin on dashboard"
 msgstr "Закрепить в дашборде"
+
+msgid "Port (optional)"
+msgstr "Порт (необязательно)"
 
 msgid "Port cannot be empty"
 msgstr "Порт не может быть пустым"
@@ -1322,8 +1472,17 @@ msgstr "Профиль"
 msgid "Protocol"
 msgstr "Протокол"
 
+msgid "Recent activity"
+msgstr "Недавние события"
+
+msgid "Recovered"
+msgstr "Восстановлено"
+
 msgid "Refill"
 msgstr "Сброс"
+
+msgid "Refresh safety status"
+msgstr "Обновить состояние безопасности"
 
 msgid "Refreshing Dashboard…"
 msgstr "Обновление дашборда…"
@@ -1388,20 +1547,56 @@ msgstr "Выбор ресурсов по IP или CIDR внутри nfqws2 зд
 msgid "Restart Forkop X"
 msgstr "Перезапустить Forkop X"
 
+msgid "Restore"
+msgstr "Восстановить"
+
+msgid "Restore failed; inspect Safety Center before retrying"
+msgstr "Восстановление не удалось; проверьте Центр безопасности перед повтором"
+
+msgid "Restore failed; previous configuration and runtime recovered"
+msgstr "Восстановление не удалось; прежняя конфигурация и работающий сервис возвращены"
+
 msgid "Restore normal mode"
 msgstr "Вернуть обычный режим"
+
+msgid "Restore this configuration snapshot and reload Forkop?"
+msgstr "Восстановить этот снимок и перезагрузить Forkop?"
+
+msgid "Restoring configuration"
+msgstr "Восстановление конфигурации"
 
 msgid "Resume updates"
 msgstr "Продолжить обновление"
 
+msgid "Retry"
+msgstr "Повторить"
+
+msgid "Review compares saved configuration with a snapshot. Unsaved form edits are not included."
+msgstr "Сравниваются сохранённая конфигурация и снимок. Несохранённые изменения формы не учитываются."
+
+msgid "Review saved changes"
+msgstr "Просмотреть сохранённые изменения"
+
 msgid "Route"
 msgstr "Маршрут"
+
+msgid "Route Debugger"
+msgstr "Отладчик маршрута"
 
 msgid "Route main DNS requests through the selected section."
 msgstr "Маршрутизировать основные DNS-запросы через выбранную секцию."
 
 msgid "Route requests to this DNS server through another section."
 msgstr "Направлять запросы к этому DNS-серверу через другую секцию."
+
+msgid "router"
+msgstr "роутер"
+
+msgid "Rule"
+msgstr "Правило"
+
+msgid "Rule payload"
+msgstr "Данные правила"
 
 msgid "Rule set must be an HTTP(S) URL or a local .srs / .json path"
 msgstr "Набор правил должен быть HTTP(S) URL или локальным путём .srs / .json"
@@ -1432,6 +1627,15 @@ msgstr "Правила прокси существуют"
 
 msgid "Run Diagnostic"
 msgstr "Запустить диагностику"
+
+msgid "Run tests"
+msgstr "Запустить проверки"
+
+msgid "Runtime test is unavailable without changing the active configuration. Comparison covers validation only."
+msgstr "Проверка в работающей системе без изменения активной конфигурации недоступна. Сравниваются только результаты валидации."
+
+msgid "Safety Center"
+msgstr "Центр безопасности"
 
 msgid "Save"
 msgstr "Сохранить"
@@ -1571,14 +1775,26 @@ msgstr "Сервис sing-box существует"
 msgid "Sing-box version is compatible (newer than 1.12.4)"
 msgstr "Версия Sing-box совместима (новее 1.12.4)"
 
+msgid "Snapshot deleted"
+msgstr "Снимок удалён"
+
+msgid "Snapshot saved"
+msgstr "Снимок сохранён"
+
 msgid "Sort by latency"
 msgstr "Сортировать по задержке"
+
+msgid "Sort connections"
+msgstr "Сортировка соединений"
 
 msgid "Sorts servers in this section by lowest latency in the dashboard."
 msgstr "Сортирует серверы этой секции по наименьшей задержке в дашборде"
 
 msgid "Source"
 msgstr "Источник"
+
+msgid "Source IP (optional)"
+msgstr "IP источника (необязательно)"
 
 msgid "Source Network Interface"
 msgstr "Сетевой интерфейс источника"
@@ -1619,11 +1835,23 @@ msgstr "Отдельная служба Zapret2 неактивна"
 msgid "Start Forkop"
 msgstr "Запустить Forkop"
 
+msgid "Start time"
+msgstr "Время начала"
+
+msgid "Started"
+msgstr "Начало"
+
 msgid "Stop checking when URLTest group is not used. Use sing-box duration format like 1d, 12h or 30m."
 msgstr "Останавливать проверку если URLTest группа не используется. Используйте формат длительности sing-box, например 1d, 12h или 30m."
 
 msgid "Stop Forkop X"
 msgstr "Остановить Forkop X"
+
+msgid "Strategy A"
+msgstr "Стратегия A"
+
+msgid "Strategy B"
+msgstr "Стратегия B"
 
 msgid "Subnets from the list will be extracted and added to nftables"
 msgstr "IP-адреса и подсети из списка будут извлечены и добавлены в nftables"
@@ -1664,6 +1892,15 @@ msgstr "Системная информация"
 msgid "Table exist"
 msgstr "Таблица существует"
 
+msgid "Target"
+msgstr "Цель"
+
+msgid "Target domain or IP"
+msgstr "Домен или IP цели"
+
+msgid "Test failed"
+msgstr "Проверка не удалась"
+
 msgid "Test latency"
 msgstr "Тестирование задержки"
 
@@ -1687,6 +1924,9 @@ msgstr "Тестировать серверы, имена которых сов�
 
 msgid "Testing URL"
 msgstr "URL проверки"
+
+msgid "Tests originate from the router and do not prove LAN client routing."
+msgstr "Проверки запускаются на роутере и не подтверждают маршрут клиента LAN."
 
 msgid "The desync fwmark is managed by Forkop for loop prevention and must not be overridden here."
 msgstr "Desync fwmark управляется Forkop для защиты от циклов и не должен переопределяться здесь."
@@ -1751,6 +1991,15 @@ msgstr "Прямой TorrServer"
 msgid "TorrServer not found"
 msgstr "TorrServer не найден"
 
+msgid "Total traffic"
+msgstr "Общий трафик"
+
+msgid "Trace"
+msgstr "Трассировка"
+
+msgid "Tracing route"
+msgstr "Трассировка маршрута"
+
 msgid "Traffic"
 msgstr "Трафик"
 
@@ -1759,6 +2008,9 @@ msgstr "Трафик этого уровня пойдёт напрямую."
 
 msgid "Traffic Total"
 msgstr "Всего трафика"
+
+msgid "Transitioning"
+msgstr "Переход"
 
 msgid "Transparent proxy mode is incompatible with action=byedpi because Forkop connects to ciadpi through SOCKS."
 msgstr "Режим прозрачного прокси несовместим с action=byedpi, потому что Forkop подключается к ciadpi через SOCKS."
@@ -1814,6 +2066,9 @@ msgstr "уникальный идентификатор UCI"
 msgid "unknown"
 msgstr "неизвестно"
 
+msgid "Unknown"
+msgstr "Неизвестно"
+
 msgid "Unknown ByeDPI option: %s"
 msgstr "Неизвестная опция ByeDPI: %s"
 
@@ -1849,6 +2104,9 @@ msgstr "Автоматически обновлять эту подписку"
 
 msgid "Uplink"
 msgstr "Исходящий"
+
+msgid "Upload"
+msgstr "Отправлено"
 
 msgid "Uploaded"
 msgstr "Отдано"
@@ -1901,8 +2159,14 @@ msgstr "Логин не может быть пустым"
 msgid "Valid"
 msgstr "Валидно"
 
+msgid "Validate and compare"
+msgstr "Проверить и сравнить"
+
 msgid "Validation errors:"
 msgstr "Ошибки валидации:"
+
+msgid "Validation failed"
+msgstr "Валидация не удалась"
 
 msgid "Value cannot be empty"
 msgstr "Значение не может быть пустым"
@@ -1921,6 +2185,9 @@ msgstr "ссылки vless://, vmess://, ss://, trojan://, socks4/5://, hy2/hyst
 
 msgid "Waiting for TorrServer"
 msgstr "Ожидание TorrServer"
+
+msgid "Warning"
+msgstr "Предупреждение"
 
 msgid "What Forkop should do when this section matches"
 msgstr "Что Forkop должен делать при совпадении этой секции"

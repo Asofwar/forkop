@@ -100,6 +100,14 @@ function show_help() {
     print("    get_system_info         Get system information in JSON format\n");
     print("    get_ui_capabilities     Get lightweight UI capabilities in JSON format\n");
     print("    get_ui_state            Get lightweight UI service/action state in JSON format\n");
+    print("    get_health_status       Get sanitized service and recovery health in JSON format\n");
+    print("    route_trace             Trace safe observed router routing stages\n");
+    print("    config_snapshot_create Create a manual configuration snapshot\n");
+    print("    config_snapshot_list   List snapshot metadata\n");
+    print("    config_snapshot_diff   Show masked changes since a snapshot\n");
+    print("    config_snapshot_restore Restore a snapshot with reload and rollback\n");
+    print("    config_snapshot_delete Delete a snapshot\n");
+    print("    connectivity_test      Run a router-originated DNS/TCP probe\n");
     print("    service_action_async    Start a service action in the background\n");
     print("    service_action_status   Get background service action status\n");
     print("    latency_test_async      Start a dashboard latency test in the background\n");
@@ -167,6 +175,14 @@ function command_spec(command) {
         get_system_info: [ "diagnostics/runtime.uc", "get-system-info", 0 ],
         get_ui_capabilities: [ "service/ui.uc", "get-ui-capabilities", 0 ],
         get_ui_state: [ "service/ui.uc", "get-ui-state", 0 ],
+        get_health_status: [ "diagnostics/health.uc", "get", 0 ],
+        route_trace: [ "diagnostics/route_trace.uc", "trace", 4 ],
+        config_snapshot_create: [ "config/snapshots.uc", "create", 1 ],
+        config_snapshot_list: [ "config/snapshots.uc", "list", 0 ],
+        config_snapshot_diff: [ "config/snapshots.uc", "diff", 1 ],
+        config_snapshot_restore: [ "config/snapshots.uc", "restore", 1 ],
+        config_snapshot_delete: [ "config/snapshots.uc", "delete", 1 ],
+        connectivity_test: [ "diagnostics/connectivity.uc", "test", 3 ],
         get_readonly_config_sections: [ "diagnostics/runtime.uc", "get-readonly-config-sections", 0 ],
         get_dashboard_runtime_metadata: [ "diagnostics/runtime.uc", "get-dashboard-runtime-metadata", 0 ],
         service_action_async: [ "service/ui.uc", "service-action-async", 1 ],

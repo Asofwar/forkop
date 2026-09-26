@@ -527,7 +527,7 @@ export namespace Forkop {
     latest_version: string;
     release_url?: string;
     changed: boolean;
-    status?: 'latest' | 'outdated' | 'dev' | '';
+    status?: 'latest' | 'outdated' | 'dev' | 'recovered' | '';
     pid?: string | null;
     started_at?: number;
     updated_at?: number | null;

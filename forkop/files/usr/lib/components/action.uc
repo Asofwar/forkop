@@ -2067,11 +2067,8 @@ function recover_forkop_opkg_set() {
 
 function install_forkop_opkg_set(latest_version, backend_file, app_file, i18n_file) {
     let with_i18n = i18n_file != "";
-    if (file_exists(FORKOP_OPKG_RECOVERY_DIR + "/pending")) {
-        let recovery_error = recover_forkop_opkg_set();
-        if (recovery_error != "")
-            return recovery_error;
-    }
+    if (file_exists(FORKOP_OPKG_RECOVERY_DIR + "/pending"))
+        return "Forkop package-set recovery is pending; a fresh component action is required";
     if (!opkg_forkop_set_versions_match(FORKOP_VERSION, with_i18n))
         return "Installed Forkop package versions are inconsistent; automatic upgrade refused";
 
@@ -2366,6 +2363,9 @@ function component_action(component, action) {
         let recovery_error = recover_forkop_opkg_set();
         if (recovery_error != "")
             action_fail("forkop", "install", recovery_error);
+        action_success("forkop", "install",
+            "Forkop package-set recovery completed; no new update was attempted, and a fresh invocation is required",
+            installed_package_version("forkop"), "", 0, "recovered");
     }
     capture_forkop_running_state();
 

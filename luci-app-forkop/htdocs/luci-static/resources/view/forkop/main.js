@@ -13365,7 +13365,7 @@ async function applyCompletedComponentAction({
     })) {
       preserveCheckResultsOnNextMount = true;
     }
-    const status = result.status || null;
+    const status = result.status === "recovered" ? null : result.status || null;
     if (status === "latest" || status === "outdated" || status === "dev") {
       setCheckResult(
         result.component,
@@ -13376,6 +13376,15 @@ async function applyCompletedComponentAction({
     }
     if (notify) {
       showToast(getCheckToastMessage(status), "success");
+    }
+    return;
+  }
+  if (result.component === "forkop" && result.action === "install" && result.status === "recovered") {
+    resetCheckResult(result.component);
+    setActionLoading(key, false);
+    if (notify) {
+      showToast(result.message, "success", 5e3);
+      window.setTimeout(() => window.location.reload(), 5e3);
     }
     return;
   }

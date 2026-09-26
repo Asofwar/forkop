@@ -131,6 +131,43 @@ if ucode -L "$LIB_DIR" "$CLI" restore "$LIB_DIR" "$SUPERVISOR" "$PID_DIR" "$CHIL
     echo 'duplicate provider name was accepted' >&2; exit 1
 fi
 
+# A failed temporary identity write must clean up the already launched process.
+cp "$STATE_DIR/normal.json" "$SNAPSHOT"
+mkdir "$LOG_DIR/.restore-example.identity"
+if ucode -L "$LIB_DIR" "$CLI" restore "$LIB_DIR" "$SUPERVISOR" "$PID_DIR" "$CHILD_DIR" "$LOG_DIR" "$SNAPSHOT"; then
+    echo 'restore accepted a failed temporary identity write' >&2; exit 1
+fi
+[ -s "$CHILD_DIR/example.pid.observed" ] || { echo 'temporary identity failure did not launch a child' >&2; exit 1; }
+child="$(cat "$CHILD_DIR/example.pid.observed")"
+if [ "$(live_supervisors)" -ne 0 ] ||
+   { kill -0 "$child" 2>/dev/null && [ "$(ps -o stat= -p "$child" 2>/dev/null | cut -c1)" != 'Z' ]; }; then
+    echo 'temporary identity failure left a supervisor or child running' >&2; exit 1
+fi
+[ ! -e "$PID_DIR/example.pid" ] || { echo 'temporary identity failure left a supervisor pidfile' >&2; exit 1; }
+rmdir "$LOG_DIR/.restore-example.identity"
+rm -f "$CHILD_DIR/example.pid" "$CHILD_DIR/example.pid.observed"
+
+# The same failure must find a child even before its pidfile exists.
+node - "$STATE_DIR/normal.json" "$SNAPSHOT" <<'NODE'
+const fs = require('fs');
+const entry = JSON.parse(fs.readFileSync(process.argv[2]))[0];
+entry.name = entry.args[5] = 'nochild';
+entry.args[8] = entry.args[8].replace('example.pid', 'nochild.pid');
+fs.writeFileSync(process.argv[3], JSON.stringify([entry]));
+NODE
+mkdir "$LOG_DIR/.restore-nochild.identity"
+if ucode -L "$LIB_DIR" "$CLI" restore "$LIB_DIR" "$SUPERVISOR" "$PID_DIR" "$CHILD_DIR" "$LOG_DIR" "$SNAPSHOT"; then
+    echo 'restore accepted a missing child pidfile after identity failure' >&2; exit 1
+fi
+[ -s "$CHILD_DIR/nochild.pid.observed" ] || { echo 'unrecorded child was not launched' >&2; exit 1; }
+child="$(cat "$CHILD_DIR/nochild.pid.observed")"
+if [ "$(live_supervisors)" -ne 0 ] ||
+   { kill -0 "$child" 2>/dev/null && [ "$(ps -o stat= -p "$child" 2>/dev/null | cut -c1)" != 'Z' ]; }; then
+    echo 'identity failure left an unrecorded child running' >&2; exit 1
+fi
+rmdir "$LOG_DIR/.restore-nochild.identity"
+rm -f "$CHILD_DIR/nochild.pid.observed"
+
 # A later launch failure must remove the first supervisor and its child.
 for fail_position in 2 3; do
 node - "$STATE_DIR/normal.json" "$SNAPSHOT" "$fail_position" <<'NODE'

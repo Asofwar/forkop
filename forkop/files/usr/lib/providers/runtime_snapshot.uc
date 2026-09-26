@@ -139,8 +139,11 @@ function same_live(item) {
     return running(item.pid) && process_identity.start_ticks(item.pid) == item.ticks;
 }
 
-function descendant_children(supervisor, directory, child_executable, child_args, already) {
+function descendant_children(supervisor, child_executable, child_args, already) {
     let found = [];
+    let parent_record = { pid: supervisor.pid, ticks: supervisor.ticks };
+    if (process_identity.matches_record(parent_record, "ucode", supervisor.args, false, true) != supervisor.pid)
+        return found;
     let stream = fs.popen("find /proc -mindepth 1 -maxdepth 1 -type d", "r");
     if (stream == null)
         return found;
@@ -158,16 +161,19 @@ function descendant_children(supervisor, directory, child_executable, child_args
         let ticks = process_identity.start_ticks(pid);
         if (ticks == "")
             continue;
-        let identity = directory + "/.restore-child-" + supervisor.pid + "-" + pid + ".identity";
-        if (fs.writefile(identity, pid + "\n" + ticks + "\n") == null)
-            continue;
-        if (process_identity.matches(identity, child_executable, child_args, false, true) == pid)
-            push(found, { path: identity, pid, ticks, executable: child_executable, args: child_args, live: true, temporary: true });
-        else
-            fs.unlink(identity);
+        let record = { pid, ticks };
+        if (process_identity.matches_record(record, child_executable, child_args, false, true) == pid &&
+            process_identity.matches_record(parent_record, "ucode", supervisor.args, false, true) == supervisor.pid)
+            push(found, { pid, ticks, executable: child_executable, args: child_args, live: true, record });
     }
     stream.close();
     return found;
+}
+
+function signal_owned(item, kind) {
+    return item.record != null
+        ? process_identity.signal_record(item.record, item.executable, item.args, false, kind)
+        : process_identity.signal(item.path, item.executable, item.args, false, kind, true);
 }
 
 function stop_owned(pid_dir, child_pid_dir, runtime_path, library_path, child_executable, child_args) {
@@ -207,16 +213,16 @@ function stop_owned(pid_dir, child_pid_dir, runtime_path, library_path, child_ex
     for (let parent in processes) {
         if (!parent.live || parent.executable != "ucode")
             continue;
-        for (let child in descendant_children(parent, pid_dir, child_executable, child_args, processes))
+        for (let child in descendant_children(parent, child_executable, child_args, processes))
             push(processes, child);
     }
     for (let item in processes)
-        if (item.live && !process_identity.signal(item.path, item.executable, item.args, false, "TERM", true) && same_live(item))
+        if (item.live && !signal_owned(item, "TERM") && same_live(item))
             return false;
     command_success([ "sleep", "1" ]);
     for (let item in processes) {
         if (item.live && same_live(item) &&
-            !process_identity.signal(item.path, item.executable, item.args, false, "KILL", true) && same_live(item))
+            !signal_owned(item, "KILL") && same_live(item))
             return false;
     }
     command_success([ "sleep", "1" ]);
@@ -224,7 +230,7 @@ function stop_owned(pid_dir, child_pid_dir, runtime_path, library_path, child_ex
         if (item.live && same_live(item))
             return false;
     for (let item in processes)
-        if (fs.stat(item.path) != null && !fs.unlink(item.path))
+        if (item.path != null && fs.stat(item.path) != null && !fs.unlink(item.path))
             return false;
     return true;
 }
@@ -255,9 +261,10 @@ function restore(input_path, pid_dir, child_pid_dir, log_dir, runtime_path, libr
             command_success([ "sleep", "1" ]);
             ticks = process_identity.start_ticks(pid);
         }
+        push(launched, { name, args, pid, ticks, temporary, temporary_written: false });
         if (ticks == "" || fs.writefile(temporary, pid + "\n" + ticks + "\n") == null)
             break;
-        push(launched, { name, args, pid, ticks, temporary });
+        launched[length(launched) - 1].temporary_written = true;
         if (!process_identity.record(pid_dir + "/" + name + ".pid", pid))
             break;
         command_success([ "sleep", "1" ]);
@@ -271,36 +278,44 @@ function restore(input_path, pid_dir, child_pid_dir, log_dir, runtime_path, libr
             break;
         if (length(launched) == length(entries)) {
             for (let item in launched)
-                fs.unlink(item.temporary);
+                if (item.temporary_written)
+                    fs.unlink(item.temporary);
             return true;
         }
     }
+    // Allow a just-launched supervisor to expose its child before ancestry is lost.
+    command_success([ "sleep", "1" ]);
     let cleanup = [];
     for (let item in launched) {
-        push(cleanup, { path: item.temporary, pid: item.pid, ticks: item.ticks,
-            executable: "ucode", args: item.args, live: true, temporary: true });
+        let parent_record = { pid: item.pid, ticks: item.ticks };
+        push(cleanup, { pid: item.pid, ticks: item.ticks,
+            executable: "ucode", args: item.args, live: true, record: parent_record,
+            path: item.temporary, temporary: item.temporary_written });
         let child_file = child_pid_dir + "/" + item.name + ".pid";
         let child = process_identity.read_record(child_file);
-        if (child != null && child.ticks == "")
+        if (item.temporary_written && child != null && child.ticks == "")
             process_identity.promote_legacy_child(child_file, item.temporary, item.args,
                 child_executable, child_args);
         child = process_identity.read_record(child_file);
-        if (child != null && child.ticks != "") {
+        if (child != null && child.ticks != "" &&
+            process_identity.matches_record(parent_record, "ucode", item.args, false, true) == item.pid &&
+            process_identity.descendant_of(child.pid, item.pid) &&
+            process_identity.matches_record(child, child_executable, child_args, false, true) == child.pid) {
             push(cleanup, { path: child_file, pid: child.pid, ticks: child.ticks,
                 executable: child_executable, args: child_args, live: true });
         }
-        for (let orphan in descendant_children(item, log_dir, child_executable, child_args, cleanup))
+        for (let orphan in descendant_children(item, child_executable, child_args, cleanup))
             push(cleanup, orphan);
     }
     for (let item in cleanup)
-        process_identity.signal(item.path, item.executable, item.args, false, "TERM", true);
+        signal_owned(item, "TERM");
     command_success([ "sleep", "1" ]);
     for (let item in cleanup)
         if (same_live(item))
-            process_identity.signal(item.path, item.executable, item.args, false, "KILL", true);
+            signal_owned(item, "KILL");
     command_success([ "sleep", "1" ]);
     for (let item in cleanup)
-        if (!same_live(item) && item.temporary)
+        if (!same_live(item) && item.temporary && item.path != null)
             fs.unlink(item.path);
     for (let item in launched) {
         if (!running(item.pid) || process_identity.start_ticks(item.pid) != item.ticks) {

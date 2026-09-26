@@ -87,9 +87,11 @@ function read_record(path) {
     return { pid, ticks };
 }
 
-function matches(path, expected_executable, expected_argv, exact, require_ticks) {
-    let saved = read_record(path);
-    if (saved == null || (require_ticks && saved.ticks == ""))
+function matches_record(saved, expected_executable, expected_argv, exact, require_ticks) {
+    if (type(saved) != "object" || type(saved.pid) != "string" ||
+        match(saved.pid, /^[1-9][0-9]*$/) == null || type(saved.ticks) != "string" ||
+        (saved.ticks != "" && match(saved.ticks, /^[0-9]+$/) == null) ||
+        (require_ticks && saved.ticks == ""))
         return "";
     let current_ticks = start_ticks(saved.pid);
     if (current_ticks == "" || (saved.ticks != "" && current_ticks != saved.ticks))
@@ -125,11 +127,24 @@ function matches(path, expected_executable, expected_argv, exact, require_ticks)
     return start_ticks(saved.pid) == current_ticks ? saved.pid : "";
 }
 
-function signal(path, expected_executable, expected_argv, exact, kind, require_saved_ticks) {
-    let pid = matches(path, expected_executable, expected_argv, exact, kind == "KILL" || require_saved_ticks);
+function matches(path, expected_executable, expected_argv, exact, require_ticks) {
+    return matches_record(read_record(path), expected_executable, expected_argv, exact, require_ticks);
+}
+
+function signal_saved(saved, expected_executable, expected_argv, exact, kind, require_ticks) {
+    let pid = matches_record(saved, expected_executable, expected_argv, exact, require_ticks);
     if (pid == "")
         return false;
     return system("kill -" + (kind == "KILL" ? "9" : "15") + " " + pid + " >/dev/null 2>&1") == 0;
+}
+
+function signal_record(saved, expected_executable, expected_argv, exact, kind) {
+    return signal_saved(saved, expected_executable, expected_argv, exact, kind, true);
+}
+
+function signal(path, expected_executable, expected_argv, exact, kind, require_saved_ticks) {
+    return signal_saved(read_record(path), expected_executable, expected_argv, exact, kind,
+        kind == "KILL" || require_saved_ticks);
 }
 
 function promote_legacy_child(child_path, supervisor_path, supervisor_argv, child_executable, child_argv) {
@@ -145,4 +160,4 @@ function promote_legacy_child(child_path, supervisor_path, supervisor_argv, chil
     return record(child_path, child_pid);
 }
 
-return { start_ticks, descendant_of, record, read_record, matches, signal, promote_legacy_child };
+return { start_ticks, descendant_of, record, read_record, matches, matches_record, signal, signal_record, promote_legacy_child };

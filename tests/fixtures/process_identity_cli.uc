@@ -5,6 +5,9 @@ let pid = ARGV[2];
 
 if (mode == "record")
     exit(identity.record(path, pid) ? 0 : 1);
+if (mode == "record-signal")
+    exit(identity.signal_record({ pid: ARGV[1], ticks: ARGV[2] }, ARGV[3],
+        [ ARGV[3], ARGV[4] ], true, ARGV[5]) ? 0 : 1);
 if (mode == "matches")
     exit(identity.matches(path, ARGV[2], [ ARGV[2], ARGV[3] ], true, ARGV[4] == "1") != "" ? 0 : 1);
 if (mode == "signal")

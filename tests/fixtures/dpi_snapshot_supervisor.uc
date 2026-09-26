@@ -8,5 +8,5 @@ if (ARGV[1] == "nochild") {
     system("sh -c 'sleep 300 & echo $! > " + child_pidfile + ".observed; wait'");
     exit(0);
 }
-let command = "sleep 300 & echo $! > '" + child_pidfile + "'; wait";
+let command = "sleep 300 & echo $! > '" + child_pidfile + "'; echo $! > '" + child_pidfile + ".observed'; wait";
 system("sh -c '" + command + "'");

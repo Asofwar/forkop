@@ -10,7 +10,8 @@ trap 'rm -rf "$WORK_DIR"' EXIT
 
 node - "$ACL" <<'NODE'
 const fs = require('node:fs');
-const acl = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'))['luci-app-forkop'];
+const groups = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const acl = groups['luci-app-forkop'];
 const grants = acl.read.file;
 function allowed(command) {
   return Object.entries(grants).some(([pattern, permissions]) => {
@@ -32,6 +33,9 @@ for (const command of [
   if (!allowed(command)) throw Error(`read diagnostic missing: ${command}`);
 }
 if (acl.read.uci?.includes('forkop')) throw Error('raw UCI exposed to read role');
+if (!groups['luci-app-forkop-admin']?.read?.uci?.includes('forkop')) {
+  throw Error('admin role lost UCI read access');
+}
 for (const path of ['/etc/sing-box/config.json', '/tmp/sing-box/config.json']) {
   if (grants[path]?.includes('read')) throw Error(`raw JSON exposed: ${path}`);
 }

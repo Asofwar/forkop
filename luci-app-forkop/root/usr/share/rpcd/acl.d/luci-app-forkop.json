@@ -108,5 +108,11 @@
         "forkop"
       ]
     }
+  },
+  "luci-app-forkop-admin": {
+    "description": "Grant Forkop configuration read access to administrators",
+    "read": {
+      "uci": ["forkop"]
+    }
   }
 }

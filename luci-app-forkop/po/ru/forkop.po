@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-26 23:01+0300\n"
-"PO-Revision-Date: 2026-09-26 23:01+0300\n"
+"POT-Creation-Date: 2026-09-26 01:01+0300\n"
+"PO-Revision-Date: 2026-09-26 01:01+0300\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -37,6 +37,9 @@ msgstr "✔ Работает"
 
 msgid "✘ Stopped"
 msgstr "✘ Остановлен"
+
+msgid "A configuration backup will be saved in /etc/forkop-backups. Older versions may not support all current settings."
+msgstr "Резервная копия настроек будет сохранена в /etc/forkop-backups. Старые версии могут поддерживать не все текущие настройки."
 
 msgid "Action"
 msgstr "Действие"
@@ -266,6 +269,12 @@ msgstr "Проверки пройдены"
 msgid "Checks passed with manual DHCP"
 msgstr "Проверки пройдены с ручным DHCP"
 
+msgid "Choose Forkop X version"
+msgstr "Выбор версии Forkop X"
+
+msgid "Choose version"
+msgstr "Выбрать версию"
+
 msgid "CIDR must be between 0 and 32 for IPv4 or 0 and 128 for IPv6"
 msgstr "CIDR должен быть от 0 до 32 для IPv4 или от 0 до 128 для IPv6"
 
@@ -314,6 +323,9 @@ msgstr "Снимки конфигурации"
 msgid "Configure User-Agent in the item settings"
 msgstr "Настройте User-Agent в настройках элемента"
 
+msgid "Confirm version change"
+msgstr "Подтвердите смену версии"
+
 msgid "Connect through"
 msgstr "Подключаться через"
 
@@ -358,6 +370,9 @@ msgstr "Не удалось создать снимок"
 
 msgid "Could not delete snapshot"
 msgstr "Не удалось удалить снимок"
+
+msgid "Could not load available versions"
+msgstr ""
 
 msgid "Could not load configuration snapshots"
 msgstr "Не удалось загрузить снимки конфигурации"
@@ -908,6 +923,12 @@ msgstr "Установить"
 msgid "Install another build:"
 msgstr "Установить другую сборку:"
 
+msgid "Install selected version"
+msgstr "Установить выбранную версию"
+
+msgid "Installed"
+msgstr ""
+
 msgid "Installed (Mirror edition)"
 msgstr "Установлен (Mirror edition)"
 
@@ -1169,6 +1190,9 @@ msgstr "Список должен быть HTTP(S) URL или локальным
 msgid "List Update Frequency"
 msgstr "Частота обновления списков"
 
+msgid "Loading available versions…"
+msgstr "Загрузка доступных версий…"
+
 msgid "Loading connections"
 msgstr "Загрузка подключений"
 
@@ -1270,6 +1294,9 @@ msgstr "Нет активных подключений"
 
 msgid "No closed connections"
 msgstr "Нет закрытых подключений"
+
+msgid "No compatible releases available"
+msgstr "Нет доступных совместимых версий"
 
 msgid "No other marking rules found"
 msgstr "Другие правила маркировки не найдены"

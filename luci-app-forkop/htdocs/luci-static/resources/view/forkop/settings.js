@@ -770,7 +770,7 @@ function renderSnapshotTools() {
                 ? diff.data
                     .map(
                       (change) =>
-                        `${change.section}.${change.option}: ${change.before} → ${change.after}`,
+                        `${change.section}.${change.option}: ${Array.isArray(change.before) ? JSON.stringify(change.before) : change.before} → ${Array.isArray(change.after) ? JSON.stringify(change.after) : change.after}`,
                     )
                     .join("\n")
                 : _("No saved changes since this snapshot")

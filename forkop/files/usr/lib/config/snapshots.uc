@@ -1,11 +1,12 @@
 #!/usr/bin/env ucode
 
 let fs = require("fs");
+let identity = require("core.process_identity");
 
 const CONFIG = getenv("FORKOP_CONFIG_FILE") || "/etc/config/forkop";
 const ROOT = getenv("FORKOP_SNAPSHOT_DIR") || "/etc/forkop/config-snapshots";
 const HASH_DIR = getenv("FORKOP_SNAPSHOT_HASH_DIR") || "/var/run/forkop/snapshot-hash";
-const LOCK = ROOT + "/.lock";
+const LOCK = getenv("FORKOP_SNAPSHOT_LOCK_DIR") || "/var/run/forkop/config-snapshot.lock";
 const LKG = ROOT + "/last-known-working";
 const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
 const BIN = getenv("FORKOP_BIN") || "/usr/bin/forkop";
@@ -58,8 +59,70 @@ function ensure_root() {
     if (fs.stat(ROOT) == null && !fs.mkdir(ROOT, 0700)) return false;
     return fs.chmod(ROOT, 0700);
 }
-function acquire() { return ensure_root() && fs.mkdir(LOCK, 0700); }
-function release() { fs.rmdir(LOCK); }
+// The lock is a runtime directory holding one "owner.<pid>.<start ticks>"
+// record. The name is unique per process lifetime, so unlinking a stale or
+// own record by name can never remove the record of a lock that replaced it.
+let lock_record = null;
+function owner_pid() {
+    let pid = value(fs.readlink("/proc/self"));
+    return match(pid, /^[1-9][0-9]*$/) != null ? pid : "";
+}
+function active_entry(name) {
+    let parsed = match(value(name), /^owner\.([1-9][0-9]*)\.([0-9]+)$/);
+    if (parsed == null) return false;
+    for (let operation in [ "create", "delete", "restore", "confirm-working" ])
+        if (identity.matches_record({ pid: parsed[1], ticks: parsed[2] }, "ucode",
+            [ "ucode", "-L", LIB_DIR, LIB_DIR + "/config/snapshots.uc", operation ], false, true) != "")
+            return true;
+    return false;
+}
+function remove_lock_dir(dir) {
+    for (let name in fs.lsdir(dir) || []) fs.unlink(dir + "/" + name);
+    return fs.rmdir(dir);
+}
+function acquire() {
+    if (!ensure_root()) return false;
+    let parent = fs.dirname(LOCK);
+    if (fs.stat(parent) == null && !fs.mkdir(parent, 0700)) return false;
+    let pid = owner_pid(), ticks = identity.start_ticks(pid);
+    if (ticks == "") return false;
+    let name = "owner." + pid + "." + ticks;
+    // The record is complete before the lock becomes visible, so no observer
+    // can mistake a lock that is still being initialised for a stale one.
+    let pending = LOCK + ".new." + pid + "." + ticks;
+    remove_lock_dir(pending);
+    if (!fs.mkdir(pending, 0700) || !identity.record(pending + "/" + name, pid) || !active_entry(name)) {
+        remove_lock_dir(pending);
+        return false;
+    }
+    for (let attempt = 0; attempt < 3; attempt++) {
+        // rename() refuses a populated lock; an empty one was already released.
+        if (fs.rename(pending, LOCK)) {
+            lock_record = LOCK + "/" + name;
+            return true;
+        }
+        let stat = fs.lstat(LOCK);
+        let entries = stat != null && stat.type == "directory" ? fs.lsdir(LOCK) : null;
+        if (entries == null) {
+            // Absent, or not a lock directory (never follow a symlink here).
+            fs.unlink(LOCK);
+            continue;
+        }
+        let busy = false;
+        for (let entry in entries) if (active_entry(entry)) busy = true;
+        if (busy) break;
+        for (let entry in entries)
+            if (!fs.unlink(LOCK + "/" + entry)) fs.rmdir(LOCK + "/" + entry);
+    }
+    remove_lock_dir(pending);
+    return false;
+}
+function release() {
+    if (lock_record == null) return;
+    fs.unlink(lock_record);
+    fs.rmdir(LOCK);
+    lock_record = null;
+}
 function read_snapshot(id, verify) {
     if (!valid_id(id)) return null;
     let data = fs.readfile(snapshot_path(id));
@@ -142,20 +205,48 @@ function options(content) {
                 ((substr(raw, 0, 1) == "'" && substr(raw, length(raw) - 1) == "'") ||
                  (substr(raw, 0, 1) == "\"" && substr(raw, length(raw) - 1) == "\"")))
                 raw = substr(raw, 1, length(raw) - 2);
-            result[section + "." + opt[2]] = raw;
+            let key = section + "." + opt[2];
+            if (opt[1] == "list") {
+                if (result[key] == null || result[key].kind != "list")
+                    result[key] = { kind: "list", values: [] };
+                push(result[key].values, raw);
+            }
+            else
+                result[key] = { kind: "option", value: raw };
         }
     }
     return result;
 }
+function safe_values(option, values) {
+    let result = [];
+    for (let raw in values) push(result, safe_value(option, raw));
+    return result;
+}
 function diff(before, after) {
     let old = options(before), current = options(after), result = [];
-    for (let key in keys(old)) current[key] = current[key] == null ? "" : current[key];
-    for (let key in keys(current)) {
-        let a = value(old[key]), b = value(current[key]);
-        if (a == b) continue;
+    let all = {};
+    for (let key in keys(old)) all[key] = true;
+    for (let key in keys(current)) all[key] = true;
+    for (let key in keys(all)) {
+        let a = old[key], b = current[key];
         let dot = index(key, "."), option = substr(key, dot + 1);
-        push(result, { section: substr(key, 0, dot), option,
-            before: safe_value(option, a), after: safe_value(option, b) });
+        if ((a != null && a.kind == "list") || (b != null && b.kind == "list")) {
+            let before_values = a == null ? [] : a.kind == "list" ? a.values : [ a.value ];
+            let after_values = b == null ? [] : b.kind == "list" ? b.values : [ b.value ];
+            if (a != null && b != null && a.kind == b.kind &&
+                sprintf("%J", before_values) == sprintf("%J", after_values)) continue;
+            // An option side stays scalar so option <-> list changes remain visible.
+            push(result, { section: substr(key, 0, dot), option, kind: "list",
+                before: a != null && a.kind == "option" ? safe_value(option, a.value) : safe_values(option, before_values),
+                after: b != null && b.kind == "option" ? safe_value(option, b.value) : safe_values(option, after_values) });
+        }
+        else {
+            let before_value = a == null ? "" : a.value;
+            let after_value = b == null ? "" : b.value;
+            if (before_value == after_value) continue;
+            push(result, { section: substr(key, 0, dot), option,
+                before: safe_value(option, before_value), after: safe_value(option, after_value) });
+        }
         if (length(result) >= 100) break;
     }
     return result;

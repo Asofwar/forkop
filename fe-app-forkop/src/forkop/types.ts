@@ -77,8 +77,9 @@ export namespace Forkop {
   export interface SnapshotChange {
     section: string;
     option: string;
-    before: string;
-    after: string;
+    kind?: 'list';
+    before: string | string[];
+    after: string | string[];
   }
   export interface SnapshotResult {
     status:

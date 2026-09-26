@@ -28,6 +28,7 @@ function valid_host(host) {
             return false;
     return true;
 }
+function url_host(host) { return ip.valid_ipv6(host) ? "[" + host + "]" : host; }
 function run(host, test_type, port, runner) {
     host = value(host); test_type = value(test_type); port = value(port);
     if (!valid_host(host) || index([ "DNS", "TCP", "TLS", "HTTP" ], test_type) < 0 ||
@@ -37,7 +38,7 @@ function run(host, test_type, port, runner) {
     let args = test_type == "DNS" ? [ "timeout", "5", "nslookup", host ] :
         test_type == "TCP" ? [ "timeout", "5", "nc", "-z", "-w", "3", host, port ] :
         [ "timeout", "7", "curl", "-fsS", "--max-time", "5", "--output", "/dev/null",
-            (test_type == "TLS" ? "https://" : "http://") + host + ":" + port + "/" ];
+            (test_type == "TLS" ? "https://" : "http://") + url_host(host) + ":" + port + "/" ];
     let result = runner(args);
     let elapsed = clock();
     return { host, type: test_type, port: test_type == "DNS" ? null : int(port),
@@ -46,9 +47,12 @@ function run(host, test_type, port, runner) {
         origin: "router" };
 }
 let mode = value(ARGV[0]);
-if (mode != "test" && mode != "fixture") exit(1);
+if (mode != "test" && mode != "fixture" && mode != "fixture-args") exit(1);
+let fixture_args = [];
 let response = run(ARGV[1], ARGV[2], ARGV[3], function(args) {
-    return mode == "fixture" ? { status: int(ARGV[4] || 0) } : capture(args);
+    if (mode == "test") return capture(args);
+    fixture_args = args;
+    return { status: int(ARGV[4] || 0) };
 });
-print(sprintf("%J\n", response));
+print(sprintf("%J\n", mode == "fixture-args" ? fixture_args : response));
 exit(response.error != null ? 1 : 0);

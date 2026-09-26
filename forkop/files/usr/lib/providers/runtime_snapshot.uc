@@ -77,6 +77,9 @@ function snapshot(pid_dir, child_pid_dir, runtime_path, library_path, output_pat
         }
         if (saved.ticks != "" && process_identity.start_ticks(pid) != saved.ticks)
             return false;
+        if (process_identity.matches(pidfile, "ucode",
+            [ "ucode", "-L", library_path, runtime_path, "supervisor", name ], false, false) != pid)
+            return false;
         let raw = fs.readfile("/proc/" + pid + "/cmdline");
         if (raw == null)
             return false;

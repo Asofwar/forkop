@@ -15,7 +15,7 @@ mkdir -p "$PID_DIR" "$CHILD_DIR" "$LOG_DIR"
 cleanup() {
     for file in "$PID_DIR"/*.pid "$CHILD_DIR"/*.pid; do
         [ -f "$file" ] || continue
-        pid="$(cat "$file")"
+        pid="$(head -n 1 "$file")"
         case "$pid" in *[!0-9]*|'') continue;; esac
         kill "$pid" 2>/dev/null || true
     done
@@ -37,9 +37,54 @@ wait "$old_pid" 2>/dev/null || true
 rm -f "$PID_DIR/example.pid" "$CHILD_DIR/example.pid"
 
 ucode -L "$LIB_DIR" "$CLI" restore "$LIB_DIR" "$SUPERVISOR" "$PID_DIR" "$CHILD_DIR" "$LOG_DIR" "$SNAPSHOT"
-new_pid="$(cat "$PID_DIR/example.pid")"
+new_pid="$(head -n 1 "$PID_DIR/example.pid")"
 [ "$new_pid" != "$old_pid" ] || exit 1
+[ "$(wc -l < "$PID_DIR/example.pid")" -eq 2 ] || exit 1
 kill -0 "$new_pid"
 kill -0 "$(cat "$CHILD_DIR/example.pid")"
+cp "$PID_DIR/example.pid" "$STATE_DIR/owned.pid"
+printf '%s\n0\n' "$new_pid" > "$PID_DIR/example.pid"
+if ucode -L "$LIB_DIR" "$CLI" snapshot "$LIB_DIR" "$SUPERVISOR" "$PID_DIR" "$CHILD_DIR" "$LOG_DIR" "$SNAPSHOT"; then
+    echo 'snapshot accepted a reused supervisor PID' >&2; exit 1
+fi
+kill -0 "$new_pid"
+cp "$STATE_DIR/owned.pid" "$PID_DIR/example.pid"
+
+# A real supervisor died; its stale record must not prevent recovery.
+kill -STOP "$new_pid"
+kill -0 "$new_pid" || exit 1
+ucode -L "$LIB_DIR" "$CLI" kill-restored "$LIB_DIR" "$SUPERVISOR" "$PID_DIR" "$CHILD_DIR" "$LOG_DIR" "$SNAPSHOT"
+kill "$(cat "$CHILD_DIR/example.pid")"
+sleep 1
+rm -f "$CHILD_DIR/example.pid"
+ucode -L "$LIB_DIR" "$CLI" snapshot "$LIB_DIR" "$SUPERVISOR" "$PID_DIR" "$CHILD_DIR" "$LOG_DIR" "$SNAPSHOT"
+grep -Eq '^\[[[:space:]]*\]$' "$SNAPSHOT" || exit 1
+
+# A surviving child makes the stale supervisor ambiguous.
+sleep 300 &
+survivor=$!
+echo "$survivor" > "$CHILD_DIR/example.pid"
+if ucode -L "$LIB_DIR" "$CLI" snapshot "$LIB_DIR" "$SUPERVISOR" "$PID_DIR" "$CHILD_DIR" "$LOG_DIR" "$SNAPSHOT"; then
+    echo 'snapshot accepted a surviving child' >&2; exit 1
+fi
+rm -f "$PID_DIR/example.pid"
+if ucode -L "$LIB_DIR" "$CLI" snapshot "$LIB_DIR" "$SUPERVISOR" "$PID_DIR" "$CHILD_DIR" "$LOG_DIR" "$SNAPSHOT"; then
+    echo 'snapshot accepted an orphaned child' >&2; exit 1
+fi
+kill "$survivor"
+wait "$survivor" 2>/dev/null || true
+rm -f "$CHILD_DIR/example.pid" "$PID_DIR/example.pid"
+
+# A live foreign PID must remain untouched.
+sleep 300 &
+foreign=$!
+echo "$foreign" > "$PID_DIR/example.pid"
+if ucode -L "$LIB_DIR" "$CLI" snapshot "$LIB_DIR" "$SUPERVISOR" "$PID_DIR" "$CHILD_DIR" "$LOG_DIR" "$SNAPSHOT"; then
+    echo 'snapshot accepted a foreign supervisor' >&2; exit 1
+fi
+kill -0 "$foreign"
+kill "$foreign"
+wait "$foreign" 2>/dev/null || true
+rm -f "$PID_DIR/example.pid"
 
 printf 'dpi_runtime_snapshot: PASS\n'

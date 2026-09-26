@@ -10,4 +10,9 @@ if (mode == "snapshot")
     exit(snapshot.snapshot(pid_dir, child_pid_dir, runtime, library, path) ? 0 : 1);
 if (mode == "restore")
     exit(snapshot.restore(path, pid_dir, child_pid_dir, log_dir, runtime, library) ? 0 : 1);
+if (mode == "kill-restored") {
+    let identity = require("core.process_identity");
+    exit(identity.signal(pid_dir + "/example.pid", "ucode",
+        [ "ucode", "-L", library, runtime, "supervisor", "example" ], false, "KILL", true) ? 0 : 1);
+}
 exit(2);

@@ -1,4 +1,5 @@
 let fs = require("fs");
+let process_identity = require("core.process_identity");
 
 function as_string(value) {
     return value == null ? "" : "" + value;
@@ -49,9 +50,31 @@ function running(pid) {
 
 function snapshot(pid_dir, child_pid_dir, runtime_path, library_path, output_path) {
     let entries = [];
+    for (let child_file in pidfiles(child_pid_dir)) {
+        let child = process_identity.read_record(child_file);
+        if (child == null)
+            return false;
+        if (running(child.pid)) {
+            let parent_file = pid_dir + "/" + replace(child_file, /^.*\//, "");
+            let parent = process_identity.read_record(parent_file);
+            if (parent == null || !running(parent.pid))
+                return false;
+        }
+    }
     for (let pidfile in pidfiles(pid_dir)) {
-        let pid = first_line(pidfile);
-        if (!running(pid))
+        let saved = process_identity.read_record(pidfile);
+        if (saved == null)
+            return false;
+        let pid = saved.pid;
+        let name = replace(replace(pidfile, /^.*\//, ""), /\.pid$/, "");
+        if (!running(pid)) {
+            let child_file = child_pid_dir + "/" + name + ".pid";
+            let child = fs.stat(child_file) == null ? null : process_identity.read_record(child_file);
+            if (fs.stat(child_file) != null && (child == null || running(child.pid)))
+                return false;
+            continue;
+        }
+        if (saved.ticks != "" && process_identity.start_ticks(pid) != saved.ticks)
             return false;
         let raw = fs.readfile("/proc/" + pid + "/cmdline");
         if (raw == null)
@@ -59,8 +82,6 @@ function snapshot(pid_dir, child_pid_dir, runtime_path, library_path, output_pat
         let args = split(raw, "\0");
         if (length(args) > 0 && args[length(args) - 1] == "")
             pop(args);
-        let name = replace(pidfile, /^.*\//, "");
-        name = replace(name, /\.pid$/, "");
         if (length(args) != 9 ||
             !match(args[0], /(^|\/)ucode$/) || args[1] != "-L" ||
             args[2] != library_path || args[3] != runtime_path ||
@@ -100,7 +121,7 @@ function restore(input_path, pid_dir, child_pid_dir, log_dir, runtime_path, libr
             return false;
         let pid = trim(stream.read("line") || "");
         stream.close();
-        if (!running(pid) || fs.writefile(pid_dir + "/" + name + ".pid", pid + "\n") == null)
+        if (!running(pid) || !process_identity.record(pid_dir + "/" + name + ".pid", pid))
             return false;
         command_success([ "sleep", "1" ]);
         if (!running(pid) || !running(first_line(child_pid_dir + "/" + name + ".pid")))

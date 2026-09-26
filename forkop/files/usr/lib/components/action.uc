@@ -701,6 +701,71 @@ function forkop_mirror_url(value) {
     return value;
 }
 
+// The catalog is an index of what the mirror actually holds, shipped with each
+// release bundle. Accept an entry only when every package it names carries a
+// checksum and a download URL under this release's own directory: a rewritten
+// catalog must not be able to point an install at some other file.
+function parse_forkop_release_catalog(response, ext) {
+    let catalog;
+    try { catalog = json(response); } catch (e) { return []; }
+    if (type(catalog) != "object" || catalog.format != 1 || type(catalog.releases) != "array")
+        return [];
+
+    let releases = [];
+    for (let release in catalog.releases) {
+        if (type(release) != "object" || type(release.assets) != "array" ||
+            match(as_string(release.tag_name), /^[0-9]+[.][0-9]+[.][0-9]+$/) == null)
+            continue;
+
+        let suffix = "/releases/" + release.tag_name + "/";
+        let complete = true;
+        for (let kind in [ "forkop", "luci-app-forkop", "luci-i18n-forkop-ru" ]) {
+            let wanted = kind + "_" + release.tag_name + "." + ext;
+            let found = false;
+            for (let asset in release.assets) {
+                if (type(asset) != "object" || as_string(asset.name) != wanted ||
+                    match(as_string(asset.sha256), /^[a-f0-9]{64}$/) == null)
+                    continue;
+                let url = as_string(asset.browser_download_url);
+                if (url == forkop_release_url(suffix + wanted) ||
+                    url == suffix + wanted)
+                    found = true;
+            }
+            if (!found)
+                complete = false;
+        }
+        if (complete)
+            push(releases, release);
+    }
+    return releases;
+}
+
+function forkop_release_catalog() {
+    if (FORKOP_RELEASE_BASE_URL == "")
+        return [];
+    let base = FORKOP_RELEASE_BASE_URL;
+    while (substr(base, length(base) - 1, 1) == "/")
+        base = substr(base, 0, length(base) - 1);
+    return parse_forkop_release_catalog(http_get(base + "/updates/releases.json"),
+        is_apk() ? "apk" : "ipk");
+}
+
+function selected_forkop_release(version) {
+    version = as_string(version);
+    for (let release in forkop_release_catalog())
+        if (as_string(release.tag_name) == version)
+            return release;
+    return null;
+}
+
+function forkop_releases() {
+    let rows = [];
+    for (let release in forkop_release_catalog())
+        push(rows, { version: as_string(release.tag_name), channel: "stable" });
+    print(sprintf("%J", { success: length(rows) > 0, releases: rows }), "\n");
+    cleanup_tmp_dir();
+}
+
 function forkop_release_page_url(version, fallback) {
     let parts = split(FORKOP_RELEASE_REPO, "/");
     version = as_string(version);
@@ -1956,8 +2021,8 @@ function resolve_forkop_release_json(latest_version, release_json) {
     };
 }
 
-function resolve_forkop_release(latest_version) {
-    let release_json = latest_forkop_release_json();
+function resolve_forkop_release(latest_version, selected) {
+    let release_json = selected != null ? sprintf("%J", selected) : latest_forkop_release_json();
     return resolve_forkop_release_json(latest_version, release_json);
 }
 
@@ -2251,17 +2316,59 @@ function stop_old_sing_box_before_forkop_upgrade() {
     return false;
 }
 
-function install_forkop() {
-    let latest_version = latest_forkop_version();
+// Keep one archive of the working configuration. Installing a different
+// version is the moment a configuration is most likely to need restoring.
+function save_forkop_configuration_backup(config_dir, backup_dir) {
+    if (!ensure_dir(backup_dir) || !command_success_from_args([ "chmod", "700", backup_dir ]))
+        return "";
+    let backup = backup_dir + "/configuration.tar.gz";
+    let temporary = trim(command_output_from_args([ "mktemp", backup_dir + "/.configuration.XXXXXX" ]));
+    if (temporary == "")
+        return "";
+    // Keep the previous copy until the new archive is complete and readable.
+    if (!command_success_from_args([ "tar", "-czf", temporary, "-C", config_dir, "forkop" ]) ||
+        !command_success_from_args([ "tar", "-tzf", temporary ]) ||
+        !command_success_from_args([ "chmod", "600", temporary ]) ||
+        !fs.rename(temporary, backup)) {
+        remove_file(temporary);
+        return "";
+    }
+    return backup;
+}
+
+function verify_selected_release_downloads(selected, files, latest_version) {
+    for (let file in files) {
+        if (file == "")
+            continue;
+        let name = replace(file, /^.*\//, "");
+        let expected = "";
+        for (let asset in selected.assets)
+            if (as_string(asset.name) == name)
+                expected = as_string(asset.sha256);
+        let actual = split(trim(command_output_from_args([ "sha256sum", file ])), /[ \t]+/)[0];
+        if (expected == "" || actual != expected)
+            action_fail("forkop", "install", "Release package checksum mismatch", FORKOP_VERSION, latest_version);
+    }
+}
+
+function install_forkop(requested_version) {
+    requested_version = as_string(requested_version);
+    let selected = requested_version != "" ? selected_forkop_release(requested_version) : null;
+    if (requested_version != "" && selected == null)
+        action_fail("forkop", "install", "Selected release is unavailable or incompatible", FORKOP_VERSION, requested_version);
+
+    let latest_version = selected != null ? as_string(selected.tag_name) : latest_forkop_version();
     if (latest_version == "")
         latest_version = "unknown";
     if (latest_version == "unknown")
         action_fail("forkop", "install", "Failed to resolve Forkop release", FORKOP_VERSION, latest_version);
 
-    write_forkop_latest_version_cache(latest_version, now_seconds());
+    // An explicit version says nothing about what the newest release is.
+    if (requested_version == "")
+        write_forkop_latest_version_cache(latest_version, now_seconds());
     init_tmp_dir() || action_fail("forkop", "install", "Failed to create temporary directory", FORKOP_VERSION, latest_version);
     updates_log("Resolving Forkop release " + latest_version + " packages");
-    let release = resolve_forkop_release(latest_version);
+    let release = resolve_forkop_release(latest_version, selected);
     if (release == null)
         action_fail("forkop", "install", "Failed to resolve Forkop release packages", FORKOP_VERSION, latest_version);
 
@@ -2272,6 +2379,14 @@ function install_forkop() {
         !download_with_retry(release.app_url, app_file, release.app_name) ||
         (release.i18n_url != "" && !download_with_retry(release.i18n_url, i18n_file, release.i18n_name)))
         action_fail("forkop", "install", "Failed to download Forkop release packages", FORKOP_VERSION, latest_version);
+
+    if (selected != null) {
+        verify_selected_release_downloads(selected, [ backend_file, app_file, i18n_file ], latest_version);
+        let backup = save_forkop_configuration_backup("/etc/config", "/etc/forkop-backups");
+        if (backup == "")
+            action_fail("forkop", "install", "Failed to back up Forkop configuration", FORKOP_VERSION, latest_version);
+        updates_log("Forkop configuration backup: " + backup);
+    }
 
     // Capture the exact managed sing-box process before apk/opkg runs the
     // currently installed package's prerm.
@@ -2462,9 +2577,10 @@ function normalize_component_name(component) {
     return component;
 }
 
-function component_action(component, action) {
+function component_action(component, action, version) {
     component = normalize_component_name(component);
     action = as_string(action);
+    version = as_string(version);
     if (!acquire_component_lock())
         action_fail(component != "" ? component : "unknown", action != "" ? action : "unknown", "Another component action is already running");
     if (!init_tmp_dir())
@@ -2483,7 +2599,7 @@ function component_action(component, action) {
     if (component == "forkop" && action == "check_update")
         check_forkop();
     else if (component == "forkop" && action == "install")
-        install_forkop();
+        install_forkop(version);
     else if (component == "sing_box" && (action == "check_update" || action == "install" ||
         action == "install_extended" || action == "install_extended_compressed" ||
         action == "install_tiny" || action == "install_stable"))
@@ -2517,7 +2633,12 @@ function component_action(component, action) {
 let mode = ARGV[0] || "";
 
 if (mode == "component-action")
-    component_action(ARGV[1], ARGV[2]);
+    component_action(ARGV[1], ARGV[2], ARGV[3]);
+else if (mode == "forkop-releases")
+    forkop_releases();
+else if (mode == "forkop-release-catalog-fixture")
+    print(sprintf("%J", parse_forkop_release_catalog(read_file(ARGV[1]), ARGV[2])), "
+");
 else if (mode == "latest-forkop-release-json")
     print(latest_forkop_release_json());
 else if (mode == "latest-forkop-version")

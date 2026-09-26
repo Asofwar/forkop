@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-06 21:50+0300\n"
-"PO-Revision-Date: 2026-09-06 21:50+0300\n"
+"POT-Creation-Date: 2026-09-26 00:35+0300\n"
+"PO-Revision-Date: 2026-09-26 00:35+0300\n"
 "Last-Translator: slayer\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -37,6 +37,9 @@ msgstr "✔ Работает"
 
 msgid "✘ Stopped"
 msgstr "✘ Остановлен"
+
+msgid "A configuration backup will be saved in /etc/forkop-backups. Older versions may not support all current settings."
+msgstr "Резервная копия настроек будет сохранена в /etc/forkop-backups. Старые версии могут поддерживать не все текущие настройки."
 
 msgid "Action"
 msgstr "Действие"
@@ -155,6 +158,12 @@ msgstr "Backend-проверка завершилась ошибкой: %s"
 msgid "Bootstrap DNS"
 msgstr "Bootstrap DNS"
 
+msgid "Bootstrap DNS server cannot be empty"
+msgstr ""
+
+msgid "Bootstrap DNS server must be an IPv4 or IPv6 address with an optional port"
+msgstr ""
+
 msgid "Bootstrap DNS Servers"
 msgstr "Bootstrap DNS-серверы"
 
@@ -254,6 +263,12 @@ msgstr "Проверки пройдены"
 msgid "Checks passed with manual DHCP"
 msgstr "Проверки пройдены с ручным DHCP"
 
+msgid "Choose Forkop X version"
+msgstr "Выбор версии Forkop X"
+
+msgid "Choose version"
+msgstr "Выбрать версию"
+
 msgid "CIDR must be between 0 and 32 for IPv4 or 0 and 128 for IPv6"
 msgstr "CIDR должен быть от 0 до 32 для IPv4 или от 0 до 128 для IPv6"
 
@@ -290,6 +305,9 @@ msgstr "Путь к файлу конфигурации"
 msgid "Configure User-Agent in the item settings"
 msgstr "Настройте User-Agent в настройках элемента"
 
+msgid "Confirm version change"
+msgstr "Подтвердите смену версии"
+
 msgid "Connect through"
 msgstr "Подключаться через"
 
@@ -316,6 +334,9 @@ msgstr "Не удалось сравнить публичные IP FakeIP и к�
 
 msgid "Could not confirm completion. Check the removal log before retrying."
 msgstr "Не удалось подтвердить завершение. Перед повторной попыткой проверьте журнал удаления."
+
+msgid "Could not load available versions"
+msgstr ""
 
 msgid "Could not start removal. Another component action may be running."
 msgstr "Не удалось начать удаление. Возможно, выполняется другая операция с компонентами."
@@ -433,9 +454,6 @@ msgstr "Адрес DNS-сервера не может быть пустым"
 
 msgid "DNS server used by the resolver"
 msgstr "DNS-сервер, который будет использовать резолвер"
-
-msgid "DNS server used to obtain IP addresses for upstream DNS and proxies. If multiple servers are selected, a timeout switches to a backup."
-msgstr "DNS-сервер для получения IP вышестоящих DNS и прокси. Если выбрать несколько, то при таймауте произойдёт переключение на резервный."
 
 msgid "DNS Servers"
 msgstr "DNS-серверы"
@@ -815,6 +833,12 @@ msgstr "Установить"
 msgid "Install another build:"
 msgstr "Установить другую сборку:"
 
+msgid "Install selected version"
+msgstr "Установить выбранную версию"
+
+msgid "Installed"
+msgstr ""
+
 msgid "Installed (Mirror edition)"
 msgstr "Установлен (Mirror edition)"
 
@@ -841,6 +865,9 @@ msgstr "Прерывать соединения, когда URLTest перекл
 
 msgid "Interval"
 msgstr "Интервал"
+
+msgid "Invalid Bootstrap DNS server port"
+msgstr ""
 
 msgid "Invalid ByeDPI strategy"
 msgstr "Некорректная стратегия ByeDPI"
@@ -998,6 +1025,9 @@ msgstr "Неверный URL VLESS: ошибка разбора"
 msgid "Invalid VMess URL: parsing failed"
 msgstr "Некорректный VMess URL: ошибка разбора"
 
+msgid "IP address of the DNS server used to resolve upstream DNS and proxies. Hostnames are not supported for Bootstrap DNS. If multiple servers are selected, a timeout switches to a backup."
+msgstr ""
+
 msgid "IPs"
 msgstr "IP-адреса"
 
@@ -1060,6 +1090,9 @@ msgstr "Список должен быть HTTP(S) URL или локальным
 
 msgid "List Update Frequency"
 msgstr "Частота обновления списков"
+
+msgid "Loading available versions…"
+msgstr "Загрузка доступных версий…"
 
 msgid "Loading connections"
 msgstr "Загрузка подключений"
@@ -1156,6 +1189,9 @@ msgstr "Нет активных подключений"
 
 msgid "No closed connections"
 msgstr "Нет закрытых подключений"
+
+msgid "No compatible releases available"
+msgstr "Нет доступных совместимых версий"
 
 msgid "No other marking rules found"
 msgstr "Другие правила маркировки не найдены"

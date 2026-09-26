@@ -25,6 +25,7 @@ import {
   isServiceTransitionStatus,
 } from '../diagnostic/serviceTransition';
 import { shouldApplyCompletedComponentActionResult } from './componentActionCompletion';
+import { showReleaseSelector } from './releaseSelector';
 import {
   shouldPreserveCompletedCheckResultOnNextMount,
   shouldExposeCheckResults,
@@ -58,6 +59,7 @@ interface ComponentActionButton {
   component: Forkop.ComponentName;
   action: Forkop.ComponentAction;
   disabled?: boolean;
+  version?: string;
 }
 
 interface ComponentCard {
@@ -704,6 +706,7 @@ async function handleComponentAction(button: ComponentActionButton) {
     const startResponse = await ForkopShellMethods.componentActionStart(
       button.component,
       button.action,
+      button.version,
     );
 
     if (!startResponse.success) {
@@ -739,7 +742,7 @@ async function handleComponentAction(button: ComponentActionButton) {
       jobId,
       button.component,
       button.action,
-      getExpectedLatestVersionForAction(button),
+      button.version || getExpectedLatestVersionForAction(button),
     );
 
     await completeComponentActionJob(button.key, jobId, response);
@@ -1237,6 +1240,29 @@ function renderComponentCard(card: ComponentCard) {
       onClick: () => void handleComponentAction(action),
     });
   });
+
+  // Installing a specific release is a separate, deliberate action: the regular
+  // install button always takes the newest one.
+  if (card.component === 'forkop') {
+    primaryButtons.push(
+      renderButton({
+        text: _('Choose version'),
+        disabled:
+          systemInfoLoading || serviceRuntimeActionLoading || anyActionLoading,
+        onClick: () =>
+          void showReleaseSelector(card.version, (version) => {
+            void handleComponentAction({
+              key: 'forkopInstall',
+              text: _('Install'),
+              icon: renderDownloadIcon24,
+              component: 'forkop',
+              action: 'install',
+              version,
+            });
+          }),
+      }),
+    );
+  }
 
   const dangerButtons = dangerActions.map((action) => {
     const loading = updatesActions[action.key].loading;

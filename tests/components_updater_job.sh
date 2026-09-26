@@ -72,7 +72,7 @@ fi
 
 [ ! -e "$ROOT_DIR/forkop/files/usr/lib/updater.sh" ] ||
   fail "updater.sh shell owner must be removed"
-grep -Fq 'component_action: [ "components/action.uc", "component-action", 2 ]' "$CLI_UC" ||
+grep -Fq 'component_action: [ "components/action.uc", "component-action", 3 ]' "$CLI_UC" ||
   fail "service/cli.uc must dispatch direct component_action through components/action.uc"
 grep -Fq 'component-action-async' "$UPDATES_UC" ||
   fail "components/updates.uc must own component action async"
@@ -88,7 +88,7 @@ fi
 if grep -Fq 'save-sing-box-config-file-fixture' "$UPDATES_UC"; then
   fail "components/updates.uc must not expose sing-box config save fixtures owned by singbox/runtime.uc"
 fi
-grep -Fq 'component_action_async: [ "components/updates.uc", "component-action-async", 2 ]' "$CLI_UC" ||
+grep -Fq 'component_action_async: [ "components/updates.uc", "component-action-async", 3 ]' "$CLI_UC" ||
   fail "service/cli.uc must dispatch component_action_async through components/updates.uc"
 grep -Fq 'component_action_status: [ "components/updates.uc", "component-action-status", 1 ]' "$CLI_UC" ||
   fail "service/cli.uc must dispatch component_action_status through components/updates.uc"

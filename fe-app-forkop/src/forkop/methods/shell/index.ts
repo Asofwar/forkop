@@ -358,6 +358,67 @@ export const ForkopShellMethods = {
       '/usr/bin/forkop',
       { timeout: GET_UI_STATE_RPC_TIMEOUT_MS },
     ),
+  getHealthStatus: async () =>
+    callBaseMethod<Forkop.HealthStatus>(
+      Forkop.AvailableMethods.GET_HEALTH_STATUS,
+    ),
+  routeTrace: async (
+    target: string,
+    source: string,
+    protocol: string,
+    port: string,
+  ) =>
+    callBaseMethod<Forkop.RouteTrace>(Forkop.AvailableMethods.ROUTE_TRACE, [
+      target,
+      source,
+      protocol,
+      port,
+    ]),
+  snapshotCreate: async (kind: 'manual' | 'automatic' = 'manual') =>
+    callBaseMethod<Forkop.SnapshotResult>(
+      Forkop.AvailableMethods.CONFIG_SNAPSHOT_CREATE,
+      [kind],
+    ),
+  snapshotList: async () =>
+    callBaseMethod<Forkop.SnapshotMetadata[]>(
+      Forkop.AvailableMethods.CONFIG_SNAPSHOT_LIST,
+    ),
+  snapshotDiff: async (id: string) =>
+    callBaseMethod<Forkop.SnapshotChange[]>(
+      Forkop.AvailableMethods.CONFIG_SNAPSHOT_DIFF,
+      [id],
+    ),
+  snapshotRestore: async (id: string) =>
+    callBaseMethod<Forkop.SnapshotResult>(
+      Forkop.AvailableMethods.CONFIG_SNAPSHOT_RESTORE,
+      [id],
+      '/usr/bin/forkop',
+      { timeout: 120000 },
+    ),
+  snapshotDelete: async (id: string) =>
+    callBaseMethod<Forkop.SnapshotResult>(
+      Forkop.AvailableMethods.CONFIG_SNAPSHOT_DELETE,
+      [id],
+    ),
+  connectivityTest: async (host: string, type: string, port: string) =>
+    callBaseMethod<Forkop.ConnectivityResult>(
+      Forkop.AvailableMethods.CONNECTIVITY_TEST,
+      [host, type, port],
+      '/usr/bin/forkop',
+      { timeout: 10000 },
+    ),
+  validateDpiStrategy: async (
+    provider: 'zapret' | 'zapret2' | 'byedpi',
+    strategy: string,
+  ) =>
+    callBaseMethod<unknown>(
+      provider === 'zapret'
+        ? Forkop.AvailableMethods.VALIDATE_NFQWS_STRATEGY_JSON
+        : provider === 'zapret2'
+          ? Forkop.AvailableMethods.VALIDATE_NFQWS2_STRATEGY_JSON
+          : Forkop.AvailableMethods.VALIDATE_BYEDPI_STRATEGY_JSON,
+      [strategy],
+    ),
   serviceActionStart: async (action: Forkop.ServiceAction) => {
     const response = await executeShellCommand({
       command: '/usr/bin/forkop',

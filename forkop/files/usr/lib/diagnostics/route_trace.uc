@@ -11,7 +11,8 @@ function command(args) {
     return join(" ", parts);
 }
 function capture(args) {
-    let pipe = fs.popen(command(args), "r");
+    // stderr (e.g. "RTNETLINK answers: Network unreachable") is not part of the result.
+    let pipe = fs.popen(command(args) + " 2>/dev/null", "r");
     if (!pipe) return "";
     let data = pipe.read("all");
     return pipe.close() == 0 && data != null ? data : "";

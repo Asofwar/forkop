@@ -48,6 +48,17 @@ for (const pattern of Object.keys(grants)) {
     throw Error(`snapshot mutation granted to read role: ${pattern}`);
   }
 }
+// rpcd needs the ubus file.exec method before it evaluates the file-scope
+// command patterns above; without it no read command can run at all.
+if (!acl.read.ubus?.file?.includes('exec')) throw Error('read role cannot reach file.exec');
+if (acl.read.ubus.file.length !== 1) {
+  throw Error('read role got extra ubus file methods');
+}
+for (const pattern of Object.keys(grants)) {
+  if (!pattern.startsWith('/usr/bin/forkop ') && !pattern.includes('/run/forkop/')) {
+    throw Error(`unexpected read file grant: ${pattern}`);
+  }
+}
 if (acl.read.uci?.includes('forkop')) throw Error('raw UCI exposed to read role');
 if (!groups['luci-app-forkop-admin']?.read?.uci?.includes('forkop')) {
   throw Error('admin role lost UCI read access');

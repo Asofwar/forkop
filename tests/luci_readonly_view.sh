@@ -6,12 +6,10 @@ node - "$ROOT_DIR" <<'NODE'
 const fs = require('node:fs');
 const path = require('node:path');
 const root = process.argv[2];
-// The ACL split that would create a genuine read-only role is not part of this
-// release: it could not be verified against rpcd on a router. What is covered
-// here is the view itself — when a session cannot read UCI, the page must fall
+// This test covers the view itself — when a session cannot read UCI, it must fall
 // back to the JSON-backed status view instead of failing to render.
 const source = fs.readFileSync(path.join(root, 'luci-app-forkop/htdocs/luci-static/resources/view/forkop/forkop.js'), 'utf8');
-async function render(write) {
+async function render(write, stale = false) {
   const calls = [];
   let mapKind = '';
   const makeMap = kind => class {
@@ -40,8 +38,10 @@ async function render(write) {
   }, createMonitoringContent() {}, createUpdatesContent() {}, createSettingsContent() {} });
   const main = {
     FORKOP_UCI_PACKAGE: 'forkop', injectGlobalStyles() {}, coreService() { calls.push('core'); },
+    setReadonlyMode(value) { calls.push(`readonly:${value}`); },
     ForkopShellMethods: { getUiCapabilities: async () => ({ success: true, data: {} }) },
   };
+  if (stale) delete main.setReadonlyMode;
   const uci = { load: async () => { if (!write) throw Error('Permission denied'); }, get: () => '' };
   const sections = { configureSectionSection() {}, createSectionContent() {} };
   const modules = [form, { extend: value => value }, { extend: value => value }, uci, {}, main,
@@ -52,14 +52,20 @@ async function render(write) {
   return { rendered, mapKind, calls };
 }
 (async () => {
-  const read = await render(false);
-  if (read.mapKind !== 'JSON' || !read.calls.includes('dashboard') || !read.calls.includes('diagnostic'))
-    throw Error(`read-only dashboard/diagnostics not rendered: ${JSON.stringify(read)}`);
-  if (read.rendered.sections.some(name => name === 'settings' || name === 'section'))
-    throw Error('read-only view exposes configuration form');
-  const write = await render(true);
-  if (write.mapKind !== 'UCI' || !write.rendered.sections.includes('settings') || !write.rendered.sections.includes('section'))
-    throw Error(`write view lost full configuration: ${JSON.stringify(write)}`);
+  for (const stale of [false, true]) {
+    const read = await render(false, stale);
+    if (read.mapKind !== 'JSON' || !read.calls.includes('dashboard') || !read.calls.includes('diagnostic'))
+      throw Error(`read-only dashboard/diagnostics not rendered: ${JSON.stringify(read)}`);
+    if (!stale && read.calls.filter(call => call === 'readonly:true').length !== 1)
+      throw Error('read-only view did not switch the bundle to read-only mode');
+    if (read.rendered.sections.some(name => name === 'settings' || name === 'section'))
+      throw Error('read-only view exposes configuration form');
+    const write = await render(true, stale);
+    if (write.mapKind !== 'UCI' || !write.rendered.sections.includes('settings') || !write.rendered.sections.includes('section'))
+      throw Error(`write view lost full configuration: ${JSON.stringify(write)}`);
+    if (write.calls.some(call => call.startsWith('readonly:')))
+      throw Error('write view was switched to read-only mode');
+  }
   console.log('luci_readonly_view: PASS');
 })().catch(error => { console.error(error); process.exitCode = 1; });
 NODE

@@ -280,7 +280,8 @@ const EntryPoint = {
     try {
       await uci.load(UCI_PACKAGE);
     } catch (_error) {
-      main.setReadonlyMode(true);
+      // Optional call keeps the read-only page working with a stale cached bundle.
+      main.setReadonlyMode?.(true);
       const readonlyMap = new form.JSONMap(
         { dashboard: {}, diagnostic: {} },
         _("Forkop X Settings"),

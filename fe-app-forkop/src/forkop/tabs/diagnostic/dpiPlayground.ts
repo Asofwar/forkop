@@ -1,36 +1,60 @@
 import { ForkopShellMethods } from '../../methods';
+import type { StatusTone } from './statusLabels';
+
+type Provider = 'zapret' | 'zapret2' | 'byedpi';
+
+export function validationView(response: {
+  success: boolean;
+  data?: unknown;
+}): { text: string; tone: StatusTone } {
+  const data = response.data as
+    | { valid?: unknown; message?: unknown }
+    | undefined;
+  if (!response.success || typeof data?.valid !== 'boolean')
+    return { text: _('Syntax check is unavailable'), tone: 'error' };
+  if (data.valid)
+    return { text: `✓ ${_('Syntax is correct')}`, tone: 'success' };
+  const message = typeof data.message === 'string' ? data.message.trim() : '';
+  return {
+    text: `✕ ${message || _('The strategy contains an error')}`,
+    tone: 'error',
+  };
+}
 
 export function initDpiPlayground() {
   const button = document.getElementById(
     'dpi-validate',
   ) as HTMLButtonElement | null;
-  if (!button || button.onclick) return;
+  const input = document.getElementById(
+    'dpi-strategy',
+  ) as HTMLTextAreaElement | null;
+  const provider = document.getElementById(
+    'dpi-provider',
+  ) as HTMLSelectElement | null;
+  const result = document.getElementById('dpi-playground-result');
+  if (!button || !input || !provider || !result || button.onclick) return;
+  const clear = () => result.replaceChildren();
+  input.oninput = clear;
+  provider.onchange = clear;
   button.onclick = async () => {
-    const provider = (
-      document.getElementById('dpi-provider') as HTMLSelectElement
-    ).value as 'zapret' | 'zapret2' | 'byedpi';
-    const a = (document.getElementById('dpi-strategy-a') as HTMLTextAreaElement)
-      .value;
-    const b = (document.getElementById('dpi-strategy-b') as HTMLTextAreaElement)
-      .value;
-    const result = document.getElementById('dpi-playground-result');
-    if (!result) return;
+    const strategy = input.value.trim();
+    if (!strategy) {
+      result.className = 'fkp-diag-text--error';
+      result.textContent = _('Enter a strategy');
+      return;
+    }
     button.disabled = true;
+    result.className = 'fkp-diag-text--loading';
+    result.textContent = _('Checking…');
     try {
-      const values = await Promise.all(
-        [a, b].map((strategy) =>
-          ForkopShellMethods.validateDpiStrategy(provider, strategy),
-        ),
+      const response = await ForkopShellMethods.validateDpiStrategy(
+        provider.value as Provider,
+        strategy,
       );
-      result.replaceChildren(
-        ...values.map((response, index) =>
-          E(
-            'div',
-            {},
-            `${index === 0 ? 'A' : 'B'}: ${JSON.stringify(response.success ? response.data : response.error || _('Validation failed'))}`,
-          ),
-        ),
-      );
+      if (input.value.trim() !== strategy) return;
+      const view = validationView(response);
+      result.className = `fkp-diag-text--${view.tone}`;
+      result.textContent = view.text;
     } finally {
       button.disabled = false;
     }

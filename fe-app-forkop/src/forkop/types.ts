@@ -96,11 +96,24 @@ export namespace Forkop {
   }
   export interface ConnectivityResult {
     host: string;
-    type: 'DNS' | 'TCP' | 'TLS' | 'HTTP';
+    type: 'DNS' | 'TCP' | 'HTTP' | 'HTTPS';
     port: number | null;
     status: 'ok' | 'timeout' | 'error';
+    error:
+      | 'timeout'
+      | 'nxdomain'
+      | 'no_answer'
+      | 'dns_failed'
+      | 'connect_failed'
+      | 'tls_failed'
+      | 'no_response'
+      | 'tool_missing'
+      | 'failed'
+      | null;
     latency_ms: number;
     origin: 'router';
+    http_code?: number;
+    address?: string;
   }
   // Available commands:
   // start                   Start forkop service

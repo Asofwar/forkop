@@ -280,6 +280,7 @@ const EntryPoint = {
     try {
       await uci.load(UCI_PACKAGE);
     } catch (_error) {
+      main.setReadonlyMode(true);
       const readonlyMap = new form.JSONMap(
         { dashboard: {}, diagnostic: {} },
         _("Forkop X Settings"),

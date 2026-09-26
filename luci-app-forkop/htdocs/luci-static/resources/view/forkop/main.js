@@ -5712,7 +5712,7 @@ function renderHealth(health) {
       {
         type: "button",
         class: "btn cbi-button",
-        click: () => document.querySelector('.cbi-tab[data-tab="diagnostic"]')?.click()
+        click: () => document.querySelector('[data-tab="diagnostic"] > a')?.click()
       },
       _("Open Diagnostics")
     ),
@@ -8013,122 +8013,174 @@ var DashboardTab = {
   styles
 };
 
+// src/forkop/services/accessMode.service.ts
+var readonlyMode = false;
+function setReadonlyMode(value) {
+  readonlyMode = value;
+}
+function isReadonlyMode() {
+  return readonlyMode;
+}
+
 // src/forkop/tabs/diagnostic/renderDiagnostic.ts
-function render2() {
-  return E("div", { id: "diagnostic-status", class: "fkp_diagnostic-page" }, [
-    E("div", { class: "fkp_diagnostic-page__left-bar" }, [
-      E("div", { id: "fkp_diagnostic-page-run-check" }),
-      E("div", {
-        class: "fkp_diagnostic-page__checks",
-        id: "fkp_diagnostic-page-checks"
-      })
-    ]),
-    E("div", { class: "fkp_diagnostic-page__right-bar" }, [
-      E("section", { class: "fkp-tool", id: "safety-center" }, [
-        E("h3", {}, _("Safety Center")),
-        E(
-          "div",
-          { id: "safety-center-state", role: "status" },
-          _("Loading health status")
-        ),
-        E(
-          "button",
-          {
-            id: "safety-center-refresh",
-            type: "button",
-            class: "btn cbi-button"
-          },
-          _("Refresh safety status")
-        )
-      ]),
-      E("section", { class: "fkp-tool", id: "dpi-playground" }, [
-        E("h3", {}, _("DPI Strategy Playground")),
-        E("select", { id: "dpi-provider" }, [
+function card(id, title, hint, body) {
+  return E("section", { class: "fkp-diag-card", id }, [
+    E("h3", { class: "fkp-diag-card__title" }, title),
+    hint ? E("p", { class: "fkp-diag-hint" }, hint) : "",
+    ...body
+  ]);
+}
+function renderDpiValidator() {
+  const explanation = E(
+    "p",
+    { class: "fkp-diag-hint" },
+    _(
+      "Checks that the parameters are valid. It does not test site reachability or bypass effectiveness."
+    )
+  );
+  if (isReadonlyMode())
+    return [
+      explanation,
+      E(
+        "p",
+        { class: "fkp-diag-hint" },
+        _("Available to administrators only.")
+      )
+    ];
+  return [
+    explanation,
+    E("div", { class: "fkp-diag-form" }, [
+      E("label", { class: "fkp-diag-field" }, [
+        E("span", {}, _("Provider")),
+        E("select", { id: "dpi-provider", class: "cbi-input-select" }, [
           E("option", { value: "zapret" }, "Zapret"),
           E("option", { value: "zapret2" }, "Zapret2"),
           E("option", { value: "byedpi" }, "ByeDPI")
-        ]),
-        E("label", {}, [
-          _("Strategy A"),
-          E("textarea", { id: "dpi-strategy-a", maxLength: 4096 })
-        ]),
-        E("label", {}, [
-          _("Strategy B"),
-          E("textarea", { id: "dpi-strategy-b", maxLength: 4096 })
-        ]),
-        E(
-          "button",
-          { id: "dpi-validate", type: "button", class: "btn cbi-button" },
-          _("Validate and compare")
-        ),
-        E("div", { id: "dpi-playground-result", role: "status" }),
-        E(
-          "p",
-          {},
-          _(
-            "Runtime test is unavailable without changing the active configuration. Comparison covers validation only."
-          )
-        )
+        ])
       ]),
-      E("section", { class: "fkp-tool", id: "connectivity-matrix" }, [
-        E("h3", {}, _("Connectivity matrix")),
-        E(
-          "p",
-          {},
-          _(
-            "Tests originate from the router and do not prove LAN client routing."
-          )
-        ),
-        E("div", { id: "connectivity-rows" }),
-        E(
-          "button",
-          { id: "connectivity-add", type: "button", class: "btn cbi-button" },
-          _("Add target")
-        ),
-        E(
-          "button",
-          { id: "connectivity-run", type: "button", class: "btn cbi-button" },
-          _("Run tests")
-        )
-      ]),
-      E("section", { class: "fkp-tool", id: "route-debugger" }, [
-        E("h3", {}, _("Route Debugger")),
-        E("label", {}, [
-          _("Target domain or IP"),
-          E("input", { id: "trace-target", class: "cbi-input-text" })
-        ]),
-        E("label", {}, [
-          _("Source IP (optional)"),
-          E("input", { id: "trace-source", class: "cbi-input-text" })
-        ]),
-        E("label", {}, [
-          _("Protocol"),
-          E("select", { id: "trace-protocol" }, [
-            E("option", { value: "TCP" }, "TCP"),
-            E("option", { value: "UDP" }, "UDP")
-          ])
-        ]),
-        E("label", {}, [
-          _("Port (optional)"),
-          E("input", {
-            id: "trace-port",
-            class: "cbi-input-text",
-            type: "number",
-            min: "1",
-            max: "65535"
+      E("label", { class: "fkp-diag-field fkp-diag-field--wide" }, [
+        E("span", {}, _("Strategy")),
+        E("textarea", {
+          id: "dpi-strategy",
+          class: "cbi-input-textarea",
+          maxLength: 4096,
+          rows: 3,
+          spellcheck: false
+        })
+      ])
+    ]),
+    E("div", { class: "fkp-diag-actions" }, [
+      E(
+        "button",
+        { id: "dpi-validate", type: "button", class: "btn cbi-button" },
+        _("Check")
+      ),
+      E("span", { id: "dpi-playground-result", role: "status" })
+    ])
+  ];
+}
+function render2() {
+  return E("div", { id: "diagnostic-status", class: "fkp-diag" }, [
+    E("section", { class: "fkp-diag-card fkp-diag-system" }, [
+      E("div", { class: "fkp-diag-card__head" }, [
+        E("div", {}, [
+          E("h3", { class: "fkp-diag-card__title" }, _("System diagnostics")),
+          E("span", {
+            id: "fkp_diagnostic-last-run",
+            class: "fkp-diag-hint",
+            role: "status"
           })
         ]),
-        E(
-          "button",
-          { id: "trace-run", class: "btn cbi-button", type: "button" },
-          _("Trace")
-        ),
-        E("div", { id: "trace-result", role: "status" })
+        E("div", { id: "fkp_diagnostic-page-run-check" })
       ]),
-      E("div", { id: "fkp_diagnostic-page-wiki" }),
+      E("div", {
+        class: "fkp-diag-checks",
+        id: "fkp_diagnostic-page-checks"
+      })
+    ]),
+    E("div", { class: "fkp-diag-row" }, [
       E("div", { id: "fkp_diagnostic-page-actions" }),
       E("div", { id: "fkp_diagnostic-page-system-info" })
-    ])
+    ]),
+    card(
+      "connectivity-matrix",
+      _("Reachability check"),
+      _("Checks run on the router and do not prove the path of a LAN client."),
+      [
+        E("div", { id: "connectivity-rows", class: "fkp-conn", role: "table" }),
+        E("div", { class: "fkp-diag-actions" }, [
+          E(
+            "button",
+            { id: "connectivity-add", type: "button", class: "btn cbi-button" },
+            `+ ${_("Add address")}`
+          ),
+          E(
+            "button",
+            {
+              id: "connectivity-run",
+              type: "button",
+              class: "btn cbi-button cbi-button-apply"
+            },
+            _("Check all")
+          )
+        ])
+      ]
+    ),
+    card(
+      "route-debugger",
+      _("Route check"),
+      _(
+        "Shows the address the router DNS returns and the interface of the router kernel route."
+      ),
+      [
+        E("div", { class: "fkp-route__form" }, [
+          E("label", { class: "fkp-diag-field fkp-diag-field--wide" }, [
+            E("span", {}, _("Domain or IP address")),
+            E("input", {
+              id: "trace-target",
+              class: "cbi-input-text",
+              placeholder: "example.com",
+              maxLength: 253
+            })
+          ]),
+          E(
+            "button",
+            { id: "trace-run", class: "btn cbi-button", type: "button" },
+            _("Check")
+          )
+        ]),
+        E("div", { id: "trace-result", role: "status" })
+      ]
+    ),
+    E("h3", { class: "fkp-diag-section-title" }, _("Additional tools")),
+    E(
+      "details",
+      { class: "fkp-diag-card fkp-diag-details", id: "safety-center" },
+      [
+        E("summary", {}, _("Recovery and protection")),
+        E("div", { id: "safety-center-state", role: "status" }, _("Loading\u2026")),
+        E("div", { class: "fkp-diag-actions" }, [
+          E(
+            "button",
+            {
+              id: "safety-center-refresh",
+              type: "button",
+              class: "btn cbi-button"
+            },
+            _("Refresh state")
+          )
+        ])
+      ]
+    ),
+    E(
+      "details",
+      { class: "fkp-diag-card fkp-diag-details", id: "dpi-playground" },
+      [
+        E("summary", {}, _("DPI strategy syntax check")),
+        ...renderDpiValidator()
+      ]
+    ),
+    E("div", { id: "fkp_diagnostic-page-wiki" })
   ]);
 }
 
@@ -9353,6 +9405,60 @@ function renderAvailableActions({
   ]);
 }
 
+// src/forkop/tabs/diagnostic/statusLabels.ts
+function checkStatus(state) {
+  switch (state) {
+    case "success":
+      return { text: _("Healthy"), tone: "success" };
+    case "warning":
+      return { text: _("Needs attention"), tone: "warning" };
+    case "error":
+      return { text: _("Error"), tone: "error" };
+    case "loading":
+      return { text: _("Checking\u2026"), tone: "loading" };
+    default:
+      return { text: _("Not checked"), tone: "neutral" };
+  }
+}
+function eventKindLabel(kind) {
+  switch (kind) {
+    case "start":
+      return _("Start");
+    case "reload":
+      return _("Configuration reload");
+    case "restore":
+      return _("Snapshot restore");
+    case "recovery":
+      return _("Recovery");
+    default:
+      return _("Other event");
+  }
+}
+function eventStatus(status) {
+  switch (status) {
+    case "success":
+      return { text: _("Succeeded"), tone: "success" };
+    case "recovered":
+      return { text: _("Recovered"), tone: "warning" };
+    case "failure":
+      return { text: _("Failed"), tone: "error" };
+    case "needs_attention":
+      return { text: _("Needs attention"), tone: "error" };
+    default:
+      return { text: _("Not available for checking"), tone: "neutral" };
+  }
+}
+function formatTime(timestamp) {
+  return new Date(timestamp * 1e3).toLocaleString();
+}
+function renderStatusBadge(status) {
+  return E(
+    "span",
+    { class: `fkp-diag-badge fkp-diag-badge--${status.tone}` },
+    status.text
+  );
+}
+
 // src/forkop/tabs/diagnostic/partials/renderCheckSection.ts
 function diagnosticActionSummary(props) {
   return [
@@ -9362,7 +9468,7 @@ function diagnosticActionSummary(props) {
   ].join("\n");
 }
 function renderRecoveryActions(props) {
-  return E("div", { class: "fkp_diagnostic_alert__actions" }, [
+  return E("div", { class: "fkp-check__actions" }, [
     E(
       "button",
       {
@@ -9372,15 +9478,16 @@ function renderRecoveryActions(props) {
       },
       _("Retry")
     ),
-    E(
+    // LuCI tabs switch on the inner link; read-only sessions have no Settings tab.
+    document.querySelector('[data-tab="settings"] > a') ? E(
       "button",
       {
         type: "button",
         class: "btn cbi-button",
-        click: () => document.querySelector('.cbi-tab[data-tab="settings"]')?.click()
+        click: () => document.querySelector('[data-tab="settings"] > a')?.click()
       },
       _("Open settings")
-    ),
+    ) : "",
     E(
       "button",
       {
@@ -9392,158 +9499,65 @@ function renderRecoveryActions(props) {
     )
   ]);
 }
-function renderCheckSummary(items) {
-  if (!items.length) {
-    return E("div", {}, "");
+function itemIcon(state) {
+  const icon = E("span", { class: "fkp-check__item-icon" });
+  if (state === "success") icon.appendChild(renderCheckIcon24());
+  if (state === "warning") icon.appendChild(renderTriangleAlertIcon24());
+  if (state === "error") icon.appendChild(renderXIcon24());
+  return icon;
+}
+function stateIcon(state) {
+  switch (state) {
+    case "success":
+      return renderCircleCheckIcon24();
+    case "warning":
+      return renderCircleAlertIcon24();
+    case "error":
+      return renderCircleXIcon24();
+    case "loading":
+      return renderLoaderCircleIcon24();
+    default:
+      return renderCircleSlashIcon24();
   }
-  const renderedItems = items.map((item) => {
-    function getIcon() {
-      const iconWrap = E("span", {
-        class: "fkp_diagnostic_alert__summary__item__icon"
-      });
-      if (item.state === "success") {
-        iconWrap.appendChild(renderCheckIcon24());
-      }
-      if (item.state === "warning") {
-        iconWrap.appendChild(renderTriangleAlertIcon24());
-      }
-      if (item.state === "error") {
-        iconWrap.appendChild(renderXIcon24());
-      }
-      return iconWrap;
-    }
-    return E(
-      "div",
-      {
-        class: `fkp_diagnostic_alert__summary__item fkp_diagnostic_alert__summary__item--${item.state}`
-      },
-      [getIcon(), E("b", {}, item.key), E("div", {}, item.value)]
-    );
-  });
-  return E("div", { class: "fkp_diagnostic_alert__summary" }, renderedItems);
 }
-function renderLoadingState3(props) {
-  const iconWrap = E("span", { class: "fkp_diagnostic_alert__icon" });
-  iconWrap.appendChild(renderLoaderCircleIcon24());
-  return E(
-    "div",
-    { class: "fkp_diagnostic_alert fkp_diagnostic_alert--loading" },
-    [
-      iconWrap,
-      E("div", { class: "fkp_diagnostic_alert__content" }, [
-        E("b", { class: "fkp_diagnostic_alert__title" }, props.title),
-        E(
-          "div",
-          { class: "fkp_diagnostic_alert__description" },
-          props.description
-        )
-      ]),
-      E("div", {}, ""),
-      renderCheckSummary(props.items)
-    ]
-  );
-}
-function renderWarningState(props) {
-  const iconWrap = E("span", { class: "fkp_diagnostic_alert__icon" });
-  iconWrap.appendChild(renderCircleAlertIcon24());
-  return E(
-    "div",
-    { class: "fkp_diagnostic_alert fkp_diagnostic_alert--warning" },
-    [
-      iconWrap,
-      E("div", { class: "fkp_diagnostic_alert__content" }, [
-        E("b", { class: "fkp_diagnostic_alert__title" }, props.title),
-        E(
-          "div",
-          { class: "fkp_diagnostic_alert__description" },
-          props.description
-        )
-      ]),
-      renderRecoveryActions(props),
-      renderCheckSummary(props.items)
-    ]
-  );
-}
-function renderErrorState(props) {
-  const iconWrap = E("span", { class: "fkp_diagnostic_alert__icon" });
-  iconWrap.appendChild(renderCircleXIcon24());
-  return E(
-    "div",
-    { class: "fkp_diagnostic_alert fkp_diagnostic_alert--error" },
-    [
-      iconWrap,
-      E("div", { class: "fkp_diagnostic_alert__content" }, [
-        E("b", { class: "fkp_diagnostic_alert__title" }, props.title),
-        E(
-          "div",
-          { class: "fkp_diagnostic_alert__description" },
-          props.description
-        )
-      ]),
-      renderRecoveryActions(props),
-      renderCheckSummary(props.items)
-    ]
-  );
-}
-function renderSuccessState(props) {
-  const iconWrap = E("span", { class: "fkp_diagnostic_alert__icon" });
-  iconWrap.appendChild(renderCircleCheckIcon24());
-  return E(
-    "div",
-    { class: "fkp_diagnostic_alert fkp_diagnostic_alert--success" },
-    [
-      iconWrap,
-      E("div", { class: "fkp_diagnostic_alert__content" }, [
-        E("b", { class: "fkp_diagnostic_alert__title" }, props.title),
-        E(
-          "div",
-          { class: "fkp_diagnostic_alert__description" },
-          props.description
-        )
-      ]),
-      E("div", {}, ""),
-      renderCheckSummary(props.items)
-    ]
-  );
-}
-function renderSkippedState(props) {
-  const iconWrap = E("span", { class: "fkp_diagnostic_alert__icon" });
-  iconWrap.appendChild(renderCircleSlashIcon24());
-  return E(
-    "div",
-    { class: "fkp_diagnostic_alert fkp_diagnostic_alert--skipped" },
-    [
-      iconWrap,
-      E("div", { class: "fkp_diagnostic_alert__content" }, [
-        E("b", { class: "fkp_diagnostic_alert__title" }, props.title),
-        E(
-          "div",
-          { class: "fkp_diagnostic_alert__description" },
-          props.description
-        )
-      ]),
-      E("div", {}, ""),
-      renderCheckSummary(props.items)
-    ]
-  );
+function checkDetailsOpen(state) {
+  return state === "error" || state === "warning";
 }
 function renderCheckSection(props) {
-  if (props.state === "loading") {
-    return renderLoadingState3(props);
-  }
-  if (props.state === "warning") {
-    return renderWarningState(props);
-  }
-  if (props.state === "error") {
-    return renderErrorState(props);
-  }
-  if (props.state === "success") {
-    return renderSuccessState(props);
-  }
-  if (props.state === "skipped") {
-    return renderSkippedState(props);
-  }
-  return E("div", {}, _("Not implement yet"));
+  const status = checkStatus(props.state);
+  const icon = E("span", { class: "fkp-check__icon" });
+  icon.appendChild(stateIcon(props.state));
+  const hasDetails = props.items.length > 0 || checkDetailsOpen(props.state);
+  return E("div", { class: `fkp-check fkp-check--${status.tone}` }, [
+    E("div", { class: "fkp-check__head" }, [
+      icon,
+      E("b", { class: "fkp-check__title" }, props.title),
+      renderStatusBadge(status)
+    ]),
+    hasDetails ? E(
+      "details",
+      {
+        class: "fkp-check__details",
+        open: checkDetailsOpen(props.state) || void 0
+      },
+      [
+        E("summary", {}, _("Details")),
+        E("div", { class: "fkp-check__description" }, props.description),
+        ...props.items.map(
+          (item) => E(
+            "div",
+            { class: `fkp-check__item fkp-diag-text--${item.state}` },
+            [
+              itemIcon(item.state),
+              E("b", {}, item.key),
+              E("span", {}, item.value)
+            ]
+          )
+        ),
+        checkDetailsOpen(props.state) ? renderRecoveryActions(props) : ""
+      ]
+    ) : ""
+  ]);
 }
 
 // src/forkop/tabs/diagnostic/partials/renderRunAction.ts
@@ -9554,7 +9568,7 @@ function renderRunAction({
 }) {
   return E("div", { class: "fkp_diagnostic-page__run_check_wrapper" }, [
     renderButton({
-      text: _("Run Diagnostic"),
+      text: _("Run full diagnostics"),
       onClick: click,
       icon: renderSearchIcon24,
       loading: loading2,
@@ -9562,6 +9576,22 @@ function renderRunAction({
       classNames: ["cbi-button-apply"]
     })
   ]);
+}
+var LAST_RUN_KEY = "forkop.diagnostic.lastRun";
+function saveLastRun(storage, now = Date.now()) {
+  try {
+    storage.setItem(LAST_RUN_KEY, String(now));
+  } catch (_error) {
+  }
+}
+function lastRunText(storage) {
+  let value = 0;
+  try {
+    value = Number(storage.getItem(LAST_RUN_KEY) || 0);
+  } catch (_error) {
+    value = 0;
+  }
+  return value > 0 ? `${_("Last check")}: ${new Date(value).toLocaleString()}` : _("No check has been run yet");
 }
 
 // src/forkop/tabs/diagnostic/partials/renderSystemInfo.ts
@@ -9773,57 +9803,141 @@ async function runSectionsCheck() {
 }
 
 // src/forkop/tabs/diagnostic/routeDebugger.ts
-function routeStages(trace) {
-  return [
-    { label: _("Target"), stage: trace.target },
-    { label: _("DNS resolution"), stage: trace.dns },
-    { label: _("Matched rule"), stage: trace.rule },
-    { label: _("Action"), stage: trace.action },
-    { label: _("Outbound"), stage: trace.outbound },
-    { label: _("DPI provider"), stage: trace.dpi },
-    { label: _("Interface"), stage: trace.interface },
-    { label: _("Current runtime"), stage: trace.runtime }
-  ];
+function provenanceNote(provenance) {
+  switch (provenance) {
+    case "observed":
+      return _("Seen in an active connection");
+    case "configured":
+      return _("Derived from configuration");
+    default:
+      return _("Calculated result");
+  }
 }
-function field(id) {
-  return document.getElementById(id)?.value.trim() || "";
+function routeFacts(trace) {
+  const target = String(trace.target.value || "");
+  const isLiteral = trace.dns.provenance === "simulated";
+  const facts = [
+    {
+      label: isLiteral ? _("IP address") : _("Domain"),
+      value: target,
+      note: "",
+      tone: "neutral"
+    }
+  ];
+  if (!isLiteral) {
+    facts.push(
+      trace.dns.address ? {
+        label: _("Resolved IP"),
+        value: trace.dns.address,
+        note: _("Answer of the router DNS"),
+        tone: "success"
+      } : {
+        label: _("Resolved IP"),
+        value: _("Not resolved"),
+        note: _("The router DNS returned no address"),
+        tone: "error"
+      }
+    );
+  }
+  if (trace.interface.provenance === "observed" && trace.interface.value) {
+    facts.push({
+      label: _("Router kernel route"),
+      value: trace.interface.value,
+      note: _("Interface the router itself would use for this address"),
+      tone: "success"
+    });
+  } else if (trace.dns.address) {
+    facts.push({
+      label: _("Router kernel route"),
+      value: _("No route"),
+      note: _("The router has no route to this address"),
+      tone: "error"
+    });
+  }
+  const extra = [
+    [_("Matched rule"), trace.rule],
+    [_("Action"), trace.action],
+    [_("Outbound"), trace.outbound],
+    [_("DPI provider"), trace.dpi],
+    [_("Current runtime"), trace.runtime]
+  ];
+  for (const [label, stage] of extra)
+    if (stage.provenance !== "unknown" && stage.value)
+      facts.push({
+        label,
+        value: String(stage.value),
+        note: provenanceNote(stage.provenance),
+        tone: "neutral"
+      });
+  return facts;
+}
+var MONITORING_TAB_LINK = '[data-tab="monitoring"] > a';
+function openMonitoring() {
+  document.querySelector(MONITORING_TAB_LINK)?.click();
 }
 function initRouteDebugger() {
   const button = document.getElementById(
     "trace-run"
   );
-  if (!button || button.onclick) return;
+  const input = document.getElementById(
+    "trace-target"
+  );
+  const container = document.getElementById("trace-result");
+  if (!button || !input || !container || button.onclick) return;
+  input.onkeydown = (event) => {
+    if (event.key === "Enter") button.click();
+  };
+  input.oninput = () => container.replaceChildren();
   button.onclick = async () => {
-    const container = document.getElementById("trace-result");
-    if (!container) return;
-    container.textContent = _("Tracing route");
+    const target = input.value.trim();
+    if (!target) {
+      container.textContent = _("Enter a domain or IP address");
+      return;
+    }
+    container.textContent = _("Checking\u2026");
     button.disabled = true;
     try {
       const response = await ForkopShellMethods.routeTrace(
-        field("trace-target"),
-        field("trace-source"),
-        field("trace-protocol"),
-        field("trace-port")
+        target,
+        "",
+        "TCP",
+        ""
       );
+      if (input.value.trim() !== target) return;
       if (!response.success || !response.data?.target) {
-        container.textContent = _("Invalid target or route trace failed");
+        container.textContent = _("Enter a valid domain or IP address");
         return;
       }
+      const hasMonitoring = Boolean(
+        document.querySelector(MONITORING_TAB_LINK)
+      );
       container.replaceChildren(
         E(
-          "p",
-          {},
-          _(
-            "Observed from router; source IP is not applied to the probe and LAN client policy is not proven."
-          )
-        ),
-        ...routeStages(response.data).map(
-          ({ label, stage }) => E("div", { class: "fkp-route-stage" }, [
-            E("strong", {}, label),
-            E("span", {}, String(stage.address || stage.value || _("Unknown"))),
-            E("small", {}, stage.provenance)
+          "dl",
+          { class: "fkp-route__facts" },
+          routeFacts(response.data).flatMap((fact) => [
+            E("dt", {}, fact.label),
+            E("dd", {}, [
+              E("span", { class: `fkp-diag-text--${fact.tone}` }, fact.value),
+              fact.note ? E("small", {}, fact.note) : ""
+            ])
           ])
-        )
+        ),
+        E("p", { class: "fkp-diag-hint" }, [
+          _(
+            "The Forkop rule and outbound are only known for a real connection. The check runs on the router and does not prove the path of a LAN client."
+          ),
+          " ",
+          hasMonitoring ? E(
+            "button",
+            {
+              type: "button",
+              class: "btn cbi-button",
+              click: openMonitoring
+            },
+            _("Trace a real connection in Monitoring")
+          ) : ""
+        ])
       );
     } finally {
       button.disabled = false;
@@ -9833,143 +9947,320 @@ function initRouteDebugger() {
 
 // src/forkop/tabs/diagnostic/connectivityMatrix.ts
 var KEY = "forkop.connectivity.targets";
+var TYPES = ["DNS", "TCP", "HTTP", "HTTPS"];
+var DEFAULT_PORTS = {
+  DNS: "",
+  TCP: "",
+  HTTP: "80",
+  HTTPS: "443"
+};
 var DEFAULTS = [
-  { host: "cloudflare.com", type: "TCP", port: "443" },
-  { host: "telegram.org", type: "TCP", port: "443" }
+  { host: "cloudflare.com", type: "HTTPS", port: "443" },
+  { host: "telegram.org", type: "HTTPS", port: "443" }
 ];
+var MAX_TARGETS = 10;
 function loadTargets(storage) {
   try {
     const value = JSON.parse(storage.getItem(KEY) || "null");
     if (Array.isArray(value))
-      return value.slice(0, 10).filter(
-        (item) => typeof item.host === "string" && item.host.length <= 253 && ["DNS", "TCP", "TLS", "HTTP"].includes(item.type) && typeof item.port === "string" && item.port.length <= 5
+      return value.slice(0, MAX_TARGETS).map(
+        (item) => item && item.type === "TLS" ? { ...item, type: "HTTPS" } : item
+      ).filter(
+        (item) => item && typeof item.host === "string" && item.host.length <= 253 && TYPES.includes(item.type) && typeof item.port === "string" && item.port.length <= 5
       );
   } catch (_error) {
   }
-  return DEFAULTS;
+  return DEFAULTS.map((target) => ({ ...target }));
+}
+function changeType(target, type) {
+  if (type === "DNS") return { ...target, type, port: "" };
+  if (type === "TCP") return { ...target, type, port: target.port };
+  const wasDefault = target.port === "" || Object.values(DEFAULT_PORTS).includes(target.port);
+  return {
+    ...target,
+    type,
+    port: wasDefault ? DEFAULT_PORTS[type] : target.port
+  };
+}
+var IPV4 = /^(\d{1,3}\.){3}\d{1,3}$/;
+function validateTarget(target) {
+  const host = target.host.trim();
+  if (!host) return _("Enter an address");
+  if (target.type === "DNS")
+    return IPV4.test(host) || host.includes(":") ? _("DNS check needs a domain name") : null;
+  if (!target.port) return _("Enter a port");
+  const port = Number(target.port);
+  if (!Number.isInteger(port) || port < 1 || port > 65535)
+    return _("Port must be between 1 and 65535");
+  return null;
+}
+var ERROR_TEXT = {
+  timeout: () => _("Timed out"),
+  nxdomain: () => _("Domain does not exist"),
+  no_answer: () => _("No DNS records for this name"),
+  dns_failed: () => _("DNS name did not resolve"),
+  connect_failed: () => _("Connection refused or host unreachable"),
+  tls_failed: () => _("TLS or certificate error"),
+  no_response: () => _("Server closed the connection without a response"),
+  tool_missing: () => _("Probe tool is missing on the router"),
+  failed: () => _("Check failed")
+};
+function resultView(result) {
+  if (result.state === "idle")
+    return { text: _("Not checked"), tone: "neutral" };
+  if (result.state === "running")
+    return { text: _("Checking\u2026"), tone: "loading" };
+  if (result.state === "invalid")
+    return { text: result.message, tone: "error" };
+  const data = result.result;
+  if (data.status === "ok") {
+    const parts = [`\u2713 ${_("Reachable")}`, `${data.latency_ms} ${_("ms")}`];
+    if (data.address) parts.push(data.address);
+    if (data.http_code) parts.push(`HTTP ${data.http_code}`);
+    return { text: parts.join(" \xB7 "), tone: "success" };
+  }
+  const reason = (ERROR_TEXT[data.error || ""] || ERROR_TEXT.failed)();
+  return {
+    text: `\u2715 ${reason}`,
+    tone: data.status === "timeout" ? "warning" : "error"
+  };
+}
+async function probe(target) {
+  const invalid2 = validateTarget(target);
+  if (invalid2) return { state: "invalid", message: invalid2 };
+  const response = await ForkopShellMethods.connectivityTest(
+    target.host.trim(),
+    target.type,
+    target.type === "DNS" ? "" : target.port
+  );
+  if (!response.success || !response.data?.status)
+    return { state: "invalid", message: _("The router rejected this check") };
+  if (response.data.type !== target.type || target.type !== "DNS" && String(response.data.port) !== target.port)
+    return { state: "idle" };
+  return { state: "done", result: response.data };
+}
+function field(label, control, extraClass = "") {
+  return E("label", { class: `fkp-conn__cell ${extraClass}`.trim() }, [
+    E("span", { class: "fkp-conn__cell-label" }, label),
+    control
+  ]);
 }
 function initConnectivityMatrix() {
   const root = document.getElementById("connectivity-rows");
-  const add = document.getElementById("connectivity-add");
+  const add = document.getElementById(
+    "connectivity-add"
+  );
   const run = document.getElementById(
     "connectivity-run"
   );
   if (!root || !add || !run || add.onclick) return;
-  const targets = loadTargets(localStorage);
-  const save = () => localStorage.setItem(KEY, JSON.stringify(targets));
-  const render5 = () => {
-    root.replaceChildren(
-      ...targets.map((target, index) => {
-        const host = E("input", {
-          class: "cbi-input-text",
-          value: target.host,
-          placeholder: _("Host")
-        });
-        const type = E(
-          "select",
-          {},
-          ["DNS", "TCP", "TLS", "HTTP"].map(
-            (kind) => E("option", { value: kind, selected: target.type === kind }, kind)
-          )
-        );
-        const port = E("input", {
-          class: "cbi-input-text",
-          value: target.port,
-          type: "number",
-          min: "1",
-          max: "65535"
-        });
-        const result = E("span", { role: "status" });
-        host.onchange = () => {
-          target.host = host.value.trim();
-          save();
-        };
-        type.onchange = () => {
-          target.type = type.value;
-          save();
-        };
-        port.onchange = () => {
-          target.port = port.value;
-          save();
-        };
-        const remove = E(
+  const rows = loadTargets(localStorage).map((target) => ({
+    target,
+    result: { state: "idle" }
+  }));
+  let runningAll = false;
+  const save = () => localStorage.setItem(KEY, JSON.stringify(rows.map((row) => row.target)));
+  const busy = () => rows.some((row) => row.result.state === "running");
+  const updateButtons = () => {
+    run.disabled = runningAll || busy() || rows.length === 0;
+    add.disabled = rows.length >= MAX_TARGETS;
+    for (const row of rows) {
+      const retry = row.element?.querySelector(".fkp-conn__retry");
+      if (retry) retry.disabled = runningAll || row.result.state === "running";
+    }
+  };
+  const paintResult = (row) => {
+    const cell = row.element?.querySelector(".fkp-conn__result");
+    if (!cell) return;
+    const view = resultView(row.result);
+    cell.className = `fkp-conn__result fkp-diag-text--${view.tone}`;
+    cell.textContent = view.text;
+    updateButtons();
+  };
+  const invalidate = (row) => {
+    row.result = { state: "idle" };
+    save();
+    paintResult(row);
+  };
+  const check = async (row) => {
+    row.result = { state: "running" };
+    paintResult(row);
+    const requested = { ...row.target };
+    const result = await probe(requested);
+    if (JSON.stringify(requested) !== JSON.stringify(row.target)) return;
+    row.result = result;
+    paintResult(row);
+  };
+  const renderRow = (row) => {
+    const host = E("input", {
+      class: "cbi-input-text",
+      value: row.target.host,
+      placeholder: "example.com",
+      maxLength: 253
+    });
+    const type = E(
+      "select",
+      { class: "cbi-input-select" },
+      TYPES.map(
+        (kind) => E("option", { value: kind, selected: row.target.type === kind }, kind)
+      )
+    );
+    const port = E("input", {
+      class: "cbi-input-text",
+      value: row.target.port,
+      type: "number",
+      min: "1",
+      max: "65535",
+      placeholder: row.target.type === "TCP" ? "443" : ""
+    });
+    host.oninput = () => {
+      row.target.host = host.value;
+      invalidate(row);
+    };
+    port.oninput = () => {
+      row.target.port = port.value.trim();
+      invalidate(row);
+    };
+    type.onchange = () => {
+      row.target = changeType(row.target, type.value);
+      row.result = { state: "idle" };
+      save();
+      row.element?.replaceWith(renderRow(row));
+      updateButtons();
+    };
+    const portCell = row.target.type === "DNS" ? E("div", { class: "fkp-conn__cell fkp-conn__cell--muted" }, [
+      E("span", { class: "fkp-conn__cell-label" }, _("Port")),
+      E("span", {}, _("not used"))
+    ]) : field(_("Port"), port);
+    const view = resultView(row.result);
+    row.element = E("div", { class: "fkp-conn__row", role: "row" }, [
+      field(_("Address"), host),
+      field(_("Type"), type),
+      portCell,
+      E("div", { class: "fkp-conn__cell" }, [
+        E("span", { class: "fkp-conn__cell-label" }, _("Result")),
+        E(
+          "span",
+          {
+            class: `fkp-conn__result fkp-diag-text--${view.tone}`,
+            role: "status"
+          },
+          view.text
+        )
+      ]),
+      E("div", { class: "fkp-conn__actions" }, [
+        E(
           "button",
           {
             type: "button",
-            class: "btn cbi-button",
+            class: "btn cbi-button fkp-conn__retry",
+            click: () => void check(row)
+          },
+          _("Check")
+        ),
+        E(
+          "button",
+          {
+            type: "button",
+            class: "btn cbi-button fkp-conn__remove",
+            title: _("Remove"),
+            "aria-label": _("Remove"),
             click: () => {
-              targets.splice(index, 1);
+              rows.splice(rows.indexOf(row), 1);
               save();
               render5();
             }
           },
-          _("Remove")
-        );
-        return E("div", { class: "fkp-connectivity-row" }, [
-          host,
-          type,
-          port,
-          remove,
-          result
-        ]);
-      })
+          "\u2715"
+        )
+      ])
+    ]);
+    return row.element;
+  };
+  const render5 = () => {
+    root.replaceChildren(
+      E("div", { class: "fkp-conn__head", role: "presentation" }, [
+        E("span", {}, _("Address")),
+        E("span", {}, _("Type")),
+        E("span", {}, _("Port")),
+        E("span", {}, _("Result")),
+        E("span", {}, "")
+      ]),
+      ...rows.map(renderRow)
     );
+    updateButtons();
   };
   add.onclick = () => {
-    if (targets.length >= 10) return;
-    targets.push({ host: "", type: "TCP", port: "443" });
+    if (rows.length >= MAX_TARGETS) return;
+    rows.push({
+      target: { host: "", type: "HTTPS", port: "443" },
+      result: { state: "idle" }
+    });
     save();
     render5();
+    rows[rows.length - 1].element?.querySelector("input")?.focus();
   };
   run.onclick = async () => {
-    run.disabled = true;
-    const rows = Array.from(root.children);
+    if (runningAll || busy()) return;
+    runningAll = true;
+    updateButtons();
     try {
-      for (const [index, target] of targets.entries()) {
-        const result = rows[index]?.lastElementChild;
-        const response = await ForkopShellMethods.connectivityTest(
-          target.host,
-          target.type,
-          target.port
-        );
-        if (result)
-          result.textContent = response.success && response.data ? `${response.data.type === "TLS" ? _("HTTPS request (TLS and HTTP)") : response.data.type}: ${response.data.status} \xB7 ${response.data.latency_ms} ms \xB7 ${_("router")}` : _("Test failed");
-      }
+      for (const row of [...rows]) if (rows.includes(row)) await check(row);
     } finally {
-      run.disabled = false;
+      runningAll = false;
+      updateButtons();
     }
   };
   render5();
 }
 
 // src/forkop/tabs/diagnostic/dpiPlayground.ts
+function validationView(response) {
+  const data = response.data;
+  if (!response.success || typeof data?.valid !== "boolean")
+    return { text: _("Syntax check is unavailable"), tone: "error" };
+  if (data.valid)
+    return { text: `\u2713 ${_("Syntax is correct")}`, tone: "success" };
+  const message = typeof data.message === "string" ? data.message.trim() : "";
+  return {
+    text: `\u2715 ${message || _("The strategy contains an error")}`,
+    tone: "error"
+  };
+}
 function initDpiPlayground() {
   const button = document.getElementById(
     "dpi-validate"
   );
-  if (!button || button.onclick) return;
+  const input = document.getElementById(
+    "dpi-strategy"
+  );
+  const provider = document.getElementById(
+    "dpi-provider"
+  );
+  const result = document.getElementById("dpi-playground-result");
+  if (!button || !input || !provider || !result || button.onclick) return;
+  const clear = () => result.replaceChildren();
+  input.oninput = clear;
+  provider.onchange = clear;
   button.onclick = async () => {
-    const provider = document.getElementById("dpi-provider").value;
-    const a = document.getElementById("dpi-strategy-a").value;
-    const b = document.getElementById("dpi-strategy-b").value;
-    const result = document.getElementById("dpi-playground-result");
-    if (!result) return;
+    const strategy = input.value.trim();
+    if (!strategy) {
+      result.className = "fkp-diag-text--error";
+      result.textContent = _("Enter a strategy");
+      return;
+    }
     button.disabled = true;
+    result.className = "fkp-diag-text--loading";
+    result.textContent = _("Checking\u2026");
     try {
-      const values = await Promise.all(
-        [a, b].map(
-          (strategy) => ForkopShellMethods.validateDpiStrategy(provider, strategy)
-        )
+      const response = await ForkopShellMethods.validateDpiStrategy(
+        provider.value,
+        strategy
       );
-      result.replaceChildren(
-        ...values.map(
-          (response, index) => E(
-            "div",
-            {},
-            `${index === 0 ? "A" : "B"}: ${JSON.stringify(response.success ? response.data : response.error || _("Validation failed"))}`
-          )
-        )
-      );
+      if (input.value.trim() !== strategy) return;
+      const view = validationView(response);
+      result.className = `fkp-diag-text--${view.tone}`;
+      result.textContent = view.text;
     } finally {
       button.disabled = false;
     }
@@ -9977,23 +10268,39 @@ function initDpiPlayground() {
 }
 
 // src/forkop/tabs/diagnostic/safetyCenter.ts
-function safetyRows(health) {
+function recoveryRows(health) {
+  const last = health.recovery.last_event;
   return [
-    [_("Overall"), health.overall],
-    ["Forkop", health.service.forkop],
-    ["sing-box", health.service.sing_box],
-    ["DNS", health.dns.status],
-    ["DPI", health.dpi.status],
-    [_("DPI guard"), health.guard.active ? _("Active") : _("Inactive")],
+    [
+      _("DPI guard"),
+      health.guard.active ? { text: _("Active: DPI switch not confirmed"), tone: "warning" } : { text: _("Inactive"), tone: "success" }
+    ],
+    [
+      _("Last recovery"),
+      health.recovery.pending ? { text: _("In progress"), tone: "loading" } : last && last.kind !== "start" ? {
+        text: `${eventKindLabel(last.kind)}: ${eventStatus(last.status).text} \xB7 ${formatTime(last.timestamp)}`,
+        tone: eventStatus(last.status).tone
+      } : { text: _("Not needed"), tone: "success" }
+    ],
     [
       _("Package recovery"),
-      health.package_recovery.pending ? _("Pending") : _("None")
+      health.package_recovery.pending ? { text: _("Waiting to finish"), tone: "warning" } : { text: _("Not needed"), tone: "success" }
     ],
     [
       _("Last reload"),
-      health.last_reload ? `${health.last_reload.status} \xB7 ${new Date(health.last_reload.timestamp * 1e3).toLocaleString()}` : _("Unknown")
+      health.last_reload ? {
+        text: `${eventStatus(health.last_reload.status).text} \xB7 ${formatTime(health.last_reload.timestamp)}`,
+        tone: eventStatus(health.last_reload.status).tone
+      } : { text: _("No reload recorded yet"), tone: "neutral" }
     ]
   ];
+}
+function recentEvents(health) {
+  return health.recent_activity.slice(-10).reverse().map((event) => ({
+    time: formatTime(event.timestamp),
+    kind: eventKindLabel(event.kind),
+    status: eventStatus(event.status)
+  }));
 }
 function initSafetyCenter() {
   const button = document.getElementById(
@@ -10002,25 +10309,39 @@ function initSafetyCenter() {
   const container = document.getElementById("safety-center-state");
   if (!button || !container || button.onclick) return;
   const refresh = async () => {
-    const response = await ForkopShellMethods.getHealthStatus();
-    if (!response.success || !response.data) {
-      container.textContent = _("Health status unavailable");
-      return;
+    button.disabled = true;
+    try {
+      const response = await ForkopShellMethods.getHealthStatus();
+      if (!response.success || !response.data) {
+        container.textContent = _("Recovery state is unavailable");
+        return;
+      }
+      const events = recentEvents(response.data);
+      container.replaceChildren(
+        E(
+          "dl",
+          { class: "fkp-diag-facts" },
+          recoveryRows(response.data).flatMap(([label, status]) => [
+            E("dt", {}, label),
+            E("dd", {}, renderStatusBadge(status))
+          ])
+        ),
+        E("h4", {}, _("Recent events")),
+        events.length ? E(
+          "table",
+          { class: "fkp-diag-events" },
+          events.map(
+            (event) => E("tr", {}, [
+              E("td", {}, event.time),
+              E("td", {}, event.kind),
+              E("td", {}, renderStatusBadge(event.status))
+            ])
+          )
+        ) : E("p", { class: "fkp-diag-hint" }, _("No events recorded yet"))
+      );
+    } finally {
+      button.disabled = false;
     }
-    const health = response.data;
-    container.replaceChildren(
-      ...safetyRows(health).map(
-        ([label, status]) => E("div", {}, [E("strong", {}, `${label}: `), E("span", {}, status)])
-      ),
-      E("h4", {}, _("Recent activity")),
-      ...health.recent_activity.slice(-10).reverse().map(
-        (event) => E(
-          "div",
-          {},
-          `${new Date(event.timestamp * 1e3).toLocaleString()} \xB7 ${event.kind}: ${event.status}`
-        )
-      )
-    );
   };
   button.onclick = () => void refresh();
   void refresh();
@@ -10752,8 +11073,10 @@ function renderDiagnosticRunActionWidget() {
     }),
     click: () => runChecks()
   });
+  const lastRun = document.getElementById("fkp_diagnostic-last-run");
   return preserveScrollForPage(() => {
     container.replaceChildren(renderedAction);
+    if (lastRun) lastRun.textContent = lastRunText(localStorage);
   });
 }
 async function handleServiceRuntimeAction({
@@ -10989,10 +11312,11 @@ function renderDiagnosticAvailableActionsWidget() {
     stopLoading
   });
   const container = document.getElementById("fkp_diagnostic-page-actions");
+  const readonly = isReadonlyMode();
   const renderedActions = renderAvailableActions({
     restart: {
       loading: restartLoading,
-      visible: shouldShowRestartAction({
+      visible: !readonly && shouldShowRestartAction({
         forkopRunning,
         restartLoading,
         startLoading,
@@ -11003,25 +11327,25 @@ function renderDiagnosticAvailableActionsWidget() {
     },
     start: {
       loading: startLoading,
-      visible: startVisible,
+      visible: !readonly && startVisible,
       onClick: handleStart,
       disabled: serviceControlsDisabled
     },
     stop: {
       loading: stopLoading,
-      visible: stopVisible,
+      visible: !readonly && stopVisible,
       onClick: handleStop,
       disabled: serviceControlsDisabled
     },
     enable: {
       loading: diagnosticsActions.enable.loading,
-      visible: !forkopEnabled,
+      visible: !readonly && !forkopEnabled,
       onClick: handleEnable,
       disabled: serviceControlsDisabled
     },
     disable: {
       loading: diagnosticsActions.disable.loading,
-      visible: forkopEnabled,
+      visible: !readonly && forkopEnabled,
       onClick: handleDisable,
       disabled: serviceControlsDisabled
     },
@@ -11045,13 +11369,22 @@ function renderDiagnosticAvailableActionsWidget() {
     },
     supportReport: {
       loading: diagnosticsActions.supportReport.loading,
-      visible: true,
+      visible: !readonly,
       onClick: () => void handleDownloadSupportReport(),
       disabled: utilityActionsDisabled
     }
   });
   return preserveScrollForPage(() => {
-    container.replaceChildren(renderedActions);
+    container.replaceChildren(
+      renderedActions,
+      ...readonly ? [
+        E(
+          "p",
+          { class: "fkp-diag-hint" },
+          _("Service control is available to administrators only.")
+        )
+      ] : []
+    );
   });
 }
 function renderDiagnosticSystemInfoWidget() {
@@ -11215,6 +11548,7 @@ async function runChecks({ resume } = {}) {
         nextRunnerIndex: index + 1
       });
     }
+    saveLastRun(localStorage);
   } catch (e) {
     logger.error("[DIAGNOSTIC]", "runChecks - e", e);
   } finally {
@@ -11357,19 +11691,6 @@ async function initController2() {
 
 // src/forkop/tabs/diagnostic/styles.ts
 var styles4 = `
-.fkp-tool {
-    border: 1px solid var(--border-color, #777);
-    border-radius: 4px;
-    padding: 10px;
-    overflow-wrap: anywhere;
-}
-.fkp-tool label { display: block; margin: 5px 0; }
-.fkp-tool input, .fkp-tool textarea, .fkp-tool select { max-width: 100%; }
-.fkp-tool textarea { display: block; width: 100%; min-height: 4em; }
-.fkp-tool button { margin: 3px; }
-.fkp-route-stage { display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; padding: 3px 0; }
-.fkp-connectivity-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 5px 0; }
-
 #cbi-${FORKOP_UCI_PACKAGE}-diagnostic-_mount_node > div {
     width: 100%;
 }
@@ -11378,23 +11699,290 @@ var styles4 = `
     display: none;
 }
 
-.fkp_diagnostic-page {
+.fkp-diag {
     display: grid;
-    grid-template-columns: 2fr 1fr;
-    grid-column-gap: 10px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.fkp-diag * {
+    text-align: left;
+}
+
+/* Service actions: a wrapping row of buttons instead of a tall column. */
+.fkp-diag .fkp_diagnostic-page__right-bar__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: 6px;
+}
+
+.fkp-diag .fkp_diagnostic-page__right-bar__actions > b,
+.fkp-diag .fkp_diagnostic-page__right-bar__actions > p {
+    flex-basis: 100%;
+    margin: 0;
+}
+
+.fkp-diag .fkp_diagnostic-page__right-bar__actions > .fkp-partial-button {
+    width: auto;
+    margin: 0;
+}
+
+.fkp-diag-card {
+    border: 1px solid var(--border-color-medium, #777);
+    border-radius: 6px;
+    padding: 12px 14px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.fkp-diag-card__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 16px;
+}
+
+.fkp-diag-card__title,
+.fkp-diag-section-title {
+    margin: 0 0 4px;
+}
+
+.fkp-diag-section-title {
+    margin-top: 8px;
+}
+
+.fkp-diag-hint {
+    display: block;
+    margin: 4px 0;
+    color: var(--text-color-medium, gray);
+}
+
+.fkp-diag-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 12px;
     align-items: start;
 }
 
-@media (max-width: 800px) {
-    .fkp_diagnostic-page {
-        grid-template-columns: 1fr;
-    }
+.fkp-diag-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    margin-top: 10px;
 }
 
-.fkp_diagnostic-page__right-bar {
+.fkp-diag-actions .btn {
+    margin: 0;
+}
+
+.fkp-diag-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.fkp-diag-field {
     display: grid;
-    grid-template-columns: 1fr;
-    grid-row-gap: 10px;
+    gap: 4px;
+    min-width: 0;
+}
+
+.fkp-diag-field--wide {
+    flex: 1 1 280px;
+}
+
+.fkp-diag-field input,
+.fkp-diag-field select,
+.fkp-diag-field textarea {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    margin: 0;
+}
+
+.fkp-diag-details > summary {
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 1.1em;
+}
+
+.fkp-diag-details[open] > summary {
+    margin-bottom: 8px;
+}
+
+.fkp-diag-badge {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 10px;
+    border: 1px solid currentColor;
+    font-size: 0.9em;
+    white-space: nowrap;
+}
+
+.fkp-diag-badge--success, .fkp-diag-text--success { color: var(--success-color-medium, green); }
+.fkp-diag-badge--warning, .fkp-diag-text--warning { color: var(--warn-color-medium, orange); }
+.fkp-diag-badge--error, .fkp-diag-text--error { color: var(--error-color-medium, red); }
+.fkp-diag-badge--loading, .fkp-diag-text--loading { color: var(--primary-color-high, dodgerblue); }
+.fkp-diag-badge--neutral, .fkp-diag-text--neutral { color: var(--text-color-medium, gray); }
+
+.fkp-diag-facts {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 6px 16px;
+    margin: 0;
+}
+
+.fkp-diag-facts dt { font-weight: bold; }
+.fkp-diag-facts dd { margin: 0; }
+
+.fkp-diag-events {
+    border-collapse: collapse;
+}
+
+.fkp-diag-events td {
+    padding: 3px 16px 3px 0;
+    vertical-align: top;
+}
+
+/* System checks: compact grid instead of full-width alert cards. */
+.fkp-diag-checks {
+    display: grid;
+    align-items: start;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.fkp-check {
+    border: 1px solid var(--border-color-low, lightgray);
+    border-radius: 6px;
+    padding: 8px 10px;
+    min-width: 0;
+}
+
+.fkp-check--success { border-color: var(--success-color-medium, green); }
+.fkp-check--warning { border-color: var(--warn-color-medium, orange); }
+.fkp-check--error { border-color: var(--error-color-medium, red); }
+.fkp-check--loading { border-color: var(--primary-color-high, dodgerblue); }
+
+.fkp-check__head {
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+}
+
+.fkp-check__icon svg { width: 20px; height: 20px; }
+
+.fkp-check__details { margin-top: 6px; }
+.fkp-check__details > summary { cursor: pointer; }
+.fkp-check__description { margin: 4px 0; }
+
+.fkp-check__item {
+    display: grid;
+    grid-template-columns: 16px max-content minmax(0, 1fr);
+    gap: 6px;
+    align-items: start;
+}
+
+.fkp-check__item-icon svg { width: 16px; height: 16px; }
+
+.fkp-check__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 6px;
+}
+
+.fkp_diagnostic-page__run_check_wrapper button { margin: 0; }
+
+/* Reachability table; stacked cards on narrow screens. */
+.fkp-conn__head,
+.fkp-conn__row {
+    display: grid;
+    /* Fixed action column so the header and the rows share column widths. */
+    grid-template-columns: minmax(160px, 2fr) 110px 100px minmax(160px, 2fr) 104px;
+    gap: 8px;
+    align-items: center;
+}
+
+.fkp-conn__head > span,
+.fkp-conn__row > * {
+    justify-self: stretch;
+    text-align: left;
+}
+
+.fkp-conn__head {
+    font-weight: bold;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border-color-low, lightgray);
+}
+
+.fkp-conn__row {
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border-color-low, lightgray);
+}
+
+.fkp-conn__cell { display: block; min-width: 0; margin: 0; }
+.fkp-conn__cell input, .fkp-conn__cell select {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    margin: 0;
+}
+.fkp-conn__cell-label { display: none; }
+.fkp-conn__cell--muted { color: var(--text-color-medium, gray); }
+.fkp-conn__actions { display: flex; gap: 4px; }
+.fkp-conn__actions .btn { margin: 0; }
+
+@media (max-width: 860px) {
+    .fkp-conn__head { display: none; }
+    .fkp-conn__row {
+        grid-template-columns: 1fr 1fr;
+        border: 1px solid var(--border-color-low, lightgray);
+        border-radius: 6px;
+        padding: 8px;
+        margin-top: 8px;
+    }
+    .fkp-conn__row > :first-child,
+    .fkp-conn__row > :nth-child(4) { grid-column: 1 / -1; }
+    .fkp-conn__cell-label {
+        display: block;
+        font-size: 0.85em;
+        color: var(--text-color-medium, gray);
+    }
+    .fkp-conn__actions { grid-column: 1 / -1; }
+}
+
+.fkp-route__form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 10px;
+}
+
+.fkp-route__form .btn { margin: 0; }
+
+.fkp-route__facts {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 6px 16px;
+    margin: 12px 0 0;
+}
+
+.fkp-route__facts dt { font-weight: bold; }
+.fkp-route__facts dd { margin: 0; display: grid; gap: 2px; }
+.fkp-route__facts small { color: var(--text-color-medium, gray); }
+
+@media (max-width: 560px) {
+    .fkp-diag-facts, .fkp-route__facts { grid-template-columns: minmax(0, 1fr); }
+    .fkp-diag-checks { grid-template-columns: minmax(0, 1fr); }
 }
 
 .fkp_diagnostic-page__right-bar__wiki {
@@ -11481,100 +12069,6 @@ var styles4 = `
     color: var(--success-color-medium, green);
 }
 
-.fkp_diagnostic-page__left-bar {
-    display: grid;
-    grid-template-columns: 1fr;
-    grid-row-gap: 10px;
-}
-
-.fkp_diagnostic-page__run_check_wrapper {}
-
-.fkp_diagnostic-page__run_check_wrapper button {
-    width: 100%;
-}
-
-.fkp_diagnostic-page__checks {
-    display: grid;
-    grid-template-columns: 1fr;
-    grid-row-gap: 10px;
-}
-
-.fkp_diagnostic_alert {
-    border: 2px var(--background-color-low, lightgray) solid;
-    border-radius: 4px;
-
-    display: grid;
-    grid-template-columns: 24px 1fr;
-    grid-column-gap: 10px;
-    align-items: center;
-    padding: 10px;
-}
-
-.fkp_diagnostic_alert--loading {
-    border: 2px var(--primary-color-high, dodgerblue) solid;
-}
-
-.fkp_diagnostic_alert--warning {
-    border: 2px var(--warn-color-medium, orange) solid;
-    color: var(--warn-color-medium, orange);
-}
-
-.fkp_diagnostic_alert--error {
-    border: 2px var(--error-color-medium, red) solid;
-    color: var(--error-color-medium, red);
-}
-
-.fkp_diagnostic_alert--success {
-    border: 2px var(--success-color-medium, green) solid;
-    color: var(--success-color-medium, green);
-}
-
-.fkp_diagnostic_alert--skipped {}
-
-.fkp_diagnostic_alert__icon {}
-
-.fkp_diagnostic_alert__content {}
-
-.fkp_diagnostic_alert__actions {
-    grid-column: 2;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    margin-top: 8px;
-}
-
-.fkp_diagnostic_alert__title {
-    display: block;
-}
-
-.fkp_diagnostic_alert__description {}
-
-.fkp_diagnostic_alert__summary {
-    margin-top: 10px;
-}
-
-.fkp_diagnostic_alert__summary__item {
-    display: grid;
-    grid-template-columns: 16px auto 1fr;
-    grid-column-gap: 10px;
-}
-
-.fkp_diagnostic_alert__summary__item--error {
-    color: var(--error-color-medium, red);
-}
-
-.fkp_diagnostic_alert__summary__item--warning {
-    color: var(--warn-color-medium, orange);
-}
-
-.fkp_diagnostic_alert__summary__item--success {
-    color: var(--success-color-medium, green);
-}
-
-.fkp_diagnostic_alert__summary__item__icon {
-    width: 16px;
-    height: 16px;
-}
 `;
 
 // src/forkop/tabs/diagnostic/index.ts
@@ -14714,17 +15208,17 @@ function getComponentCards() {
     }
   ];
 }
-function renderComponentCard(card) {
+function renderComponentCard(card2) {
   const updatesActions = store.get().updatesActions;
   const anyActionLoading = isAnyActionLoading();
   const serviceRuntimeActionLoading = isServiceRuntimeActionLoading();
   const systemInfoLoading = isSystemInfoLoading();
   const headerChildren = [
-    E("b", { class: "fkp_updates-page__component__title" }, card.title),
+    E("b", { class: "fkp_updates-page__component__title" }, card2.title),
     E(
       "span",
       { class: "fkp_updates-page__component__header-version" },
-      card.version
+      card2.version
     )
   ];
   const header = E(
@@ -14733,13 +15227,13 @@ function renderComponentCard(card) {
     headerChildren
   );
   const detailsChildren = [];
-  const checkResult = getVisibleCheckResult(card.component);
+  const checkResult = getVisibleCheckResult(card2.component);
   if (checkResult && checkResult.status) {
     let labelText = "";
     const latestValueNodes = [];
     if (checkResult.status === "outdated") {
       labelText = _("Update is available:");
-      const versionToShow = checkResult.latest_version || card.latestVersion || card.version;
+      const versionToShow = checkResult.latest_version || card2.latestVersion || card2.version;
       if (checkResult.release_url) {
         latestValueNodes.push(
           E(
@@ -14760,7 +15254,7 @@ function renderComponentCard(card) {
       labelText = _("Latest version is installed");
     } else if (checkResult.status === "dev") {
       labelText = `${_("Installed version is newer than release")}. ${_("Latest version:")}`;
-      const versionToShow = checkResult.latest_version || card.latestVersion;
+      const versionToShow = checkResult.latest_version || card2.latestVersion;
       if (checkResult.release_url) {
         latestValueNodes.push(
           E(
@@ -14814,7 +15308,7 @@ function renderComponentCard(card) {
   const primaryActions = [];
   const dangerActions = [];
   const variantActions = [];
-  card.actions.forEach((action) => {
+  card2.actions.forEach((action) => {
     if (action.action === "remove") {
       dangerActions.push(action);
     } else if (action.action.startsWith("install_")) {
@@ -14836,12 +15330,12 @@ function renderComponentCard(card) {
       onClick: () => void handleComponentAction(action)
     });
   });
-  if (card.component === "forkop") {
+  if (card2.component === "forkop") {
     primaryButtons.push(
       renderButton({
         text: _("Choose version"),
         disabled: systemInfoLoading || serviceRuntimeActionLoading || anyActionLoading,
-        onClick: () => void showReleaseSelector(card.version, (version) => {
+        onClick: () => void showReleaseSelector(card2.version, (version) => {
           void handleComponentAction({
             key: "forkopInstall",
             text: _("Install"),
@@ -14873,14 +15367,14 @@ function renderComponentCard(card) {
       ])
     );
   }
-  if (card.copyValue) {
+  if (card2.copyValue) {
     actionElements.push(
       E("div", { class: "fkp_updates-page__component__actions-main" }, [
         renderButton({
           text: _("Copy address"),
           icon: renderCopyIcon24,
           disabled: anyActionLoading || serviceRuntimeActionLoading,
-          onClick: () => copyToClipboard(card.copyValue || "")
+          onClick: () => copyToClipboard(card2.copyValue || "")
         })
       ])
     );
@@ -14934,8 +15428,8 @@ function renderUpdatesComponents() {
     return;
   }
   const columns = [[], [], []];
-  getComponentCards().forEach((card) => {
-    columns[card.column].push(renderComponentCard(card));
+  getComponentCards().forEach((card2) => {
+    columns[card2.column].push(renderComponentCard(card2));
   });
   columns[2].push(
     renderFullUninstall(
@@ -15420,6 +15914,7 @@ return baseclass.extend({
   getProxyUrlName,
   injectGlobalStyles,
   parseValueList,
+  setReadonlyMode,
   showToast,
   store,
   validateBootstrapDNS,

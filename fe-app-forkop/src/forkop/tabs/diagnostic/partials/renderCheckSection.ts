@@ -9,6 +9,7 @@ import {
   renderXIcon24,
 } from '../../../../icons';
 import type { IDiagnosticsChecksStoreItem } from '../../../services';
+import { checkStatus, renderStatusBadge } from '../statusLabels';
 
 type IRenderCheckSectionProps = IDiagnosticsChecksStoreItem;
 
@@ -21,7 +22,7 @@ export function diagnosticActionSummary(props: IRenderCheckSectionProps) {
 }
 
 function renderRecoveryActions(props: IRenderCheckSectionProps) {
-  return E('div', { class: 'fkp_diagnostic_alert__actions' }, [
+  return E('div', { class: 'fkp-check__actions' }, [
     E(
       'button',
       {
@@ -34,18 +35,21 @@ function renderRecoveryActions(props: IRenderCheckSectionProps) {
       },
       _('Retry'),
     ),
-    E(
-      'button',
-      {
-        type: 'button',
-        class: 'btn cbi-button',
-        click: () =>
-          document
-            .querySelector<HTMLElement>('.cbi-tab[data-tab="settings"]')
-            ?.click(),
-      },
-      _('Open settings'),
-    ),
+    // LuCI tabs switch on the inner link; read-only sessions have no Settings tab.
+    document.querySelector('[data-tab="settings"] > a')
+      ? E(
+          'button',
+          {
+            type: 'button',
+            class: 'btn cbi-button',
+            click: () =>
+              document
+                .querySelector<HTMLElement>('[data-tab="settings"] > a')
+                ?.click(),
+          },
+          _('Open settings'),
+        )
+      : '',
     E(
       'button',
       {
@@ -59,179 +63,68 @@ function renderRecoveryActions(props: IRenderCheckSectionProps) {
   ]);
 }
 
-function renderCheckSummary(items: IRenderCheckSectionProps['items']) {
-  if (!items.length) {
-    return E('div', {}, '');
+function itemIcon(state: IRenderCheckSectionProps['items'][number]['state']) {
+  const icon = E('span', { class: 'fkp-check__item-icon' });
+  if (state === 'success') icon.appendChild(renderCheckIcon24());
+  if (state === 'warning') icon.appendChild(renderTriangleAlertIcon24());
+  if (state === 'error') icon.appendChild(renderXIcon24());
+  return icon;
+}
+
+function stateIcon(state: IRenderCheckSectionProps['state']) {
+  switch (state) {
+    case 'success':
+      return renderCircleCheckIcon24();
+    case 'warning':
+      return renderCircleAlertIcon24();
+    case 'error':
+      return renderCircleXIcon24();
+    case 'loading':
+      return renderLoaderCircleIcon24();
+    default:
+      return renderCircleSlashIcon24();
   }
-
-  const renderedItems = items.map((item) => {
-    function getIcon() {
-      const iconWrap = E('span', {
-        class: 'fkp_diagnostic_alert__summary__item__icon',
-      });
-
-      if (item.state === 'success') {
-        iconWrap.appendChild(renderCheckIcon24());
-      }
-
-      if (item.state === 'warning') {
-        iconWrap.appendChild(renderTriangleAlertIcon24());
-      }
-
-      if (item.state === 'error') {
-        iconWrap.appendChild(renderXIcon24());
-      }
-
-      return iconWrap;
-    }
-
-    return E(
-      'div',
-      {
-        class: `fkp_diagnostic_alert__summary__item fkp_diagnostic_alert__summary__item--${item.state}`,
-      },
-      [getIcon(), E('b', {}, item.key), E('div', {}, item.value)],
-    );
-  });
-
-  return E('div', { class: 'fkp_diagnostic_alert__summary' }, renderedItems);
 }
 
-function renderLoadingState(props: IRenderCheckSectionProps) {
-  const iconWrap = E('span', { class: 'fkp_diagnostic_alert__icon' });
-  iconWrap.appendChild(renderLoaderCircleIcon24());
-
-  return E(
-    'div',
-    { class: 'fkp_diagnostic_alert fkp_diagnostic_alert--loading' },
-    [
-      iconWrap,
-      E('div', { class: 'fkp_diagnostic_alert__content' }, [
-        E('b', { class: 'fkp_diagnostic_alert__title' }, props.title),
-        E(
-          'div',
-          { class: 'fkp_diagnostic_alert__description' },
-          props.description,
-        ),
-      ]),
-      E('div', {}, ''),
-      renderCheckSummary(props.items),
-    ],
-  );
-}
-
-function renderWarningState(props: IRenderCheckSectionProps) {
-  const iconWrap = E('span', { class: 'fkp_diagnostic_alert__icon' });
-  iconWrap.appendChild(renderCircleAlertIcon24());
-
-  return E(
-    'div',
-    { class: 'fkp_diagnostic_alert fkp_diagnostic_alert--warning' },
-    [
-      iconWrap,
-      E('div', { class: 'fkp_diagnostic_alert__content' }, [
-        E('b', { class: 'fkp_diagnostic_alert__title' }, props.title),
-        E(
-          'div',
-          { class: 'fkp_diagnostic_alert__description' },
-          props.description,
-        ),
-      ]),
-      renderRecoveryActions(props),
-      renderCheckSummary(props.items),
-    ],
-  );
-}
-
-function renderErrorState(props: IRenderCheckSectionProps) {
-  const iconWrap = E('span', { class: 'fkp_diagnostic_alert__icon' });
-  iconWrap.appendChild(renderCircleXIcon24());
-
-  return E(
-    'div',
-    { class: 'fkp_diagnostic_alert fkp_diagnostic_alert--error' },
-    [
-      iconWrap,
-      E('div', { class: 'fkp_diagnostic_alert__content' }, [
-        E('b', { class: 'fkp_diagnostic_alert__title' }, props.title),
-        E(
-          'div',
-          { class: 'fkp_diagnostic_alert__description' },
-          props.description,
-        ),
-      ]),
-      renderRecoveryActions(props),
-      renderCheckSummary(props.items),
-    ],
-  );
-}
-
-function renderSuccessState(props: IRenderCheckSectionProps) {
-  const iconWrap = E('span', { class: 'fkp_diagnostic_alert__icon' });
-  iconWrap.appendChild(renderCircleCheckIcon24());
-
-  return E(
-    'div',
-    { class: 'fkp_diagnostic_alert fkp_diagnostic_alert--success' },
-    [
-      iconWrap,
-      E('div', { class: 'fkp_diagnostic_alert__content' }, [
-        E('b', { class: 'fkp_diagnostic_alert__title' }, props.title),
-        E(
-          'div',
-          { class: 'fkp_diagnostic_alert__description' },
-          props.description,
-        ),
-      ]),
-      E('div', {}, ''),
-      renderCheckSummary(props.items),
-    ],
-  );
-}
-
-function renderSkippedState(props: IRenderCheckSectionProps) {
-  const iconWrap = E('span', { class: 'fkp_diagnostic_alert__icon' });
-  iconWrap.appendChild(renderCircleSlashIcon24());
-
-  return E(
-    'div',
-    { class: 'fkp_diagnostic_alert fkp_diagnostic_alert--skipped' },
-    [
-      iconWrap,
-      E('div', { class: 'fkp_diagnostic_alert__content' }, [
-        E('b', { class: 'fkp_diagnostic_alert__title' }, props.title),
-        E(
-          'div',
-          { class: 'fkp_diagnostic_alert__description' },
-          props.description,
-        ),
-      ]),
-      E('div', {}, ''),
-      renderCheckSummary(props.items),
-    ],
-  );
+export function checkDetailsOpen(state: IRenderCheckSectionProps['state']) {
+  return state === 'error' || state === 'warning';
 }
 
 export function renderCheckSection(props: IRenderCheckSectionProps) {
-  if (props.state === 'loading') {
-    return renderLoadingState(props);
-  }
-
-  if (props.state === 'warning') {
-    return renderWarningState(props);
-  }
-
-  if (props.state === 'error') {
-    return renderErrorState(props);
-  }
-
-  if (props.state === 'success') {
-    return renderSuccessState(props);
-  }
-
-  if (props.state === 'skipped') {
-    return renderSkippedState(props);
-  }
-
-  return E('div', {}, _('Not implement yet'));
+  const status = checkStatus(props.state);
+  const icon = E('span', { class: 'fkp-check__icon' });
+  icon.appendChild(stateIcon(props.state));
+  const hasDetails = props.items.length > 0 || checkDetailsOpen(props.state);
+  return E('div', { class: `fkp-check fkp-check--${status.tone}` }, [
+    E('div', { class: 'fkp-check__head' }, [
+      icon,
+      E('b', { class: 'fkp-check__title' }, props.title),
+      renderStatusBadge(status),
+    ]),
+    hasDetails
+      ? E(
+          'details',
+          {
+            class: 'fkp-check__details',
+            open: checkDetailsOpen(props.state) || undefined,
+          },
+          [
+            E('summary', {}, _('Details')),
+            E('div', { class: 'fkp-check__description' }, props.description),
+            ...props.items.map((item) =>
+              E(
+                'div',
+                { class: `fkp-check__item fkp-diag-text--${item.state}` },
+                [
+                  itemIcon(item.state),
+                  E('b', {}, item.key),
+                  E('span', {}, item.value),
+                ],
+              ),
+            ),
+            checkDetailsOpen(props.state) ? renderRecoveryActions(props) : '',
+          ],
+        )
+      : '',
+  ]);
 }

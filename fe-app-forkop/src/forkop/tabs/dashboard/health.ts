@@ -57,7 +57,7 @@ export function renderHealth(health: Forkop.HealthStatus) {
         class: 'btn cbi-button',
         click: () =>
           document
-            .querySelector<HTMLElement>('.cbi-tab[data-tab="diagnostic"]')
+            .querySelector<HTMLElement>('[data-tab="diagnostic"] > a')
             ?.click(),
       },
       _('Open Diagnostics'),

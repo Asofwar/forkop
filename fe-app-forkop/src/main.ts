@@ -23,6 +23,7 @@ export { showToast } from './helpers/showToast';
 export { getClashUIUrl } from './helpers/getClashApiUrl';
 export { ForkopShellMethods } from './forkop/methods/shell';
 export { coreService } from './forkop/services/core.service';
+export { setReadonlyMode } from './forkop/services/accessMode.service';
 export { store } from './forkop/services/store.service';
 export { applyUiStateToStore } from './forkop/services/uiState.service';
 export { DashboardTab } from './forkop/tabs/dashboard';

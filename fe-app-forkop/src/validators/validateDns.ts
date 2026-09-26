@@ -45,7 +45,9 @@ export function validateBootstrapDNS(value: string): ValidationResult {
   if (/[/?#@]/.test(value)) {
     return {
       valid: false,
-      message: _('Bootstrap DNS server must be an IPv4 or IPv6 address with an optional port'),
+      message: _(
+        'Bootstrap DNS server must be an IPv4 or IPv6 address with an optional port',
+      ),
     };
   }
 
@@ -60,6 +62,8 @@ export function validateBootstrapDNS(value: string): ValidationResult {
 
   return {
     valid: false,
-    message: _('Bootstrap DNS server must be an IPv4 or IPv6 address with an optional port'),
+    message: _(
+      'Bootstrap DNS server must be an IPv4 or IPv6 address with an optional port',
+    ),
   };
 }

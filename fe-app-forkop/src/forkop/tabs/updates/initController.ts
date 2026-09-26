@@ -473,7 +473,11 @@ async function applyCompletedComponentAction({
     return;
   }
 
-  if (result.component === 'forkop' && result.action === 'install' && result.status === 'recovered') {
+  if (
+    result.component === 'forkop' &&
+    result.action === 'install' &&
+    result.status === 'recovered'
+  ) {
     resetCheckResult(result.component);
     setActionLoading(key, false);
     if (notify) {

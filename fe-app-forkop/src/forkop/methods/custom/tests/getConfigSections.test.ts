@@ -17,9 +17,11 @@ describe('getConfigSections ACL fallback', () => {
     mocks.getReadonlyConfigSections.mockReset();
     vi.stubGlobal('uci', {
       load: vi.fn().mockResolvedValue(undefined),
-      sections: vi.fn().mockResolvedValue([
-        { '.name': 'main', '.type': 'section', password: 'write-only' },
-      ]),
+      sections: vi
+        .fn()
+        .mockResolvedValue([
+          { '.name': 'main', '.type': 'section', password: 'write-only' },
+        ]),
     });
   });
 

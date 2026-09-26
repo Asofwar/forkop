@@ -70,6 +70,9 @@
         "/usr/bin/forkop show_sing_box_config masked": ["exec"]
       },
       "ubus": {
+        "file": [
+          "exec"
+        ],
         "luci-rpc": [
           "getDHCPLeases",
           "getHostHints"

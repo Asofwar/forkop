@@ -13,6 +13,7 @@ import sys
 source = (pathlib.Path(sys.argv[1]) / 'forkop/files/usr/lib/components/action.uc').read_text()
 names = ('forkop_release_matches', 'opkg_forkop_set_versions_match',
          'opkg_forkop_set_command', 'opkg_forkop_recovery_files',
+         'restore_forkop_opkg_service', 'finish_forkop_opkg_recovery',
          'recover_forkop_opkg_set', 'install_forkop_opkg_set')
 functions = []
 for name in names:
@@ -24,7 +25,11 @@ for name in names:
 prefix = r'''
 const FORKOP_VERSION = "1.0.0";
 const FORKOP_OPKG_RECOVERY_DIR = "/recovery";
+const SERVICE_INIT = "/init";
 let tmp_dir = "/tmp";
+let forkop_was_running = true;
+let service_running = true;
+let service_restart_fail = false;
 let versions = {};
 let failure = "";
 let uncommitted = "";
@@ -42,10 +47,21 @@ let fs = { rename: function(source, target) { marker = marker_tmp; marker_tmp = 
 function command_success_from_args(args) {
     if (args[0] == "mkdir") { recovery_dir = true; return true; }
     if (args[0] == "rm") { recovery_dir = false; marker = ""; downloads = []; return true; }
+    if (args[0] == "sync") return true;
+    if (args[0] == SERVICE_INIT) {
+        if (args[1] == "status") return service_running;
+        if (args[1] == "stop") { service_running = false; return true; }
+        if (args[1] == "start" || args[1] == "restart") {
+            if (service_restart_fail) return false;
+            service_running = true;
+            return true;
+        }
+    }
     check(false, "unexpected filesystem command");
 }
 function check(ok, message) { if (!ok) { warn("FAIL: " + message + "\n"); exit(1); } }
 function installed_package_version(name) { return versions[name] || ""; }
+function forkop_status_running_with_timeout() { return service_running; }
 function previous_forkop_release(version) {
     check(version == FORKOP_VERSION, "wrong previous release");
     return { backend_name: "forkop_1.0.0.ipk", backend_url: "old-backend",
@@ -69,8 +85,13 @@ function run_logged(description, command) {
     else if (index(command, "forkop_") >= 0 || index(command, "/backend.ipk") >= 0) name = "forkop";
     check(name != "", "unknown package step");
     if (old && name == rollback_failure) return false;
-    if (!old && name == failure) return false;
+    if (old && name == "forkop") service_running = false; // rollback prerm
+    if (!old && name == failure) {
+        if (name == "forkop") service_running = false;
+        return false;
+    }
     if (!old && name == uncommitted) return true;
+    if (!old && name == "forkop") service_running = false;
     versions[name] = old ? "1.0.0-r1" : "1.1.0-r1";
     return true;
 }
@@ -86,6 +107,9 @@ function reset() {
     marker_tmp = "";
     rollback_failure = "";
     uncommitted = "";
+    forkop_was_running = true;
+    service_running = true;
+    service_restart_fail = false;
 }
 for (let target in [ "", "forkop", "luci-app-forkop", "luci-i18n-forkop-ru" ]) {
     reset(); failure = target;
@@ -100,7 +124,7 @@ for (let target in [ "", "forkop", "luci-app-forkop", "luci-i18n-forkop-ru" ]) {
         let restores = 0;
         for (let event in events)
             if (index(event, "Restoring Forkop release package ") == 0) restores++;
-        check(restores == 3, "rollback did not restore the old set");
+        check(restores == (target == "forkop" ? 0 : 3), "rollback did not restore the old set");
         check(marker == "", "restored upgrade retained recovery marker");
     }
 }
@@ -128,6 +152,35 @@ versions["luci-app-forkop"] = "0.9.0-r1";
 check(index(install_forkop_opkg_set("1.1.0", "/new/forkop_1.1.0.ipk",
     "/new/luci-app-forkop_1.1.0.ipk", "/new/luci-i18n-forkop-ru_1.1.0.ipk"),
     "inconsistent") >= 0 && length(events) == 0, "mixed initial set was not refused");
+reset(); failure = "forkop";
+check(index(install_forkop_opkg_set("1.1.0", "/new/forkop_1.1.0.ipk",
+    "/new/luci-app-forkop_1.1.0.ipk", "/new/luci-i18n-forkop-ru_1.1.0.ipk"),
+    "previous release restored") >= 0 && service_running && marker == "",
+    "running service was not restored after backend install failure");
+reset(); failure = "forkop"; forkop_was_running = false; service_running = false;
+check(index(install_forkop_opkg_set("1.1.0", "/new/forkop_1.1.0.ipk",
+    "/new/luci-app-forkop_1.1.0.ipk", "/new/luci-i18n-forkop-ru_1.1.0.ipk"),
+    "previous release restored") >= 0 && !service_running && marker == "",
+    "stopped service was started by rollback");
+reset(); failure = "luci-app-forkop"; rollback_failure = "luci-app-forkop";
+check(index(install_forkop_opkg_set("1.1.0", "/new/forkop_1.1.0.ipk",
+    "/new/luci-app-forkop_1.1.0.ipk", "/new/luci-i18n-forkop-ru_1.1.0.ipk"),
+    "archives retained") >= 0 && marker != "" && !service_running,
+    "interrupted recovery fixture not established");
+rollback_failure = ""; forkop_was_running = false;
+check(recover_forkop_opkg_set() == "" && service_running && marker == "",
+    "new invocation lost original running state");
+reset(); failure = "forkop"; service_restart_fail = true;
+check(index(install_forkop_opkg_set("1.1.0", "/new/forkop_1.1.0.ipk",
+    "/new/luci-app-forkop_1.1.0.ipk", "/new/luci-i18n-forkop-ru_1.1.0.ipk"),
+    "service") >= 0 && marker != "" && !service_running,
+    "service restart failure was reported as complete recovery");
+service_restart_fail = false;
+check(recover_forkop_opkg_set() == "" && service_running && marker == "",
+    "service restart retry lost recovery state");
+reset(); marker = "1.0.0\t1.1.0\t1\n"; recovery_dir = true;
+check(index(recover_forkop_opkg_set(), "unknown") >= 0 && marker != "",
+    "legacy marker silently assumed original service state");
 print("Forkop OPKG package-set checks passed\n");
 '''
 pathlib.Path(sys.argv[2]).write_text(prefix + '\n\n'.join(functions) + suffix)

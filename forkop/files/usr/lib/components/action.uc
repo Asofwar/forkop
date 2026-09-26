@@ -2005,34 +2005,64 @@ function opkg_forkop_recovery_files(with_i18n) {
     return files;
 }
 
+function restore_forkop_opkg_service(was_running) {
+    if (!was_running) {
+        if (!forkop_status_running_with_timeout())
+            return true;
+        return command_success_from_args([ SERVICE_INIT, "stop" ]) &&
+            !forkop_status_running_with_timeout();
+    }
+    if (forkop_status_running_with_timeout())
+        return true;
+    if (!command_success_from_args([ SERVICE_INIT, "start" ]))
+        return false;
+    for (let attempt = 0; attempt < 45; attempt++) {
+        if (forkop_status_running_with_timeout())
+            return true;
+        command_success_from_args([ "sleep", "4" ]);
+    }
+    return false;
+}
+
+function finish_forkop_opkg_recovery(service_state) {
+    if (service_state == "")
+        return "Forkop package-set service state is unknown; recovery archives retained for manual recovery";
+    if (!restore_forkop_opkg_service(service_state == "1"))
+        return "Forkop package-set service state could not be restored; recovery archives retained in " + FORKOP_OPKG_RECOVERY_DIR;
+    if (!command_success_from_args([ "rm", "-rf", FORKOP_OPKG_RECOVERY_DIR ]) ||
+        file_exists(FORKOP_OPKG_RECOVERY_DIR + "/pending"))
+        return "Forkop package-set recovery metadata could not be cleared";
+    return "";
+}
+
 function recover_forkop_opkg_set() {
     let marker = split(trim(read_file(FORKOP_OPKG_RECOVERY_DIR + "/pending")), "\t");
-    if (length(marker) != 3 || match(marker[0], /^[0-9]+[.][0-9]+[.][0-9]+$/) == null ||
+    if ((length(marker) != 3 && length(marker) != 4) ||
+        match(marker[0], /^[0-9]+[.][0-9]+[.][0-9]+$/) == null ||
         match(marker[1], /^[0-9]+[.][0-9]+[.][0-9]+$/) == null ||
-        (marker[2] != "0" && marker[2] != "1"))
+        (marker[2] != "0" && marker[2] != "1") ||
+        (length(marker) == 4 && marker[3] != "0" && marker[3] != "1"))
         return "Forkop package-set recovery marker is invalid; manual recovery required";
     let with_i18n = marker[2] == "1";
-    if (opkg_forkop_set_versions_match(marker[1], with_i18n)) {
-        command_success_from_args([ "rm", "-rf", FORKOP_OPKG_RECOVERY_DIR ]);
-        return "";
+    if (!opkg_forkop_set_versions_match(marker[1], with_i18n) &&
+        !opkg_forkop_set_versions_match(marker[0], with_i18n)) {
+        let files = opkg_forkop_recovery_files(with_i18n);
+        for (let file in files)
+            if (!file_nonempty(file))
+                return "Forkop package-set recovery archive is missing; manual recovery required";
+        // Restore the UI before the backend, so an old backend is never paired
+        // with a newer LuCI app during the recovery sequence.
+        let restored = true;
+        for (let i = length(files) - 1; i >= 0; i--)
+            if (!run_logged("Restoring Forkop release package " + path_basename(files[i]),
+                opkg_forkop_set_command([ files[i] ], false, true))) {
+                restored = false;
+                updates_log("Restoring " + path_basename(files[i]) + " failed", "error");
+            }
+        if (!restored || !opkg_forkop_set_versions_match(marker[0], with_i18n))
+            return "Forkop package-set rollback failed; recovery archives retained in " + FORKOP_OPKG_RECOVERY_DIR;
     }
-    let files = opkg_forkop_recovery_files(with_i18n);
-    for (let file in files)
-        if (!file_nonempty(file))
-            return "Forkop package-set recovery archive is missing; manual recovery required";
-    // Restore the UI before the backend, so an old backend is never paired
-    // with a newer LuCI app during the recovery sequence.
-    let restored = true;
-    for (let i = length(files) - 1; i >= 0; i--)
-        if (!run_logged("Restoring Forkop release package " + path_basename(files[i]),
-            opkg_forkop_set_command([ files[i] ], false, true))) {
-            restored = false;
-            updates_log("Restoring " + path_basename(files[i]) + " failed", "error");
-        }
-    if (!restored || !opkg_forkop_set_versions_match(marker[0], with_i18n))
-        return "Forkop package-set rollback failed; recovery archives retained in " + FORKOP_OPKG_RECOVERY_DIR;
-    command_success_from_args([ "rm", "-rf", FORKOP_OPKG_RECOVERY_DIR ]);
-    return "";
+    return finish_forkop_opkg_recovery(length(marker) == 4 ? marker[3] : "");
 }
 
 function install_forkop_opkg_set(latest_version, backend_file, app_file, i18n_file) {
@@ -2081,11 +2111,13 @@ function install_forkop_opkg_set(latest_version, backend_file, app_file, i18n_fi
         return "Forkop package-set preflight failed; automatic upgrade refused";
     }
     let marker_tmp = FORKOP_OPKG_RECOVERY_DIR + "/pending.new";
-    if (!write_file(marker_tmp, FORKOP_VERSION + "\t" + latest_version + "\t" + (with_i18n ? "1" : "0") + "\n") ||
+    if (!write_file(marker_tmp, FORKOP_VERSION + "\t" + latest_version + "\t" + (with_i18n ? "1" : "0") + "\t" + (forkop_was_running ? "1" : "0") + "\n") ||
         !fs.rename(marker_tmp, FORKOP_OPKG_RECOVERY_DIR + "/pending")) {
         command_success_from_args([ "rm", "-rf", FORKOP_OPKG_RECOVERY_DIR ]);
         return "Failed to record Forkop package-set recovery state";
     }
+    if (!command_success_from_args([ "sync" ]))
+        return "Failed to persist Forkop package-set recovery state";
 
     // Install the backend first so the old UI cannot invoke a newer API before
     // the matching backend exists. OPKG is not atomic, even with several files.
@@ -2097,12 +2129,13 @@ function install_forkop_opkg_set(latest_version, backend_file, app_file, i18n_fi
         }
     }
     if (!failed && opkg_forkop_set_versions_match(latest_version, with_i18n)) {
-        command_success_from_args([ "rm", "-rf", FORKOP_OPKG_RECOVERY_DIR ]);
-        return "";
+        return finish_forkop_opkg_recovery(forkop_was_running ? "1" : "0");
     }
 
     if (opkg_forkop_set_versions_match(latest_version, with_i18n)) {
-        command_success_from_args([ "rm", "-rf", FORKOP_OPKG_RECOVERY_DIR ]);
+        let recovery_error = finish_forkop_opkg_recovery(forkop_was_running ? "1" : "0");
+        if (recovery_error != "")
+            return recovery_error;
         return "OPKG reported an error after the complete Forkop package set was installed";
     }
 

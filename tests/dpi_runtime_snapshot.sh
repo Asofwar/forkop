@@ -58,7 +58,10 @@ kill "$(cat "$CHILD_DIR/example.pid")"
 sleep 1
 rm -f "$CHILD_DIR/example.pid"
 ucode -L "$LIB_DIR" "$CLI" snapshot "$LIB_DIR" "$SUPERVISOR" "$PID_DIR" "$CHILD_DIR" "$LOG_DIR" "$SNAPSHOT"
-grep -Eq '^\[[[:space:]]*\]$' "$SNAPSHOT" || exit 1
+grep -Eq '"stale"[[:space:]]*:[[:space:]]*"example"' "$SNAPSHOT" || exit 1
+if ucode -L "$LIB_DIR" "$CLI" restore "$LIB_DIR" "$SUPERVISOR" "$PID_DIR" "$CHILD_DIR" "$LOG_DIR" "$SNAPSHOT"; then
+    echo 'rollback claimed to restore a dead supervisor' >&2; exit 1
+fi
 
 # A surviving child makes the stale supervisor ambiguous.
 sleep 300 &

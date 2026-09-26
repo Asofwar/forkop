@@ -72,6 +72,7 @@ function snapshot(pid_dir, child_pid_dir, runtime_path, library_path, output_pat
             let child = fs.stat(child_file) == null ? null : process_identity.read_record(child_file);
             if (fs.stat(child_file) != null && (child == null || running(child.pid)))
                 return false;
+            push(entries, { stale: name });
             continue;
         }
         if (saved.ticks != "" && process_identity.start_ticks(pid) != saved.ticks)
@@ -104,7 +105,13 @@ function restore(input_path, pid_dir, child_pid_dir, log_dir, runtime_path, libr
         return false;
     if (!command_success([ "mkdir", "-p", pid_dir, child_pid_dir, log_dir ]))
         return false;
+    let stale = false;
     for (let entry in entries) {
+        if (entry && type(entry.stale) == "string" &&
+            match(entry.stale, /^[A-Za-z0-9_.-]+$/) != null) {
+            stale = true;
+            continue;
+        }
         let name = entry && entry.name;
         let args = entry && entry.args;
         if (type(name) != "string" || !match(name, /^[A-Za-z0-9_.-]+$/) ||
@@ -127,7 +134,7 @@ function restore(input_path, pid_dir, child_pid_dir, log_dir, runtime_path, libr
         if (!running(pid) || !running(first_line(child_pid_dir + "/" + name + ".pid")))
             return false;
     }
-    return true;
+    return !stale;
 }
 
 return { snapshot, restore };

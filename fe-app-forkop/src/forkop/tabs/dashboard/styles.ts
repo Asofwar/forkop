@@ -2,6 +2,12 @@
 import { FORKOP_UCI_PACKAGE as FORKOP_CBI_PREFIX } from '../../../constants';
 
 export const styles = `
+.fkp-health__strip { display: flex; flex-wrap: wrap; gap: .5rem; margin: 0 0 .5rem; }
+.fkp-health__item { border-radius: 1rem; padding: .25rem .6rem; background: var(--background-color-high, #eee); }
+.fkp-health__item--ok, .fkp-health__item--recovered { border: 1px solid #22863a; }
+.fkp-health__item--warning, .fkp-health__item--transitioning { border: 1px solid #b58900; }
+.fkp-health__item--error { border: 1px solid #c22; }
+.fkp-health__activity { margin: .5rem 0 1rem; }
 @font-face {
     font-family: "Twemoji Country Flags";
     src: url("/luci-static/resources/view/forkop/fonts/TwemojiCountryFlags.woff2") format("woff2");

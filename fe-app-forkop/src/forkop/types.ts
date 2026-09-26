@@ -21,6 +21,86 @@ export namespace ClashAPI {
 
 // eslint-disable-next-line @typescript-eslint/no-namespace
 export namespace Forkop {
+  export type HealthLevel =
+    | 'ok'
+    | 'warning'
+    | 'error'
+    | 'transitioning'
+    | 'recovered'
+    | 'unknown';
+
+  export interface HealthStatus {
+    overall: HealthLevel;
+    service: { forkop: HealthLevel; sing_box: HealthLevel };
+    dns: { status: HealthLevel; configured?: boolean };
+    dpi: { status: HealthLevel };
+    lists: { status: HealthLevel };
+    guard: { active: boolean };
+    recovery: {
+      pending: boolean;
+      last_event: { kind: string; status: string; timestamp: number } | null;
+    };
+    package_recovery: { pending: boolean };
+    last_reload: { status: string; timestamp: number } | null;
+    recent_activity: Array<{ kind: string; status: string; timestamp: number }>;
+  }
+
+  export interface RouteTraceStage {
+    value?: string | null;
+    address?: string | null;
+    provenance: 'observed' | 'configured' | 'simulated' | 'unknown';
+    context?: string;
+  }
+  export interface RouteTrace {
+    target: RouteTraceStage & {
+      source: string;
+      source_applied: boolean;
+      protocol: string;
+      port: string;
+    };
+    dns: RouteTraceStage;
+    rule: RouteTraceStage;
+    action: RouteTraceStage;
+    outbound: RouteTraceStage;
+    dpi: RouteTraceStage;
+    interface: RouteTraceStage;
+    runtime: RouteTraceStage;
+  }
+  export interface SnapshotMetadata {
+    id: string;
+    created_at: number;
+    kind: 'manual' | 'automatic';
+    reason: string;
+    config_hash: string;
+    forkop_version: string;
+  }
+  export interface SnapshotChange {
+    section: string;
+    option: string;
+    before: string;
+    after: string;
+  }
+  export interface SnapshotResult {
+    status:
+      | 'created'
+      | 'existing'
+      | 'success'
+      | 'recovered'
+      | 'needs_attention'
+      | 'failed'
+      | 'deleted';
+    snapshot?: SnapshotMetadata;
+    changes?: SnapshotChange[];
+    reason?: string;
+  }
+  export interface ConnectivityResult {
+    host: string;
+    type: 'DNS' | 'TCP' | 'TLS' | 'HTTP';
+    port: number | null;
+    status: 'ok' | 'timeout' | 'error';
+    latency_ms: number;
+    origin: 'router';
+  }
   // Available commands:
   // start                   Start forkop service
   // stop                    Stop forkop service
@@ -75,6 +155,17 @@ export namespace Forkop {
     GET_SYSTEM_INFO = 'get_system_info',
     GET_UI_CAPABILITIES = 'get_ui_capabilities',
     GET_UI_STATE = 'get_ui_state',
+    GET_HEALTH_STATUS = 'get_health_status',
+    ROUTE_TRACE = 'route_trace',
+    CONFIG_SNAPSHOT_CREATE = 'config_snapshot_create',
+    CONFIG_SNAPSHOT_LIST = 'config_snapshot_list',
+    CONFIG_SNAPSHOT_DIFF = 'config_snapshot_diff',
+    CONFIG_SNAPSHOT_RESTORE = 'config_snapshot_restore',
+    CONFIG_SNAPSHOT_DELETE = 'config_snapshot_delete',
+    CONNECTIVITY_TEST = 'connectivity_test',
+    VALIDATE_NFQWS_STRATEGY_JSON = 'validate_nfqws_strategy_json',
+    VALIDATE_NFQWS2_STRATEGY_JSON = 'validate_nfqws2_strategy_json',
+    VALIDATE_BYEDPI_STRATEGY_JSON = 'validate_byedpi_strategy_json',
     GET_READONLY_CONFIG_SECTIONS = 'get_readonly_config_sections',
     GET_DASHBOARD_RUNTIME_METADATA = 'get_dashboard_runtime_metadata',
     SERVICE_ACTION_ASYNC = 'service_action_async',

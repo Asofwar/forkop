@@ -8,9 +8,56 @@ import {
   renderTriangleAlertIcon24,
   renderXIcon24,
 } from '../../../../icons';
-import { IDiagnosticsChecksStoreItem } from '../../../services';
+import type { IDiagnosticsChecksStoreItem } from '../../../services';
 
 type IRenderCheckSectionProps = IDiagnosticsChecksStoreItem;
+
+export function diagnosticActionSummary(props: IRenderCheckSectionProps) {
+  return [
+    props.title,
+    props.description,
+    ...props.items.map((item) => `${item.key}: ${item.value}`),
+  ].join('\n');
+}
+
+function renderRecoveryActions(props: IRenderCheckSectionProps) {
+  return E('div', { class: 'fkp_diagnostic_alert__actions' }, [
+    E(
+      'button',
+      {
+        type: 'button',
+        class: 'btn cbi-button',
+        click: () =>
+          document
+            .querySelector<HTMLElement>('#fkp_diagnostic-page-run-check button')
+            ?.click(),
+      },
+      _('Retry'),
+    ),
+    E(
+      'button',
+      {
+        type: 'button',
+        class: 'btn cbi-button',
+        click: () =>
+          document
+            .querySelector<HTMLElement>('.cbi-tab[data-tab="settings"]')
+            ?.click(),
+      },
+      _('Open settings'),
+    ),
+    E(
+      'button',
+      {
+        type: 'button',
+        class: 'btn cbi-button',
+        click: () =>
+          void navigator.clipboard.writeText(diagnosticActionSummary(props)),
+      },
+      _('Copy details'),
+    ),
+  ]);
+}
 
 function renderCheckSummary(items: IRenderCheckSectionProps['items']) {
   if (!items.length) {
@@ -90,7 +137,7 @@ function renderWarningState(props: IRenderCheckSectionProps) {
           props.description,
         ),
       ]),
-      E('div', {}, ''),
+      renderRecoveryActions(props),
       renderCheckSummary(props.items),
     ],
   );
@@ -113,7 +160,7 @@ function renderErrorState(props: IRenderCheckSectionProps) {
           props.description,
         ),
       ]),
-      E('div', {}, ''),
+      renderRecoveryActions(props),
       renderCheckSummary(props.items),
     ],
   );

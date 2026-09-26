@@ -35,12 +35,23 @@ import { isTransientRpcError } from '../../helpers/isTransientRpcError';
 import { shouldShowLoadingForRestoredAction } from '../../helpers/restoredActionLoading';
 import { getServiceAvailability } from '../../helpers/serviceAvailability';
 import { createPriorityMembersState } from './priorityMembersState';
+import { renderHealth } from './health';
 
 const SECTIONS_REFRESH_INTERVAL_MS = 10000;
 const LATENCY_TEST_BUTTON_CLASS = 'dashboard-sections-grid-item-test-latency';
 const LATENCY_TEST_BUTTON_LABEL_CLASS =
   'dashboard-sections-grid-item-test-latency__label';
 let sectionsRefreshTimer: ReturnType<typeof setInterval> | null = null;
+let healthRefreshTimer: ReturnType<typeof setInterval> | null = null;
+
+async function refreshHealth(mountId: number) {
+  const response = await ForkopShellMethods.getHealthStatus();
+  if (!dashboardMounted || mountId !== dashboardMountId) return;
+  const container = document.getElementById('dashboard-health');
+  if (container && response.success && response.data)
+    container.replaceChildren(renderHealth(response.data));
+  else if (container) container.textContent = _('Health status unavailable');
+}
 let sectionsRefreshPromise: Promise<boolean> | null = null;
 let sectionsRefreshQueued = false;
 let actionStateUnsubscribe: (() => void) | null = null;
@@ -1851,6 +1862,8 @@ async function onPageMount() {
   dashboardMounted = true;
   dashboardMountId += 1;
   const mountId = dashboardMountId;
+  void refreshHealth(mountId);
+  healthRefreshTimer = setInterval(() => void refreshHealth(mountId), 10000);
   const hasRuntimeSnapshot = Boolean(getCachedRuntimeUiState());
 
   if (!hasRuntimeSnapshot) {
@@ -1883,6 +1896,8 @@ async function onPageMount() {
 function onPageUnmount() {
   dashboardMounted = false;
   dashboardMountId += 1;
+  if (healthRefreshTimer) clearInterval(healthRefreshTimer);
+  healthRefreshTimer = null;
 
   stopDashboardDataUpdates();
   stopActionStateWatcher();

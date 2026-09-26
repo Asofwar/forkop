@@ -19,6 +19,7 @@ export function render() {
         ),
       ),
       E('div', { class: 'fkp_dashboard-page__content' }, [
+        E('div', { id: 'dashboard-health' }, _('Loading health status')),
         // Widgets section
         E('div', { class: 'fkp_dashboard-page__widgets-section' }, [
           E(

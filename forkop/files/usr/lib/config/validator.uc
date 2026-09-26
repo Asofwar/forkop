@@ -946,8 +946,12 @@ function validate_dns_settings(settings, sections, context) {
     for (let value in bootstrap_servers)
         if (!dns_server_value_valid(value))
             fail_validation("Invalid Bootstrap DNS server '" + value + "'. Aborted.");
+        // A hostname or URL here has no independent resolver to resolve it
+        // with, so sing-box may fail to bootstrap. Warn rather than abort:
+        // such a value was accepted before, and refusing it during validation
+        // would stop Forkop from starting on an existing configuration.
         else if (!bootstrap_dns_server_value_valid(value))
-            fail_validation("Bootstrap DNS server '" + value + "' must be an IPv4 or IPv6 address with an optional port; hostnames and URLs need an independent resolver. Aborted.");
+            log_message("Bootstrap DNS server '" + value + "' is not a plain IP address; hostnames and URLs need an independent resolver and may fail to bootstrap", "warn");
 
     if (length(main_servers) > 1 || length(bootstrap_servers) > 1) {
         validate_required_duration_option(option(settings, "dns_check_interval", "10s"), "settings.dns_check_interval");

@@ -38,6 +38,8 @@ import { normalizeCompiledVersion } from '../../../helpers/normalizeCompiledVers
 import { renderModal } from '../../../partials';
 import { FORKOP_LUCI_APP_VERSION } from '../../../constants';
 import { renderWikiDisclaimer } from './partials/renderWikiDisclaimer';
+import { lastRunText, saveLastRun } from './partials/renderRunAction';
+import { isReadonlyMode } from '../../services/accessMode.service';
 import { runSectionsCheck } from './checks/runSectionsCheck';
 import { Forkop } from '../../types';
 import { initRouteDebugger } from './routeDebugger';
@@ -569,8 +571,11 @@ function renderDiagnosticRunActionWidget() {
     click: () => runChecks(),
   });
 
+  const lastRun = document.getElementById('fkp_diagnostic-last-run');
+
   return preserveScrollForPage(() => {
     container!.replaceChildren(renderedAction);
+    if (lastRun) lastRun.textContent = lastRunText(localStorage);
   });
 }
 
@@ -860,40 +865,44 @@ function renderDiagnosticAvailableActionsWidget() {
   });
 
   const container = document.getElementById('fkp_diagnostic-page-actions');
+  // The read-only ACL cannot control the service or build a support report.
+  const readonly = isReadonlyMode();
 
   const renderedActions = renderAvailableActions({
     restart: {
       loading: restartLoading,
-      visible: shouldShowRestartAction({
-        forkopRunning,
-        restartLoading,
-        startLoading,
-        stopLoading,
-      }),
+      visible:
+        !readonly &&
+        shouldShowRestartAction({
+          forkopRunning,
+          restartLoading,
+          startLoading,
+          stopLoading,
+        }),
       onClick: handleRestart,
       disabled: serviceControlsDisabled,
     },
     start: {
       loading: startLoading,
-      visible: startVisible,
+      visible: !readonly && startVisible,
       onClick: handleStart,
       disabled: serviceControlsDisabled,
     },
     stop: {
       loading: stopLoading,
-      visible: stopVisible,
+      visible: !readonly && stopVisible,
       onClick: handleStop,
       disabled: serviceControlsDisabled,
     },
     enable: {
       loading: diagnosticsActions.enable.loading,
-      visible: !forkopEnabled,
+      visible: !readonly && !forkopEnabled,
       onClick: handleEnable,
       disabled: serviceControlsDisabled,
     },
     disable: {
       loading: diagnosticsActions.disable.loading,
-      visible: forkopEnabled,
+      visible: !readonly && forkopEnabled,
       onClick: handleDisable,
       disabled: serviceControlsDisabled,
     },
@@ -917,14 +926,25 @@ function renderDiagnosticAvailableActionsWidget() {
     },
     supportReport: {
       loading: diagnosticsActions.supportReport.loading,
-      visible: true,
+      visible: !readonly,
       onClick: () => void handleDownloadSupportReport(),
       disabled: utilityActionsDisabled,
     },
   });
 
   return preserveScrollForPage(() => {
-    container!.replaceChildren(renderedActions);
+    container!.replaceChildren(
+      renderedActions,
+      ...(readonly
+        ? [
+            E(
+              'p',
+              { class: 'fkp-diag-hint' },
+              _('Service control is available to administrators only.'),
+            ),
+          ]
+        : []),
+    );
   });
 }
 
@@ -1140,6 +1160,7 @@ async function runChecks({ resume }: { resume?: PersistedDiagnosticRun } = {}) {
         nextRunnerIndex: index + 1,
       });
     }
+    saveLastRun(localStorage);
   } catch (e) {
     logger.error('[DIAGNOSTIC]', 'runChecks - e', e);
   } finally {

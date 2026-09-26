@@ -1,25 +1,63 @@
 import { ForkopShellMethods } from '../../methods';
 import { Forkop } from '../../types';
+import {
+  DisplayStatus,
+  eventKindLabel,
+  eventStatus,
+  formatTime,
+  renderStatusBadge,
+} from './statusLabels';
 
-export function safetyRows(health: Forkop.HealthStatus) {
+// Only recovery facts: service/DNS/DPI health lives on the Dashboard.
+export function recoveryRows(
+  health: Forkop.HealthStatus,
+): Array<[string, DisplayStatus]> {
+  const last = health.recovery.last_event;
   return [
-    [_('Overall'), health.overall],
-    ['Forkop', health.service.forkop],
-    ['sing-box', health.service.sing_box],
-    ['DNS', health.dns.status],
-    ['DPI', health.dpi.status],
-    [_('DPI guard'), health.guard.active ? _('Active') : _('Inactive')],
+    [
+      _('DPI guard'),
+      health.guard.active
+        ? { text: _('Active: DPI switch not confirmed'), tone: 'warning' }
+        : { text: _('Inactive'), tone: 'success' },
+    ],
+    [
+      _('Last recovery'),
+      health.recovery.pending
+        ? { text: _('In progress'), tone: 'loading' }
+        : last && last.kind !== 'start'
+          ? {
+              text: `${eventKindLabel(last.kind)}: ${eventStatus(last.status).text} · ${formatTime(last.timestamp)}`,
+              tone: eventStatus(last.status).tone,
+            }
+          : { text: _('Not needed'), tone: 'success' },
+    ],
     [
       _('Package recovery'),
-      health.package_recovery.pending ? _('Pending') : _('None'),
+      health.package_recovery.pending
+        ? { text: _('Waiting to finish'), tone: 'warning' }
+        : { text: _('Not needed'), tone: 'success' },
     ],
     [
       _('Last reload'),
       health.last_reload
-        ? `${health.last_reload.status} · ${new Date(health.last_reload.timestamp * 1000).toLocaleString()}`
-        : _('Unknown'),
+        ? {
+            text: `${eventStatus(health.last_reload.status).text} · ${formatTime(health.last_reload.timestamp)}`,
+            tone: eventStatus(health.last_reload.status).tone,
+          }
+        : { text: _('No reload recorded yet'), tone: 'neutral' },
     ],
   ];
+}
+
+export function recentEvents(health: Forkop.HealthStatus) {
+  return health.recent_activity
+    .slice(-10)
+    .reverse()
+    .map((event) => ({
+      time: formatTime(event.timestamp),
+      kind: eventKindLabel(event.kind),
+      status: eventStatus(event.status),
+    }));
 }
 
 export function initSafetyCenter() {
@@ -29,28 +67,41 @@ export function initSafetyCenter() {
   const container = document.getElementById('safety-center-state');
   if (!button || !container || button.onclick) return;
   const refresh = async () => {
-    const response = await ForkopShellMethods.getHealthStatus();
-    if (!response.success || !response.data) {
-      container.textContent = _('Health status unavailable');
-      return;
-    }
-    const health = response.data;
-    container.replaceChildren(
-      ...safetyRows(health).map(([label, status]) =>
-        E('div', {}, [E('strong', {}, `${label}: `), E('span', {}, status)]),
-      ),
-      E('h4', {}, _('Recent activity')),
-      ...health.recent_activity
-        .slice(-10)
-        .reverse()
-        .map((event) =>
-          E(
-            'div',
-            {},
-            `${new Date(event.timestamp * 1000).toLocaleString()} · ${event.kind}: ${event.status}`,
-          ),
+    button.disabled = true;
+    try {
+      const response = await ForkopShellMethods.getHealthStatus();
+      if (!response.success || !response.data) {
+        container.textContent = _('Recovery state is unavailable');
+        return;
+      }
+      const events = recentEvents(response.data);
+      container.replaceChildren(
+        E(
+          'dl',
+          { class: 'fkp-diag-facts' },
+          recoveryRows(response.data).flatMap(([label, status]) => [
+            E('dt', {}, label),
+            E('dd', {}, renderStatusBadge(status)),
+          ]),
         ),
-    );
+        E('h4', {}, _('Recent events')),
+        events.length
+          ? E(
+              'table',
+              { class: 'fkp-diag-events' },
+              events.map((event) =>
+                E('tr', {}, [
+                  E('td', {}, event.time),
+                  E('td', {}, event.kind),
+                  E('td', {}, renderStatusBadge(event.status)),
+                ]),
+              ),
+            )
+          : E('p', { class: 'fkp-diag-hint' }, _('No events recorded yet')),
+      );
+    } finally {
+      button.disabled = false;
+    }
   };
   button.onclick = () => void refresh();
   void refresh();

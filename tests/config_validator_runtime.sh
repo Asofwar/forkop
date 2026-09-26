@@ -232,7 +232,11 @@ cat >"$WORK_DIR/hostname-bootstrap-dns.json" <<'JSON'
   }
 }
 JSON
-assert_rejects "hostname Bootstrap DNS" "$WORK_DIR/hostname-bootstrap-dns.json" "must be an IPv4 or IPv6 address"
+# A hostname here cannot resolve itself, so sing-box may fail to bootstrap.
+# That is reported as a warning: aborting validation would stop Forkop from
+# starting on a configuration which was accepted when it was written.
+validate_fixture "$WORK_DIR/hostname-bootstrap-dns.json" >/dev/null ||
+  fail "hostname Bootstrap DNS should warn, not abort validation"
 
 cat >"$WORK_DIR/url-bootstrap-dns.json" <<'JSON'
 {
@@ -244,7 +248,8 @@ cat >"$WORK_DIR/url-bootstrap-dns.json" <<'JSON'
   }
 }
 JSON
-assert_rejects "URL Bootstrap DNS" "$WORK_DIR/url-bootstrap-dns.json" "must be an IPv4 or IPv6 address"
+validate_fixture "$WORK_DIR/url-bootstrap-dns.json" >/dev/null ||
+  fail "URL Bootstrap DNS should warn, not abort validation"
 
 cat >"$WORK_DIR/ipv6-bootstrap-dns.json" <<'JSON'
 {

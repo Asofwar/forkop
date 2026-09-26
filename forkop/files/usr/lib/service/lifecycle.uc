@@ -398,6 +398,9 @@ function mark_pending_reload_if_config_changed(initial_fingerprint, reason) {
 
 function finish_reload_status(status, initial_fingerprint) {
     status = int(status || 0);
+    if (status == 0 && external_config_fingerprint() == initial_fingerprint &&
+        !command_success_from_args([ "nft", "list", "table", "inet", "ForkopConfigRestoreDpiGuard" ]))
+        module_success(LIB_DIR + "/config/snapshots.uc", [ "confirm-working" ]);
     if (status == 0)
         mark_pending_reload_if_config_changed(initial_fingerprint, "config_changed_during_reload");
     return status;
@@ -1677,6 +1680,7 @@ function reload(reason) {
     rule_condition_cache_enabled = force_runtime_reload;
 
     log_message("Reloading Forkop", "info");
+    module_success(LIB_DIR + "/config/snapshots.uc", [ "create", "automatic" ]);
 
     status = validate_start_config();
     if (status != 0)
@@ -2025,14 +2029,18 @@ function reload(reason) {
 }
 
 function reload_tracked(reason) {
-    if (as_string(getenv("FORKOP_UI_ACTION_TRACKED") || "0") == "1")
-        return reload(reason);
+    if (as_string(getenv("FORKOP_UI_ACTION_TRACKED") || "0") == "1") {
+        let status = reload(reason);
+        module_success(LIB_DIR + "/diagnostics/health.uc", [ "record", "reload", status == 0 ? "success" : "failure" ]);
+        return status;
+    }
 
     let job_id = trim(module_output(UI_UC, [ "service-action-begin-if-idle", "reload", "runtime_reload" ]));
     if (job_id != "")
         module_success(UI_UC, [ "service-action-update-pid", job_id, owner_pid() ]);
 
     let status = reload(reason);
+    module_success(LIB_DIR + "/diagnostics/health.uc", [ "record", "reload", status == 0 ? "success" : "failure" ]);
     if (job_id != "")
         module_success(UI_UC, [ "service-action-finish-after-command", "reload", job_id, as_string(status) ]);
 
@@ -2151,8 +2159,12 @@ let status = 1;
 
 if (mode == "main")
     status = start_main();
-else if (mode == "start")
+else if (mode == "start") {
     status = start();
+    module_success(LIB_DIR + "/diagnostics/health.uc", [ "record", "start", status == 0 ? "success" : "failure" ]);
+    if (status == 0)
+        module_success(LIB_DIR + "/config/snapshots.uc", [ "confirm-working" ]);
+}
 else if (mode == "stop")
     status = stop();
 else if (mode == "reload")

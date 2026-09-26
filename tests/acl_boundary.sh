@@ -23,12 +23,21 @@ for (const command of [
   '/usr/bin/forkop', '/usr/bin/forkop stop', '/usr/bin/forkop full_uninstall',
   '/usr/bin/forkop show_sing_box_config raw', '/etc/init.d/forkop stop',
   '/usr/bin/forkop clash_api set_group_proxy group direct',
+  '/usr/bin/forkop config_snapshot_create manual',
+  '/usr/bin/forkop config_snapshot_restore 1',
+  '/usr/bin/forkop config_snapshot_delete 1',
+  '/usr/bin/forkop validate_nfqws_strategy_json test',
 ]) {
   if (allowed(command)) throw Error(`read role may execute ${command}`);
 }
 for (const command of [
   '/usr/bin/forkop get_status', '/usr/bin/forkop get_ui_state',
   '/usr/bin/forkop get_readonly_config_sections',
+  '/usr/bin/forkop get_health_status',
+  '/usr/bin/forkop route_trace example.org 192.168.1.1 TCP 443',
+  '/usr/bin/forkop config_snapshot_list',
+  '/usr/bin/forkop config_snapshot_diff 123',
+  '/usr/bin/forkop connectivity_test example.org TCP 443',
 ]) {
   if (!allowed(command)) throw Error(`read diagnostic missing: ${command}`);
 }

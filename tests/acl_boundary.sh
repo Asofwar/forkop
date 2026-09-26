@@ -41,6 +41,13 @@ for (const command of [
 ]) {
   if (!allowed(command)) throw Error(`read diagnostic missing: ${command}`);
 }
+// Upstream 1.0.24 grants the whole CLI to the read group; this branch must not.
+if ('/usr/bin/forkop' in grants) throw Error('wildcard CLI exec granted to read role');
+for (const pattern of Object.keys(grants)) {
+  if (/config_snapshot_(create|restore|delete)/.test(pattern)) {
+    throw Error(`snapshot mutation granted to read role: ${pattern}`);
+  }
+}
 if (acl.read.uci?.includes('forkop')) throw Error('raw UCI exposed to read role');
 if (!groups['luci-app-forkop-admin']?.read?.uci?.includes('forkop')) {
   throw Error('admin role lost UCI read access');

@@ -583,8 +583,15 @@ describe('unsupported checks and responsive layout', () => {
   });
 
   it('keeps long check names and badges wrappable', () => {
-    expect(styles).toMatch(/16px minmax\(0, max-content\) minmax\(0, 1fr\)/);
-    expect(styles).not.toMatch(/16px max-content minmax/);
+    // Name and value stack, and words break only when they do not fit a line.
+    expect(styles).toMatch(
+      /\.fkp-check__item \{[^}]*grid-template-columns: 16px minmax\(0, 1fr\);/,
+    );
+    expect(styles).not.toContain('16px minmax(0, max-content) minmax(0, 1fr)');
+    expect(styles).not.toMatch(
+      /\.fkp-check[^{]*\{[^}]*overflow-wrap: anywhere/,
+    );
+    expect(styles).toMatch(/\.fkp-check__head \{[^}]*flex-wrap: wrap;/);
     expect(styles).toMatch(
       /\.fkp-diag-facts \.fkp-diag-badge[\s\S]*?white-space: normal/,
     );

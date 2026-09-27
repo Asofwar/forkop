@@ -7236,6 +7236,9 @@ function createSectionContent(section) {
   o.default = "0";
   o.rmempty = false;
   o.depends("action", "__internal_hidden__");
+  // Never shown, but still read by the backend: keep the stored value when
+  // the rule is saved (LuCI removes inactive options without retain).
+  o.retain = true;
   o.modalonly = true;
   o.write = function (section_id, value) {
     if (value === "1") {
@@ -7271,6 +7274,7 @@ function createSectionContent(section) {
   );
   o.rmempty = false;
   o.depends({ action: "__internal_hidden__", outbound_detour_enabled: "1" });
+  o.retain = true;
   o.modalonly = true;
   o.load = function (section_id) {
     refreshOutboundDetourSectionOptionValues(this, section_id);
@@ -7298,6 +7302,7 @@ function createSectionContent(section) {
   o.default = "0";
   o.rmempty = false;
   o.depends("action", "__internal_hidden__");
+  o.retain = true;
   o.modalonly = true;
 
   o = section.taboption(
@@ -7480,6 +7485,7 @@ function createSectionContent(section) {
   o.default = "0";
   o.rmempty = false;
   o.depends("action", "__internal_hidden__");
+  o.retain = true;
   o.modalonly = true;
   o.cfgvalue = function (section_id) {
     const value = uci.get(

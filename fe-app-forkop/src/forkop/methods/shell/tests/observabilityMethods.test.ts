@@ -60,4 +60,24 @@ describe('observability CLI contracts', () => {
       'validate_byedpi_strategy_json',
     ]);
   });
+
+  it('keeps the structured busy result of snapshot mutations that exit non-zero', async () => {
+    mocks.executeShellCommand.mockResolvedValue({
+      code: 1,
+      stdout: '{"status":"busy","reason":"snapshot_operation_in_progress"}',
+      stderr: '',
+    });
+    for (const call of [
+      () => ForkopShellMethods.snapshotCreate('manual'),
+      () => ForkopShellMethods.snapshotRestore('1_2'),
+      () => ForkopShellMethods.snapshotDelete('1_2'),
+    ]) {
+      const response = await call();
+      if (!response.success) throw new Error('structured result was dropped');
+      expect(response.data).toEqual({
+        status: 'busy',
+        reason: 'snapshot_operation_in_progress',
+      });
+    }
+  });
 });

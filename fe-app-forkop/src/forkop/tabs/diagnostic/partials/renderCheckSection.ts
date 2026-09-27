@@ -9,6 +9,7 @@ import {
   renderXIcon24,
 } from '../../../../icons';
 import type { IDiagnosticsChecksStoreItem } from '../../../services';
+import { copyToClipboard } from '../../../../helpers/copyToClipboard';
 import { checkStatus, renderStatusBadge } from '../statusLabels';
 
 type IRenderCheckSectionProps = IDiagnosticsChecksStoreItem;
@@ -56,7 +57,8 @@ function renderRecoveryActions(props: IRenderCheckSectionProps) {
         type: 'button',
         class: 'btn cbi-button',
         click: () =>
-          void navigator.clipboard.writeText(diagnosticActionSummary(props)),
+          // navigator.clipboard needs a secure context; LuCI is usually plain HTTP.
+          copyToClipboard(diagnosticActionSummary(props)),
       },
       _('Copy details'),
     ),
@@ -101,6 +103,10 @@ export function renderCheckSection(props: IRenderCheckSectionProps) {
       E('b', { class: 'fkp-check__title' }, props.title),
       renderStatusBadge(status),
     ]),
+    // An unsupported check explains why instead of pretending to have run.
+    props.state === 'unsupported'
+      ? E('div', { class: 'fkp-check__description' }, props.description)
+      : '',
     hasDetails
       ? E(
           'details',

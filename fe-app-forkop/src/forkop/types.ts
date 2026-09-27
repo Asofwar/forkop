@@ -89,7 +89,8 @@ export namespace Forkop {
       | 'recovered'
       | 'needs_attention'
       | 'failed'
-      | 'deleted';
+      | 'deleted'
+      | 'busy';
     snapshot?: SnapshotMetadata;
     changes?: SnapshotChange[];
     reason?: string;

@@ -86,7 +86,7 @@ export function render() {
       _('Reachability check'),
       _('Checks run on the router and do not prove the path of a LAN client.'),
       [
-        E('div', { id: 'connectivity-rows', class: 'fkp-conn', role: 'table' }),
+        E('div', { id: 'connectivity-rows', class: 'fkp-conn' }),
         E('div', { class: 'fkp-diag-actions' }, [
           E(
             'button',

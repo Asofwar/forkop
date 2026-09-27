@@ -8,11 +8,26 @@ import {
   renderStatusBadge,
 } from './statusLabels';
 
+// A plain reload is not a recovery: only restores, recovery runs and events
+// that ended in a rollback ("recovered") count.
+export function lastRecoveryEvent(health: Forkop.HealthStatus) {
+  const events = [
+    ...health.recent_activity,
+    ...(health.recovery.last_event ? [health.recovery.last_event] : []),
+  ].filter(
+    (event) =>
+      event.kind === 'restore' ||
+      event.kind === 'recovery' ||
+      event.status === 'recovered',
+  );
+  return events.sort((a, b) => b.timestamp - a.timestamp)[0] ?? null;
+}
+
 // Only recovery facts: service/DNS/DPI health lives on the Dashboard.
 export function recoveryRows(
   health: Forkop.HealthStatus,
 ): Array<[string, DisplayStatus]> {
-  const last = health.recovery.last_event;
+  const last = lastRecoveryEvent(health);
   return [
     [
       _('DPI guard'),
@@ -24,7 +39,7 @@ export function recoveryRows(
       _('Last recovery'),
       health.recovery.pending
         ? { text: _('In progress'), tone: 'loading' }
-        : last && last.kind !== 'start'
+        : last
           ? {
               text: `${eventKindLabel(last.kind)}: ${eventStatus(last.status).text} · ${formatTime(last.timestamp)}`,
               tone: eventStatus(last.status).tone,

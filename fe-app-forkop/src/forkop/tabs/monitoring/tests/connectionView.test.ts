@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { matchesConnectionFilters, trafficSortValue } from '../connectionView';
+import {
+  connectionActions,
+  matchesConnectionFilters,
+  trafficSortValue,
+} from '../connectionView';
 
 describe('connection view controls', () => {
   it('filters protocol, route, outbound and rule together', () => {
@@ -28,5 +32,32 @@ describe('connection view controls', () => {
     expect(trafficSortValue(connection, 'upload')).toBe(5);
     expect(trafficSortValue(connection, 'total')).toBe(25);
     expect(trafficSortValue(connection, 'start')).toBeNull();
+  });
+});
+
+describe('connection row actions', () => {
+  it('offers details, trace, copy and close for active connections', () => {
+    const actions = connectionActions(true);
+    expect(actions.map((action) => action.kind)).toEqual([
+      'details',
+      'trace',
+      'copy',
+      'close',
+    ]);
+    for (const action of actions) expect(action.label).not.toBe('');
+    expect(actions.map((action) => action.className)).toEqual([
+      'fkp-monitoring-details',
+      'fkp-monitoring-trace',
+      'fkp-monitoring-copy',
+      'fkp_monitoring-page__row-action',
+    ]);
+  });
+
+  it('does not offer closing an already closed connection', () => {
+    expect(connectionActions(false).map((action) => action.kind)).toEqual([
+      'details',
+      'trace',
+      'copy',
+    ]);
   });
 });

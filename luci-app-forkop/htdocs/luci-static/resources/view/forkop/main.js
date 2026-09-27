@@ -2798,9 +2798,13 @@ var ForkopShellMethods = {
     protocol,
     port
   ]),
+  // Snapshot mutations print a structured result (busy, failed, ...) even
+  // when they exit non-zero; keep it instead of a bare failure.
   snapshotCreate: async (kind = "manual") => callBaseMethod(
     Forkop.AvailableMethods.CONFIG_SNAPSHOT_CREATE,
-    [kind]
+    [kind],
+    "/usr/bin/forkop",
+    { allowNonZeroWithStdout: true }
   ),
   snapshotList: async () => callBaseMethod(
     Forkop.AvailableMethods.CONFIG_SNAPSHOT_LIST
@@ -2813,11 +2817,13 @@ var ForkopShellMethods = {
     Forkop.AvailableMethods.CONFIG_SNAPSHOT_RESTORE,
     [id],
     "/usr/bin/forkop",
-    { timeout: 12e4 }
+    { timeout: 12e4, allowNonZeroWithStdout: true }
   ),
   snapshotDelete: async (id) => callBaseMethod(
     Forkop.AvailableMethods.CONFIG_SNAPSHOT_DELETE,
-    [id]
+    [id],
+    "/usr/bin/forkop",
+    { allowNonZeroWithStdout: true }
   ),
   connectivityTest: async (host, type, port) => callBaseMethod(
     Forkop.AvailableMethods.CONNECTIVITY_TEST,
@@ -8107,7 +8113,7 @@ function render2() {
       _("Reachability check"),
       _("Checks run on the router and do not prove the path of a LAN client."),
       [
-        E("div", { id: "connectivity-rows", class: "fkp-conn", role: "table" }),
+        E("div", { id: "connectivity-rows", class: "fkp-conn" }),
         E("div", { class: "fkp-diag-actions" }, [
           E(
             "button",
@@ -9416,6 +9422,8 @@ function checkStatus(state) {
       return { text: _("Error"), tone: "error" };
     case "loading":
       return { text: _("Checking\u2026"), tone: "loading" };
+    case "unsupported":
+      return { text: _("Not available for checking"), tone: "neutral" };
     default:
       return { text: _("Not checked"), tone: "neutral" };
   }
@@ -9493,7 +9501,10 @@ function renderRecoveryActions(props) {
       {
         type: "button",
         class: "btn cbi-button",
-        click: () => void navigator.clipboard.writeText(diagnosticActionSummary(props))
+        click: () => (
+          // navigator.clipboard needs a secure context; LuCI is usually plain HTTP.
+          copyToClipboard(diagnosticActionSummary(props))
+        )
       },
       _("Copy details")
     )
@@ -9534,6 +9545,8 @@ function renderCheckSection(props) {
       E("b", { class: "fkp-check__title" }, props.title),
       renderStatusBadge(status)
     ]),
+    // An unsupported check explains why instead of pretending to have run.
+    props.state === "unsupported" ? E("div", { class: "fkp-check__description" }, props.description) : "",
     hasDetails ? E(
       "details",
       {
@@ -9695,6 +9708,19 @@ async function runSectionsCheck() {
     state: "loading",
     items: []
   });
+  if (isReadonlyMode()) {
+    updateCheckStore({
+      order,
+      code,
+      title,
+      description: _(
+        "Outbound checks need access to the Forkop configuration, which this role does not have."
+      ),
+      state: "unsupported",
+      items: []
+    });
+    return;
+  }
   const sections = await getDashboardSections();
   if (!sections.success) {
     updateCheckStore({
@@ -10133,7 +10159,7 @@ function initConnectivityMatrix() {
       E("span", {}, _("not used"))
     ]) : field(_("Port"), port);
     const view = resultView(row.result);
-    row.element = E("div", { class: "fkp-conn__row", role: "row" }, [
+    row.element = E("div", { class: "fkp-conn__row" }, [
       field(_("Address"), host),
       field(_("Type"), type),
       portCell,
@@ -10268,8 +10294,17 @@ function initDpiPlayground() {
 }
 
 // src/forkop/tabs/diagnostic/safetyCenter.ts
+function lastRecoveryEvent(health) {
+  const events = [
+    ...health.recent_activity,
+    ...health.recovery.last_event ? [health.recovery.last_event] : []
+  ].filter(
+    (event) => event.kind === "restore" || event.kind === "recovery" || event.status === "recovered"
+  );
+  return events.sort((a, b) => b.timestamp - a.timestamp)[0] ?? null;
+}
 function recoveryRows(health) {
-  const last = health.recovery.last_event;
+  const last = lastRecoveryEvent(health);
   return [
     [
       _("DPI guard"),
@@ -10277,7 +10312,7 @@ function recoveryRows(health) {
     ],
     [
       _("Last recovery"),
-      health.recovery.pending ? { text: _("In progress"), tone: "loading" } : last && last.kind !== "start" ? {
+      health.recovery.pending ? { text: _("In progress"), tone: "loading" } : last ? {
         text: `${eventKindLabel(last.kind)}: ${eventStatus(last.status).text} \xB7 ${formatTime(last.timestamp)}`,
         tone: eventStatus(last.status).tone
       } : { text: _("Not needed"), tone: "success" }
@@ -10423,7 +10458,14 @@ function shouldShowStopAction({
 // src/forkop/tabs/diagnostic/diagnosticRunPersistence.ts
 var DIAGNOSTIC_RUN_STORAGE_KEY = "forkop:diagnostic-run:v1";
 var DIAGNOSTIC_RUN_TTL_MS = 30 * 60 * 1e3;
-var CHECK_STATES = ["loading", "warning", "success", "error", "skipped"];
+var CHECK_STATES = [
+  "loading",
+  "warning",
+  "success",
+  "error",
+  "skipped",
+  "unsupported"
+];
 var CHECK_ITEM_STATES = ["error", "warning", "success"];
 function getSessionStorage3() {
   if (typeof window === "undefined") {
@@ -11817,6 +11859,8 @@ var styles4 = `
 
 .fkp-diag-badge {
     display: inline-block;
+    max-width: 100%;
+    box-sizing: border-box;
     padding: 1px 8px;
     border-radius: 10px;
     border: 1px solid currentColor;
@@ -11838,7 +11882,9 @@ var styles4 = `
 }
 
 .fkp-diag-facts dt { font-weight: bold; }
-.fkp-diag-facts dd { margin: 0; }
+.fkp-diag-facts dd { margin: 0; min-width: 0; }
+.fkp-diag-facts .fkp-diag-badge,
+.fkp-diag-events .fkp-diag-badge { white-space: normal; overflow-wrap: anywhere; }
 
 .fkp-diag-events {
     border-collapse: collapse;
@@ -11885,10 +11931,15 @@ var styles4 = `
 
 .fkp-check__item {
     display: grid;
-    grid-template-columns: 16px max-content minmax(0, 1fr);
+    /* minmax(0, ...) lets long check names wrap instead of widening the page. */
+    grid-template-columns: 16px minmax(0, max-content) minmax(0, 1fr);
     gap: 6px;
     align-items: start;
+    overflow-wrap: anywhere;
 }
+
+.fkp-check, .fkp-check__head, .fkp-check__details { min-width: 0; }
+.fkp-check__title { min-width: 0; overflow-wrap: anywhere; }
 
 .fkp-check__item-icon svg { width: 16px; height: 16px; }
 
@@ -11901,34 +11952,35 @@ var styles4 = `
 
 .fkp_diagnostic-page__run_check_wrapper button { margin: 0; }
 
-/* Reachability table; stacked cards on narrow screens. */
-.fkp-conn__head,
-.fkp-conn__row {
+/* Reachability table: header and rows share one grid, so the action column can
+   size to the real (translated) button labels; stacked cards on narrow screens. */
+.fkp-conn {
     display: grid;
-    /* Fixed action column so the header and the rows share column widths. */
-    grid-template-columns: minmax(160px, 2fr) 110px 100px minmax(160px, 2fr) 104px;
-    gap: 8px;
+    grid-template-columns: minmax(140px, 2fr) minmax(90px, 110px) minmax(80px, 100px) minmax(140px, 2fr) max-content;
+    column-gap: 8px;
     align-items: center;
 }
 
-.fkp-conn__head > span,
-.fkp-conn__row > * {
-    justify-self: stretch;
-    text-align: left;
+.fkp-conn__head,
+.fkp-conn__row {
+    display: contents;
 }
 
-.fkp-conn__head {
+.fkp-conn__head > span {
     font-weight: bold;
     padding: 4px 0;
     border-bottom: 1px solid var(--border-color-low, lightgray);
+    text-align: left;
 }
 
-.fkp-conn__row {
+.fkp-conn__row > * {
     padding: 6px 0;
     border-bottom: 1px solid var(--border-color-low, lightgray);
+    min-width: 0;
+    text-align: left;
 }
 
-.fkp-conn__cell { display: block; min-width: 0; margin: 0; }
+.fkp-conn__cell { display: block; margin: 0; }
 .fkp-conn__cell input, .fkp-conn__cell select {
     width: 100%;
     max-width: 100%;
@@ -11938,18 +11990,23 @@ var styles4 = `
 }
 .fkp-conn__cell-label { display: none; }
 .fkp-conn__cell--muted { color: var(--text-color-medium, gray); }
+.fkp-conn__result { overflow-wrap: anywhere; }
 .fkp-conn__actions { display: flex; gap: 4px; }
-.fkp-conn__actions .btn { margin: 0; }
+.fkp-conn__actions .btn { margin: 0; white-space: nowrap; }
 
 @media (max-width: 860px) {
+    .fkp-conn { display: block; }
     .fkp-conn__head { display: none; }
     .fkp-conn__row {
-        grid-template-columns: 1fr 1fr;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 6px 8px;
         border: 1px solid var(--border-color-low, lightgray);
         border-radius: 6px;
         padding: 8px;
         margin-top: 8px;
     }
+    .fkp-conn__row > * { padding: 0; border-bottom: 0; }
     .fkp-conn__row > :first-child,
     .fkp-conn__row > :nth-child(4) { grid-column: 1 / -1; }
     .fkp-conn__cell-label {
@@ -11957,7 +12014,7 @@ var styles4 = `
         font-size: 0.85em;
         color: var(--text-color-medium, gray);
     }
-    .fkp-conn__actions { grid-column: 1 / -1; }
+    .fkp-conn__actions { grid-column: 1 / -1; flex-wrap: wrap; }
 }
 
 .fkp-route__form {
@@ -12214,6 +12271,28 @@ function trafficSortValue(connection, mode) {
   if (mode === "total")
     return (connection.download || 0) + (connection.upload || 0);
   return null;
+}
+function connectionActions(active) {
+  const actions = [
+    {
+      kind: "details",
+      label: _("Details"),
+      className: "fkp-monitoring-details"
+    },
+    { kind: "trace", label: _("Trace"), className: "fkp-monitoring-trace" },
+    {
+      kind: "copy",
+      label: _("Copy details"),
+      className: "fkp-monitoring-copy"
+    }
+  ];
+  if (active)
+    actions.push({
+      kind: "close",
+      label: _("Close connection"),
+      className: "fkp_monitoring-page__row-action"
+    });
+  return actions;
 }
 
 // src/forkop/tabs/monitoring/initController.ts
@@ -12727,18 +12806,30 @@ function renderConnectionRow(connection) {
   const target = getTargetCellParts(connection);
   const source = getSourceCellParts(connection);
   const isClosing = closingConnectionIds.has(connection.id);
-  const closeButton = activeTab === "active" ? E(
-    "button",
-    {
-      class: "btn cbi-button fkp_monitoring-page__row-action",
-      title: _("Close connection"),
-      "aria-label": _("Close connection"),
-      type: "button",
-      value: connection.id,
-      ...isClosing ? { disabled: true } : {}
-    },
-    [renderXIcon24()]
-  ) : E("span", {}, "-");
+  const icons = {
+    details: renderInfoIcon24,
+    trace: renderSearchIcon24,
+    copy: renderCopyIcon24,
+    close: renderXIcon24
+  };
+  const actions = E(
+    "div",
+    { class: "fkp_monitoring-page__actions" },
+    connectionActions(activeTab === "active").map(
+      (action) => E(
+        "button",
+        {
+          class: `btn cbi-button fkp_monitoring-page__icon-action ${action.className}`,
+          title: action.label,
+          "aria-label": action.label,
+          type: "button",
+          value: connection.id,
+          ...action.kind === "close" && isClosing ? { disabled: true } : {}
+        },
+        [icons[action.kind]()]
+      )
+    )
+  );
   return E(
     "tr",
     {
@@ -12762,36 +12853,7 @@ function renderConnectionRow(connection) {
         renderValue(formatBytes2(connection.upload))
       ]),
       renderTableCell(_("Source"), [renderSourceValue(source)]),
-      renderTableCell(_("Actions"), [
-        E(
-          "button",
-          {
-            class: "btn cbi-button fkp-monitoring-details",
-            type: "button",
-            value: connection.id
-          },
-          _("Details")
-        ),
-        E(
-          "button",
-          {
-            class: "btn cbi-button fkp-monitoring-trace",
-            type: "button",
-            value: connection.id
-          },
-          _("Trace")
-        ),
-        E(
-          "button",
-          {
-            class: "btn cbi-button fkp-monitoring-copy",
-            type: "button",
-            value: connection.id
-          },
-          _("Copy details")
-        ),
-        closeButton
-      ])
+      renderTableCell(_("Actions"), [actions])
     ]
   );
 }
@@ -13259,7 +13321,7 @@ function bindControls() {
         const connection = activeConnections.get(action.value) || closedConnections.get(action.value);
         if (!connection) return;
         if (action.classList.contains("fkp-monitoring-copy")) {
-          void navigator.clipboard.writeText(
+          copyToClipboard(
             connectionDetails(connection).map(([key, value]) => `${key}: ${value}`).join("\n")
           );
         } else
@@ -13869,7 +13931,8 @@ var styles5 = `
 }
 
 .fkp_monitoring-page__table th:nth-child(8) {
-    width: 8%;
+    /* Four 28px icon actions plus gaps; px so it never shrinks below them. */
+    width: 136px;
 }
 
 .fkp_monitoring-page__table tbody tr:last-child td {
@@ -13879,6 +13942,34 @@ var styles5 = `
 .fkp_monitoring-page__table td:last-child {
     padding-top: 0;
     padding-bottom: 0;
+    overflow: visible;
+    white-space: normal;
+}
+
+.fkp_monitoring-page__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+}
+
+.fkp_monitoring-page .btn.fkp_monitoring-page__icon-action {
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    padding: 0;
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+
+.fkp_monitoring-page__icon-action svg {
+    width: 16px;
+    height: 16px;
+    display: block;
 }
 
 .fkp_monitoring-page__table th:nth-child(4),

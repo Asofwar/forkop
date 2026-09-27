@@ -128,6 +128,8 @@ export const styles = `
 
 .fkp-diag-badge {
     display: inline-block;
+    max-width: 100%;
+    box-sizing: border-box;
     padding: 1px 8px;
     border-radius: 10px;
     border: 1px solid currentColor;
@@ -149,7 +151,9 @@ export const styles = `
 }
 
 .fkp-diag-facts dt { font-weight: bold; }
-.fkp-diag-facts dd { margin: 0; }
+.fkp-diag-facts dd { margin: 0; min-width: 0; }
+.fkp-diag-facts .fkp-diag-badge,
+.fkp-diag-events .fkp-diag-badge { white-space: normal; overflow-wrap: anywhere; }
 
 .fkp-diag-events {
     border-collapse: collapse;
@@ -196,10 +200,15 @@ export const styles = `
 
 .fkp-check__item {
     display: grid;
-    grid-template-columns: 16px max-content minmax(0, 1fr);
+    /* minmax(0, ...) lets long check names wrap instead of widening the page. */
+    grid-template-columns: 16px minmax(0, max-content) minmax(0, 1fr);
     gap: 6px;
     align-items: start;
+    overflow-wrap: anywhere;
 }
+
+.fkp-check, .fkp-check__head, .fkp-check__details { min-width: 0; }
+.fkp-check__title { min-width: 0; overflow-wrap: anywhere; }
 
 .fkp-check__item-icon svg { width: 16px; height: 16px; }
 
@@ -212,34 +221,35 @@ export const styles = `
 
 .fkp_diagnostic-page__run_check_wrapper button { margin: 0; }
 
-/* Reachability table; stacked cards on narrow screens. */
-.fkp-conn__head,
-.fkp-conn__row {
+/* Reachability table: header and rows share one grid, so the action column can
+   size to the real (translated) button labels; stacked cards on narrow screens. */
+.fkp-conn {
     display: grid;
-    /* Fixed action column so the header and the rows share column widths. */
-    grid-template-columns: minmax(160px, 2fr) 110px 100px minmax(160px, 2fr) 104px;
-    gap: 8px;
+    grid-template-columns: minmax(140px, 2fr) minmax(90px, 110px) minmax(80px, 100px) minmax(140px, 2fr) max-content;
+    column-gap: 8px;
     align-items: center;
 }
 
-.fkp-conn__head > span,
-.fkp-conn__row > * {
-    justify-self: stretch;
-    text-align: left;
+.fkp-conn__head,
+.fkp-conn__row {
+    display: contents;
 }
 
-.fkp-conn__head {
+.fkp-conn__head > span {
     font-weight: bold;
     padding: 4px 0;
     border-bottom: 1px solid var(--border-color-low, lightgray);
+    text-align: left;
 }
 
-.fkp-conn__row {
+.fkp-conn__row > * {
     padding: 6px 0;
     border-bottom: 1px solid var(--border-color-low, lightgray);
+    min-width: 0;
+    text-align: left;
 }
 
-.fkp-conn__cell { display: block; min-width: 0; margin: 0; }
+.fkp-conn__cell { display: block; margin: 0; }
 .fkp-conn__cell input, .fkp-conn__cell select {
     width: 100%;
     max-width: 100%;
@@ -249,18 +259,23 @@ export const styles = `
 }
 .fkp-conn__cell-label { display: none; }
 .fkp-conn__cell--muted { color: var(--text-color-medium, gray); }
+.fkp-conn__result { overflow-wrap: anywhere; }
 .fkp-conn__actions { display: flex; gap: 4px; }
-.fkp-conn__actions .btn { margin: 0; }
+.fkp-conn__actions .btn { margin: 0; white-space: nowrap; }
 
 @media (max-width: 860px) {
+    .fkp-conn { display: block; }
     .fkp-conn__head { display: none; }
     .fkp-conn__row {
-        grid-template-columns: 1fr 1fr;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 6px 8px;
         border: 1px solid var(--border-color-low, lightgray);
         border-radius: 6px;
         padding: 8px;
         margin-top: 8px;
     }
+    .fkp-conn__row > * { padding: 0; border-bottom: 0; }
     .fkp-conn__row > :first-child,
     .fkp-conn__row > :nth-child(4) { grid-column: 1 / -1; }
     .fkp-conn__cell-label {
@@ -268,7 +283,7 @@ export const styles = `
         font-size: 0.85em;
         color: var(--text-color-medium, gray);
     }
-    .fkp-conn__actions { grid-column: 1 / -1; }
+    .fkp-conn__actions { grid-column: 1 / -1; flex-wrap: wrap; }
 }
 
 .fkp-route__form {

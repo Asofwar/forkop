@@ -1,7 +1,10 @@
 import { canUseDirectClashApi, getClashWsUrl, onMount } from '../../../helpers';
 import { prettyBytes } from '../../../helpers/prettyBytes';
 import { showToast } from '../../../helpers/showToast';
+import { copyToClipboard } from '../../../helpers/copyToClipboard';
 import {
+  renderCopyIcon24,
+  renderInfoIcon24,
   renderPauseIcon24,
   renderPlayIcon24,
   renderSearchIcon24,
@@ -12,7 +15,11 @@ import { getOutboundTagBySection } from '../../runtimeTags';
 import { getClashApiSecret } from '../../methods/custom/getClashApiSecret';
 import { logger, socket, store, StoreType } from '../../services';
 import { Forkop } from '../../types';
-import { matchesConnectionFilters, trafficSortValue } from './connectionView';
+import {
+  connectionActions,
+  matchesConnectionFilters,
+  trafficSortValue,
+} from './connectionView';
 import {
   getCachedRuntimeUiState,
   refreshRuntimeUiState,
@@ -726,21 +733,30 @@ function renderConnectionRow(connection: MonitoredConnection) {
   const target = getTargetCellParts(connection);
   const source = getSourceCellParts(connection);
   const isClosing = closingConnectionIds.has(connection.id);
-  const closeButton =
-    activeTab === 'active'
-      ? E(
-          'button',
-          {
-            class: 'btn cbi-button fkp_monitoring-page__row-action',
-            title: _('Close connection'),
-            'aria-label': _('Close connection'),
-            type: 'button',
-            value: connection.id,
-            ...(isClosing ? { disabled: true } : {}),
-          },
-          [renderXIcon24()],
-        )
-      : E('span', {}, '-');
+  const icons = {
+    details: renderInfoIcon24,
+    trace: renderSearchIcon24,
+    copy: renderCopyIcon24,
+    close: renderXIcon24,
+  };
+  const actions = E(
+    'div',
+    { class: 'fkp_monitoring-page__actions' },
+    connectionActions(activeTab === 'active').map((action) =>
+      E(
+        'button',
+        {
+          class: `btn cbi-button fkp_monitoring-page__icon-action ${action.className}`,
+          title: action.label,
+          'aria-label': action.label,
+          type: 'button',
+          value: connection.id,
+          ...(action.kind === 'close' && isClosing ? { disabled: true } : {}),
+        },
+        [icons[action.kind]()],
+      ),
+    ),
+  );
 
   return E(
     'tr',
@@ -765,36 +781,7 @@ function renderConnectionRow(connection: MonitoredConnection) {
         renderValue(formatBytes(connection.upload)),
       ]),
       renderTableCell(_('Source'), [renderSourceValue(source)]),
-      renderTableCell(_('Actions'), [
-        E(
-          'button',
-          {
-            class: 'btn cbi-button fkp-monitoring-details',
-            type: 'button',
-            value: connection.id,
-          },
-          _('Details'),
-        ),
-        E(
-          'button',
-          {
-            class: 'btn cbi-button fkp-monitoring-trace',
-            type: 'button',
-            value: connection.id,
-          },
-          _('Trace'),
-        ),
-        E(
-          'button',
-          {
-            class: 'btn cbi-button fkp-monitoring-copy',
-            type: 'button',
-            value: connection.id,
-          },
-          _('Copy details'),
-        ),
-        closeButton,
-      ]),
+      renderTableCell(_('Actions'), [actions]),
     ],
   );
 }
@@ -1395,7 +1382,8 @@ function bindControls() {
           closedConnections.get(action.value);
         if (!connection) return;
         if (action.classList.contains('fkp-monitoring-copy')) {
-          void navigator.clipboard.writeText(
+          // navigator.clipboard needs a secure context; LuCI is usually plain HTTP.
+          copyToClipboard(
             connectionDetails(connection)
               .map(([key, value]) => `${key}: ${value}`)
               .join('\n'),

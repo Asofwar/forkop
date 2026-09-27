@@ -2369,127 +2369,6 @@ function renderWidget(props) {
   return renderDefaultState2(props);
 }
 
-// src/forkop/tabs/dashboard/render.ts
-function render() {
-  return E(
-    "div",
-    {
-      id: "dashboard-status",
-      class: "fkp_dashboard-page"
-    },
-    [
-      E(
-        "div",
-        {
-          class: "fkp_dashboard-page__service-stopped",
-          role: "status"
-        },
-        _(
-          "Forkop service is stopped. Start the service to display the dashboard."
-        )
-      ),
-      E("div", { class: "fkp_dashboard-page__content" }, [
-        E("div", { id: "dashboard-health" }, _("Loading health status")),
-        // Widgets section
-        E("div", { class: "fkp_dashboard-page__widgets-section" }, [
-          E(
-            "div",
-            { id: "dashboard-widget-traffic" },
-            renderWidget({
-              loading: true,
-              failed: false,
-              title: "",
-              items: []
-            })
-          ),
-          E(
-            "div",
-            { id: "dashboard-widget-traffic-total" },
-            renderWidget({
-              loading: true,
-              failed: false,
-              title: "",
-              items: []
-            })
-          ),
-          E(
-            "div",
-            { id: "dashboard-widget-system-info" },
-            renderWidget({
-              loading: true,
-              failed: false,
-              title: "",
-              items: []
-            })
-          ),
-          E(
-            "div",
-            { id: "dashboard-widget-service-info" },
-            renderWidget({
-              loading: true,
-              failed: false,
-              title: "",
-              items: []
-            })
-          )
-        ]),
-        // All outbounds
-        E(
-          "div",
-          { id: "dashboard-sections-grid" },
-          renderSections({
-            loading: true,
-            failed: false,
-            section: {
-              code: "",
-              sectionName: "",
-              displayName: "",
-              outbounds: [],
-              withTagSelect: false
-            },
-            onTestLatency: () => {
-            },
-            onChooseOutbound: () => {
-            },
-            onShowUrlTestInfo: () => {
-            },
-            onShowPriorityInfo: () => {
-            },
-            onUpdateSubscription: () => {
-            },
-            latencyFetching: false,
-            latencyProgress: void 0,
-            subscriptionUpdating: false,
-            selectorSwitchingTag: void 0,
-            isPriorityMembersExpanded: () => false,
-            onPriorityMembersToggle: () => {
-            }
-          })
-        )
-      ])
-    ]
-  );
-}
-
-// src/helpers/showToast.ts
-function showToast(message, type, duration = 3e3) {
-  let container = document.querySelector(".toast-container");
-  if (!container) {
-    container = document.createElement("div");
-    container.className = "toast-container";
-    document.body.appendChild(container);
-  }
-  const toast = document.createElement("div");
-  toast.className = `toast toast-${type}`;
-  toast.textContent = message;
-  container.appendChild(toast);
-  setTimeout(() => toast.classList.add("visible"), 100);
-  setTimeout(() => {
-    toast.classList.remove("visible");
-    setTimeout(() => toast.remove(), 300);
-  }, duration);
-}
-
 // src/forkop/methods/shell/callBaseMethod.ts
 async function callBaseMethod(method, args = [], command = "/usr/bin/forkop", options = {}) {
   try {
@@ -4363,6 +4242,264 @@ var RemoteFakeIPMethods = {
   getFakeIpCheck,
   getIpCheck
 };
+
+// src/helpers/showToast.ts
+function showToast(message, type, duration = 3e3) {
+  let container = document.querySelector(".toast-container");
+  if (!container) {
+    container = document.createElement("div");
+    container.className = "toast-container";
+    document.body.appendChild(container);
+  }
+  const toast = document.createElement("div");
+  toast.className = `toast toast-${type}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => toast.classList.add("visible"), 100);
+  setTimeout(() => {
+    toast.classList.remove("visible");
+    setTimeout(() => toast.remove(), 300);
+  }, duration);
+}
+
+// src/forkop/tabs/diagnostic/serviceTransition.ts
+function isServiceTransitionStatus(status) {
+  return ["starting", "stopping", "restarting", "reloading"].includes(status);
+}
+function getServiceTransition(status) {
+  return {
+    starting: status === "starting",
+    stopping: status === "stopping",
+    restarting: status === "restarting" || status === "reloading"
+  };
+}
+function hasLocalMutatingServiceActionLoading(actions) {
+  return actions.restart.loading || actions.start.loading || actions.stop.loading || actions.enable.loading || actions.disable.loading;
+}
+function shouldSkipServicesInfoAutoRefresh({
+  force,
+  localMutatingActionLoading
+}) {
+  return !force && localMutatingActionLoading;
+}
+function shouldResetDiagnosticsChecks({
+  resetChecks,
+  diagnosticsRunLoading
+}) {
+  return resetChecks && !diagnosticsRunLoading;
+}
+function shouldDisableDiagnosticRunAction({
+  providerInfoLoaded,
+  servicesInfoLoading,
+  forkopRunning,
+  mutatingServiceActionLoading
+}) {
+  return !providerInfoLoaded || servicesInfoLoading || !forkopRunning || mutatingServiceActionLoading;
+}
+function hasComponentActionLoading(actions) {
+  return Object.values(actions).some((action) => action.loading);
+}
+function getAvailableActionsDisabledState({
+  servicesInfoLoading,
+  mutatingServiceActionLoading,
+  componentActionLoading
+}) {
+  return {
+    serviceControlsDisabled: servicesInfoLoading || mutatingServiceActionLoading || componentActionLoading,
+    utilityActionsDisabled: mutatingServiceActionLoading || componentActionLoading,
+    viewLogsDisabled: false
+  };
+}
+function shouldShowRestartAction({
+  forkopRunning,
+  restartLoading,
+  startLoading,
+  stopLoading
+}) {
+  return restartLoading || forkopRunning && !startLoading && !stopLoading;
+}
+function shouldShowStartAction({
+  forkopRunning,
+  restartLoading,
+  startLoading,
+  stopLoading
+}) {
+  return startLoading || !restartLoading && !forkopRunning && !stopLoading;
+}
+function shouldShowStopAction({
+  forkopRunning,
+  restartLoading,
+  startLoading,
+  stopLoading
+}) {
+  return stopLoading || restartLoading || forkopRunning && !startLoading;
+}
+function serviceActionErrorText(error) {
+  const detail = error instanceof Error ? error.message.trim() : "";
+  return detail ? `${_("Service action failed")}: ${detail}` : _("Service action failed");
+}
+
+// src/forkop/tabs/shared/startService.ts
+var starting = false;
+async function startForkopService() {
+  const start = await ForkopShellMethods.serviceActionStart("start");
+  if (!start.success) {
+    throw new Error(start.error);
+  }
+  const jobId = start.data.job_id;
+  try {
+    const result = await ForkopShellMethods.waitServiceActionJob(jobId);
+    if (!result.success) {
+      throw new Error(result.error);
+    }
+    if (result.data.success === false) {
+      throw new Error(result.data.message || "");
+    }
+  } finally {
+    void ForkopShellMethods.uiActionAck("service", jobId);
+  }
+}
+function renderStartServiceAction() {
+  if (isReadonlyMode()) {
+    return [];
+  }
+  const button = E(
+    "button",
+    {
+      type: "button",
+      class: "btn cbi-button cbi-button-action fkp-start-service",
+      disabled: starting ? true : void 0,
+      click: async () => {
+        if (starting) {
+          return;
+        }
+        starting = true;
+        button.disabled = true;
+        button.textContent = _("Starting\u2026");
+        try {
+          await startForkopService();
+        } catch (error) {
+          showToast(serviceActionErrorText(error), "error", 6e3);
+        } finally {
+          starting = false;
+          button.disabled = false;
+          button.textContent = _("Start Forkop X");
+        }
+      }
+    },
+    starting ? _("Starting\u2026") : _("Start Forkop X")
+  );
+  return [button];
+}
+
+// src/forkop/tabs/dashboard/render.ts
+function render() {
+  return E(
+    "div",
+    {
+      id: "dashboard-status",
+      class: "fkp_dashboard-page"
+    },
+    [
+      E(
+        "div",
+        {
+          class: "fkp_dashboard-page__service-stopped",
+          role: "status"
+        },
+        [
+          E(
+            "span",
+            {},
+            _(
+              "Forkop service is stopped. Start the service to display the dashboard."
+            )
+          ),
+          ...renderStartServiceAction()
+        ]
+      ),
+      E("div", { class: "fkp_dashboard-page__content" }, [
+        E("div", { id: "dashboard-health" }, _("Loading health status")),
+        // Widgets section
+        E("div", { class: "fkp_dashboard-page__widgets-section" }, [
+          E(
+            "div",
+            { id: "dashboard-widget-traffic" },
+            renderWidget({
+              loading: true,
+              failed: false,
+              title: "",
+              items: []
+            })
+          ),
+          E(
+            "div",
+            { id: "dashboard-widget-traffic-total" },
+            renderWidget({
+              loading: true,
+              failed: false,
+              title: "",
+              items: []
+            })
+          ),
+          E(
+            "div",
+            { id: "dashboard-widget-system-info" },
+            renderWidget({
+              loading: true,
+              failed: false,
+              title: "",
+              items: []
+            })
+          ),
+          E(
+            "div",
+            { id: "dashboard-widget-service-info" },
+            renderWidget({
+              loading: true,
+              failed: false,
+              title: "",
+              items: []
+            })
+          )
+        ]),
+        // All outbounds
+        E(
+          "div",
+          { id: "dashboard-sections-grid" },
+          renderSections({
+            loading: true,
+            failed: false,
+            section: {
+              code: "",
+              sectionName: "",
+              displayName: "",
+              outbounds: [],
+              withTagSelect: false
+            },
+            onTestLatency: () => {
+            },
+            onChooseOutbound: () => {
+            },
+            onShowUrlTestInfo: () => {
+            },
+            onShowPriorityInfo: () => {
+            },
+            onUpdateSubscription: () => {
+            },
+            latencyFetching: false,
+            latencyProgress: void 0,
+            subscriptionUpdating: false,
+            selectorSwitchingTag: void 0,
+            isPriorityMembersExpanded: () => false,
+            onPriorityMembersToggle: () => {
+            }
+          })
+        )
+      ])
+    ]
+  );
+}
 
 // src/forkop/services/tab.service.ts
 var TabService = class _TabService {
@@ -7536,6 +7673,9 @@ var styles = `
 
 .fkp_dashboard-page--service-stopped .fkp_dashboard-page__service-stopped {
     display: flex;
+    flex-direction: column;
+    gap: 12px;
+    text-align: center;
     grid-column: 1 / -1;
 }
 
@@ -10639,83 +10779,6 @@ function initSafetyCenter() {
   void refresh();
 }
 
-// src/forkop/tabs/diagnostic/serviceTransition.ts
-function isServiceTransitionStatus(status) {
-  return ["starting", "stopping", "restarting", "reloading"].includes(status);
-}
-function getServiceTransition(status) {
-  return {
-    starting: status === "starting",
-    stopping: status === "stopping",
-    restarting: status === "restarting" || status === "reloading"
-  };
-}
-function hasLocalMutatingServiceActionLoading(actions) {
-  return actions.restart.loading || actions.start.loading || actions.stop.loading || actions.enable.loading || actions.disable.loading;
-}
-function shouldSkipServicesInfoAutoRefresh({
-  force,
-  localMutatingActionLoading
-}) {
-  return !force && localMutatingActionLoading;
-}
-function shouldResetDiagnosticsChecks({
-  resetChecks,
-  diagnosticsRunLoading
-}) {
-  return resetChecks && !diagnosticsRunLoading;
-}
-function shouldDisableDiagnosticRunAction({
-  providerInfoLoaded,
-  servicesInfoLoading,
-  forkopRunning,
-  mutatingServiceActionLoading
-}) {
-  return !providerInfoLoaded || servicesInfoLoading || !forkopRunning || mutatingServiceActionLoading;
-}
-function hasComponentActionLoading(actions) {
-  return Object.values(actions).some((action) => action.loading);
-}
-function getAvailableActionsDisabledState({
-  servicesInfoLoading,
-  mutatingServiceActionLoading,
-  componentActionLoading
-}) {
-  return {
-    serviceControlsDisabled: servicesInfoLoading || mutatingServiceActionLoading || componentActionLoading,
-    utilityActionsDisabled: mutatingServiceActionLoading || componentActionLoading,
-    viewLogsDisabled: false
-  };
-}
-function shouldShowRestartAction({
-  forkopRunning,
-  restartLoading,
-  startLoading,
-  stopLoading
-}) {
-  return restartLoading || forkopRunning && !startLoading && !stopLoading;
-}
-function shouldShowStartAction({
-  forkopRunning,
-  restartLoading,
-  startLoading,
-  stopLoading
-}) {
-  return startLoading || !restartLoading && !forkopRunning && !stopLoading;
-}
-function shouldShowStopAction({
-  forkopRunning,
-  restartLoading,
-  startLoading,
-  stopLoading
-}) {
-  return stopLoading || restartLoading || forkopRunning && !startLoading;
-}
-function serviceActionErrorText(error) {
-  const detail = error instanceof Error ? error.message.trim() : "";
-  return detail ? `${_("Service action failed")}: ${detail}` : _("Service action failed");
-}
-
 // src/forkop/tabs/diagnostic/diagnosticRunPersistence.ts
 var DIAGNOSTIC_RUN_STORAGE_KEY = "forkop:diagnostic-run:v1";
 var DIAGNOSTIC_RUN_TTL_MS = 30 * 60 * 1e3;
@@ -13226,7 +13289,7 @@ function loadMonitoringPreferences() {
   } catch (_error) {
   }
 }
-function renderStateRow(text, className = "") {
+function renderStateRow(text, className = "", actions = []) {
   return E("tr", { class: "fkp_monitoring-page__state-row" }, [
     E(
       "td",
@@ -13240,14 +13303,14 @@ function renderStateRow(text, className = "") {
           {
             class: ["fkp_monitoring-page__state", className].filter(Boolean).join(" ")
           },
-          text
+          actions.length ? [E("span", {}, text), ...actions] : text
         )
       ]
     )
   ]);
 }
 function renderConnectionsTable(connections, state) {
-  const rows = state ? [renderStateRow(state.text, state.className)] : connections.map(renderConnectionRow);
+  const rows = state ? [renderStateRow(state.text, state.className, state.actions)] : connections.map(renderConnectionRow);
   return E("div", { class: "fkp_monitoring-page__table-wrap" }, [
     E(
       "table",
@@ -13297,7 +13360,8 @@ function renderConnections(options = {}) {
       renderConnectionsTable([], {
         text: _(
           "Forkop service is stopped. Start the service to display connections."
-        )
+        ),
+        actions: renderStartServiceAction()
       })
     );
     return;
@@ -14437,6 +14501,8 @@ var styles5 = `
     min-height: 90px;
     width: 100%;
     display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
     align-items: center;
     justify-content: center;
     color: var(--text-color-medium);

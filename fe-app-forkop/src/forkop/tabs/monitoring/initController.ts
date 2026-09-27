@@ -2,6 +2,7 @@ import { canUseDirectClashApi, getClashWsUrl, onMount } from '../../../helpers';
 import { prettyBytes } from '../../../helpers/prettyBytes';
 import { showToast } from '../../../helpers/showToast';
 import { confirmAction } from '../../ui/confirmAction';
+import { renderStartServiceAction } from '../shared/startService';
 import { copyToClipboard } from '../../../helpers/copyToClipboard';
 import {
   renderCopyIcon24,
@@ -865,7 +866,11 @@ function loadMonitoringPreferences() {
   }
 }
 
-function renderStateRow(text: string, className = '') {
+function renderStateRow(
+  text: string,
+  className = '',
+  actions: HTMLElement[] = [],
+) {
   return E('tr', { class: 'fkp_monitoring-page__state-row' }, [
     E(
       'td',
@@ -881,7 +886,7 @@ function renderStateRow(text: string, className = '') {
               .filter(Boolean)
               .join(' '),
           },
-          text,
+          actions.length ? [E('span', {}, text), ...actions] : text,
         ),
       ],
     ),
@@ -890,10 +895,10 @@ function renderStateRow(text: string, className = '') {
 
 function renderConnectionsTable(
   connections: MonitoredConnection[],
-  state?: { text: string; className?: string },
+  state?: { text: string; className?: string; actions?: HTMLElement[] },
 ) {
   const rows = state
-    ? [renderStateRow(state.text, state.className)]
+    ? [renderStateRow(state.text, state.className, state.actions)]
     : connections.map(renderConnectionRow);
 
   return E('div', { class: 'fkp_monitoring-page__table-wrap' }, [
@@ -956,6 +961,7 @@ function renderConnections(options: { force?: boolean } = {}) {
         text: _(
           'Forkop service is stopped. Start the service to display connections.',
         ),
+        actions: renderStartServiceAction(),
       }),
     );
     return;

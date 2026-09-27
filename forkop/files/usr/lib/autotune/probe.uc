@@ -157,15 +157,18 @@ function clean_message(v) {
 }
 
 // probe({ host, ip, port_range, path }) -> sanitized probe record.
+// options.production: a normal request through the production path (system
+// resolver, no pinned address, no dedicated source ports) - used by stage 5
+// to verify an applied strategy; the isolated probe pins ip and ports.
 function probe(options) {
-    let host = as_string(options.host), ip = as_string(options.ip);
+    let host = as_string(options.host), ip = options.production ? "" : as_string(options.ip);
     let path = as_string(options.path || "/");
-    if (!valid_host(host) || !valid_ipv4(ip) || match(path, /^\/[A-Za-z0-9._~\/-]*$/) == null)
+    if (!valid_host(host) || (!options.production && !valid_ipv4(ip)) || match(path, /^\/[A-Za-z0-9._~\/-]*$/) == null)
         return { class: "invalid_input" };
     let args = [ CURL, "-s", "-o", "/dev/null", "--ipv4", "--noproxy", "*", "--proto", "=https",
-        "--resolve", host + ":443:" + ip, "--connect-timeout", CONNECT_TIMEOUT,
-        "--max-time", MAX_TIME, "-w", FIELDS ];
-    if (options.port_range) push(args, "--local-port", as_string(options.port_range));
+        "--connect-timeout", CONNECT_TIMEOUT, "--max-time", MAX_TIME, "-w", FIELDS ];
+    if (!options.production) push(args, "--resolve", host + ":443:" + ip);
+    if (options.port_range && !options.production) push(args, "--local-port", as_string(options.port_range));
     push(args, "https://" + host + path);
     let run = capture(args);
     let line = "";
@@ -174,7 +177,7 @@ function probe(options) {
     let errormsg = length(f) > 8 ? join("|", slice(f, 8)) : "";
     let exit_code = match(as_string(f[0]), /^[0-9]+$/) != null ? int(f[0]) : run.status;
     let record = {
-        host, resolved_ip: ip, path,
+        host, resolved_ip: ip == "" ? null : ip, path, production: !!options.production,
         local_port: match(as_string(f[1]), /^[0-9]+$/) != null ? int(f[1]) : null,
         remote_ip: valid_ipv4(f[2]) ? f[2] : null,
         http_status: match(as_string(f[3]), /^[0-9]+$/) != null ? int(f[3]) : 0,

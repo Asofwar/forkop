@@ -28,7 +28,7 @@
 // returns a selection from autotune/select.uc. Neither mode applies anything.
 //
 // Must be invoked as: ucode -L <lib> <lib>/autotune/isolation.uc <mode> ...
-// (the run lock identifies its owner by that command line).
+// (the autotune lock identifies its owner by that command line).
 let fs = require("fs");
 let constants = require("core.constants");
 let identity = require("core.process_identity");
@@ -36,10 +36,10 @@ let catalog = require("autotune.catalog");
 let probe_module = require("autotune.probe");
 let contract = require("autotune.contract");
 let select_module = require("autotune.select");
+let autotune_lock = require("autotune.lock");
 
 const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
 const STATE_DIR = getenv("FORKOP_AUTOTUNE_STATE_DIR") || "/var/run/forkop/autotune";
-const LOCK = STATE_DIR + "/lock";
 const ACTIVE = STATE_DIR + "/active.json";
 const WORKDIR = STATE_DIR + "/work";
 const TABLE = "ForkopAutotuneProbe";
@@ -147,65 +147,8 @@ function pidfile_for(queue) { return STATE_DIR + "/nfqws-" + queue + ".pid"; }
 
 // ---- lock --------------------------------------------------------------
 
-let lock_record = null;
-let lock_busy = false;
-function owner_pid() {
-    let pid = as_string(fs.readlink("/proc/self"));
-    return match(pid, /^[1-9][0-9]*$/) != null ? pid : "";
-}
-function active_owner(name) {
-    let parsed = match(as_string(name), /^owner\.([1-9][0-9]*)\.([0-9]+)$/);
-    return parsed != null && identity.matches_record({ pid: parsed[1], ticks: parsed[2] }, "ucode",
-        [ "ucode", "-L", LIB_DIR, LIB_DIR + "/autotune/isolation.uc" ], false, true) != "";
-}
-function remove_dir(dir) {
-    for (let name in fs.lsdir(dir) || []) fs.unlink(dir + "/" + name);
-    return fs.rmdir(dir);
-}
-function ensure_state_dir() {
-    let parent = fs.dirname(STATE_DIR);
-    if (fs.stat(parent) == null && !fs.mkdir(parent, 0700)) return false;
-    if (fs.stat(STATE_DIR) == null && !fs.mkdir(STATE_DIR, 0700)) return false;
-    return fs.chmod(STATE_DIR, 0700);
-}
-// Same owner-record scheme as the config snapshot lock: a directory holding
-// one "owner.<pid>.<start ticks>" record, published by an atomic rename.
-function acquire() {
-    if (!ensure_state_dir()) return false;
-    let pid = owner_pid(), ticks = identity.start_ticks(pid);
-    if (ticks == "") return false;
-    let name = "owner." + pid + "." + ticks;
-    let pending = LOCK + ".new." + pid + "." + ticks;
-    remove_dir(pending);
-    if (!fs.mkdir(pending, 0700) || !identity.record(pending + "/" + name, pid) || !active_owner(name)) {
-        remove_dir(pending);
-        return false;
-    }
-    for (let attempt = 0; attempt < 3; attempt++) {
-        if (fs.rename(pending, LOCK)) {
-            lock_record = LOCK + "/" + name;
-            return true;
-        }
-        let stat = fs.lstat(LOCK);
-        let entries = stat != null && stat.type == "directory" ? fs.lsdir(LOCK) : null;
-        if (entries == null) { fs.unlink(LOCK); continue; }
-        let busy = false;
-        for (let entry in entries) if (active_owner(entry)) busy = true;
-        if (busy) { lock_busy = true; break; }
-        for (let entry in entries)
-            if (!fs.unlink(LOCK + "/" + entry)) fs.rmdir(LOCK + "/" + entry);
-    }
-    remove_dir(pending);
-    return false;
-}
-function release() {
-    if (lock_record == null) return;
-    fs.unlink(lock_record);
-    fs.rmdir(LOCK);
-    lock_record = null;
-    // Leave no runtime directory behind; fails harmlessly while not empty.
-    fs.rmdir(STATE_DIR);
-}
+// The shared autotune lock (autotune/lock.uc): one probe, tune or apply at a time.
+function owner_pid() { return autotune_lock.owner_pid(); }
 
 // ---- observation -------------------------------------------------------
 
@@ -1218,13 +1161,13 @@ if (queue_reserved()) {
     exit(1);
 }
 if (mode == "run" || mode == "cleanup" || mode == "tune") {
-    if (!acquire())
-        output = lock_busy ? { status: "busy", reason: "autotune_in_progress" } : { status: "failed", reason: "lock_unavailable" };
+    if (!autotune_lock.acquire())
+        output = autotune_lock.busy() ? { status: "busy", reason: "autotune_in_progress" } : { status: "failed", reason: "lock_unavailable" };
     else {
         if (mode == "run") output = run(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5]);
         else if (mode == "tune") output = tune(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5]);
         else output = cleanup();
-        release();
+        autotune_lock.release();
         code = index([ "completed", "clean", "selected", "inconclusive" ], output.status) >= 0 ? 0 : 1;
     }
 }

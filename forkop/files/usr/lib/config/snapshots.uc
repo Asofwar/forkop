@@ -12,6 +12,8 @@ const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
 const BIN = getenv("FORKOP_BIN") || "/usr/bin/forkop";
 const RELOAD = getenv("FORKOP_RELOAD_COMMAND") || "/etc/init.d/forkop";
 const MAX_CONFIG = 2 * 1024 * 1024;
+const PENDING_RELOAD = getenv("FORKOP_PENDING_RELOAD_FILE") || "/var/run/forkop/reload.pending";
+const RETENTION = 10;
 
 function value(v) { return v == null ? "" : "" + v; }
 function quote(v) { return "'" + replace(value(v), /'/g, "'\\''") + "'"; }
@@ -71,7 +73,7 @@ function owner_pid() {
 function active_entry(name) {
     let parsed = match(value(name), /^owner\.([1-9][0-9]*)\.([0-9]+)$/);
     if (parsed == null) return false;
-    for (let operation in [ "create", "delete", "restore", "confirm-working" ])
+    for (let operation in [ "create", "delete", "restore", "apply", "confirm-working" ])
         if (identity.matches_record({ pid: parsed[1], ticks: parsed[2] }, "ucode",
             [ "ucode", "-L", LIB_DIR, LIB_DIR + "/config/snapshots.uc", operation ], false, true) != "")
             return true;
@@ -140,7 +142,7 @@ function read_snapshot(id, verify) {
 function metadata(snapshot) {
     return { id: snapshot.id, created_at: snapshot.created_at,
         kind: index([ "manual", "automatic" ], snapshot.kind) >= 0 ? snapshot.kind : "unknown",
-        reason: index([ "manual", "before-reload", "pre-restore", "last-known-working" ], snapshot.reason) >= 0 ? snapshot.reason : "unknown",
+        reason: index([ "manual", "before-reload", "pre-restore", "last-known-working", "before-autotune" ], snapshot.reason) >= 0 ? snapshot.reason : "unknown",
         config_hash: snapshot.config_hash,
         forkop_version: match(value(snapshot.forkop_version), /^[A-Za-z0-9._-]{1,64}$/) != null ? snapshot.forkop_version : "unknown" };
 }
@@ -155,20 +157,31 @@ function list_snapshots() {
     result = sort(result, function(a, b) { return a.created_at - b.created_at; });
     return result;
 }
-function trim_retention() {
+// Oldest automatic snapshots go first; manual ones, LKG and the ids the
+// running operation still needs (keep) are never removed.
+function trim_retention(keep) {
     let all = list_snapshots();
     let working = trim(value(fs.readfile(LKG)));
-    while (length(all) >= 10) {
+    while (length(all) >= RETENTION) {
         let candidate = null;
         for (let item in all)
-            if (item.kind != "manual" && item.id != working) { candidate = item; break; }
+            if (item.kind != "manual" && item.id != working && index(keep || [], item.id) < 0) { candidate = item; break; }
         if (candidate == null) return false;
         fs.unlink(snapshot_path(candidate.id));
         all = list_snapshots();
     }
     return true;
 }
-function create(kind, reason, dedupe) {
+// Snapshots that can still be created without touching LKG, manual ones or keep.
+function headroom(keep) {
+    let all = list_snapshots();
+    let working = trim(value(fs.readfile(LKG)));
+    let free = RETENTION - length(all);
+    for (let item in all)
+        if (item.kind != "manual" && item.id != working && index(keep || [], item.id) < 0) free++;
+    return free;
+}
+function create(kind, reason, dedupe, keep) {
     let content = read_config();
     if (content == null) return { status: "failed", reason: "config_unavailable" };
     let hash = sha(content);
@@ -176,7 +189,7 @@ function create(kind, reason, dedupe) {
     if (dedupe)
         for (let item in list_snapshots())
             if (item.config_hash == hash) return { status: "existing", snapshot: item };
-    if (!trim_retention()) return { status: "failed", reason: "retention_full" };
+    if (!trim_retention(keep)) return { status: "failed", reason: "retention_full" };
     let id = sprintf("%d_%d", clock()[0], clock()[1]);
     let version = trim(capture([ BIN, "show_version" ]));
     let snapshot = { id, created_at: int(clock()[0]), kind, reason,
@@ -283,33 +296,93 @@ function restore_guard(remove) {
     return success([ "ucode", "-L", LIB_DIR, LIB_DIR + "/nft/apply.uc",
         remove ? "remove-dpi-transition-guard" : "ensure-dpi-transition-guard", "ForkopConfigRestore" ]);
 }
+// Replace the configuration with `content` under the restore guard, validate
+// and reload; on failure put `before` back and reload again. The guard also
+// keeps the reload from confirming a last-known-working snapshot, so LKG is
+// only ever moved by the caller. on_success runs after the guard is released.
+// A reload that was only queued (another lifecycle action holds the reload
+// lock) returns success without touching the runtime; it is recognised by the
+// pending-reload marker it leaves.
+function pending_stamp() {
+    let st = fs.stat(PENDING_RELOAD);
+    return st == null ? null : sprintf("%d:%d:%s", st.mtime, st.size, value(fs.readfile(PENDING_RELOAD)));
+}
+function reload_ran(detect_queued) {
+    let before = detect_queued ? pending_stamp() : null;
+    if (!success([ RELOAD, "reload" ])) return false;
+    return !detect_queued || pending_stamp() == null || pending_stamp() == before;
+}
+// apply_mode (autotune apply): the caller proved no guard was active and the
+// snapshot lock keeps restores out, so the guard is this call's own; a
+// queued reload is detected and an edit made while the guard was installed
+// is never overwritten. A restore keeps its established behaviour.
+function guarded_replace(before, content, pre, on_success, apply_mode) {
+    let detect_queued = apply_mode;
+    if (!restore_guard(false)) return { status: "failed", reason: "guard_unavailable" };
+    if (apply_mode && sha(read_config()) != sha(before)) {
+        if (!restore_guard(true)) return { status: "needs_attention", reason: "guard_release_failed", guard: "active" };
+        return { status: "failed", reason: "concurrent_change" };
+    }
+    if (!atomic(CONFIG, content)) {
+        if (!restore_guard(true)) return { status: "needs_attention", reason: "replace_failed", guard: "active" };
+        return { status: "failed", reason: "replace_failed" };
+    }
+    let result = null;
+    let valid = success([ "ucode", "-L", LIB_DIR, LIB_DIR + "/config/validator.uc", "validate-runtime" ]);
+    if (valid && reload_ran(detect_queued)) {
+        if (!restore_guard(true)) result = { status: "needs_attention", reason: "guard_release_failed", guard: "active" };
+        else result = on_success();
+    }
+    else if (!atomic(CONFIG, before))
+        result = { status: "needs_attention", reason: "config_rollback_failed", guard: "active" };
+    else if (reload_ran(detect_queued)) {
+        if (!restore_guard(true)) result = { status: "needs_attention", reason: "guard_release_failed", guard: "active" };
+        else if (!atomic(LKG, pre.snapshot.id + "\n")) result = { status: "needs_attention", reason: "lkg_update_failed", guard: "inactive" };
+        else result = { status: "recovered", reason: "target_reload_failed", guard: "inactive" };
+    }
+    else result = { status: "needs_attention", reason: "runtime_rollback_failed", guard: "active" };
+    result.started = true;
+    return result;
+}
 function do_restore(id) {
     let target = read_snapshot(id, true);
     if (target == null) return { status: "failed", reason: "invalid_snapshot" };
     let before = read_config();
     if (before == null) return { status: "failed", reason: "config_unavailable" };
-    let pre = create("automatic", "pre-restore", false);
+    let pre = create("automatic", "pre-restore", false, [ id ]);
     if (pre.status != "created") return { status: "failed", reason: "pre_restore_snapshot_failed" };
     if (sha(before) != sha(read_config())) return { status: "failed", reason: "concurrent_change" };
-    if (!restore_guard(false)) return { status: "failed", reason: "guard_unavailable" };
-    if (!atomic(CONFIG, target.content)) {
-        if (!restore_guard(true)) return { status: "needs_attention", reason: "replace_failed", guard: "active" };
-        return { status: "failed", reason: "replace_failed" };
-    }
-    let valid = success([ "ucode", "-L", LIB_DIR, LIB_DIR + "/config/validator.uc", "validate-runtime" ]);
-    if (valid && success([ RELOAD, "reload" ])) {
-        if (!restore_guard(true)) return { status: "needs_attention", reason: "guard_release_failed", guard: "active" };
+    return guarded_replace(before, target.content, pre, () => {
         if (!atomic(LKG, id + "\n")) return { status: "needs_attention", reason: "lkg_update_failed", guard: "inactive" };
         return { status: "success", snapshot: metadata(target), changes: diff(before, target.content) };
-    }
-    if (!atomic(CONFIG, before))
-        return { status: "needs_attention", reason: "config_rollback_failed", guard: "active" };
-    if (success([ RELOAD, "reload" ])) {
-        if (!restore_guard(true)) return { status: "needs_attention", reason: "guard_release_failed", guard: "active" };
-        if (!atomic(LKG, pre.snapshot.id + "\n")) return { status: "needs_attention", reason: "lkg_update_failed", guard: "inactive" };
-        return { status: "recovered", reason: "target_reload_failed", guard: "inactive" };
-    }
-    return { status: "needs_attention", reason: "runtime_rollback_failed", guard: "active" };
+    });
+}
+// Apply a candidate configuration prepared elsewhere (DPI autotune stage 5)
+// through the same transaction as a restore. The current configuration must
+// still be the one the candidate was derived from (expected_hash), and it is
+// saved first as a "before-autotune" snapshot for the caller's rollback. LKG
+// is left untouched on success: the caller confirms it after its own checks.
+function do_apply(candidate_file, expected_hash, keep_id) {
+    let keep = valid_id(value(keep_id)) ? [ value(keep_id) ] : [];
+    let content = fs.readfile(value(candidate_file));
+    if (content == null || length(content) > MAX_CONFIG) return { status: "failed", reason: "candidate_unavailable" };
+    let before = read_config();
+    if (before == null) return { status: "failed", reason: "config_unavailable" };
+    if (sha(before) != value(expected_hash)) return { status: "stale", reason: "config_changed" };
+    if (content == before) return { status: "no_change", reason: "candidate_equals_config" };
+    if (fs.stat(PENDING_RELOAD) != null) return { status: "stale", reason: "reload_pending" };
+    // Room for the before-autotune snapshot and for the pre-restore snapshot
+    // of a later rollback, which may not remove the before-autotune one. A
+    // manual LKG stays protected after the candidate is confirmed, so it
+    // costs one more slot.
+    let working = read_snapshot(trim(value(fs.readfile(LKG))), false);
+    if (headroom(keep) < (working != null && working.kind == "manual" ? 3 : 2)) return { status: "failed", reason: "snapshot_retention_full" };
+    let pre = create("automatic", "before-autotune", false, keep);
+    if (pre.status != "created") return { status: "failed", reason: "pre_apply_snapshot_failed" };
+    if (sha(before) != sha(read_config())) return { status: "failed", reason: "concurrent_change", pre_snapshot: pre.snapshot.id };
+    let result = guarded_replace(before, content, pre, () => ({ status: "success", changes: diff(before, content) }), true);
+    result.pre_snapshot = pre.snapshot.id;
+    return result;
 }
 let mode = value(ARGV[0]);
 if (mode == "list") { print(sprintf("%J\n", fs.stat(ROOT) == null ? [] : list_snapshots())); exit(0); }
@@ -324,7 +397,7 @@ if (mode == "fixture-diff") {
     print(sprintf("%J\n", diff(value(fs.readfile(ARGV[1])), value(fs.readfile(ARGV[2])))));
     exit(0);
 }
-if (index([ "create", "delete", "restore", "confirm-working" ], mode) < 0) exit(1);
+if (index([ "create", "delete", "restore", "apply", "confirm-working" ], mode) < 0) exit(1);
 if (!acquire()) {
     print(sprintf("%J\n", lock_busy ?
         { status: "busy", reason: "snapshot_operation_in_progress" } :
@@ -346,6 +419,13 @@ else if (mode == "restore") {
     answer = do_restore(value(ARGV[1]));
     success([ "ucode", "-L", LIB_DIR, LIB_DIR + "/diagnostics/health.uc", "record", "restore",
         answer.status == "success" ? "success" : answer.status == "recovered" ? "recovered" : "failure" ]);
+}
+else if (mode == "apply") {
+    answer = do_apply(ARGV[1], ARGV[2], ARGV[3]);
+    // Health records a configuration transaction only when one was started.
+    if (answer.started)
+        success([ "ucode", "-L", LIB_DIR, LIB_DIR + "/diagnostics/health.uc", "record", "restore",
+            answer.status == "success" ? "success" : answer.status == "recovered" ? "recovered" : "failure" ]);
 }
 else if (mode == "confirm-working") {
     let found = create("automatic", "last-known-working", true);

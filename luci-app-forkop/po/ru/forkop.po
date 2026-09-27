@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-27 22:56+0000\n"
-"PO-Revision-Date: 2026-09-27 22:56+0000\n"
+"POT-Creation-Date: 2026-09-27 23:13+0000\n"
+"PO-Revision-Date: 2026-09-27 23:13+0000\n"
 "Last-Translator: Claude\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -55,6 +55,9 @@ msgstr "Активный Bootstrap DNS"
 
 msgid "Active Connections"
 msgstr "Активные соединения"
+
+msgid "Active connections of all devices are interrupted."
+msgstr "Активные соединения всех устройств будут прерваны."
 
 msgid "Active Main DNS"
 msgstr "Активный основной DNS"
@@ -151,6 +154,9 @@ msgstr "Применение конфигурации Forkop…"
 
 msgid "Applying…"
 msgstr "Применение…"
+
+msgid "Apps reconnect on their own; downloads and calls may drop"
+msgstr "Приложения переподключатся сами; загрузки и звонки могут оборваться"
 
 msgid "At least one valid domain must be specified."
 msgstr "Нужно указать хотя бы один корректный домен."
@@ -329,8 +335,14 @@ msgstr "CIDR должен быть от 0 до 32 для IPv4 или от 0 до
 msgid "Close"
 msgstr "Закрыть"
 
+msgid "Close all"
+msgstr "Закрыть все"
+
 msgid "Close all connections"
 msgstr "Закрыть все подключения"
+
+msgid "Close all connections?"
+msgstr "Закрыть все соединения?"
 
 msgid "Close connection"
 msgstr "Закрыть подключение"
@@ -407,6 +419,9 @@ msgstr "Копировать адрес"
 msgid "Copy details"
 msgstr "Копировать сведения"
 
+msgid "Could not change autostart"
+msgstr "Не удалось изменить автозапуск"
+
 msgid "Could not compare configurations"
 msgstr "Не удалось сравнить конфигурации"
 
@@ -476,6 +491,9 @@ msgstr "Значение задержки не может быть пустым"
 msgid "Delete"
 msgstr "Удалить"
 
+msgid "Delete snapshot?"
+msgstr "Удалить снимок?"
+
 msgid "Delete this configuration snapshot?"
 msgstr "Удалить этот снимок конфигурации?"
 
@@ -499,6 +517,9 @@ msgstr "Фильтр по устройствам"
 
 msgid "Device or IP"
 msgstr "Устройство или IP"
+
+msgid "Devices keep using the router without Forkop X"
+msgstr "Устройства продолжат работать через роутер без Forkop X"
 
 msgid "DHCP has DNS server"
 msgstr "DHCP содержит DNS сервер"
@@ -848,6 +869,9 @@ msgstr "Не удалось выполнить"
 msgid "Failed to save URLTest settings"
 msgstr "Не удалось сохранить настройки URLTest"
 
+msgid "Failed to switch the node"
+msgstr "Не удалось переключить узел"
+
 msgid "Failed to update subscriptions"
 msgstr "Не удалось обновить подписки"
 
@@ -901,6 +925,9 @@ msgstr "Forkop X и sing-box удалены. Исходные репозитор
 
 msgid "Forkop X Settings"
 msgstr "Настройки Forkop X"
+
+msgid "Forkop X stops handling traffic until it is started again."
+msgstr "Forkop X перестанет обрабатывать трафик, пока его снова не запустят."
 
 msgid "Forkop-managed ciadpi runtime has restarted"
 msgstr "ciadpi Forkop перезапускался"
@@ -982,6 +1009,9 @@ msgstr "Ошибка HTTP"
 
 msgid "Idle timeout"
 msgstr "Таймаут простоя"
+
+msgid "If the reload fails, the previous configuration is restored automatically"
+msgstr "Если перезагрузка не удастся, прежняя конфигурация восстановится автоматически"
 
 msgid "Import subscription URLTest groups"
 msgstr "Добавлять URLTest группы из подписки"
@@ -1691,6 +1721,9 @@ msgstr "Удаление не завершено. Подробности в жу
 msgid "Remove"
 msgstr "Удалить"
 
+msgid "Remove %s?"
+msgstr "Удалить %s?"
+
 msgid "Remove Forkop X and sing-box with their settings and restore the original device repositories."
 msgstr "Удалить Forkop X и sing-box вместе с настройками и восстановить исходные репозитории устройства."
 
@@ -1748,6 +1781,9 @@ msgstr "Перезапустить Forkop X"
 msgid "Restore"
 msgstr "Восстановить"
 
+msgid "Restore configuration snapshot?"
+msgstr "Восстановить снимок конфигурации?"
+
 msgid "Restore failed; inspect Safety Center before retrying"
 msgstr "Восстановление не удалось; проверьте Центр безопасности перед повтором"
 
@@ -1796,6 +1832,9 @@ msgstr "Направлять запросы к этому DNS-серверу ч�
 msgid "Router kernel route"
 msgstr "Маршрут ядра роутера"
 
+msgid "Routing, DNS and DPI bypass rules stop applying"
+msgstr "Правила маршрутизации, DNS и обхода DPI перестанут действовать"
+
 msgid "Rule"
 msgstr "Правило"
 
@@ -1828,6 +1867,9 @@ msgstr "Счётчики правил proxy"
 
 msgid "Rules proxy exist"
 msgstr "Правила прокси существуют"
+
+msgid "Rules that use this provider stop bypassing DPI"
+msgstr "Правила с этим провайдером перестанут обходить DPI"
 
 msgid "Run full diagnostics"
 msgstr "Запустить полную диагностику"
@@ -2045,17 +2087,29 @@ msgstr "Запуск"
 msgid "Start Forkop"
 msgstr "Запустить Forkop"
 
+msgid "Start Forkop X"
+msgstr "Запустить Forkop X"
+
 msgid "Start time"
 msgstr "Время начала"
 
 msgid "Started"
 msgstr "Начало"
 
+msgid "Starting…"
+msgstr "Запуск…"
+
+msgid "Stop"
+msgstr "Остановить"
+
 msgid "Stop checking when URLTest group is not used. Use sing-box duration format like 1d, 12h or 30m."
 msgstr "Останавливать проверку если URLTest группа не используется. Используйте формат длительности sing-box, например 1d, 12h или 30m."
 
 msgid "Stop Forkop X"
 msgstr "Остановить Forkop X"
+
+msgid "Stop Forkop X?"
+msgstr "Остановить Forkop X?"
 
 msgid "Strategy"
 msgstr "Стратегия"
@@ -2150,6 +2204,12 @@ msgstr "Правило и outbound Forkop известны только для �
 msgid "The NFQUEUE number is assigned by Forkop for each rule and must not be overridden here."
 msgstr "Номер NFQUEUE назначается Forkop для каждого правила и не должен переопределяться здесь."
 
+msgid "The package is removed from the router."
+msgstr "Пакет будет удалён с роутера."
+
+msgid "The route check did not complete. Try again."
+msgstr "Проверка маршрута не завершилась. Повторите попытку."
+
 msgid "The router did not respond"
 msgstr "Роутер не ответил"
 
@@ -2167,6 +2227,9 @@ msgstr "Роутер отклонил эту проверку"
 
 msgid "The rule applies to the domain and all its subdomains. Use full:, keyword:, or regex: prefixes for exact match, keyword match, or regular expression."
 msgstr "Правило применяется к домену и всем его поддоменам. Для полного совпадения, совпадению по слову или регулярному выражению используйте префиксы full:, keyword: или regex:."
+
+msgid "The service state has not changed yet. Check again in a moment."
+msgstr "Состояние службы пока не изменилось. Проверьте ещё раз чуть позже."
 
 msgid "The strategy contains an error"
 msgstr "В стратегии есть ошибка"

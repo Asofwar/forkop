@@ -1677,6 +1677,92 @@ function nft_dpi_transition_guard(table, remove) {
     return ok;
 }
 
+// A table carrying the guard's name is only trusted when `nft -j` shows exactly
+// the structure nft_dpi_transition_guard() creates: one output base chain
+// (filter, priority -149, policy accept) with the two provider-mark drops.
+const DPI_GUARD_MARK_MASK = 4278190080;          // 0xff000000
+const DPI_GUARD_PROVIDER_MARKS = [ 16777216, 33554432 ];   // 0x01000000, 0x02000000
+
+function dpi_guard_rule_mark(rule) {
+    let expr = rule.expr;
+    if (type(expr) != "array" || length(expr) != 2 ||
+        type(expr[1]) != "object" || length(keys(expr[1])) != 1 || !("drop" in expr[1]))
+        return null;
+    let test = type(expr[0]) == "object" && length(keys(expr[0])) == 1 ? expr[0].match : null;
+    if (type(test) != "object" || test.op != "==" || type(test.left) != "object")
+        return null;
+    let masked = test.left["&"];
+    if (type(masked) != "array" || length(masked) != 2 || type(masked[0]) != "object" ||
+        type(masked[0].meta) != "object" || masked[0].meta.key != "mark" ||
+        masked[1] != DPI_GUARD_MARK_MASK)
+        return null;
+    return index(DPI_GUARD_PROVIDER_MARKS, test.right) >= 0 ? test.right : null;
+}
+
+function dpi_guard_json_valid(parsed, guard_table) {
+    if (type(parsed) != "object" || type(parsed.nftables) != "array")
+        return false;
+    let tables = 0, chains = 0, marks = [];
+    for (let item in parsed.nftables) {
+        if (type(item) != "object" || length(keys(item)) != 1)
+            return false;
+        let kind = keys(item)[0], object = item[kind];
+        if (kind == "metainfo")
+            continue;
+        if (type(object) != "object" || object.family != "inet")
+            return false;
+        if (kind == "table") {
+            if (object.name != guard_table)
+                return false;
+            tables++;
+        }
+        else if (kind == "chain") {
+            if (object.table != guard_table || object.name != "output" || object.type != "filter" ||
+                object.hook != "output" || object.prio != -149 || object.policy != "accept")
+                return false;
+            chains++;
+        }
+        else if (kind == "rule") {
+            if (object.table != guard_table || object.chain != "output")
+                return false;
+            let mark = dpi_guard_rule_mark(object);
+            if (mark == null || index(marks, mark) >= 0)
+                return false;
+            push(marks, mark);
+        }
+        else
+            return false;
+    }
+    return tables == 1 && chains == 1 && length(marks) == length(DPI_GUARD_PROVIDER_MARKS);
+}
+
+// "absent", "valid" or "invalid" (present but not the expected protection).
+function nft_dpi_transition_guard_state(table) {
+    let guard_table = as_string(table) + "DpiGuard";
+    if (match(guard_table, /^[A-Za-z][A-Za-z0-9_]*$/) == null)
+        return "invalid";
+    if (!run_args_quiet([ "nft", "list", "table", "inet", guard_table ]))
+        return "absent";
+    let parsed = null;
+    try {
+        parsed = json(command_output_from_args([ "nft", "-j", "list", "table", "inet", guard_table ]));
+    }
+    catch (e) {
+        return "invalid";
+    }
+    return dpi_guard_json_valid(parsed, guard_table) ? "valid" : "invalid";
+}
+
+// Idempotent install for callers that may run while their own guard is still
+// active (config restore after needs_attention): reuse a verified guard, create
+// a missing one, and fail closed on anything unexpected.
+function nft_dpi_transition_guard_ensure(table) {
+    let state = nft_dpi_transition_guard_state(table);
+    if (state == "absent" && nft_dpi_transition_guard(table, false))
+        state = nft_dpi_transition_guard_state(table);
+    return state == "valid";
+}
+
 function nft_rebuild_runtime_from_uci(rt_table, table, localv4_set, common_set, port_set, ip_port_set, interface_set, fakeip_mark, outbound_mark, fakeip_range, tproxy_port, zapret_bin, zapret_route_mark_base, zapret_queue_base, zapret_desync_mark, zapret_desync_mark_postnat, zapret2_bin, zapret2_route_mark_base, zapret2_queue_base, zapret2_desync_mark, zapret2_desync_mark_postnat, localv6_set, common6_set, ip_port6_set, fakeip6_range, tproxy6_address) {
     log_debug("Applying nftables runtime rules");
 
@@ -2110,6 +2196,12 @@ else if (mode == "install-dpi-transition-guard")
     exit(nft_dpi_transition_guard(ARGV[1], false) ? 0 : 1);
 else if (mode == "remove-dpi-transition-guard")
     exit(nft_dpi_transition_guard(ARGV[1], true) ? 0 : 1);
+else if (mode == "ensure-dpi-transition-guard")
+    exit(nft_dpi_transition_guard_ensure(ARGV[1]) ? 0 : 1);
+else if (mode == "dpi-transition-guard-state") {
+    print(nft_dpi_transition_guard_state(ARGV[1]), "\n");
+    exit(0);
+}
 else if (mode == "ensure-bridge-netfilter-disabled")
     exit(ensure_bridge_netfilter_disabled() ? 0 : 1);
 else {

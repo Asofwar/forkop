@@ -1,0 +1,95 @@
+#!/bin/sh
+set -eu
+
+# ensure/state semantics of the DPI transition guard: create when absent,
+# reuse only a structurally verified guard, fail closed on anything else.
+ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+NFT_UC="$ROOT_DIR/forkop/files/usr/lib/nft/apply.uc"
+STATE_DIR="$(mktemp -d)"
+trap 'rm -rf "$STATE_DIR"' EXIT HUP INT TERM
+
+# `nft -j list table inet ForkopConfigRestoreDpiGuard` as printed by nft 1.1.6 on
+# OpenWrt 25.12 for the guard nft_dpi_transition_guard() creates.
+cat > "$STATE_DIR/valid.json" <<'JSON'
+{"nftables": [{"metainfo": {"version": "1.1.6", "release_name": "Commodore Bullmoose #7", "json_schema_version": 1}}, {"table": {"family": "inet", "name": "ForkopConfigRestoreDpiGuard", "handle": 1}}, {"chain": {"family": "inet", "table": "ForkopConfigRestoreDpiGuard", "name": "output", "handle": 1, "type": "filter", "hook": "output", "prio": -149, "policy": "accept"}}, {"rule": {"family": "inet", "table": "ForkopConfigRestoreDpiGuard", "chain": "output", "handle": 2, "expr": [{"match": {"op": "==", "left": {"&": [{"meta": {"key": "mark"}}, 4278190080]}, "right": 16777216}}, {"drop": null}]}}, {"rule": {"family": "inet", "table": "ForkopConfigRestoreDpiGuard", "chain": "output", "handle": 3, "expr": [{"match": {"op": "==", "left": {"&": [{"meta": {"key": "mark"}}, 4278190080]}, "right": 33554432}}, {"drop": null}]}}]}
+JSON
+
+cat > "$STATE_DIR/guard.uc" <<'UCODE'
+let fs = require("fs");
+let present = false;
+let applied = "";
+let listing = "";
+let valid_listing = fs.readfile(ARGV[0] + "/valid.json");
+function as_string(value) { return value == null ? "" : "" + value; }
+function command_output_from_args(args) {
+    return args[1] == "-j" ? listing : ARGV[0] + "/batch";
+}
+function run_args_quiet(args) { return present; }
+function run_args(args) {
+    let data = fs.readfile(args[length(args) - 1]);
+    if (data == null)
+        return false;
+    if (args[1] == "-f") {
+        applied = data;
+        present = index(data, "add table") >= 0;
+        listing = present ? valid_listing : "";
+    }
+    return true;
+}
+UCODE
+
+awk '/^function nft_dpi_transition_guard\(/{copy=1} /^function nft_rebuild_runtime_from_uci\(/{copy=0} copy{print}' "$NFT_UC" >> "$STATE_DIR/guard.uc"
+
+cat >> "$STATE_DIR/guard.uc" <<'UCODE'
+function fail(code, message) { warn(message, "\n"); exit(code); }
+function mutated(change) {
+    let parsed = json(valid_listing);
+    change(parsed.nftables);
+    return sprintf("%J", parsed);
+}
+
+// 1. Absent: ensure creates the guard and verifies what it created.
+if (nft_dpi_transition_guard_state("ForkopConfigRestore") != "absent") fail(1, "not absent");
+if (!nft_dpi_transition_guard_ensure("ForkopConfigRestore")) fail(2, "ensure failed on absent guard");
+if (!present || index(applied, "add table inet ForkopConfigRestoreDpiGuard") < 0) fail(3, "guard not created");
+if (nft_dpi_transition_guard_state("ForkopConfigRestore") != "valid") fail(4, "created guard not valid");
+
+// 2. Valid guard already active: reused as is, nothing re-applied.
+applied = "";
+if (!nft_dpi_transition_guard_ensure("ForkopConfigRestore")) fail(5, "valid guard not reused");
+if (applied != "") fail(6, "valid guard was re-applied");
+// The legacy install keeps its create-only contract for the lifecycle guard.
+if (nft_dpi_transition_guard("ForkopConfigRestore", false)) fail(7, "install changed semantics");
+
+// 3. A table with the guard's name that is not the expected protection.
+let bad = {
+    "extra rule": (n) => push(n, n[3]),
+    "missing rule": (n) => splice(n, 4, 1),
+    "wrong priority": (n) => (n[2].chain.prio = 0),
+    "policy drop": (n) => (n[2].chain.policy = "drop"),
+    "wrong hook": (n) => (n[2].chain.hook = "input"),
+    "extra chain": (n) => push(n, { chain: { family: "inet", table: "ForkopConfigRestoreDpiGuard", name: "x", handle: 9 } }),
+    "extra set": (n) => push(n, { set: { family: "inet", table: "ForkopConfigRestoreDpiGuard", name: "s" } }),
+    "wrong mark": (n) => (n[4].rule.expr[0].match.right = 50331648),
+    "wrong mask": (n) => (n[3].rule.expr[0].match.left["&"][1] = 255),
+    "accept instead of drop": (n) => (n[3].rule.expr[1] = { accept: null }),
+    "other table name": (n) => (n[1].table.name = "Other"),
+};
+for (let name, change in bad) {
+    present = true;
+    listing = mutated(change);
+    applied = "";
+    if (nft_dpi_transition_guard_state("ForkopConfigRestore") != "invalid") fail(10, "accepted: " + name);
+    if (nft_dpi_transition_guard_ensure("ForkopConfigRestore")) fail(11, "ensure accepted: " + name);
+    if (applied != "") fail(12, "ensure touched an invalid guard: " + name);
+}
+present = true;
+listing = "{broken";
+if (nft_dpi_transition_guard_ensure("ForkopConfigRestore")) fail(13, "accepted malformed JSON");
+listing = "";
+if (nft_dpi_transition_guard_ensure("ForkopConfigRestore")) fail(14, "accepted empty listing");
+if (nft_dpi_transition_guard_state("Bad;Name") != "invalid") fail(15, "accepted bad table name");
+UCODE
+
+ucode "$STATE_DIR/guard.uc" "$STATE_DIR"
+printf 'dpi_restore_guard_verify: PASS\n'

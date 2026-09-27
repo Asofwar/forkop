@@ -2875,12 +2875,15 @@ var ForkopShellMethods = {
   getHealthStatus: async () => callBaseMethod(
     Forkop.AvailableMethods.GET_HEALTH_STATUS
   ),
-  routeTrace: async (target, source, protocol, port) => callBaseMethod(Forkop.AvailableMethods.ROUTE_TRACE, [
-    target,
-    source,
-    protocol,
-    port
-  ]),
+  routeTrace: async (target, source, protocol, port) => (
+    // An invalid target exits non-zero with {"error":"invalid_input"}.
+    callBaseMethod(
+      Forkop.AvailableMethods.ROUTE_TRACE,
+      [target, source, protocol, port],
+      "/usr/bin/forkop",
+      { allowNonZeroWithStdout: true }
+    )
+  ),
   // Snapshot mutations print a structured result (busy, failed, ...) even
   // when they exit non-zero; keep it instead of a bare failure.
   snapshotCreate: async (kind = "manual") => callBaseMethod(
@@ -6289,8 +6292,17 @@ async function handleChooseOutbound(sectionName, selector, tag) {
   }
   setSelectorSwitching(sectionName, tag);
   try {
-    await ForkopShellMethods.setClashApiGroupProxy(selector, tag);
+    const response = await ForkopShellMethods.setClashApiGroupProxy(
+      selector,
+      tag
+    );
+    if (!response.success) {
+      showToast(_("Failed to switch the node"), "error");
+    }
     await fetchDashboardSections({ force: true });
+  } catch (error) {
+    logger.error("[DASHBOARD]", "handleChooseOutbound: failed", error);
+    showToast(_("Failed to switch the node"), "error");
   } finally {
     setSelectorSwitching(sectionName);
   }
@@ -10026,6 +10038,13 @@ function routeFacts(trace) {
   return facts;
 }
 var MONITORING_TAB_LINK = '[data-tab="monitoring"] > a';
+function routeTraceFailureText(response) {
+  const data = response.data;
+  if (response.success && data?.error === "invalid_input") {
+    return _("Enter a valid domain or IP address");
+  }
+  return _("The route check did not complete. Try again.");
+}
 function openMonitoring() {
   document.querySelector(MONITORING_TAB_LINK)?.click();
 }
@@ -10059,7 +10078,7 @@ function initRouteDebugger() {
       );
       if (input.value.trim() !== target) return;
       if (!response.success || !response.data?.target) {
-        container.textContent = _("Enter a valid domain or IP address");
+        container.textContent = routeTraceFailureText(response);
         return;
       }
       const hasMonitoring = Boolean(
@@ -10093,6 +10112,10 @@ function initRouteDebugger() {
           ) : ""
         ])
       );
+    } catch (_error) {
+      if (input.value.trim() === target) {
+        container.textContent = routeTraceFailureText({ success: false });
+      }
     } finally {
       button.disabled = false;
     }
@@ -10415,6 +10438,11 @@ function initDpiPlayground() {
       const view = validationView(response);
       result.className = `fkp-diag-text--${view.tone}`;
       result.textContent = view.text;
+    } catch (_error) {
+      if (input.value.trim() !== strategy) return;
+      const view = validationView({ success: false });
+      result.className = `fkp-diag-text--${view.tone}`;
+      result.textContent = view.text;
     } finally {
       button.disabled = false;
     }
@@ -10502,6 +10530,8 @@ function initSafetyCenter() {
           )
         ) : E("p", { class: "fkp-diag-hint" }, _("No events recorded yet"))
       );
+    } catch (_error) {
+      container.textContent = _("Recovery state is unavailable");
     } finally {
       button.disabled = false;
     }
@@ -10581,6 +10611,10 @@ function shouldShowStopAction({
   stopLoading
 }) {
   return stopLoading || restartLoading || forkopRunning && !startLoading;
+}
+function serviceActionErrorText(error) {
+  const detail = error instanceof Error ? error.message.trim() : "";
+  return detail ? `${_("Service action failed")}: ${detail}` : _("Service action failed");
 }
 
 // src/forkop/tabs/diagnostic/diagnosticRunPersistence.ts
@@ -10950,7 +10984,7 @@ async function handleDownloadSupportReport() {
       _(
         "Support report contains confidential information. Do not share it in public chats."
       ),
-      "error",
+      "warning",
       1e4
     );
   } catch (error) {
@@ -11280,9 +11314,16 @@ async function handleServiceRuntimeAction({
     if (result.data.success === false) {
       throw new Error(result.data.message || _("Service action failed"));
     }
-    await waitForForkopRunningState(expectedRunning);
+    if (!await waitForForkopRunningState(expectedRunning)) {
+      showToast(
+        _("The service state has not changed yet. Check again in a moment."),
+        "warning",
+        6e3
+      );
+    }
   } catch (e) {
     logger.error("[DIAGNOSTIC]", `handleServiceRuntimeAction(${action})`, e);
+    showToast(serviceActionErrorText(e), "error", 6e3);
   } finally {
     if (!delegatedToWatcher) {
       if (ownsJobFollow) {
@@ -11330,6 +11371,12 @@ async function handleStop() {
     expectedRunning: false
   });
 }
+function reportAutostartResult(expectedEnabled) {
+  const enabled = Boolean(store.get().servicesInfoWidget.data.forkopEnabled);
+  if (enabled !== expectedEnabled) {
+    showToast(_("Could not change autostart"), "error", 6e3);
+  }
+}
 async function handleEnable() {
   setDiagnosticActionLoading("enable", true);
   try {
@@ -11341,6 +11388,7 @@ async function handleEnable() {
       force: true,
       allowInactive: true
     });
+    reportAutostartResult(true);
     setDiagnosticActionLoading("enable", false);
   }
 }
@@ -11355,6 +11403,7 @@ async function handleDisable() {
       force: true,
       allowInactive: true
     });
+    reportAutostartResult(false);
     setDiagnosticActionLoading("disable", false);
   }
 }
@@ -11376,9 +11425,11 @@ async function handleShowGlobalCheck() {
       );
     } else {
       logger.error("[DIAGNOSTIC]", "handleShowGlobalCheck - e", globalCheck);
+      showToast(_("Could not load data"), "error");
     }
   } catch (e) {
     logger.error("[DIAGNOSTIC]", "handleShowGlobalCheck - e", e);
+    showToast(_("Could not load data"), "error");
   } finally {
     setDiagnosticActionLoading("globalCheck", false);
   }
@@ -11407,9 +11458,11 @@ async function handleViewLogs() {
       );
     } else {
       logger.error("[DIAGNOSTIC]", "handleViewLogs - e", viewLogs);
+      showToast(_("Could not load data"), "error");
     }
   } catch (e) {
     logger.error("[DIAGNOSTIC]", "handleViewLogs - e", e);
+    showToast(_("Could not load data"), "error");
   } finally {
     setDiagnosticActionLoading("viewLogs", false);
   }
@@ -11440,9 +11493,11 @@ async function handleShowSingBoxConfig() {
         "handleShowSingBoxConfig - e",
         showSingBoxConfig
       );
+      showToast(_("Could not load data"), "error");
     }
   } catch (e) {
     logger.error("[DIAGNOSTIC]", "handleShowSingBoxConfig - e", e);
+    showToast(_("Could not load data"), "error");
   } finally {
     setDiagnosticActionLoading("showSingBoxConfig", false);
   }

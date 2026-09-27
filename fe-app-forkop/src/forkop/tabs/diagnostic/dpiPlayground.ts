@@ -55,6 +55,11 @@ export function initDpiPlayground() {
       const view = validationView(response);
       result.className = `fkp-diag-text--${view.tone}`;
       result.textContent = view.text;
+    } catch (_error) {
+      if (input.value.trim() !== strategy) return;
+      const view = validationView({ success: false });
+      result.className = `fkp-diag-text--${view.tone}`;
+      result.textContent = view.text;
     } finally {
       button.disabled = false;
     }

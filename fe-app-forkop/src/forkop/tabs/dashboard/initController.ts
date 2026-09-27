@@ -678,8 +678,17 @@ async function handleChooseOutbound(
   setSelectorSwitching(sectionName, tag);
 
   try {
-    await ForkopShellMethods.setClashApiGroupProxy(selector, tag);
+    const response = await ForkopShellMethods.setClashApiGroupProxy(
+      selector,
+      tag,
+    );
+    if (!response.success) {
+      showToast(_('Failed to switch the node'), 'error');
+    }
     await fetchDashboardSections({ force: true });
+  } catch (error) {
+    logger.error('[DASHBOARD]', 'handleChooseOutbound: failed', error);
+    showToast(_('Failed to switch the node'), 'error');
   } finally {
     setSelectorSwitching(sectionName);
   }

@@ -59,6 +59,7 @@ import {
   shouldShowRestartAction,
   shouldShowStartAction,
   shouldShowStopAction,
+  serviceActionErrorText,
 } from './serviceTransition';
 import { isActiveLuciTab } from '../../helpers/isActiveLuciTab';
 import {
@@ -191,7 +192,7 @@ async function handleDownloadSupportReport() {
       _(
         'Support report contains confidential information. Do not share it in public chats.',
       ),
-      'error',
+      'warning',
       10000,
     );
   } catch (error) {
@@ -623,9 +624,16 @@ async function handleServiceRuntimeAction({
       throw new Error(result.data.message || _('Service action failed'));
     }
 
-    await waitForForkopRunningState(expectedRunning);
+    if (!(await waitForForkopRunningState(expectedRunning))) {
+      showToast(
+        _('The service state has not changed yet. Check again in a moment.'),
+        'warning',
+        6000,
+      );
+    }
   } catch (e) {
     logger.error('[DIAGNOSTIC]', `handleServiceRuntimeAction(${action})`, e);
+    showToast(serviceActionErrorText(e), 'error', 6000);
   } finally {
     if (!delegatedToWatcher) {
       if (ownsJobFollow) {
@@ -679,6 +687,16 @@ async function handleStop() {
   });
 }
 
+// init.d enable/disable print nothing, so the result is judged by the
+// autostart state read back afterwards.
+function reportAutostartResult(expectedEnabled: boolean) {
+  const enabled = Boolean(store.get().servicesInfoWidget.data.forkopEnabled);
+
+  if (enabled !== expectedEnabled) {
+    showToast(_('Could not change autostart'), 'error', 6000);
+  }
+}
+
 async function handleEnable() {
   setDiagnosticActionLoading('enable', true);
 
@@ -691,6 +709,7 @@ async function handleEnable() {
       force: true,
       allowInactive: true,
     });
+    reportAutostartResult(true);
     setDiagnosticActionLoading('enable', false);
   }
 }
@@ -707,6 +726,7 @@ async function handleDisable() {
       force: true,
       allowInactive: true,
     });
+    reportAutostartResult(false);
     setDiagnosticActionLoading('disable', false);
   }
 }
@@ -734,9 +754,11 @@ async function handleShowGlobalCheck() {
       );
     } else {
       logger.error('[DIAGNOSTIC]', 'handleShowGlobalCheck - e', globalCheck);
+      showToast(_('Could not load data'), 'error');
     }
   } catch (e) {
     logger.error('[DIAGNOSTIC]', 'handleShowGlobalCheck - e', e);
+    showToast(_('Could not load data'), 'error');
   } finally {
     setDiagnosticActionLoading('globalCheck', false);
   }
@@ -771,9 +793,11 @@ async function handleViewLogs() {
       );
     } else {
       logger.error('[DIAGNOSTIC]', 'handleViewLogs - e', viewLogs);
+      showToast(_('Could not load data'), 'error');
     }
   } catch (e) {
     logger.error('[DIAGNOSTIC]', 'handleViewLogs - e', e);
+    showToast(_('Could not load data'), 'error');
   } finally {
     setDiagnosticActionLoading('viewLogs', false);
   }
@@ -809,9 +833,11 @@ async function handleShowSingBoxConfig() {
         'handleShowSingBoxConfig - e',
         showSingBoxConfig,
       );
+      showToast(_('Could not load data'), 'error');
     }
   } catch (e) {
     logger.error('[DIAGNOSTIC]', 'handleShowSingBoxConfig - e', e);
+    showToast(_('Could not load data'), 'error');
   } finally {
     setDiagnosticActionLoading('showSingBoxConfig', false);
   }

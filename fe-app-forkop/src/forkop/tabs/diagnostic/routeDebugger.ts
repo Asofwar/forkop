@@ -86,6 +86,20 @@ export function routeFacts(trace: Forkop.RouteTrace): RouteFact[] {
 // LuCI tabs switch on the inner link; inactive tabs carry `cbi-tab-disabled`.
 const MONITORING_TAB_LINK = '[data-tab="monitoring"] > a';
 
+// route_trace answers {error:"invalid_input"} for a target it rejects;
+// anything else is a failed check, not a typing mistake.
+export function routeTraceFailureText(response: {
+  success: boolean;
+  data?: unknown;
+}) {
+  const data = response.data as { error?: unknown } | undefined;
+  if (response.success && data?.error === 'invalid_input') {
+    return _('Enter a valid domain or IP address');
+  }
+
+  return _('The route check did not complete. Try again.');
+}
+
 function openMonitoring() {
   document.querySelector<HTMLElement>(MONITORING_TAB_LINK)?.click();
 }
@@ -121,7 +135,7 @@ export function initRouteDebugger() {
       );
       if (input.value.trim() !== target) return;
       if (!response.success || !response.data?.target) {
-        container.textContent = _('Enter a valid domain or IP address');
+        container.textContent = routeTraceFailureText(response);
         return;
       }
       const hasMonitoring = Boolean(
@@ -157,6 +171,10 @@ export function initRouteDebugger() {
             : '',
         ]),
       );
+    } catch (_error) {
+      if (input.value.trim() === target) {
+        container.textContent = routeTraceFailureText({ success: false });
+      }
     } finally {
       button.disabled = false;
     }

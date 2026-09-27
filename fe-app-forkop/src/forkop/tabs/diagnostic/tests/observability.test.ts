@@ -77,7 +77,7 @@ import {
   validateTarget,
   type Target,
 } from '../connectivityMatrix';
-import { routeFacts } from '../routeDebugger';
+import { routeFacts, routeTraceFailureText } from '../routeDebugger';
 import { recentEvents, recoveryRows } from '../safetyCenter';
 import { validationView } from '../dpiPlayground';
 import { checkStatus, eventStatus, healthStatus } from '../statusLabels';
@@ -337,6 +337,29 @@ describe('route check', () => {
     expect(facts.find((f) => f.label === 'DPI provider')?.note).toBe(
       'Seen in an active connection',
     );
+  });
+});
+
+describe('route check failures', () => {
+  it('asks to fix the input only when the target was rejected', () => {
+    expect(
+      routeTraceFailureText({
+        success: true,
+        data: { error: 'invalid_input' },
+      }),
+    ).toBe('Enter a valid domain or IP address');
+  });
+
+  it('reports a failed check as a failure, not as a typing mistake', () => {
+    for (const response of [
+      { success: false },
+      { success: true, data: {} },
+      { success: true, data: { error: 'something_else' } },
+    ]) {
+      expect(routeTraceFailureText(response)).toBe(
+        'The route check did not complete. Try again.',
+      );
+    }
   });
 });
 

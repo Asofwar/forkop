@@ -125,7 +125,9 @@ for n in 1 2 3 4 5 6 7 8 9 10; do
 done
 [ -f "$FORKOP_TEST_READY" ] || exit 1
 ls "$FORKOP_SNAPSHOT_LOCK_DIR"/owner.* >/dev/null || exit 1
-if ucode -L "$LIB" "$SCRIPT" create manual >/dev/null; then exit 1; fi
+if ucode -L "$LIB" "$SCRIPT" create manual > "$WORK/busy.json"; then exit 1; fi
+node -e 'const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+if (r.status !== "busy" || r.reason !== "snapshot_operation_in_progress") process.exit(1);' "$WORK/busy.json"
 ls "$FORKOP_SNAPSHOT_LOCK_DIR"/owner.* >/dev/null || exit 1
 wait "$holder"
 [ ! -e "$FORKOP_SNAPSHOT_LOCK_DIR" ] || exit 1
@@ -190,6 +192,35 @@ for (const option of ['password', 'passwd', 'secret', 'token', 'authorization', 
 const masked = JSON.stringify(diff(before, after));
 assert.equal(masked.includes('s3cr3t'), false);
 assert.equal(JSON.parse(masked).length, 24);
+
+// Quoted values spanning several lines are compared as a whole.
+const multi = (...values) => ` option action '${values.join('\n')}'\n option dns_type 'doh'\n`;
+assert.deepEqual(diff(multi('a', 'b', 'c'), multi('a', 'b', 'c')), []);
+for (const after of [multi('a', 'b', 'c', 'd'), multi('a', 'b'), multi('a', 'x', 'c')]) {
+  const changes = diff(multi('a', 'b', 'c'), after);
+  assert.equal(changes.length, 1);
+  assert.equal(changes[0].option, 'action');
+}
+assert.deepEqual(diff(lines("option dns_type 'doh'"), lines("option dns_type 'dot'")), [
+  { section: 'settings', option: 'dns_type', before: 'doh', after: 'dot' },
+]);
+// Quote characters inside values: libuci writes ' as '\'' and escapes in "...".
+assert.equal(diff(lines("option dns_type 'a'\\''b'"), lines("option dns_type 'a'\\''b'")).length, 0);
+assert.equal(diff(lines("option dns_type 'a'\\''b'"), lines("option dns_type 'a'\\''c'")).length, 1);
+assert.equal(diff(lines('option dns_type "a\\"b"'), lines('option dns_type "a\\"c"')).length, 1);
+// A later option after a multi-line value is still parsed correctly.
+assert.deepEqual(diff(multi('a', 'b'), ` option action 'a\nb'\n option dns_type 'dot'\n`), [
+  { section: 'settings', option: 'dns_type', before: 'doh', after: 'dot' },
+]);
+// A multi-line secret is masked as a whole, continuation lines included.
+const secretMulti = (tail) => ` option subscription_url 'https://user:first-s3cr3t@example.com\n${tail}'\n`;
+const secretChange = JSON.stringify(diff(secretMulti('second-s3cr3t'), secretMulti('third-s3cr3t')));
+assert.equal(secretChange.includes('s3cr3t'), false);
+assert.deepEqual(JSON.parse(secretChange), [
+  { section: 'settings', option: 'subscription_url', before: '***', after: '***' },
+]);
+// A multi-line list entry is one list value.
+assert.deepEqual(diff(" list dns_server 'x\ny'\n", " list dns_server 'x\nz'\n")[0].kind, 'list');
 JS
 
 (

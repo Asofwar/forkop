@@ -63,6 +63,7 @@ function ensure_root() {
 // record. The name is unique per process lifetime, so unlinking a stale or
 // own record by name can never remove the record of a lock that replaced it.
 let lock_record = null;
+let lock_busy = false;   // set when a live snapshot operation owns the lock
 function owner_pid() {
     let pid = value(fs.readlink("/proc/self"));
     return match(pid, /^[1-9][0-9]*$/) != null ? pid : "";
@@ -110,7 +111,7 @@ function acquire() {
         }
         let busy = false;
         for (let entry in entries) if (active_entry(entry)) busy = true;
-        if (busy) break;
+        if (busy) { lock_busy = true; break; }
         for (let entry in entries)
             if (!fs.unlink(LOCK + "/" + entry)) fs.rmdir(LOCK + "/" + entry);
     }
@@ -192,28 +193,52 @@ function safe_value(option, raw) {
         match(raw, /^[0-9A-Fa-f:.]{1,45}$/) != null) return raw;
     return "***";
 }
+// Parses a UCI value made of quoted/unquoted segments ('it'\''s', "a\"b").
+// A quoted value may span lines; null means the quote is still open.
+function uci_value(text) {
+    let result = "", quote = null;
+    for (let i = 0; i < length(text); i++) {
+        let c = substr(text, i, 1);
+        if (quote == "'") {
+            if (c == "'") quote = null; else result += c;
+        }
+        else if (quote == "\"") {
+            if (c == "\\" && i + 1 < length(text)) result += substr(text, ++i, 1);
+            else if (c == "\"") quote = null;
+            else result += c;
+        }
+        else if (c == "'" || c == "\"") quote = c;
+        else if (c == "\\" && i + 1 < length(text)) result += substr(text, ++i, 1);
+        else if (c == " " || c == "\t") break;
+        else result += c;
+    }
+    return quote == null ? result : null;
+}
 function options(content) {
     let result = {};
     let section = "";
-    for (let line in split(content, "\n")) {
+    let lines = split(content, "\n");
+    for (let i = 0; i < length(lines); i++) {
+        let line = lines[i];
         let start = match(line, /^[ \t]*config[ \t]+[A-Za-z0-9_-]+[ \t]+['"]?([A-Za-z0-9_-]+)['"]?/);
         if (start != null) { section = start[1]; continue; }
         let opt = match(line, /^[ \t]*(option|list)[ \t]+([A-Za-z0-9_-]+)[ \t]+(.+)$/);
-        if (section != "" && opt != null) {
-            let raw = trim(opt[3]);
-            if (length(raw) >= 2 &&
-                ((substr(raw, 0, 1) == "'" && substr(raw, length(raw) - 1) == "'") ||
-                 (substr(raw, 0, 1) == "\"" && substr(raw, length(raw) - 1) == "\"")))
-                raw = substr(raw, 1, length(raw) - 2);
-            let key = section + "." + opt[2];
-            if (opt[1] == "list") {
-                if (result[key] == null || result[key].kind != "list")
-                    result[key] = { kind: "list", values: [] };
-                push(result[key].values, raw);
-            }
-            else
-                result[key] = { kind: "option", value: raw };
+        if (section == "" || opt == null) continue;
+        // Continuation lines of a quoted multi-line value belong to this option.
+        let text = trim(opt[3]), raw = uci_value(text);
+        while (raw == null && i + 1 < length(lines)) {
+            text += "\n" + lines[++i];
+            raw = uci_value(text);
         }
+        if (raw == null) raw = text;
+        let key = section + "." + opt[2];
+        if (opt[1] == "list") {
+            if (result[key] == null || result[key].kind != "list")
+                result[key] = { kind: "list", values: [] };
+            push(result[key].values, raw);
+        }
+        else
+            result[key] = { kind: "option", value: raw };
     }
     return result;
 }
@@ -296,7 +321,13 @@ if (mode == "fixture-diff") {
     print(sprintf("%J\n", diff(value(fs.readfile(ARGV[1])), value(fs.readfile(ARGV[2])))));
     exit(0);
 }
-if (index([ "create", "delete", "restore", "confirm-working" ], mode) < 0 || !acquire()) exit(1);
+if (index([ "create", "delete", "restore", "confirm-working" ], mode) < 0) exit(1);
+if (!acquire()) {
+    print(sprintf("%J\n", lock_busy ?
+        { status: "busy", reason: "snapshot_operation_in_progress" } :
+        { status: "failed", reason: "lock_unavailable" }));
+    exit(1);
+}
 let answer = { status: "failed" };
 if (mode == "create") {
     let kind = value(ARGV[1] || "manual");

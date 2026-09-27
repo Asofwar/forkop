@@ -5821,8 +5821,40 @@ function renderHealth(health) {
   ]);
 }
 
+// src/forkop/tabs/dashboard/clashTraffic.ts
+function counter(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? number : 0;
+}
+function sampleFromConnections(payload, at) {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+  const data = payload;
+  return {
+    downloadTotal: counter(data.downloadTotal),
+    uploadTotal: counter(data.uploadTotal),
+    connections: Array.isArray(data.connections) ? data.connections.length : 0,
+    memory: counter(data.memory),
+    at
+  };
+}
+function trafficSpeed(previous, next) {
+  if (!previous) {
+    return null;
+  }
+  const seconds = (next.at - previous.at) / 1e3;
+  const down = next.downloadTotal - previous.downloadTotal;
+  const up = next.uploadTotal - previous.uploadTotal;
+  if (seconds <= 0 || down < 0 || up < 0) {
+    return null;
+  }
+  return { up: Math.round(up / seconds), down: Math.round(down / seconds) };
+}
+
 // src/forkop/tabs/dashboard/initController.ts
 var SECTIONS_REFRESH_INTERVAL_MS = 1e4;
+var CLASH_RPC_POLL_INTERVAL_MS = 2e3;
 var LATENCY_TEST_BUTTON_CLASS = "dashboard-sections-grid-item-test-latency";
 var LATENCY_TEST_BUTTON_LABEL_CLASS = "dashboard-sections-grid-item-test-latency__label";
 var sectionsRefreshTimer = null;
@@ -5843,6 +5875,9 @@ var dashboardMountId = 0;
 var dashboardDataUpdatesStarted = false;
 var dashboardDataUpdatesId = 0;
 var pageUnloading = false;
+var clashRpcPollTimer = null;
+var clashRpcPolling = false;
+var lastConnectionsSample = null;
 var followedSubscriptionJobs = /* @__PURE__ */ new Set();
 var followedLatencyJobs = /* @__PURE__ */ new Set();
 var handledSubscriptionJobs = /* @__PURE__ */ new Set();
@@ -6172,18 +6207,11 @@ async function connectToClashSockets(dataUpdatesId) {
       if (dataUpdatesId !== dashboardDataUpdatesId || getDashboardServiceAvailability() === "stopped") {
         return;
       }
-      logger.error(
+      logger.warn(
         "[DASHBOARD]",
-        "connectToClashSockets - traffic: failed to connect to",
-        getClashWsUrl()
+        "connectToClashSockets - traffic: socket unavailable, polling instead"
       );
-      store.set({
-        bandwidthWidget: {
-          loading: false,
-          failed: true,
-          data: { up: 0, down: 0 }
-        }
-      });
+      fallBackToClashRpcPolling(dataUpdatesId);
     }
   );
   socket.subscribe(
@@ -6216,28 +6244,94 @@ async function connectToClashSockets(dataUpdatesId) {
       if (dataUpdatesId !== dashboardDataUpdatesId || getDashboardServiceAvailability() === "stopped") {
         return;
       }
-      logger.error(
+      logger.warn(
         "[DASHBOARD]",
-        "connectToClashSockets - connections: failed to connect to",
-        getClashWsUrl()
+        "connectToClashSockets - connections: socket unavailable, polling instead"
       );
-      store.set({
-        trafficTotalWidget: {
-          loading: false,
-          failed: true,
-          data: { downloadTotal: 0, uploadTotal: 0 }
-        },
-        systemInfoWidget: {
-          loading: false,
-          failed: true,
-          data: {
-            connections: 0,
-            memory: 0
-          }
-        }
-      });
+      fallBackToClashRpcPolling(dataUpdatesId);
     }
   );
+}
+function setClashWidgetsFailed() {
+  store.set({
+    bandwidthWidget: { loading: false, failed: true, data: { up: 0, down: 0 } },
+    trafficTotalWidget: {
+      loading: false,
+      failed: true,
+      data: { downloadTotal: 0, uploadTotal: 0 }
+    },
+    systemInfoWidget: {
+      loading: false,
+      failed: true,
+      data: { connections: 0, memory: 0 }
+    }
+  });
+}
+async function pollClashConnections(dataUpdatesId) {
+  if (clashRpcPolling || dataUpdatesId !== dashboardDataUpdatesId || getDashboardServiceAvailability() === "stopped") {
+    return;
+  }
+  clashRpcPolling = true;
+  try {
+    const response = await ForkopShellMethods.getClashApiConnections();
+    if (dataUpdatesId !== dashboardDataUpdatesId) {
+      return;
+    }
+    const sample = response.success ? sampleFromConnections(response.data, Date.now()) : null;
+    if (!sample) {
+      lastConnectionsSample = null;
+      setClashWidgetsFailed();
+      return;
+    }
+    const speed = trafficSpeed(lastConnectionsSample, sample);
+    lastConnectionsSample = sample;
+    store.set({
+      ...speed ? { bandwidthWidget: { loading: false, failed: false, data: speed } } : {},
+      trafficTotalWidget: {
+        loading: false,
+        failed: false,
+        data: {
+          downloadTotal: sample.downloadTotal,
+          uploadTotal: sample.uploadTotal
+        }
+      },
+      systemInfoWidget: {
+        loading: false,
+        failed: false,
+        data: { connections: sample.connections, memory: sample.memory }
+      }
+    });
+  } catch (error) {
+    logger.error("[DASHBOARD]", "pollClashConnections: failed", error);
+    lastConnectionsSample = null;
+    setClashWidgetsFailed();
+  } finally {
+    clashRpcPolling = false;
+  }
+}
+function startClashRpcPolling(dataUpdatesId) {
+  if (clashRpcPollTimer) {
+    return;
+  }
+  lastConnectionsSample = null;
+  void pollClashConnections(dataUpdatesId);
+  clashRpcPollTimer = setInterval(() => {
+    void pollClashConnections(dataUpdatesId);
+  }, CLASH_RPC_POLL_INTERVAL_MS);
+}
+function stopClashRpcPolling() {
+  if (clashRpcPollTimer) {
+    clearInterval(clashRpcPollTimer);
+    clashRpcPollTimer = null;
+  }
+  lastConnectionsSample = null;
+}
+function fallBackToClashRpcPolling(dataUpdatesId) {
+  if (dataUpdatesId !== dashboardDataUpdatesId) {
+    return;
+  }
+  socket.resetAll();
+  startClashRpcPolling(dataUpdatesId);
 }
 function getDashboardServiceAvailability() {
   const service = store.get().servicesInfoWidget;
@@ -6255,6 +6349,7 @@ function stopDashboardDataUpdates() {
     sectionsRefreshTimer = null;
   }
   sectionsRefreshQueued = false;
+  stopClashRpcPolling();
   socket.resetAll();
 }
 function startDashboardDataUpdates() {
@@ -6264,7 +6359,11 @@ function startDashboardDataUpdates() {
   dashboardDataUpdatesStarted = true;
   const dataUpdatesId = ++dashboardDataUpdatesId;
   void fetchDashboardSections({ force: true });
-  void connectToClashSockets(dataUpdatesId);
+  if (canUseDirectClashApi()) {
+    void connectToClashSockets(dataUpdatesId);
+  } else {
+    startClashRpcPolling(dataUpdatesId);
+  }
   sectionsRefreshTimer = setInterval(() => {
     void fetchDashboardSections();
   }, SECTIONS_REFRESH_INTERVAL_MS);
@@ -13641,9 +13740,12 @@ async function connectToConnectionsSocket(updatesId) {
       if (!monitoringMounted || mountId !== monitoringMountId || updatesId !== connectionsUpdatesId || serviceAvailability !== "running") {
         return;
       }
-      failed = true;
-      loading = false;
-      renderConnections();
+      logger.warn("[MONITORING]", "connections socket unavailable, polling");
+      if (connectionsSocketUrl) {
+        socket.disconnect(connectionsSocketUrl);
+        connectionsSocketUrl = "";
+      }
+      startConnectionsPolling();
     }
   );
 }

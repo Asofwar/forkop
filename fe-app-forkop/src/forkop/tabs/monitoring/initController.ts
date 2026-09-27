@@ -1546,9 +1546,14 @@ async function connectToConnectionsSocket(updatesId: number) {
         return;
       }
 
-      failed = true;
-      loading = false;
-      renderConnections();
+      // The controller socket failed or dropped: keep watching through
+      // rpcd instead of showing the connections as unavailable for good.
+      logger.warn('[MONITORING]', 'connections socket unavailable, polling');
+      if (connectionsSocketUrl) {
+        socket.disconnect(connectionsSocketUrl);
+        connectionsSocketUrl = '';
+      }
+      startConnectionsPolling();
     },
   );
 }

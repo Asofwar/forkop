@@ -8267,6 +8267,57 @@ function render2() {
   ]);
 }
 
+// src/forkop/ui/confirmAction.ts
+function confirmAction(options) {
+  return new Promise((resolve) => {
+    let settled = false;
+    let observer;
+    const finish = (confirmed, closeModal = true) => {
+      if (settled) return;
+      settled = true;
+      observer?.disconnect();
+      if (closeModal) ui.hideModal();
+      resolve(confirmed);
+    };
+    const cancelButton = E(
+      "button",
+      { type: "button", class: "btn cbi-button", click: () => finish(false) },
+      _("Cancel")
+    );
+    const confirmButton = E(
+      "button",
+      {
+        type: "button",
+        class: `btn ${options.danger ? "cbi-button-negative" : "cbi-button-action"}`,
+        click: () => finish(true)
+      },
+      options.confirmLabel
+    );
+    const content = E("div", { class: "fkp-confirm" }, [
+      E("p", {}, options.message),
+      ...options.consequences?.length ? [
+        E(
+          "ul",
+          { class: "fkp-confirm__consequences" },
+          options.consequences.map((line) => E("li", {}, line))
+        )
+      ] : [],
+      E("div", { class: "fkp-confirm__actions" }, [
+        cancelButton,
+        confirmButton
+      ])
+    ]);
+    ui.showModal(options.title, content);
+    if (typeof MutationObserver === "function") {
+      observer = new MutationObserver(() => {
+        if (!content.isConnected) finish(false, false);
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    }
+    cancelButton.focus?.();
+  });
+}
+
 // src/forkop/tabs/diagnostic/checks/updateCheckStore.ts
 function updateCheckStore(check, minified) {
   const diagnosticsChecks = store.get().diagnosticsChecks;
@@ -11261,6 +11312,19 @@ async function handleStart() {
   });
 }
 async function handleStop() {
+  const confirmed = await confirmAction({
+    title: _("Stop Forkop X?"),
+    message: _("Forkop X stops handling traffic until it is started again."),
+    consequences: [
+      _("Routing, DNS and DPI bypass rules stop applying"),
+      _("Devices keep using the router without Forkop X")
+    ],
+    confirmLabel: _("Stop"),
+    danger: true
+  });
+  if (!confirmed) {
+    return;
+  }
   await handleServiceRuntimeAction({
     action: "stop",
     expectedRunning: false
@@ -13306,6 +13370,18 @@ async function closeAllConnections() {
   if (activeConnections.size === 0 || closingAll) {
     return;
   }
+  const confirmed = await confirmAction({
+    title: _("Close all connections?"),
+    message: _("Active connections of all devices are interrupted."),
+    consequences: [
+      _("Apps reconnect on their own; downloads and calls may drop")
+    ],
+    confirmLabel: _("Close all"),
+    danger: true
+  });
+  if (!confirmed || closingAll) {
+    return;
+  }
   closingAll = true;
   renderControls();
   try {
@@ -15068,7 +15144,29 @@ function stopComponentActionStateWatcher() {
   componentActionStateUnsubscribe();
   componentActionStateUnsubscribe = null;
 }
+var REMOVABLE_COMPONENT_TITLES = {
+  zapret: "Zapret",
+  zapret2: "Zapret2",
+  byedpi: "ByeDPI",
+  zapret_manager: "Zapret-Manager-Stressozz"
+};
+function confirmComponentRemoval(button) {
+  const title = REMOVABLE_COMPONENT_TITLES[button.component] || button.component;
+  const isDpiProvider = ["zapret", "zapret2", "byedpi"].includes(
+    button.component
+  );
+  return confirmAction({
+    title: _("Remove %s?").replace("%s", title),
+    message: _("The package is removed from the router."),
+    consequences: isDpiProvider ? [_("Rules that use this provider stop bypassing DPI")] : void 0,
+    confirmLabel: _("Remove"),
+    danger: true
+  });
+}
 async function handleComponentAction(button) {
+  if (button.action === "remove" && !await confirmComponentRemoval(button)) {
+    return;
+  }
   if (!beginComponentAction(button)) {
     return;
   }
@@ -15890,57 +15988,6 @@ var UpdatesTab = {
   initController: initController4,
   styles: styles6
 };
-
-// src/forkop/ui/confirmAction.ts
-function confirmAction(options) {
-  return new Promise((resolve) => {
-    let settled = false;
-    let observer;
-    const finish = (confirmed, closeModal = true) => {
-      if (settled) return;
-      settled = true;
-      observer?.disconnect();
-      if (closeModal) ui.hideModal();
-      resolve(confirmed);
-    };
-    const cancelButton = E(
-      "button",
-      { type: "button", class: "btn cbi-button", click: () => finish(false) },
-      _("Cancel")
-    );
-    const confirmButton = E(
-      "button",
-      {
-        type: "button",
-        class: `btn ${options.danger ? "cbi-button-negative" : "cbi-button-action"}`,
-        click: () => finish(true)
-      },
-      options.confirmLabel
-    );
-    const content = E("div", { class: "fkp-confirm" }, [
-      E("p", {}, options.message),
-      ...options.consequences?.length ? [
-        E(
-          "ul",
-          { class: "fkp-confirm__consequences" },
-          options.consequences.map((line) => E("li", {}, line))
-        )
-      ] : [],
-      E("div", { class: "fkp-confirm__actions" }, [
-        cancelButton,
-        confirmButton
-      ])
-    ]);
-    ui.showModal(options.title, content);
-    if (typeof MutationObserver === "function") {
-      observer = new MutationObserver(() => {
-        if (!content.isConnected) finish(false, false);
-      });
-      observer.observe(document.body, { childList: true, subtree: true });
-    }
-    cancelButton.focus?.();
-  });
-}
 
 // src/forkop/ui/styles.ts
 var styles7 = `

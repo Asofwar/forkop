@@ -1,6 +1,7 @@
 import { canUseDirectClashApi, getClashWsUrl, onMount } from '../../../helpers';
 import { prettyBytes } from '../../../helpers/prettyBytes';
 import { showToast } from '../../../helpers/showToast';
+import { confirmAction } from '../../ui/confirmAction';
 import { copyToClipboard } from '../../../helpers/copyToClipboard';
 import {
   renderCopyIcon24,
@@ -1264,6 +1265,19 @@ async function closeConnection(connectionId: string) {
 
 async function closeAllConnections() {
   if (activeConnections.size === 0 || closingAll) {
+    return;
+  }
+
+  const confirmed = await confirmAction({
+    title: _('Close all connections?'),
+    message: _('Active connections of all devices are interrupted.'),
+    consequences: [
+      _('Apps reconnect on their own; downloads and calls may drop'),
+    ],
+    confirmLabel: _('Close all'),
+    danger: true,
+  });
+  if (!confirmed || closingAll) {
     return;
   }
 

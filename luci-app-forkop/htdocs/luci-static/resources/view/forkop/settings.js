@@ -738,6 +738,15 @@ function snapshotBusyMessage() {
   );
 }
 
+// A stale cached bundle may lack confirmAction; fall back to window.confirm.
+function confirmSnapshotAction(options) {
+  if (typeof main.confirmAction === "function") {
+    return main.confirmAction(options);
+  }
+
+  return Promise.resolve(window.confirm(options.message));
+}
+
 function renderSnapshotTools() {
   const result = E("div", { role: "status" });
   const list = E("div");
@@ -784,12 +793,20 @@ function renderSnapshotTools() {
           );
         }),
         button(_("Restore"), async () => {
-          if (
-            !window.confirm(
-              _("Restore this configuration snapshot and reload Forkop?"),
-            )
-          )
-            return;
+          const confirmed = await confirmSnapshotAction({
+            title: _("Restore configuration snapshot?"),
+            message: _(
+              "Restore this configuration snapshot and reload Forkop?",
+            ),
+            consequences: [
+              _(
+                "If the reload fails, the previous configuration is restored automatically",
+              ),
+            ],
+            confirmLabel: _("Restore"),
+            danger: true,
+          });
+          if (!confirmed) return;
           show(_("Restoring configuration"));
           const restore = await main.ForkopShellMethods.snapshotRestore(
             item.id,
@@ -808,7 +825,13 @@ function renderSnapshotTools() {
           await refresh();
         }),
         button(_("Delete"), async () => {
-          if (!window.confirm(_("Delete this configuration snapshot?"))) return;
+          const confirmed = await confirmSnapshotAction({
+            title: _("Delete snapshot?"),
+            message: _("Delete this configuration snapshot?"),
+            confirmLabel: _("Delete"),
+            danger: true,
+          });
+          if (!confirmed) return;
           const deleted = await main.ForkopShellMethods.snapshotDelete(item.id);
           show(
             deleted.data?.status === "busy"

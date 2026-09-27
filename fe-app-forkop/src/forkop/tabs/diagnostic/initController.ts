@@ -1,5 +1,6 @@
 import { onMount, preserveScrollForPage } from '../../../helpers';
 import { showToast } from '../../../helpers/showToast';
+import { confirmAction } from '../../ui/confirmAction';
 import { runDnsCheck } from './checks/runDnsCheck';
 import { runSingBoxCheck } from './checks/runSingBoxCheck';
 import { runNftCheck } from './checks/runNftCheck';
@@ -658,6 +659,20 @@ async function handleStart() {
 }
 
 async function handleStop() {
+  const confirmed = await confirmAction({
+    title: _('Stop Forkop X?'),
+    message: _('Forkop X stops handling traffic until it is started again.'),
+    consequences: [
+      _('Routing, DNS and DPI bypass rules stop applying'),
+      _('Devices keep using the router without Forkop X'),
+    ],
+    confirmLabel: _('Stop'),
+    danger: true,
+  });
+  if (!confirmed) {
+    return;
+  }
+
   await handleServiceRuntimeAction({
     action: 'stop',
     expectedRunning: false,

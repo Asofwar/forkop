@@ -700,7 +700,10 @@ async function handleShowGlobalCheck() {
   setDiagnosticActionLoading('globalCheck', true);
 
   try {
-    const globalCheck = await ForkopShellMethods.globalCheck(false);
+    // The read-only ACL grants only the masked variant; there is nothing
+    // to unmask, so the toggle is not offered.
+    const readonly = isReadonlyMode();
+    const globalCheck = await ForkopShellMethods.globalCheck(readonly);
 
     if (globalCheck.success) {
       const rawGlobalCheckText = (globalCheck.data as string) ?? '';
@@ -711,7 +714,7 @@ async function handleShowGlobalCheck() {
         renderModal(rawGlobalCheckText, 'global_check', {
           maskText: () => maskedGlobalCheckText,
           initialAutoRefresh: false,
-          showMaskValuesToggle: true,
+          showMaskValuesToggle: !readonly,
         }),
       );
     } else {
@@ -765,7 +768,9 @@ async function handleShowSingBoxConfig() {
   setDiagnosticActionLoading('showSingBoxConfig', true);
 
   try {
-    const showSingBoxConfig = await ForkopShellMethods.showSingBoxConfig(false);
+    const readonly = isReadonlyMode();
+    const showSingBoxConfig =
+      await ForkopShellMethods.showSingBoxConfig(readonly);
 
     if (showSingBoxConfig.success) {
       const rawSingBoxConfigText = stringifySingBoxConfig(
@@ -780,7 +785,7 @@ async function handleShowSingBoxConfig() {
         renderModal(rawSingBoxConfigText, 'show_sing_box_config', {
           maskText: () => maskedSingBoxConfigText,
           initialAutoRefresh: false,
-          showMaskValuesToggle: true,
+          showMaskValuesToggle: !readonly,
         }),
       );
     } else {

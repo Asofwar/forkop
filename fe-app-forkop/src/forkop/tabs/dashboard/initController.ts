@@ -36,6 +36,7 @@ import { shouldShowLoadingForRestoredAction } from '../../helpers/restoredAction
 import { getServiceAvailability } from '../../helpers/serviceAvailability';
 import { createPriorityMembersState } from './priorityMembersState';
 import { renderHealth } from './health';
+import { isReadonlyMode } from '../../services/accessMode.service';
 
 const SECTIONS_REFRESH_INTERVAL_MS = 10000;
 const LATENCY_TEST_BUTTON_CLASS = 'dashboard-sections-grid-item-test-latency';
@@ -1003,15 +1004,19 @@ function renderUrlTestInfoModal(outbound: Forkop.Outbound) {
       ),
     ]),
     E('div', { class: 'fkp_dashboard-page__urltest-details__footer' }, [
-      E(
-        'button',
-        {
-          type: 'button',
-          class: 'btn cbi-button cbi-button-action',
-          click: () => renderUrlTestEditorModal(outbound),
-        },
-        _('Edit'),
-      ),
+      ...(isReadonlyMode()
+        ? []
+        : [
+            E(
+              'button',
+              {
+                type: 'button',
+                class: 'btn cbi-button cbi-button-action',
+                click: () => renderUrlTestEditorModal(outbound),
+              },
+              _('Edit'),
+            ),
+          ]),
       E(
         'button',
         {
@@ -1603,6 +1608,7 @@ async function renderSectionsWidget() {
       ),
       selectorSwitchingTag:
         sectionsWidget.selectorSwitchingSections[section.sectionName],
+      readonly: isReadonlyMode(),
       isPriorityMembersExpanded: (outbound) =>
         priorityMembersState.isExpanded(section.sectionName, outbound.code),
       onPriorityMembersToggle: (outbound, open) => {

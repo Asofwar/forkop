@@ -24,6 +24,8 @@ interface IRenderSectionsProps {
   selectorSwitchingTag?: string;
   isPriorityMembersExpanded: (outbound: Forkop.Outbound) => boolean;
   onPriorityMembersToggle: (outbound: Forkop.Outbound, open: boolean) => void;
+  // Read-only sessions see the runtime state but get no runtime controls.
+  readonly?: boolean;
 }
 
 function renderFailedState() {
@@ -255,7 +257,10 @@ function renderDefaultState({
   selectorSwitchingTag,
   isPriorityMembersExpanded,
   onPriorityMembersToggle,
+  readonly = false,
 }: IRenderSectionsProps) {
+  const withTagSelect = section.withTagSelect && !readonly;
+
   function renderPriorityMembers(outbound: Forkop.Outbound) {
     const members = outbound.priorityInfo?.outbounds || [];
 
@@ -375,7 +380,7 @@ function renderDefaultState({
     const selectorSwitching = Boolean(selectorSwitchingTag);
     const outboundSwitching = selectorSwitchingTag === outbound.code;
     const canChooseOutbound =
-      section.withTagSelect &&
+      withTagSelect &&
       outbound.runtimeAvailable !== false &&
       !selectorSwitching &&
       !outbound.selected;
@@ -387,7 +392,7 @@ function renderDefaultState({
       canChooseOutbound
         ? 'fkp_dashboard-page__outbound-grid__item--selectable'
         : '',
-      section.withTagSelect && !canChooseOutbound
+      withTagSelect && !canChooseOutbound
         ? 'fkp_dashboard-page__outbound-grid__item--disabled'
         : '',
       outboundSwitching
@@ -402,7 +407,7 @@ function renderDefaultState({
         class: className,
         'aria-busy': outboundSwitching ? 'true' : undefined,
         'aria-disabled':
-          section.withTagSelect && !canChooseOutbound ? 'true' : undefined,
+          withTagSelect && !canChooseOutbound ? 'true' : undefined,
         click: () =>
           canChooseOutbound &&
           onChooseOutbound(section.sectionName, section.code, outbound.code),
@@ -487,11 +492,13 @@ function renderDefaultState({
   const metadataNodes = (section.subscriptionMetadata || [])
     .map((metadata) => renderSubscriptionMetadata(metadata))
     .filter(Boolean) as HTMLElement[];
-  const subscriptionUpdateAction = renderSubscriptionUpdateAction(
-    section,
-    subscriptionUpdating,
-    onUpdateSubscription,
-  );
+  const subscriptionUpdateAction = readonly
+    ? undefined
+    : renderSubscriptionUpdateAction(
+        section,
+        subscriptionUpdating,
+        onUpdateSubscription,
+      );
 
   return E('div', { class: 'fkp_dashboard-page__outbound-section' }, [
     // Title with test latency
@@ -510,42 +517,48 @@ function renderDefaultState({
         },
         [
           ...(subscriptionUpdateAction ? [subscriptionUpdateAction] : []),
-          E(
-            'button',
-            {
-              type: 'button',
-              class: 'btn dashboard-sections-grid-item-test-latency',
-              'data-latency-section': section.sectionName,
-              disabled: latencyFetching ? true : undefined,
-              click: (event: MouseEvent) => {
-                event.preventDefault();
-                event.stopPropagation();
-                if (latencyFetching) {
-                  return;
-                }
-
-                testLatency();
-              },
-            },
-            latencyFetching
-              ? [
-                  renderLoaderCircleIcon24(),
-                  E(
-                    'span',
-                    {
-                      class: 'dashboard-sections-grid-item-test-latency__label',
-                    },
-                    getLatencyTestLabel(latencyProgress),
-                  ),
-                ]
-              : E(
-                  'span',
+          ...(readonly
+            ? []
+            : [
+                E(
+                  'button',
                   {
-                    class: 'dashboard-sections-grid-item-test-latency__label',
+                    type: 'button',
+                    class: 'btn dashboard-sections-grid-item-test-latency',
+                    'data-latency-section': section.sectionName,
+                    disabled: latencyFetching ? true : undefined,
+                    click: (event: MouseEvent) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      if (latencyFetching) {
+                        return;
+                      }
+
+                      testLatency();
+                    },
                   },
-                  _('Test latency'),
+                  latencyFetching
+                    ? [
+                        renderLoaderCircleIcon24(),
+                        E(
+                          'span',
+                          {
+                            class:
+                              'dashboard-sections-grid-item-test-latency__label',
+                          },
+                          getLatencyTestLabel(latencyProgress),
+                        ),
+                      ]
+                    : E(
+                        'span',
+                        {
+                          class:
+                            'dashboard-sections-grid-item-test-latency__label',
+                        },
+                        _('Test latency'),
+                      ),
                 ),
-          ),
+              ]),
         ],
       ),
     ]),

@@ -1,5 +1,9 @@
 import { COMMAND_TIMEOUT } from '../constants';
 import { withTimeout } from './withTimeout';
+import {
+  READONLY_REFUSED,
+  shouldRefuseCommand,
+} from '../forkop/services/readonlyCommandGuard';
 
 interface ExecuteShellCommandParams {
   command: string;
@@ -18,6 +22,10 @@ export async function executeShellCommand({
   args,
   timeout = COMMAND_TIMEOUT,
 }: ExecuteShellCommandParams): Promise<ExecuteShellCommandResponse> {
+  if (shouldRefuseCommand(command, args)) {
+    return { stdout: '', stderr: READONLY_REFUSED, code: 126 };
+  }
+
   try {
     return await withTimeout(
       fs.exec(command, args),

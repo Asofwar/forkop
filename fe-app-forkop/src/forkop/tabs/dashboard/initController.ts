@@ -1,4 +1,5 @@
 import {
+  canUseDirectClashApi,
   getClashWsUrl,
   onMount,
   preserveScrollForPage,
@@ -36,9 +37,15 @@ import { shouldShowLoadingForRestoredAction } from '../../helpers/restoredAction
 import { getServiceAvailability } from '../../helpers/serviceAvailability';
 import { createPriorityMembersState } from './priorityMembersState';
 import { renderHealth } from './health';
+import {
+  ConnectionsSample,
+  sampleFromConnections,
+  trafficSpeed,
+} from './clashTraffic';
 import { isReadonlyMode } from '../../services/accessMode.service';
 
 const SECTIONS_REFRESH_INTERVAL_MS = 10000;
+const CLASH_RPC_POLL_INTERVAL_MS = 2000;
 const LATENCY_TEST_BUTTON_CLASS = 'dashboard-sections-grid-item-test-latency';
 const LATENCY_TEST_BUTTON_LABEL_CLASS =
   'dashboard-sections-grid-item-test-latency__label';
@@ -61,6 +68,9 @@ let dashboardMountId = 0;
 let dashboardDataUpdatesStarted = false;
 let dashboardDataUpdatesId = 0;
 let pageUnloading = false;
+let clashRpcPollTimer: ReturnType<typeof setInterval> | null = null;
+let clashRpcPolling = false;
+let lastConnectionsSample: ConnectionsSample | null = null;
 const followedSubscriptionJobs = new Set<string>();
 const followedLatencyJobs = new Set<string>();
 const handledSubscriptionJobs = new Set<string>();
@@ -519,18 +529,11 @@ async function connectToClashSockets(dataUpdatesId: number) {
         return;
       }
 
-      logger.error(
+      logger.warn(
         '[DASHBOARD]',
-        'connectToClashSockets - traffic: failed to connect to',
-        getClashWsUrl(),
+        'connectToClashSockets - traffic: socket unavailable, polling instead',
       );
-      store.set({
-        bandwidthWidget: {
-          loading: false,
-          failed: true,
-          data: { up: 0, down: 0 },
-        },
-      });
+      fallBackToClashRpcPolling(dataUpdatesId);
     },
   );
 
@@ -573,28 +576,115 @@ async function connectToClashSockets(dataUpdatesId: number) {
         return;
       }
 
-      logger.error(
+      logger.warn(
         '[DASHBOARD]',
-        'connectToClashSockets - connections: failed to connect to',
-        getClashWsUrl(),
+        'connectToClashSockets - connections: socket unavailable, polling instead',
       );
-      store.set({
-        trafficTotalWidget: {
-          loading: false,
-          failed: true,
-          data: { downloadTotal: 0, uploadTotal: 0 },
-        },
-        systemInfoWidget: {
-          loading: false,
-          failed: true,
-          data: {
-            connections: 0,
-            memory: 0,
-          },
-        },
-      });
+      fallBackToClashRpcPolling(dataUpdatesId);
     },
   );
+}
+
+function setClashWidgetsFailed() {
+  store.set({
+    bandwidthWidget: { loading: false, failed: true, data: { up: 0, down: 0 } },
+    trafficTotalWidget: {
+      loading: false,
+      failed: true,
+      data: { downloadTotal: 0, uploadTotal: 0 },
+    },
+    systemInfoWidget: {
+      loading: false,
+      failed: true,
+      data: { connections: 0, memory: 0 },
+    },
+  });
+}
+
+async function pollClashConnections(dataUpdatesId: number) {
+  if (
+    clashRpcPolling ||
+    dataUpdatesId !== dashboardDataUpdatesId ||
+    getDashboardServiceAvailability() === 'stopped'
+  ) {
+    return;
+  }
+
+  clashRpcPolling = true;
+
+  try {
+    const response = await ForkopShellMethods.getClashApiConnections();
+    if (dataUpdatesId !== dashboardDataUpdatesId) {
+      return;
+    }
+
+    const sample = response.success
+      ? sampleFromConnections(response.data, Date.now())
+      : null;
+    if (!sample) {
+      lastConnectionsSample = null;
+      setClashWidgetsFailed();
+      return;
+    }
+
+    const speed = trafficSpeed(lastConnectionsSample, sample);
+    lastConnectionsSample = sample;
+    store.set({
+      ...(speed
+        ? { bandwidthWidget: { loading: false, failed: false, data: speed } }
+        : {}),
+      trafficTotalWidget: {
+        loading: false,
+        failed: false,
+        data: {
+          downloadTotal: sample.downloadTotal,
+          uploadTotal: sample.uploadTotal,
+        },
+      },
+      systemInfoWidget: {
+        loading: false,
+        failed: false,
+        data: { connections: sample.connections, memory: sample.memory },
+      },
+    });
+  } catch (error) {
+    logger.error('[DASHBOARD]', 'pollClashConnections: failed', error);
+    lastConnectionsSample = null;
+    setClashWidgetsFailed();
+  } finally {
+    clashRpcPolling = false;
+  }
+}
+
+// HTTPS pages cannot open the ws:// controller socket, and a socket can
+// drop; the widgets then keep working through rpcd.
+function startClashRpcPolling(dataUpdatesId: number) {
+  if (clashRpcPollTimer) {
+    return;
+  }
+
+  lastConnectionsSample = null;
+  void pollClashConnections(dataUpdatesId);
+  clashRpcPollTimer = setInterval(() => {
+    void pollClashConnections(dataUpdatesId);
+  }, CLASH_RPC_POLL_INTERVAL_MS);
+}
+
+function stopClashRpcPolling() {
+  if (clashRpcPollTimer) {
+    clearInterval(clashRpcPollTimer);
+    clashRpcPollTimer = null;
+  }
+  lastConnectionsSample = null;
+}
+
+function fallBackToClashRpcPolling(dataUpdatesId: number) {
+  if (dataUpdatesId !== dashboardDataUpdatesId) {
+    return;
+  }
+
+  socket.resetAll();
+  startClashRpcPolling(dataUpdatesId);
 }
 
 function getDashboardServiceAvailability() {
@@ -617,6 +707,7 @@ function stopDashboardDataUpdates() {
   }
 
   sectionsRefreshQueued = false;
+  stopClashRpcPolling();
   socket.resetAll();
 }
 
@@ -632,7 +723,11 @@ function startDashboardDataUpdates() {
   dashboardDataUpdatesStarted = true;
   const dataUpdatesId = ++dashboardDataUpdatesId;
   void fetchDashboardSections({ force: true });
-  void connectToClashSockets(dataUpdatesId);
+  if (canUseDirectClashApi()) {
+    void connectToClashSockets(dataUpdatesId);
+  } else {
+    startClashRpcPolling(dataUpdatesId);
+  }
   sectionsRefreshTimer = setInterval(() => {
     void fetchDashboardSections();
   }, SECTIONS_REFRESH_INTERVAL_MS);

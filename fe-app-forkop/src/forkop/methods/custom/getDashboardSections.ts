@@ -7,6 +7,7 @@ import {
 } from '../../../helpers';
 import { getOutboundTagBySection } from '../../runtimeTags';
 import { ForkopShellMethods } from '../shell';
+import { isReadonlyMode } from '../../services/accessMode.service';
 
 interface IGetDashboardSectionsResponse {
   success: boolean;
@@ -786,7 +787,8 @@ function getPriorityConfigs(section: Forkop.ConfigSection): PriorityConfig[] {
 async function readDashboardSectionCache(
   sectionName: string,
 ): Promise<DashboardSectionCache | undefined> {
-  if (!isSafeSectionName(sectionName)) {
+  // The section cache is readable only with the write ACL.
+  if (!isSafeSectionName(sectionName) || isReadonlyMode()) {
     return undefined;
   }
 

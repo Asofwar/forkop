@@ -1060,12 +1060,91 @@ var BOOTSTRAP_DNS_SERVER_OPTIONS = {
 };
 var COMMAND_TIMEOUT = 1e4;
 
+// src/forkop/services/accessMode.service.ts
+var readonlyMode = false;
+function setReadonlyMode(value) {
+  readonlyMode = value;
+}
+function isReadonlyMode() {
+  return readonlyMode;
+}
+
+// src/forkop/services/readonlyCommandGuard.ts
+var READONLY_EXEC_PATTERNS = [
+  "/usr/bin/forkop get_status",
+  "/usr/bin/forkop get_sing_box_status",
+  "/usr/bin/forkop get_zapret_status",
+  "/usr/bin/forkop get_zapret2_status",
+  "/usr/bin/forkop get_byedpi_status",
+  "/usr/bin/forkop get_system_info",
+  "/usr/bin/forkop get_ui_capabilities",
+  "/usr/bin/forkop get_ui_state",
+  "/usr/bin/forkop get_health_status",
+  "/usr/bin/forkop route_trace *",
+  "/usr/bin/forkop config_snapshot_list",
+  "/usr/bin/forkop config_snapshot_diff *",
+  "/usr/bin/forkop connectivity_test *",
+  "/usr/bin/forkop get_readonly_config_sections",
+  "/usr/bin/forkop get_dashboard_runtime_metadata",
+  "/usr/bin/forkop get_outbound_metadata *",
+  "/usr/bin/forkop show_version",
+  "/usr/bin/forkop show_sing_box_version",
+  "/usr/bin/forkop check_proxy",
+  "/usr/bin/forkop check_nft",
+  "/usr/bin/forkop check_nft_rules",
+  "/usr/bin/forkop check_sing_box",
+  "/usr/bin/forkop check_logs",
+  "/usr/bin/forkop check_sing_box_logs",
+  "/usr/bin/forkop check_fakeip",
+  "/usr/bin/forkop check_zapret_runtime",
+  "/usr/bin/forkop check_zapret2_runtime",
+  "/usr/bin/forkop check_byedpi_runtime",
+  "/usr/bin/forkop check_dns_available",
+  "/usr/bin/forkop clash_api get_proxies",
+  "/usr/bin/forkop clash_api get_connections",
+  "/usr/bin/forkop clash_api get_proxy_latency *",
+  "/usr/bin/forkop clash_api get_proxy_latencies *",
+  "/usr/bin/forkop clash_api get_group_latency *",
+  "/usr/bin/forkop service_action_status *",
+  "/usr/bin/forkop latency_test_status *",
+  "/usr/bin/forkop component_action_status *",
+  "/usr/bin/forkop subscription_update_status *",
+  "/usr/bin/forkop component_update_check_cache",
+  "/usr/bin/forkop global_check masked",
+  "/usr/bin/forkop show_sing_box_config masked"
+];
+var READONLY_REFUSED = "forkop: not available in read-only mode";
+var compiled = READONLY_EXEC_PATTERNS.map(
+  (pattern) => new RegExp(
+    `^${pattern.split("*").map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`
+  )
+);
+function isReadonlyCommandAllowed(command, args) {
+  const invocation = [command, ...args].join(" ");
+  return compiled.some((pattern) => pattern.test(invocation));
+}
+var reported = /* @__PURE__ */ new Set();
+function shouldRefuseCommand(command, args) {
+  if (!isReadonlyMode() || isReadonlyCommandAllowed(command, args)) {
+    return false;
+  }
+  const key = [command, args[0] ?? ""].join(" ");
+  if (!reported.has(key)) {
+    reported.add(key);
+    logger.warn("[READONLY]", `refused ${key}`);
+  }
+  return true;
+}
+
 // src/helpers/executeShellCommand.ts
 async function executeShellCommand({
   command,
   args,
   timeout = COMMAND_TIMEOUT
 }) {
+  if (shouldRefuseCommand(command, args)) {
+    return { stdout: "", stderr: READONLY_REFUSED, code: 126 };
+  }
   try {
     return await withTimeout(
       fs.exec(command, args),
@@ -1965,8 +2044,10 @@ function renderDefaultState({
   subscriptionUpdating,
   selectorSwitchingTag,
   isPriorityMembersExpanded,
-  onPriorityMembersToggle
+  onPriorityMembersToggle,
+  readonly = false
 }) {
+  const withTagSelect = section.withTagSelect && !readonly;
   function renderPriorityMembers(outbound) {
     const members = outbound.priorityInfo?.outbounds || [];
     if (members.length === 0) {
@@ -2065,12 +2146,12 @@ function renderDefaultState({
     const priorityMembers = renderPriorityMembers(outbound);
     const selectorSwitching = Boolean(selectorSwitchingTag);
     const outboundSwitching = selectorSwitchingTag === outbound.code;
-    const canChooseOutbound = section.withTagSelect && outbound.runtimeAvailable !== false && !selectorSwitching && !outbound.selected;
+    const canChooseOutbound = withTagSelect && outbound.runtimeAvailable !== false && !selectorSwitching && !outbound.selected;
     const className = [
       "fkp_dashboard-page__outbound-grid__item",
       outbound.selected ? "fkp_dashboard-page__outbound-grid__item--active" : "",
       canChooseOutbound ? "fkp_dashboard-page__outbound-grid__item--selectable" : "",
-      section.withTagSelect && !canChooseOutbound ? "fkp_dashboard-page__outbound-grid__item--disabled" : "",
+      withTagSelect && !canChooseOutbound ? "fkp_dashboard-page__outbound-grid__item--disabled" : "",
       outboundSwitching ? "fkp_dashboard-page__outbound-grid__item--switching" : ""
     ].filter(Boolean).join(" ");
     return E(
@@ -2078,7 +2159,7 @@ function renderDefaultState({
       {
         class: className,
         "aria-busy": outboundSwitching ? "true" : void 0,
-        "aria-disabled": section.withTagSelect && !canChooseOutbound ? "true" : void 0,
+        "aria-disabled": withTagSelect && !canChooseOutbound ? "true" : void 0,
         click: () => canChooseOutbound && onChooseOutbound(section.sectionName, section.code, outbound.code)
       },
       [
@@ -2150,7 +2231,7 @@ function renderDefaultState({
     );
   }
   const metadataNodes = (section.subscriptionMetadata || []).map((metadata) => renderSubscriptionMetadata(metadata)).filter(Boolean);
-  const subscriptionUpdateAction = renderSubscriptionUpdateAction(
+  const subscriptionUpdateAction = readonly ? void 0 : renderSubscriptionUpdateAction(
     section,
     subscriptionUpdating,
     onUpdateSubscription
@@ -2172,39 +2253,41 @@ function renderDefaultState({
         },
         [
           ...subscriptionUpdateAction ? [subscriptionUpdateAction] : [],
-          E(
-            "button",
-            {
-              type: "button",
-              class: "btn dashboard-sections-grid-item-test-latency",
-              "data-latency-section": section.sectionName,
-              disabled: latencyFetching ? true : void 0,
-              click: (event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                if (latencyFetching) {
-                  return;
+          ...readonly ? [] : [
+            E(
+              "button",
+              {
+                type: "button",
+                class: "btn dashboard-sections-grid-item-test-latency",
+                "data-latency-section": section.sectionName,
+                disabled: latencyFetching ? true : void 0,
+                click: (event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  if (latencyFetching) {
+                    return;
+                  }
+                  testLatency();
                 }
-                testLatency();
-              }
-            },
-            latencyFetching ? [
-              renderLoaderCircleIcon24(),
-              E(
+              },
+              latencyFetching ? [
+                renderLoaderCircleIcon24(),
+                E(
+                  "span",
+                  {
+                    class: "dashboard-sections-grid-item-test-latency__label"
+                  },
+                  getLatencyTestLabel(latencyProgress)
+                )
+              ] : E(
                 "span",
                 {
                   class: "dashboard-sections-grid-item-test-latency__label"
                 },
-                getLatencyTestLabel(latencyProgress)
+                _("Test latency")
               )
-            ] : E(
-              "span",
-              {
-                class: "dashboard-sections-grid-item-test-latency__label"
-              },
-              _("Test latency")
             )
-          )
+          ]
         ]
       )
     ]),
@@ -3690,7 +3773,7 @@ function getPriorityConfigs(section) {
   });
 }
 async function readDashboardSectionCache(sectionName) {
-  if (!isSafeSectionName(sectionName)) {
+  if (!isSafeSectionName(sectionName) || isReadonlyMode()) {
     return void 0;
   }
   try {
@@ -6473,15 +6556,17 @@ function renderUrlTestInfoModal(outbound) {
       )
     ]),
     E("div", { class: "fkp_dashboard-page__urltest-details__footer" }, [
-      E(
-        "button",
-        {
-          type: "button",
-          class: "btn cbi-button cbi-button-action",
-          click: () => renderUrlTestEditorModal(outbound)
-        },
-        _("Edit")
-      ),
+      ...isReadonlyMode() ? [] : [
+        E(
+          "button",
+          {
+            type: "button",
+            class: "btn cbi-button cbi-button-action",
+            click: () => renderUrlTestEditorModal(outbound)
+          },
+          _("Edit")
+        )
+      ],
       E(
         "button",
         {
@@ -6981,6 +7066,7 @@ async function renderSectionsWidget() {
         sectionsWidget.subscriptionUpdatingSections[section.sectionName]
       ),
       selectorSwitchingTag: sectionsWidget.selectorSwitchingSections[section.sectionName],
+      readonly: isReadonlyMode(),
       isPriorityMembersExpanded: (outbound) => priorityMembersState.isExpanded(section.sectionName, outbound.code),
       onPriorityMembersToggle: (outbound, open) => {
         priorityMembersState.setExpanded(
@@ -8018,15 +8104,6 @@ var DashboardTab = {
   initController,
   styles
 };
-
-// src/forkop/services/accessMode.service.ts
-var readonlyMode = false;
-function setReadonlyMode(value) {
-  readonlyMode = value;
-}
-function isReadonlyMode() {
-  return readonlyMode;
-}
 
 // src/forkop/tabs/diagnostic/renderDiagnostic.ts
 function card(id, title, hint, body) {
@@ -11220,7 +11297,8 @@ async function handleDisable() {
 async function handleShowGlobalCheck() {
   setDiagnosticActionLoading("globalCheck", true);
   try {
-    const globalCheck = await ForkopShellMethods.globalCheck(false);
+    const readonly = isReadonlyMode();
+    const globalCheck = await ForkopShellMethods.globalCheck(readonly);
     if (globalCheck.success) {
       const rawGlobalCheckText = globalCheck.data ?? "";
       const maskedGlobalCheckText = maskGlobalCheckText(rawGlobalCheckText);
@@ -11229,7 +11307,7 @@ async function handleShowGlobalCheck() {
         renderModal(rawGlobalCheckText, "global_check", {
           maskText: () => maskedGlobalCheckText,
           initialAutoRefresh: false,
-          showMaskValuesToggle: true
+          showMaskValuesToggle: !readonly
         })
       );
     } else {
@@ -11275,7 +11353,8 @@ async function handleViewLogs() {
 async function handleShowSingBoxConfig() {
   setDiagnosticActionLoading("showSingBoxConfig", true);
   try {
-    const showSingBoxConfig = await ForkopShellMethods.showSingBoxConfig(false);
+    const readonly = isReadonlyMode();
+    const showSingBoxConfig = await ForkopShellMethods.showSingBoxConfig(readonly);
     if (showSingBoxConfig.success) {
       const rawSingBoxConfigText = stringifySingBoxConfig(
         showSingBoxConfig.data
@@ -11288,7 +11367,7 @@ async function handleShowSingBoxConfig() {
         renderModal(rawSingBoxConfigText, "show_sing_box_config", {
           maskText: () => maskedSingBoxConfigText,
           initialAutoRefresh: false,
-          showMaskValuesToggle: true
+          showMaskValuesToggle: !readonly
         })
       );
     } else {

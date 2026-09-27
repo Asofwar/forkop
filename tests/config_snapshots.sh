@@ -56,7 +56,7 @@ if ucode -L "$LIB" "$SCRIPT" diff '../etc/passwd' >/dev/null; then exit 1; fi
 mkdir "$WORK/bin"
 cat > "$WORK/bin/ucode" <<'STUB'
 #!/bin/sh
-if [ "${FAIL_GUARD:-0}" = 1 ] && [ "${4:-}" = 'install-dpi-transition-guard' ]; then exit 1; fi
+if [ "${FAIL_GUARD:-0}" = 1 ] && [ "${4:-}" = 'ensure-dpi-transition-guard' ]; then exit 1; fi
 exit 0
 STUB
 cat > "$WORK/reload" <<'STUB'

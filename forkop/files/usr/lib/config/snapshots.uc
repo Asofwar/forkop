@@ -276,9 +276,12 @@ function diff(before, after) {
     }
     return result;
 }
+// Install uses ensure semantics: after needs_attention the guard from the
+// failed restore is still active and must protect the recovery restore too.
+// It is removed only after a reload proved a coherent runtime.
 function restore_guard(remove) {
     return success([ "ucode", "-L", LIB_DIR, LIB_DIR + "/nft/apply.uc",
-        remove ? "remove-dpi-transition-guard" : "install-dpi-transition-guard", "ForkopConfigRestore" ]);
+        remove ? "remove-dpi-transition-guard" : "ensure-dpi-transition-guard", "ForkopConfigRestore" ]);
 }
 function do_restore(id) {
     let target = read_snapshot(id, true);

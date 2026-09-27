@@ -69,6 +69,9 @@ export const styles = `
 
 .fkp_dashboard-page--service-stopped .fkp_dashboard-page__service-stopped {
     display: flex;
+    flex-direction: column;
+    gap: 12px;
+    text-align: center;
     grid-column: 1 / -1;
 }
 

@@ -1,4 +1,5 @@
 import { renderSections, renderWidget } from './partials';
+import { renderStartServiceAction } from '../shared/startService';
 
 export function render() {
   return E(
@@ -14,9 +15,16 @@ export function render() {
           class: 'fkp_dashboard-page__service-stopped',
           role: 'status',
         },
-        _(
-          'Forkop service is stopped. Start the service to display the dashboard.',
-        ),
+        [
+          E(
+            'span',
+            {},
+            _(
+              'Forkop service is stopped. Start the service to display the dashboard.',
+            ),
+          ),
+          ...renderStartServiceAction(),
+        ],
       ),
       E('div', { class: 'fkp_dashboard-page__content' }, [
         E('div', { id: 'dashboard-health' }, _('Loading health status')),

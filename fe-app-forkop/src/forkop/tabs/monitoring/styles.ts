@@ -521,6 +521,8 @@ export const styles = `
     min-height: 90px;
     width: 100%;
     display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
     align-items: center;
     justify-content: center;
     color: var(--text-color-medium);

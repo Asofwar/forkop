@@ -317,9 +317,13 @@ const EntryPoint = {
           E(
             "p",
             {},
-            _(
-              "Could not save a pre-apply configuration snapshot. Changes were not applied.",
-            ),
+            snapshot.data?.status === "busy"
+              ? _(
+                  "Another snapshot operation is already in progress. Changes were not applied; try again in a moment.",
+                )
+              : _(
+                  "Could not save a pre-apply configuration snapshot. Changes were not applied.",
+                ),
           ),
           "error",
         );

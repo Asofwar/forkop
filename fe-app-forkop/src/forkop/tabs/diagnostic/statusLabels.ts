@@ -25,6 +25,8 @@ export function checkStatus(
       return { text: _('Error'), tone: 'error' };
     case 'loading':
       return { text: _('Checking…'), tone: 'loading' };
+    case 'unsupported':
+      return { text: _('Not available for checking'), tone: 'neutral' };
     default:
       return { text: _('Not checked'), tone: 'neutral' };
   }

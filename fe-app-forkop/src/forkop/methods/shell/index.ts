@@ -374,10 +374,14 @@ export const ForkopShellMethods = {
       protocol,
       port,
     ]),
+  // Snapshot mutations print a structured result (busy, failed, ...) even
+  // when they exit non-zero; keep it instead of a bare failure.
   snapshotCreate: async (kind: 'manual' | 'automatic' = 'manual') =>
     callBaseMethod<Forkop.SnapshotResult>(
       Forkop.AvailableMethods.CONFIG_SNAPSHOT_CREATE,
       [kind],
+      '/usr/bin/forkop',
+      { allowNonZeroWithStdout: true },
     ),
   snapshotList: async () =>
     callBaseMethod<Forkop.SnapshotMetadata[]>(
@@ -393,12 +397,14 @@ export const ForkopShellMethods = {
       Forkop.AvailableMethods.CONFIG_SNAPSHOT_RESTORE,
       [id],
       '/usr/bin/forkop',
-      { timeout: 120000 },
+      { timeout: 120000, allowNonZeroWithStdout: true },
     ),
   snapshotDelete: async (id: string) =>
     callBaseMethod<Forkop.SnapshotResult>(
       Forkop.AvailableMethods.CONFIG_SNAPSHOT_DELETE,
       [id],
+      '/usr/bin/forkop',
+      { allowNonZeroWithStdout: true },
     ),
   connectivityTest: async (host: string, type: string, port: string) =>
     callBaseMethod<Forkop.ConnectivityResult>(

@@ -21,6 +21,10 @@ vi.mock('../../../../icons', () => {
   };
 });
 vi.mock('../../../../partials', () => ({ renderButton: () => 'button' }));
+const copyToClipboard = vi.fn();
+vi.mock('../../../../helpers/copyToClipboard', () => ({
+  copyToClipboard: (text: string) => copyToClipboard(text),
+}));
 
 (globalThis as unknown as { document: unknown }).document = {
   querySelector: () => null,
@@ -84,6 +88,7 @@ import {
 } from '../partials/renderCheckSection';
 import { lastRunText, saveLastRun } from '../partials/renderRunAction';
 import { render } from '../renderDiagnostic';
+import { styles } from '../styles';
 import { setReadonlyMode } from '../../../services/accessMode.service';
 import type { Forkop } from '../../../types';
 
@@ -373,6 +378,39 @@ describe('recovery and statuses', () => {
       expect(status.text).not.toMatch(/^(ok|success|unknown|failure)$/);
   });
 
+  it('never presents an ordinary reload as the last recovery', () => {
+    const reloadOnly = health({
+      recovery: {
+        pending: false,
+        last_event: { kind: 'reload', status: 'success', timestamp: 9 },
+      },
+      recent_activity: [
+        { kind: 'start', status: 'success', timestamp: 1 },
+        { kind: 'reload', status: 'success', timestamp: 9 },
+      ],
+    });
+    expect(recoveryRows(reloadOnly)[1][1].text).toBe('Not needed');
+    const restoredEarlier = health({
+      recovery: {
+        pending: false,
+        last_event: { kind: 'reload', status: 'success', timestamp: 9 },
+      },
+      recent_activity: [
+        { kind: 'restore', status: 'success', timestamp: 5 },
+        { kind: 'reload', status: 'success', timestamp: 9 },
+      ],
+    });
+    expect(recoveryRows(restoredEarlier)[1][1].text).toMatch(
+      /^Snapshot restore: Succeeded · /,
+    );
+    const rolledBack = health({
+      recent_activity: [{ kind: 'reload', status: 'recovered', timestamp: 7 }],
+    });
+    expect(recoveryRows(rolledBack)[1][1].text).toMatch(
+      /^Configuration reload: Recovered · /,
+    );
+  });
+
   it('maps active guard, recoveries and failures', () => {
     const rows = recoveryRows(
       health({
@@ -512,5 +550,64 @@ describe('page layout', () => {
     expect(ids(page)).not.toContain('dpi-validate');
     expect(text(page)).toContain('Available to administrators only.');
     setReadonlyMode(false);
+  });
+});
+
+describe('unsupported checks and responsive layout', () => {
+  it('shows an unsupported check as not available, with its reason', () => {
+    expect(checkStatus('unsupported')).toEqual({
+      text: 'Not available for checking',
+      tone: 'neutral',
+    });
+    const node = renderCheckSection({
+      order: 8,
+      code: 'OUTBOUNDS',
+      title: 'Outbounds checks',
+      description: 'Outbound checks need access to the Forkop configuration.',
+      state: 'unsupported',
+      items: [],
+    });
+    expect(text(node)).toContain('Not available for checking');
+    expect(text(node)).toContain('need access to the Forkop configuration');
+    expect(text(node)).not.toContain('Error');
+    walk(node, (n) => expect(n.tag).not.toBe('details'));
+  });
+
+  it('lets the reachability actions size to translated labels', () => {
+    const conn = styles.slice(styles.indexOf('.fkp-conn {'));
+    expect(conn).toMatch(/grid-template-columns:[^;]*max-content;/);
+    expect(styles).toMatch(
+      /\.fkp-conn__head,\s*\.fkp-conn__row\s*\{\s*display: contents;/,
+    );
+    expect(styles).not.toMatch(/104px/);
+  });
+
+  it('keeps long check names and badges wrappable', () => {
+    expect(styles).toMatch(/16px minmax\(0, max-content\) minmax\(0, 1fr\)/);
+    expect(styles).not.toMatch(/16px max-content minmax/);
+    expect(styles).toMatch(
+      /\.fkp-diag-facts \.fkp-diag-badge[\s\S]*?white-space: normal/,
+    );
+  });
+});
+
+describe('copy over plain HTTP', () => {
+  it('copies failed check details through the execCommand helper', () => {
+    const node = renderCheckSection({
+      order: 1,
+      code: 'DNS',
+      title: 'DNS checks',
+      description: 'Checks failed',
+      state: 'error',
+      items: [{ key: 'Bootstrap', value: 'timeout', state: 'error' }],
+    });
+    let copy: FakeNode | undefined;
+    walk(node, (n) => {
+      if (n.tag === 'button' && text(n).includes('Copy details')) copy = n;
+    });
+    (copy?.attrs.click as () => void)();
+    expect(copyToClipboard).toHaveBeenCalledWith(
+      expect.stringContaining('Bootstrap: timeout'),
+    );
   });
 });

@@ -246,7 +246,7 @@ export function initConnectivityMatrix() {
           ])
         : field(_('Port'), port);
     const view = resultView(row.result);
-    row.element = E('div', { class: 'fkp-conn__row', role: 'row' }, [
+    row.element = E('div', { class: 'fkp-conn__row' }, [
       field(_('Address'), host),
       field(_('Type'), type),
       portCell,

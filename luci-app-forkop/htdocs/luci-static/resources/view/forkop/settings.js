@@ -732,6 +732,12 @@ function createSettingsContent(section, capabilities) {
   o.rmempty = false;
 }
 
+function snapshotBusyMessage() {
+  return _(
+    "Another snapshot operation is already in progress. Try again in a moment.",
+  );
+}
+
 function renderSnapshotTools() {
   const result = E("div", { role: "status" });
   const list = E("div");
@@ -789,13 +795,15 @@ function renderSnapshotTools() {
             item.id,
           );
           show(
-            restore.data?.status === "success"
-              ? _("Configuration restored and reloaded")
-              : restore.data?.status === "recovered"
-                ? _(
-                    "Restore failed; previous configuration and runtime recovered",
-                  )
-                : _("Restore failed; inspect Safety Center before retrying"),
+            restore.data?.status === "busy"
+              ? snapshotBusyMessage()
+              : restore.data?.status === "success"
+                ? _("Configuration restored and reloaded")
+                : restore.data?.status === "recovered"
+                  ? _(
+                      "Restore failed; previous configuration and runtime recovered",
+                    )
+                  : _("Restore failed; inspect Safety Center before retrying"),
           );
           await refresh();
         }),
@@ -803,9 +811,11 @@ function renderSnapshotTools() {
           if (!window.confirm(_("Delete this configuration snapshot?"))) return;
           const deleted = await main.ForkopShellMethods.snapshotDelete(item.id);
           show(
-            deleted.data?.status === "deleted"
-              ? _("Snapshot deleted")
-              : _("Could not delete snapshot"),
+            deleted.data?.status === "busy"
+              ? snapshotBusyMessage()
+              : deleted.data?.status === "deleted"
+                ? _("Snapshot deleted")
+                : _("Could not delete snapshot"),
           );
           await refresh();
         }),
@@ -831,9 +841,11 @@ function renderSnapshotTools() {
       button(_("Create snapshot"), async () => {
         const created = await main.ForkopShellMethods.snapshotCreate();
         show(
-          created.data?.status === "created"
-            ? _("Snapshot saved")
-            : _("Could not create snapshot"),
+          created.data?.status === "busy"
+            ? snapshotBusyMessage()
+            : created.data?.status === "created"
+              ? _("Snapshot saved")
+              : _("Could not create snapshot"),
         );
         await refresh();
       }),

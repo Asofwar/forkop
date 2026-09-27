@@ -334,7 +334,8 @@ export const styles = `
 }
 
 .fkp_monitoring-page__table th:nth-child(8) {
-    width: 8%;
+    /* Four 28px icon actions plus gaps; px so it never shrinks below them. */
+    width: 136px;
 }
 
 .fkp_monitoring-page__table tbody tr:last-child td {
@@ -344,6 +345,34 @@ export const styles = `
 .fkp_monitoring-page__table td:last-child {
     padding-top: 0;
     padding-bottom: 0;
+    overflow: visible;
+    white-space: normal;
+}
+
+.fkp_monitoring-page__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+}
+
+.fkp_monitoring-page .btn.fkp_monitoring-page__icon-action {
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    padding: 0;
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+
+.fkp_monitoring-page__icon-action svg {
+    width: 16px;
+    height: 16px;
+    display: block;
 }
 
 .fkp_monitoring-page__table th:nth-child(4),

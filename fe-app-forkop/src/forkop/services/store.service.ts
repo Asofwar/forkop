@@ -129,7 +129,13 @@ export interface IDiagnosticsChecksStoreItem {
   code: string;
   title: string;
   description: string;
-  state: 'loading' | 'warning' | 'success' | 'error' | 'skipped';
+  state:
+    | 'loading'
+    | 'warning'
+    | 'success'
+    | 'error'
+    | 'skipped'
+    | 'unsupported';
   items: Array<IDiagnosticsChecksItem>;
 }
 

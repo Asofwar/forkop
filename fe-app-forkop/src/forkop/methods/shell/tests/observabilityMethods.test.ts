@@ -80,4 +80,20 @@ describe('observability CLI contracts', () => {
       });
     }
   });
+
+  it('keeps the invalid_input answer of a rejected route trace target', async () => {
+    mocks.executeShellCommand.mockResolvedValue({
+      code: 1,
+      stdout: '{"error":"invalid_input"}',
+      stderr: '',
+    });
+    const response = await ForkopShellMethods.routeTrace(
+      'bad host',
+      '',
+      'TCP',
+      '',
+    );
+    if (!response.success) throw new Error('structured result was dropped');
+    expect(response.data).toEqual({ error: 'invalid_input' });
+  });
 });

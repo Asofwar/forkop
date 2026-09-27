@@ -368,12 +368,13 @@ export const ForkopShellMethods = {
     protocol: string,
     port: string,
   ) =>
-    callBaseMethod<Forkop.RouteTrace>(Forkop.AvailableMethods.ROUTE_TRACE, [
-      target,
-      source,
-      protocol,
-      port,
-    ]),
+    // An invalid target exits non-zero with {"error":"invalid_input"}.
+    callBaseMethod<Forkop.RouteTrace>(
+      Forkop.AvailableMethods.ROUTE_TRACE,
+      [target, source, protocol, port],
+      '/usr/bin/forkop',
+      { allowNonZeroWithStdout: true },
+    ),
   // Snapshot mutations print a structured result (busy, failed, ...) even
   // when they exit non-zero; keep it instead of a bare failure.
   snapshotCreate: async (kind: 'manual' | 'automatic' = 'manual') =>

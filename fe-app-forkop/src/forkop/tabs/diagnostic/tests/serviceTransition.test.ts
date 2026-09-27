@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  serviceActionErrorText,
   getAvailableActionsDisabledState,
   getServiceTransition,
   hasComponentActionLoading,
@@ -237,5 +238,15 @@ describe('diagnostic service transitions', () => {
         stopLoading: false,
       }),
     ).toBe(true);
+  });
+});
+
+describe('service action errors', () => {
+  it('names the failure and keeps the backend detail', () => {
+    expect(serviceActionErrorText(new Error(' init failed '))).toBe(
+      'Service action failed: init failed',
+    );
+    expect(serviceActionErrorText(new Error(''))).toBe('Service action failed');
+    expect(serviceActionErrorText('x')).toBe('Service action failed');
   });
 });

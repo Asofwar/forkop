@@ -114,6 +114,8 @@ export function initSafetyCenter() {
             )
           : E('p', { class: 'fkp-diag-hint' }, _('No events recorded yet')),
       );
+    } catch (_error) {
+      container.textContent = _('Recovery state is unavailable');
     } finally {
       button.disabled = false;
     }

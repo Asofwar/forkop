@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-26 02:15+0300\n"
-"PO-Revision-Date: 2026-09-26 02:15+0300\n"
+"POT-Creation-Date: 2026-09-27 15:49+0300\n"
+"PO-Revision-Date: 2026-09-27 15:49+0300\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -133,6 +133,12 @@ msgstr "Обеспечивает доступ к YACD из WAN. Убедитес
 
 msgid "Allows limiting the list of servers for URLTest"
 msgstr "Позволяет ограничить список серверов для URLTest"
+
+msgid "Another snapshot operation is already in progress. Changes were not applied; try again in a moment."
+msgstr "Уже выполняется другая операция со снимками. Изменения не применены, повторите через минуту."
+
+msgid "Another snapshot operation is already in progress. Try again in a moment."
+msgstr "Уже выполняется другая операция со снимками. Повторите через минуту."
 
 msgid "Answer of the router DNS"
 msgstr "Ответ DNS роутера"
@@ -1522,6 +1528,9 @@ msgstr "Выход"
 
 msgid "Outbound chain"
 msgstr "Цепочка выходов"
+
+msgid "Outbound checks need access to the Forkop configuration, which this role does not have."
+msgstr "Для проверки outbound нужен доступ к конфигурации Forkop, которого у этой роли нет."
 
 msgid "outbounds must be a non-empty array of strings"
 msgstr "outbounds должен быть непустым массивом строк"

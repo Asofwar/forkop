@@ -11777,7 +11777,7 @@ var styles4 = `
     border-radius: 6px;
     padding: 12px 14px;
     min-width: 0;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
 }
 
 .fkp-diag-card__head {
@@ -11884,7 +11884,7 @@ var styles4 = `
 .fkp-diag-facts dt { font-weight: bold; }
 .fkp-diag-facts dd { margin: 0; min-width: 0; }
 .fkp-diag-facts .fkp-diag-badge,
-.fkp-diag-events .fkp-diag-badge { white-space: normal; overflow-wrap: anywhere; }
+.fkp-diag-events .fkp-diag-badge { white-space: normal; overflow-wrap: break-word; }
 
 .fkp-diag-events {
     border-collapse: collapse;
@@ -11917,11 +11917,15 @@ var styles4 = `
 .fkp-check--loading { border-color: var(--primary-color-high, dodgerblue); }
 
 .fkp-check__head {
-    display: grid;
-    grid-template-columns: 20px minmax(0, 1fr) auto;
+    /* Flex-wrap: the badge moves below a long title instead of squeezing it. */
+    display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
+    gap: 4px 8px;
 }
+
+.fkp-check__head .fkp-check__title { flex: 1 1 8em; }
+.fkp-check__head .fkp-diag-badge { flex: 0 0 auto; }
 
 .fkp-check__icon svg { width: 20px; height: 20px; }
 
@@ -11931,15 +11935,18 @@ var styles4 = `
 
 .fkp-check__item {
     display: grid;
-    /* minmax(0, ...) lets long check names wrap instead of widening the page. */
-    grid-template-columns: 16px minmax(0, max-content) minmax(0, 1fr);
-    gap: 6px;
+    /* Name and value on separate lines, so a long name never squeezes the
+       value into one character per line. */
+    grid-template-columns: 16px minmax(0, 1fr);
+    column-gap: 6px;
     align-items: start;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
 }
 
+.fkp-check__item > :nth-child(3) { grid-column: 2; }
+
 .fkp-check, .fkp-check__head, .fkp-check__details { min-width: 0; }
-.fkp-check__title { min-width: 0; overflow-wrap: anywhere; }
+.fkp-check__title { min-width: 0; overflow-wrap: break-word; }
 
 .fkp-check__item-icon svg { width: 16px; height: 16px; }
 
@@ -11990,7 +11997,7 @@ var styles4 = `
 }
 .fkp-conn__cell-label { display: none; }
 .fkp-conn__cell--muted { color: var(--text-color-medium, gray); }
-.fkp-conn__result { overflow-wrap: anywhere; }
+.fkp-conn__result { overflow-wrap: break-word; }
 .fkp-conn__actions { display: flex; gap: 4px; }
 .fkp-conn__actions .btn { margin: 0; white-space: nowrap; }
 

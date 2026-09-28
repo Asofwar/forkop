@@ -13,7 +13,9 @@
 //   target-set <id> <host> [enabled] [resolver]     (write)
 //   target-remove <id>                              (write)
 //   run <all|group>     tune the targets of the groups now (write)
-//   if-due              the scheduled run, when enabled and due (cron)
+//   if-due              the scheduled run, when enabled and due (cron); in
+//                       mode "auto" it may apply one confirmed group
+//                       recommendation through autotune/apply.uc
 //   run-async <all|group>  start a run as a background job; prints its id
 //   run-status <job>    state and result of a job (read-only)
 //   cron-sync | cron-remove   the scheduling cron line
@@ -26,6 +28,7 @@ let state_module = require("autotune.state");
 let groups_module = require("autotune.groups");
 let probe_module = require("autotune.probe");
 let hysteresis = require("autotune.hysteresis");
+let autoapply = require("autotune.autoapply");
 let identity = require("core.process_identity");
 
 const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
@@ -367,10 +370,50 @@ function merge(updates) {
             state_module.prune(state, map(targets, (t) => t.id),
                 map(filter(sections, (s) => s.type == "section"), (s) => s.name));
         }
+        // Apply records are kept whatever else changed: they are the budget.
+        for (let a in updates.applies) push(state.applies, a);
         state.worker = updates.worker;
         if (updates.rotation != null) state.rotation = updates.rotation;
         if (updates.next_run_at != null) state.next_run_at = updates.next_run_at;
     });
+}
+
+// One confirmed recommendation through the Stage 5 transaction: plan from
+// the representative's tune output of this run, then apply (snapshot,
+// guarded reload, production verification, automatic rollback). Returns the
+// apply record for the state.
+function apply_group(name, aggregate, full, dns_resolver) {
+    let record = { at: now(), group: name, candidate: aggregate.candidate, representative: aggregate.representative,
+        status: "not_applied", reason: null, counted: false };
+    let reason = blocker();
+    if (reason != null) { record.reason = reason; return record; }
+    // The policy is read again: the mode may have been switched off while
+    // the targets were measured.
+    let sections = config_sections();
+    if (sections == null || policy_module.read(sections).policy.mode != "auto") { record.reason = "mode_changed"; return record; }
+    let dir = trim(capture([ "mktemp", "-d", TMP_DIR + "/forkop-autotune-apply.XXXXXX" ]).output);
+    if (dir == "") { record.reason = "tempdir_unavailable"; return record; }
+    let selection = dir + "/selection.json", plan_file = dir + "/plan.json";
+    let plan = fs.writefile(selection, sprintf("%J\n", full)) != null ? run_tool("apply", [ "plan", selection, dns_resolver ]) : null;
+    if (plan == null) record.reason = "plan_unavailable";
+    else if (plan.status == "no_change_required") { record.status = "no_change_required"; record.reason = plan.reason; }
+    else if (plan.status != "ready") record.reason = "plan_" + as_string(plan.status) + ":" + as_string(plan.reason);
+    // The plan must change exactly the rule and candidate this group
+    // confirmed; routing edits since the classification make it void.
+    else if (type(plan.owner) != "object" || plan.owner.section != name) record.reason = "owner_changed";
+    else if (plan.selected != aggregate.candidate) record.reason = "plan_candidate_differs";
+    else if (fs.writefile(plan_file, sprintf("%J\n", plan)) == null) record.reason = "plan_write_failed";
+    else {
+        let result = run_tool("apply", [ "apply", plan_file, dns_resolver ]);
+        let o = autoapply.outcome(result);
+        record.status = o.status;
+        record.reason = type(result) == "object" ? result.reason || null : "apply_output_invalid";
+        record.counted = o.counted;
+        record.outcome = o;
+        if (o.history != null) history("autotune_apply", o.history);
+    }
+    system(command([ "rm", "-rf", dir ]));
+    return record;
 }
 
 function run_locked(scope, trigger) {
@@ -379,8 +422,8 @@ function run_locked(scope, trigger) {
     if (sections == null) return { status: "failed", reason: "config_unavailable" };
     let read = policy_module.read(sections), policy = read.policy;
     let local = state_module.read();
-    let updates = { targets: {}, groups: {}, worker: null, rotation: null, next_run_at: null };
-    let report = {}, tuned = [], unmeasured = [], outside = [], chosen = [], stop = null;
+    let updates = { targets: {}, groups: {}, applies: [], worker: null, rotation: null, next_run_at: null };
+    let report = {}, tuned = [], unmeasured = [], outside = [], chosen = [], stop = null, results = {}, applied = null;
 
     let reason = blocker();
     if (reason == null) {
@@ -403,6 +446,7 @@ function run_locked(scope, trigger) {
                 if (result.status == "interrupted") { stop = "interrupted"; break; }
                 updates.targets[id] = state_module.record_tune(local, id, result,
                     { host: t.host, group: name, fingerprint: g.fingerprint }, now());
+                results[id] = { full: result, resolver: dns_resolver.ip };
                 push(tuned, id);
             }
             if (stop != null) break;
@@ -412,8 +456,25 @@ function run_locked(scope, trigger) {
             let observed = hysteresis.observe(local.groups[name], { ...aggregate, fingerprint: g.fingerprint }, policy, now());
             let group = { ...observed.group, label: g.label, targets: g.targets, current: g.current,
                 events: observed.events, ready: observed.ready, required: observed.required, result: aggregate };
+            // At most one production change per run.
+            let decision = applied != null ? { apply: false, reason: "one_apply_per_run" } : autoapply.decide({
+                policy, trigger, group, result: aggregate, custom: g.custom, applies: local.applies, now: now(),
+                cooldown_until: hysteresis.cooldown_until(group, aggregate.candidate) });
+            if (decision.apply && results[aggregate.representative] == null) decision = { apply: false, reason: "representative_not_measured" };
+            group.decision = { reason: decision.reason, at: now() };
+            if (decision.apply) {
+                let rep = results[aggregate.representative];
+                applied = apply_group(name, aggregate, rep.full, rep.resolver);
+                group.last_apply = applied;
+                if (applied.outcome != null && applied.outcome.cooldown)
+                    group = hysteresis.start_cooldown(group, aggregate.candidate, policy.cooldown_seconds, now());
+                if (applied.outcome != null && applied.outcome.reset) { group.pending = null; group.ready = false; }
+                push(local.applies, applied);
+                push(updates.applies, applied);
+            }
             local.groups[name] = updates.groups[name] = group;
-            report[name] = { result: aggregate, events: observed.events, ready: observed.ready, required: observed.required };
+            report[name] = { result: aggregate, events: observed.events, ready: observed.ready, required: observed.required,
+                decision: decision.reason, apply: decision.apply ? applied : null };
         }
         reason = stop;
     }
@@ -425,10 +486,10 @@ function run_locked(scope, trigger) {
     if (trigger == "schedule")
         updates.next_run_at = result == "completed" ? started + policy.interval_seconds : now() + RETRY_SECONDS;
     updates.worker = { trigger, scope, started_at: started, finished_at: now(), result, reason,
-        groups: chosen, tuned, unmeasured };
+        groups: chosen, tuned, unmeasured, applied: applied != null ? applied.status : null };
     merge(updates);
     return { status: "ok", result, reason, trigger, scope, groups: report, tuned, unmeasured, outside,
-        next_run_at: updates.next_run_at };
+        applied, next_run_at: updates.next_run_at };
 }
 
 function run(scope, trigger) {

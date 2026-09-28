@@ -326,6 +326,26 @@ async function openNotice(version, config, options) {
       assert.deepEqual(legacyOptions(env.uci.data.rule), []);
     });
 
+    // Interfaces put in the Network Interface field in this window before
+    // the conversion stay there next to the converted items, one entry per
+    // interface.
+    await check(`${version} legacy_interfaces: field edited before the conversion`, async () => {
+      const config = convertible.legacy_interfaces;
+      const { env, modal, notice } = await openNotice(version, config);
+      const field = modal.option('interfaces').getUIElement('rule');
+      field.setValue(['wg9', 'awg0']);
+      button(notice, 'Convert…').attrs.click();
+      button(notice, 'Convert').attrs.click();
+      const created = env.uci.sections('forkop', 'section_interface').map((item) => item['.name']);
+      assert.deepEqual(field.getValue(), [...created, 'wg9'], 'the field must keep what the user added');
+      await modal.save();
+      const items = Object.values(env.uci.data).filter((item) => item['.type'] === 'section_interface');
+      assert.deepEqual(items.map((item) => [item.name, item.domain_resolver_enabled, item.domain_resolver_dns_type,
+        item.domain_resolver_dns_server]), [['awg0', '1', 'udp', '9.9.9.9'], ['wg1', '1', 'dot', '1.1.1.1'],
+        ['wg9', '0', 'udp', '8.8.8.8']]);
+      assert.deepEqual(legacyOptions(env.uci.data.rule), []);
+    });
+
     // A destination condition added before Convert… shows the Device filter
     // field: the devices move there and the save keeps them.
     await check(`${version} devices with a destination added in the form`, async () => {

@@ -5047,7 +5047,9 @@ function renderLegacyConditionsNotice(option, section_id) {
                 conversion,
               );
               // The Network Interface field lists the items the legacy
-              // list became, so that saving or editing it keeps them.
+              // list became, so that saving or editing it keeps them, and
+              // after them what was added there in this window; an
+              // interface added there again is the converted item.
               const interfaces = option.section.children.find(
                 (child) => child.option === "interfaces",
               );
@@ -5056,7 +5058,24 @@ function renderLegacyConditionsNotice(option, section_id) {
                   ? interfaces.getUIElement(section_id)
                   : null;
               if (widget) {
-                widget.setValue(itemIds);
+                const converted = new Set(
+                  conversion.items.map(({ name }) => name),
+                );
+                widget.setValue(
+                  itemIds.concat(
+                    normalizeDynamicListItems(widget.getValue()).filter(
+                      (value) =>
+                        !converted.has(
+                          childItemInputValue(
+                            section_id,
+                            value,
+                            "section_interface",
+                            "name",
+                          ).trim(),
+                        ),
+                    ),
+                  ),
+                );
               }
               render(
                 _(

@@ -4271,6 +4271,17 @@ function cleanupRemovedChildItems(
   });
 }
 
+// The dashboard keeps its URLTest settings for a rule in urltest_override
+// sections (rule, tag). They live and die with the rule: a later rule with
+// the same name must not inherit them (UC-151).
+function cleanupRuleUrlTestOverrides(section_id) {
+  uci.sections(UCI_PACKAGE, "urltest_override").forEach((item) => {
+    if (`${item.rule || ""}` === section_id) {
+      uci.remove(UCI_PACKAGE, item[".name"]);
+    }
+  });
+}
+
 function parentSectionIdForItem(itemId) {
   return uci.get(UCI_PACKAGE, itemId, "section") || "";
 }
@@ -8272,6 +8283,7 @@ function configureSectionSection(sectionRef, options = {}) {
     cleanupRemovedChildItems(section_id, "section_interface", []);
     cleanupRemovedChildItems(section_id, "urltest", []);
     cleanupRemovedChildItems(section_id, "priority_group", []);
+    cleanupRuleUrlTestOverrides(section_id);
     // LuCI saves the whole page silently after a removal. When another field
     // refuses that save (e.g. a Settings select kept on an unavailable
     // section), the row stays and the removal waits for the next successful

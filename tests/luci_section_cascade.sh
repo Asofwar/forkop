@@ -19,6 +19,10 @@ function loadSectionTableOptions() {}
 function cleanupRemovedChildItems(...args) {
   cleanupCalls.push(args);
 }
+const overrideCleanups = [];
+function cleanupRuleUrlTestOverrides(...args) {
+  overrideCleanups.push(args);
+}
 eval(match[0].slice(0, -'\n\nconst EntryPoint'.length));
 
 const event = {};
@@ -41,6 +45,7 @@ assert.deepStrictEqual(cleanupCalls, [
   ['parent', 'urltest', []],
   ['parent', 'priority_group', []],
 ]);
+assert.deepStrictEqual(overrideCleanups, [['parent']], 'URLTest overrides of the rule are not removed');
 assert.deepStrictEqual(parentArgs, ['parent', event]);
 assert.strictEqual(parentThis, sectionRef);
 assert.match(

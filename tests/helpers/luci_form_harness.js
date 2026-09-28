@@ -353,6 +353,7 @@ class FakeNode {
   }
   set textContent(value) {
     this.childNodes = value ? [`${value}`] : [];
+    delete this.markup;
   }
   get nextElementSibling() {
     if (!this.parentNode) return null;
@@ -430,7 +431,13 @@ function E(tag, attrs, children) {
     children = attrs;
     attrs = {};
   }
-  return new FakeNode(tag, attrs, children);
+  const node = new FakeNode(tag, attrs, children);
+  // LuCI dom.append(): a child that is neither a node nor an array becomes
+  // the node's innerHTML (array items become text nodes). The text is kept
+  // as a child here; `markup` records what a browser would parse as HTML.
+  if (children != null && typeof children !== "object" && typeof children !== "function")
+    node.markup = `${children}`;
+  return node;
 }
 
 function createDocument() {

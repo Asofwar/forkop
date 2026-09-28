@@ -367,7 +367,8 @@ function renderHiddenCascadeNotice(option, section_id) {
   };
 
   showActions();
-  node.append(E("p", {}, description), actions);
+  // In an array LuCI adds the text as a text node: the label is a UCI value.
+  node.append(E("p", {}, [description]), actions);
   return node;
 }
 
@@ -4945,11 +4946,13 @@ function renderLegacyConditionsNotice(option, section_id) {
     return node;
   }
 
+  // In an array LuCI adds a line as a text node, not as HTML: the lines
+  // carry UCI values.
   const listItems = (lines) =>
     E(
       "ul",
       {},
-      lines.map((line) => E("li", {}, line)),
+      lines.map((line) => E("li", {}, [line])),
     );
   const actionButton = (label, className, click) =>
     E(
@@ -8960,12 +8963,12 @@ function createSectionContent(section) {
   o.renderWidget = function (section_id) {
     const state = hiddenCascadeState(section_id);
 
+    // In an array LuCI adds the text as a text node: the label is a UCI
+    // value.
     return E(
       "div",
       { class: "alert-message warning fkp-legacy-settings" },
-      E(
-        "p",
-        {},
+      E("p", {}, [
         state && state.enabled
           ? _(
               "With another action the rule cannot use its cascade setting: saving the rule removes it, and its servers no longer connect through the rule “%s”.",
@@ -8973,7 +8976,7 @@ function createSectionContent(section) {
           : _(
               "With another action the rule cannot use its cascade setting: saving the rule removes the switched-off cascade setting.",
             ),
-      ),
+      ]),
     );
   };
 

@@ -1441,24 +1441,26 @@ const SettingsDynamicList = form.DynamicList.extend({
     return node;
   },
 
+  // What parse refuses for the items of an active list; the rule modal asks
+  // before anything is written (refuseInvalidModalSave).
+  checkBeforeSave(section_id) {
+    if (typeof this.validateItemsOnSave !== "function") {
+      return true;
+    }
+
+    return this.validateItemsOnSave(
+      this.childType ? this.childOwner(section_id) : section_id,
+      this.formvalue(section_id),
+      this,
+      section_id,
+    );
+  },
+
   parse(section_id) {
-    if (
-      this.isActive(section_id) &&
-      typeof this.validateItemsOnSave === "function"
-    ) {
-      const result = this.validateItemsOnSave(
-        this.childType ? this.childOwner(section_id) : section_id,
-        this.formvalue(section_id),
-        this,
-        section_id,
-      );
+    if (this.isActive(section_id)) {
+      const result = this.checkBeforeSave(section_id);
       if (result !== true) {
-        const title = this.stripTags(this.title).trim();
-        return Promise.reject(
-          new TypeError(
-            `${_('Option "%s" contains an invalid input value.').format(title || this.option)} ${result}`,
-          ),
-        );
+        return rejectInvalidOption(this, section_id, result);
       }
     }
 
@@ -6539,22 +6541,68 @@ function parseStrategyWithRemoteValidation(section_id, config) {
   return Promise.resolve();
 }
 
-function parseNfqwsStrategyOnSave(section_id) {
-  return parseStrategyWithRemoteValidation.call(this, section_id, {
+// The backend check of a changed strategy runs inside parse, after the other
+// options of the rule have been written or removed; the rule modal runs it
+// before anything is written (refuseInvalidModalSave). A passed check is
+// cached, so parse does not ask the backend again.
+function checkStrategyBeforeSave(section_id, config) {
+  const cval = this.cfgvalue(section_id);
+  const fval = this.formvalue(section_id);
+  const fvalString = fval == null ? "" : `${fval}`;
+
+  if (!this.forcewrite && (cval == null ? "" : `${cval}`) === fvalString) {
+    return true;
+  }
+
+  return config.remoteValidate(fvalString).then((result) => {
+    const textarea = getOptionTextarea(this, section_id);
+
+    if (textarea) {
+      refreshAnnotatedTextareaValidation(this, section_id, textarea);
+    }
+
+    if (typeof this.triggerValidation === "function") {
+      this.triggerValidation(section_id);
+    }
+
+    return result && result.valid === true
+      ? true
+      : (result && result.message) || config.invalidMessage;
+  });
+}
+
+function nfqwsStrategyValidation() {
+  return {
     remoteValidate: validateNfqwsStrategyRemotely,
     invalidMessage: _(
       "Unable to validate the NFQWS strategy through the backend parser.",
     ),
-  });
+  };
 }
 
-function parseNfqws2StrategyOnSave(section_id) {
-  return parseStrategyWithRemoteValidation.call(this, section_id, {
+function nfqws2StrategyValidation() {
+  return {
     remoteValidate: validateNfqws2StrategyRemotely,
     invalidMessage: _(
       "Unable to validate the NFQWS2 strategy through the backend parser.",
     ),
-  });
+  };
+}
+
+function parseNfqwsStrategyOnSave(section_id) {
+  return parseStrategyWithRemoteValidation.call(
+    this,
+    section_id,
+    nfqwsStrategyValidation(),
+  );
+}
+
+function parseNfqws2StrategyOnSave(section_id) {
+  return parseStrategyWithRemoteValidation.call(
+    this,
+    section_id,
+    nfqws2StrategyValidation(),
+  );
 }
 
 function addDynamicConditionField(section, config) {
@@ -7141,6 +7189,13 @@ function createSectionContent(section) {
     return analysis.valid ? true : analysis.message;
   };
   o.parse = parseNfqwsStrategyOnSave;
+  o.checkBeforeSave = function (section_id) {
+    return checkStrategyBeforeSave.call(
+      this,
+      section_id,
+      nfqwsStrategyValidation(),
+    );
+  };
   configureTextareaOption(o, analyzeNfqwsStrategy, attachNfqwsRemoteValidation);
 
   o = section.taboption(
@@ -7180,6 +7235,13 @@ function createSectionContent(section) {
     return analysis.valid ? true : analysis.message;
   };
   o.parse = parseNfqws2StrategyOnSave;
+  o.checkBeforeSave = function (section_id) {
+    return checkStrategyBeforeSave.call(
+      this,
+      section_id,
+      nfqws2StrategyValidation(),
+    );
+  };
   configureTextareaOption(
     o,
     analyzeNfqws2Strategy,
@@ -7221,6 +7283,12 @@ function createSectionContent(section) {
   o.validate = function (_section_id, value) {
     const analysis = analyzeByedpiStrategy(value);
     return analysis.valid ? true : analysis.message;
+  };
+  o.checkBeforeSave = function (section_id) {
+    return checkStrategyBeforeSave.call(this, section_id, {
+      remoteValidate: validateByedpiStrategyRemotely,
+      invalidMessage: _("Invalid ByeDPI strategy"),
+    });
   };
   configureTextareaOption(o, analyzeByedpiStrategy);
 
@@ -8034,22 +8102,48 @@ function loadSectionTableOptions(sectionRef) {
 // invalid, and a refused save keeps what the other options wrote or removed:
 // a rule switched to DNS and back would lose its ports and links, and after
 // Dismiss the next Save & Apply would send them. Refuse the save before
-// anything is written while an active option is invalid.
+// anything is written while an active option is invalid, and while a check
+// that parse would run only after other writes refuses: the items of a list
+// (checkBeforeSave of SettingsDynamicList) or the backend check of a changed
+// DPI strategy.
 function refuseInvalidModalSave(modalMap) {
   const parse = modalMap.parse;
 
-  modalMap.parse = function () {
+  modalMap.parse = function (...args) {
+    const checks = [];
+
     for (const modalSection of this.children) {
       for (const section_id of modalSection.cfgsections()) {
         for (const option of modalSection.children) {
-          if (option.isActive(section_id) && !option.isValid(section_id)) {
+          if (!option.isActive(section_id)) {
+            continue;
+          }
+
+          if (!option.isValid(section_id)) {
             return rejectInvalidOption(option, section_id);
+          }
+
+          if (typeof option.checkBeforeSave === "function") {
+            checks.push({ option, section_id });
           }
         }
       }
     }
 
-    return parse.apply(this, arguments);
+    return Promise.all(
+      checks.map(({ option, section_id }) =>
+        option.checkBeforeSave(section_id),
+      ),
+    ).then((results) => {
+      const index = results.findIndex((result) => result !== true);
+
+      if (index >= 0) {
+        const { option, section_id } = checks[index];
+        return rejectInvalidOption(option, section_id, results[index]);
+      }
+
+      return parse.apply(this, args);
+    });
   };
 }
 

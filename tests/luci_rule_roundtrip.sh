@@ -291,6 +291,84 @@ async function check(label, fn) {
       assert.deepEqual(env.uci.data.rule, fixture, 'switching back changed the rule');
     });
 
+    // Refusals that LuCI's parse reaches only after the other options have
+    // written or removed their values (the backend strategy check, the item
+    // lists of the new action) are checked before the save as well: nothing
+    // is written, and switching back saves the rule as it was (UC-008, UC-040).
+    const connectionWithSubscription = {
+      rule: rule({ action: 'connection', ...routed, community_lists: ['youtube'],
+        selector_proxy_links: ['socks5://10.0.0.1:1080'], ports: ['443'], subscription_url: ['sub'] }),
+      sub: { '.name': 'sub', '.type': 'subscription_url', '.anonymous': false, section: 'rule',
+        url: 'https://example.com/sub', subscription_update_enabled: '1', subscription_update_interval: '4h' },
+    };
+    const strategyCommands = {
+      nfqws_opt: 'validate_nfqws_strategy_json',
+      nfqws2_opt: 'validate_nfqws2_strategy_json',
+      byedpi_cmd_opts: 'validate_byedpi_strategy_json',
+    };
+    const backend = (answers) => ({
+      exec(_command, args) {
+        const answer = args && Object.values(strategyCommands).includes(args[0]) ? answers[args[0]] : null;
+        return Promise.resolve(answer || { code: 0, stdout: '{}', stderr: '' });
+      },
+    });
+    const rejected = { code: 0, stdout: '{"valid":false,"message":"Rejected by the backend parser"}', stderr: '' };
+    const unavailable = { code: 1, stdout: '', stderr: 'timeout' };
+    for (const [action, strategy, value] of [
+      ['zapret', 'nfqws_opt', '--filter-tcp=443 --dpi-desync=fake --new --filter-udp=443'],
+      ['zapret2', 'nfqws2_opt', '--filter-tcp=443 --lua-desync=fake:blob=fake_default_tls'],
+      ['byedpi', 'byedpi_cmd_opts', '-o 1 -d 2'],
+    ]) for (const [label, answer, error] of [
+      ['strategy rejected by the backend', rejected, /Rejected by the backend parser/],
+      ['backend check unavailable', unavailable, /Backend validation unavailable/],
+    ]) await check(`${version} connection rule switched to ${action}, ${label}: refused save writes nothing`, async () => {
+      const config = JSON.parse(JSON.stringify(connectionWithSubscription));
+      const env = createEnvironment({ version, config, fs: backend({ [strategyCommands[strategy]]: answer }) });
+      const modal = await env.openRule('rule');
+      const actionWidget = modal.option('action').getUIElement('rule');
+      actionWidget.setValue(action);
+      modal.option(strategy).getUIElement('rule').setValue(value);
+      await assert.rejects(modal.save(), error);
+      assert.deepEqual(env.uci.data, connectionWithSubscription, 'a refused save changed UCI');
+
+      actionWidget.setValue('connection');
+      await modal.save();
+      assert.deepEqual(env.uci.data, connectionWithSubscription, 'switching back changed the rule');
+    });
+
+    // The rule keeps its action: ports edited next to a changed strategy wait
+    // for the backend check too.
+    await check(`${version} zapret rule: strategy check unavailable, edited ports are not written`, async () => {
+      const fixture = rule({ action: 'zapret', ...routed, nfqws_opt: '--filter-tcp=443 --dpi-desync=fake',
+        community_lists: ['youtube'], ports: ['443'] });
+      const env = createEnvironment({ version, config: { rule: fixture },
+        fs: backend({ validate_nfqws_strategy_json: unavailable }) });
+      const modal = await env.openRule('rule');
+      modal.option('nfqws_opt').getUIElement('rule').setValue('--filter-tcp=443 --dpi-desync=fake,multisplit');
+      modal.option('ports').getUIElement('rule').setValue(['8443']);
+      await assert.rejects(modal.save(), /Backend validation unavailable/);
+      assert.deepEqual(env.uci.data.rule, fixture, 'a refused save changed UCI');
+    });
+
+    for (const [label, option, items, error] of [
+      ['a priority without settings', 'priority_group', ['pg_new'], /Open priority settings/],
+      ['an invalid JSON outbound', 'outbound_jsons', ['{"type":"vless"}'], /non-empty tag/],
+    ]) await check(`${version} dns rule switched to connection with ${label}: refused save writes nothing`, async () => {
+      const fixture = rule({ action: 'dns', dns_type: 'udp', dns_server: '8.8.8.8', dns_detour_enabled: '0',
+        domain: 'example.net' });
+      const env = createEnvironment({ version, config: { rule: fixture } });
+      const modal = await env.openRule('rule');
+      const actionWidget = modal.option('action').getUIElement('rule');
+      actionWidget.setValue('connection');
+      modal.option(option).getUIElement('rule').setValue(items);
+      await assert.rejects(modal.save(), error);
+      assert.deepEqual(env.uci.data.rule, fixture, 'a refused save changed UCI');
+
+      actionWidget.setValue('dns');
+      await modal.save();
+      assert.deepEqual(env.uci.data.rule, fixture, 'switching back changed the rule');
+    });
+
     // UC-003: the device filter is offered whenever a Built-in rule set #2 is set.
     await check(`${version} device filter visibility`, async () => {
       const env = createEnvironment({ version, config: { rule: fixtures.device_filter_secondary_only } });

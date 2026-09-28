@@ -103,9 +103,16 @@ function stubs(canReadUci, calls, { stale = false } = {}) {
     'settings page must keep the snapshot-first Save & Apply');
   assert.match(settingsSource, /snapshotCreate\("automatic"\)[\s\S]*originalHandleSaveApply\.call/,
     'a snapshot must be taken before applying');
-  for (const section of ['"section"', '"settings"', '"updates"'])
-    assert(settingsSource.includes(`form.${section === '"section"' ? 'GridSection' : 'TypedSection'},\n      ${section}`),
-      `settings page lost the ${section} tab`);
+  assert(settingsSource.includes('form.GridSection,\n      "section"'), 'settings page lost the rules tab');
+  assert(settingsSource.includes('form.TypedSection,\n      "updates"'), 'settings page lost the components tab');
+  assert.match(settingsSource, /forkopMap\.section\(form\.TypedSection, type, title\)/,
+    'settings page lost the settings tabs');
+  // LuCI keys map tabs by section type: every settings tab needs its own.
+  const tabTypes = [...settingsSource.matchAll(/settingsTab\("(settings_\w+)", _\("([^"]+)"\)\)/g)];
+  assert.deepEqual(tabTypes.map((m) => m[2]), ['DNS', 'Network', 'Lists and updates', 'Service settings']);
+  assert.equal(new Set(tabTypes.map((m) => m[1])).size, 4, 'settings tabs must not share a section type');
+  assert.match(settingsSource, /cfgsections = function \(\) \{\s*return \["settings"\];/,
+    'settings tabs must edit the single settings section');
   for (const file of Object.keys(pages))
     assert.doesNotMatch(read(file), /form\.(Map|JSONMap)/, `${file} must not render a form`);
 

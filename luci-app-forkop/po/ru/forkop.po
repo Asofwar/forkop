@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-28 02:11+0000\n"
-"PO-Revision-Date: 2026-09-28 02:11+0000\n"
+"POT-Creation-Date: 2026-09-28 02:31+0000\n"
+"PO-Revision-Date: 2026-09-28 02:31+0000\n"
 "Last-Translator: Claude\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -89,8 +89,8 @@ msgstr "Активный основной DNS"
 msgid "Active: DPI switch not confirmed"
 msgstr "Активна: переключение DPI не подтверждено"
 
-msgid "Add a section"
-msgstr "Добавить секцию"
+msgid "Add a rule"
+msgstr "Добавить правило"
 
 msgid "Add address"
 msgstr "Добавить адрес"
@@ -128,6 +128,9 @@ msgstr "Адрес"
 msgid "Address set for checking"
 msgstr "Набор адресов для проверки"
 
+msgid "Advanced"
+msgstr "Дополнительно"
+
 msgid "Advanced settings"
 msgstr "Дополнительные настройки"
 
@@ -163,6 +166,9 @@ msgstr "Все серверы"
 
 msgid "All traffic from these IP addresses will be routed through the section unconditionally, ignoring all other conditions."
 msgstr "Весь трафик с этих IP-адресов будет направлен через секцию безусловно, игнорируя остальные условия."
+
+msgid "All traffic: %d"
+msgstr "Весь трафик: %d"
 
 msgid "Allowed domain prefixes are full:, keyword:, and regex:"
 msgstr "Разрешённые префиксы доменов: full:, keyword: и regex:"
@@ -250,6 +256,9 @@ msgstr "Доступно только администратору."
 
 msgid "Backend validation failed: %s"
 msgstr "Backend-проверка завершилась ошибкой: %s"
+
+msgid "Basics"
+msgstr "Основное"
 
 msgid "Before applying changes"
 msgstr "Перед применением изменений"
@@ -635,6 +644,9 @@ msgstr "Фильтр по устройствам"
 msgid "Device or IP"
 msgstr "Устройство или IP"
 
+msgid "Devices"
+msgstr "Устройства"
+
 msgid "Devices keep using the router without Forkop X"
 msgstr "Устройства продолжат работать через роутер без Forkop X"
 
@@ -785,6 +797,9 @@ msgstr "Домены"
 msgid "Domains in rules may not resolve, or resolve past Forkop, so their rules do not apply."
 msgstr "Домены из правил могут не разрешаться или разрешаться в обход Forkop — тогда правила к ним не применяются."
 
+msgid "Domains: %d"
+msgstr "Домены: %d"
+
 msgid "Dont Touch My DHCP!"
 msgstr "Отключить управление DHCP"
 
@@ -838,9 +853,6 @@ msgstr "Стратегия DPI"
 
 msgid "DPI strategy syntax check"
 msgstr "Проверка синтаксиса DPI-стратегии"
-
-msgid "Drag rows to change priority. The rule at the top is checked first."
-msgstr "Перетаскивайте строки, чтобы изменить приоритет. Правило сверху проверяется первым."
 
 msgid "Duplicate JSON outbound tag"
 msgstr "Такой тег JSON outbound уже используется"
@@ -931,6 +943,9 @@ msgstr "Ошибка"
 
 msgid "Errors: %d"
 msgstr "Ошибки: %d"
+
+msgid "Except: %d"
+msgstr "Кроме: %d"
 
 msgid "Exclude by proxy parameters"
 msgstr "Исключить по параметрам прокси"
@@ -1037,6 +1052,9 @@ msgstr "Показаны только новые соединения"
 msgid "For a DPI rule this can mean the strategy does not work with your provider."
 msgstr "Для правила DPI это может значить, что стратегия не работает у вашего провайдера."
 
+msgid "For whom"
+msgstr "Для кого"
+
 msgid "Forced device routing"
 msgstr "Принудительная маршрутизация устройств"
 
@@ -1126,9 +1144,6 @@ msgstr "Полное удаление"
 
 msgid "Fuzzing is not supported here because Forkop needs deterministic runtime validation."
 msgstr "Fuzzing здесь не поддерживается, потому что Forkop нужна предсказуемая runtime-валидация."
-
-msgid "General settings"
-msgstr "Основные настройки"
 
 msgid "Get global check"
 msgstr "Получить глобальную проверку"
@@ -1421,6 +1436,9 @@ msgstr "IP-адрес DNS-сервера для разрешения вышес�
 msgid "IPs"
 msgstr "IP-адреса"
 
+msgid "IPs: %d"
+msgstr "IP: %d"
+
 msgid "IPv4 only"
 msgstr "Только IPv4"
 
@@ -1508,6 +1526,12 @@ msgstr "Список должен быть HTTP(S) URL или локальным
 msgid "List Update Frequency"
 msgstr "Частота обновления списков"
 
+msgid "Lists and updates"
+msgstr "Списки и обновления"
+
+msgid "Lists: %d"
+msgstr "Списки: %d"
+
 msgid "Loading available versions…"
 msgstr "Загрузка доступных версий…"
 
@@ -1588,6 +1612,9 @@ msgstr "Имя, которое отображается в списке уров
 
 msgid "Needs attention"
 msgstr "Требуется внимание"
+
+msgid "Network"
+msgstr "Сеть"
 
 msgid "Network Interface"
 msgstr "Сетевой интерфейс"
@@ -1757,6 +1784,9 @@ msgstr "Только серверы с одним из выбранных тра
 msgid "Only the specified servers."
 msgstr "Только указанные серверы."
 
+msgid "Only: %d"
+msgstr "Только: %d"
+
 msgid "Open"
 msgstr "Открыть"
 
@@ -1871,6 +1901,9 @@ msgstr "Начало диапазона портов должно быть ме�
 msgid "Ports"
 msgstr "Порты"
 
+msgid "Ports: %d"
+msgstr "Порты: %d"
+
 msgid "Prefer IPv4"
 msgstr "Предпочитать IPv4"
 
@@ -1915,6 +1948,9 @@ msgstr "Протокол"
 
 msgid "Provider"
 msgstr "Провайдер"
+
+msgid "Proxy"
+msgstr "Прокси"
 
 msgid "Reachable"
 msgstr "Доступно"
@@ -2096,6 +2132,9 @@ msgstr "Наборы правил"
 msgid "Rules"
 msgstr "Правила"
 
+msgid "Rules are checked from top to bottom. Drag rows to change priority."
+msgstr "Правила проверяются сверху вниз. Перетащите строки, чтобы изменить приоритет."
+
 msgid "Rules mangle counters"
 msgstr "Счётчики правил mangle"
 
@@ -2132,14 +2171,8 @@ msgstr "Поиск"
 msgid "Secret key for authenticating remote access to YACD when WAN access is enabled."
 msgstr "Секретный ключ для аутентификации удаленного доступа к YACD при включенном доступе через WAN."
 
-msgid "Section"
-msgstr "Секция"
-
 msgid "Section name"
 msgstr "Имя секции"
-
-msgid "Sections"
-msgstr "Секции"
 
 msgid "Security"
 msgstr "Защита"
@@ -2239,6 +2272,9 @@ msgstr "Действия со службой"
 
 msgid "Service list"
 msgstr "Список сервисов"
+
+msgid "Service settings"
+msgstr "Служебные"
 
 msgid "Service start"
 msgstr "Запуск службы"
@@ -2786,6 +2822,9 @@ msgstr "Предупреждение"
 msgid "Warnings: %d"
 msgstr "Предупреждения: %d"
 
+msgid "What"
+msgstr "Что"
+
 msgid "What Forkop should do when this section matches"
 msgstr "Что Forkop должен делать при совпадении этой секции"
 
@@ -2800,6 +2839,9 @@ msgstr "Что доказано"
 
 msgid "When switching to another level, test every server and select the fastest instead of the first working one."
 msgstr "При переходе на другой уровень тестировать все сервера и выбирать самый быстрый, а не первый работающий."
+
+msgid "Where to"
+msgstr "Куда"
 
 msgid "YACD Secret Key"
 msgstr "Секретный ключ YACD"

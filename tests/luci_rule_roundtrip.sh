@@ -143,7 +143,7 @@ async function check(label, fn) {
     // UC-008: DNS through a disabled, uninstalled or deleted section.
     for (const [label, section, providers, mark] of [
       ['disabled section', 'off', undefined, /^Old VPN \(disabled\)$/],
-      ['provider not installed', 'dpi', { zapretInstalled: false }, /^Zapret \(not installed\)$/],
+      ['provider not installed', 'dpi', { zapretInstalled: false }, /^Zapret \(provider not installed\)$/],
       ['deleted section', 'gone', undefined, /^gone \(unavailable\)$/],
     ]) await check(`${version} dns through ${label}`, async () => {
       const config = { rule: dnsThrough(section), ...targets };

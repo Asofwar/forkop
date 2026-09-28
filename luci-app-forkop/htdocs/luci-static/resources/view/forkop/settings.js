@@ -86,7 +86,7 @@ function describeUnavailableSection(sec, name) {
   // An enabled DPI section is left out only while its provider is missing.
   if (["zapret", "zapret2", "byedpi"].includes(sec.action)) {
     return {
-      label: _("%s (not installed)").format(label),
+      label: _("%s (provider not installed)").format(label),
       message: _(
         "The DPI provider of the selected section is not installed. Install it in Components or choose another section.",
       ),

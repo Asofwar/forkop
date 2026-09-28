@@ -52,7 +52,7 @@ const references = [
     for (const [flag, option] of references)
       for (const [label, value, capabilities, mark] of [
         ['disabled section', 'off', installed, /^OFF \(disabled\)$/],
-        ['provider not installed', 'dpi', noZapret, /^DPI \(not installed\)$/],
+        ['provider not installed', 'dpi', noZapret, /^DPI \(provider not installed\)$/],
         ['deleted section', 'gone', installed, /^gone \(unavailable\)$/],
       ]) await check(`${version} ${option}: ${label}`, async () => {
         const env = createEnvironment({ version, config: settingsConfig({ [flag]: '1', [option]: value }) });

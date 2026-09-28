@@ -103,8 +103,14 @@
     "call": "%s (not installed)",
     "key": "%s (not installed)",
     "places": [
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3954"
+    ]
+  },
+  {
+    "call": "%s (provider not installed)",
+    "key": "%s (provider not installed)",
+    "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:213",
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3954",
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:89"
     ]
   },

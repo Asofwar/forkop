@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-28 18:49+0000\n"
-"PO-Revision-Date: 2026-09-28 18:49+0000\n"
+"POT-Creation-Date: 2026-09-28 18:51+0000\n"
+"PO-Revision-Date: 2026-09-28 18:51+0000\n"
 "Last-Translator: Asofwar <7397608+Asofwar@users.noreply.github.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -77,10 +77,13 @@ msgstr ""
 msgid "%s (disabled)"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:213
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3954
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:89
 msgid "%s (not installed)"
+msgstr ""
+
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:213
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:89
+msgid "%s (provider not installed)"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:194

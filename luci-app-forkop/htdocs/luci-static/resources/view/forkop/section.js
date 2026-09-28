@@ -210,7 +210,7 @@ function describeUnavailableSection(name) {
 
   if (!isActionProviderInstalledForUi(target.action)) {
     return {
-      label: _("%s (not installed)").format(label),
+      label: _("%s (provider not installed)").format(label),
       message: _(
         "The DPI provider of the selected section is not installed. Install it in Components or choose another section.",
       ),

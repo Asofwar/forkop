@@ -39,7 +39,12 @@ grep -Fq 'text_list_values,' "$RULE_CONFIG" ||
   fail "config.rule must export the shared comment-aware text parser"
 grep -Fq 'rule_config.text_list_values(value, "comma-space")' "$VALIDATOR" ||
   fail "domain validation must use the shared comment-aware text parser"
-grep -Fq 'rule_config.text_list_values(option(section, "domain", ""), "comma-space")' "$GENERATOR" ||
+# Rule conditions (legacy lists and combined domain text) are read through
+# routing/rule_conditions.uc, which the generator uses.
+RULE_CONDITIONS="$FORKOP_LIB/routing/rule_conditions.uc"
+grep -Fq 'require("routing.rule_conditions")' "$GENERATOR" ||
+  fail "sing-box generation must read rule conditions through routing/rule_conditions.uc"
+grep -Fq 'rule_config.text_list_values(option(section, "domain", ""), "comma-space")' "$RULE_CONDITIONS" ||
   fail "sing-box domain generation must use the shared comment-aware text parser"
 grep -Fq 'return appendUniqueDomainTextValues(textValue, values);' "$SECTION_JS" ||
   fail "Domains field loading must preserve the original combined text"

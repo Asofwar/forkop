@@ -192,7 +192,20 @@ function loadUiCapabilities() {
 
 // A session that cannot read the Forkop UCI package only has the read-only
 // ACL group. Decided before any page content renders.
+// Only the write level of luci-app-forkop grants /usr/bin/forkop; the read
+// level runs the CLI through /usr/libexec/forkop-ro. A role may still read
+// the Forkop UCI package (luci-app-forkop-admin), so LuCI's view permission
+// decides first.
 function detectAccess() {
+  const writable =
+    typeof L !== "undefined" && typeof L.hasViewPermission === "function"
+      ? L.hasViewPermission()
+      : null;
+  if (writable === false) {
+    main.setReadonlyMode?.(true);
+    return Promise.resolve(true);
+  }
+
   return uci
     .load(UCI_PACKAGE)
     .then(() => false)

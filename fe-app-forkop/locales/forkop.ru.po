@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-28 10:21+0000\n"
-"PO-Revision-Date: 2026-09-28 10:21+0000\n"
+"POT-Creation-Date: 2026-09-28 10:59+0000\n"
+"PO-Revision-Date: 2026-09-28 10:59+0000\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -115,6 +115,9 @@ msgstr "Стратегия задаётся на всё правило, поэт
 
 msgid "Action"
 msgstr "Действие"
+
+msgid "Action required"
+msgstr "Требуется действие"
 
 msgid "Actions"
 msgstr "Действия"
@@ -248,6 +251,9 @@ msgstr "Для IP-адреса DNS не нужен"
 msgid "and %d more"
 msgstr "и ещё %d"
 
+msgid "Another autotune operation is running."
+msgstr "Уже выполняется другая операция автоподбора."
+
 msgid "another check is running"
 msgstr "идёт другая проверка"
 
@@ -271,6 +277,15 @@ msgstr "Любое устройство"
 
 msgid "Applied, check passed"
 msgstr "Применена, проверка пройдена"
+
+msgid "Apply"
+msgstr "Применить"
+
+msgid "Apply %s"
+msgstr "Применить %s"
+
+msgid "Apply %s?"
+msgstr "Применить %s?"
 
 msgid "Apply section rules only to the specified local IP addresses"
 msgstr "Применять правила секции только к указанным локальным IP-адресам"
@@ -317,6 +332,9 @@ msgstr "Автоизменений в сутки"
 msgid "Automatic component update checks"
 msgstr "Автоматическая проверка обновлений компонентов"
 
+msgid "Automatic recovery did not finish."
+msgstr "Автоматическое восстановление не завершилось."
+
 msgid "Automatically add text to the name of each server from this subscription for convenient filtering."
 msgstr "Автоматически добавлять текст к имени каждого сервера из этой подписки для удобной фильтрации."
 
@@ -344,6 +362,9 @@ msgstr "Автоподбор проверяет только перечисле�
 msgid "Autotune history"
 msgstr "История автоподбора"
 
+msgid "Autotune is off. To apply the recommendation, switch to \"Recommendations only\" and apply it here, or to \"Automatic\"."
+msgstr "Автоподбор выключен. Чтобы применить рекомендацию, включите режим «Только рекомендации» и примените её здесь или включите режим «Автоматически»."
+
 msgid "Autotune mode changed"
 msgstr "Изменён режим автоподбора"
 
@@ -358,6 +379,24 @@ msgstr "Запуск автоподбора"
 
 msgid "Autotune state is unavailable"
 msgstr "Состояние автоподбора недоступно"
+
+msgid "Autotune: %s applied automatically"
+msgstr "Автоподбор: %s применена автоматически"
+
+msgid "Autotune: %s applied manually"
+msgstr "Автоподбор: %s применена вручную"
+
+msgid "Autotune: automatic apply"
+msgstr "Автоподбор: автоматическое применение"
+
+msgid "Autotune: automatic apply of %s"
+msgstr "Автоподбор: автоматическое применение %s"
+
+msgid "Autotune: manual apply"
+msgstr "Автоподбор: ручное применение"
+
+msgid "Autotune: manual apply of %s"
+msgstr "Автоподбор: ручное применение %s"
 
 msgid "Available to administrators only."
 msgstr "Доступно только администратору."
@@ -547,6 +586,15 @@ msgstr "Проверено"
 
 msgid "Checking targets"
 msgstr "Идёт проверка целей"
+
+msgid "Checking the configuration before the change"
+msgstr "Проверка конфигурации перед изменением"
+
+msgid "Checking the real production path"
+msgstr "Проверка реального production path"
+
+msgid "Checking the recommendation"
+msgstr "Проверка рекомендации"
 
 msgid "Checking, please wait"
 msgstr "Проверяем, пожалуйста подождите"
@@ -740,11 +788,17 @@ msgstr "Не удалось сохранить снимок перед прим�
 msgid "Could not start removal. Another component action may be running."
 msgstr "Не удалось начать удаление. Возможно, выполняется другая операция с компонентами."
 
+msgid "Could not start the apply"
+msgstr "Не удалось запустить применение"
+
 msgid "Could not start the check"
 msgstr "Не удалось запустить проверку"
 
 msgid "Create snapshot"
 msgstr "Создать снимок"
+
+msgid "Creating a snapshot and reloading the service"
+msgstr "Создание снимка и перезагрузка сервиса"
 
 msgid "Current section cannot be used as its own transit section"
 msgstr "Текущую секцию нельзя использовать как транзит для самой себя"
@@ -1331,6 +1385,9 @@ msgstr "Forkop X перестанет обрабатывать трафик, п�
 msgid "Forkop X will change the strategy of existing DPI rules by itself, only after several confirmations in a row, with a production check and automatic rollback."
 msgstr "Forkop X будет сам менять стратегию существующих DPI-правил — только после нескольких подтверждений подряд, с проверкой в рабочем режиме и автоматическим откатом."
 
+msgid "Forkop X will create a configuration snapshot, reload the service and check the real production path. If the check fails, the previous configuration is restored automatically."
+msgstr "Forkop X создаст снимок конфигурации, перезагрузит сервис и проверит реальный production path. Если проверка не пройдёт, предыдущая конфигурация будет восстановлена автоматически."
+
 msgid "Forkop-managed ciadpi runtime has restarted"
 msgstr "ciadpi Forkop перезапускался"
 
@@ -1438,9 +1495,6 @@ msgstr "Добавлять URLTest группы из подписки"
 
 msgid "Import URLTest groups returned by this subscription provider"
 msgstr "Импортировать URLTest группы, если провайдер подписки возвращает их"
-
-msgid "In \"Recommendations only\" mode Forkop X does not change the rule. To let it apply the strategy with a production check and automatic rollback, switch to \"Automatic\"."
-msgstr "В режиме «Только рекомендации» Forkop X не меняет правило. Чтобы он применил стратегию сам, с проверкой и автоматическим откатом, включите режим «Автоматически»."
 
 msgid "In progress"
 msgstr "Выполняется"
@@ -1838,8 +1892,14 @@ msgstr "Убедитесь, что провайдер установлен, а �
 msgid "Manual"
 msgstr "Вручную"
 
+msgid "Manual apply is available only in \"Recommendations only\" mode."
+msgstr "Ручное применение доступно только в режиме «Только рекомендации»."
+
 msgid "Manual checks only measure; changes are applied only on schedule."
 msgstr "Ручная проверка только измеряет; изменения применяются только по расписанию."
+
+msgid "manually"
+msgstr "вручную"
 
 msgid "Match destination IPs or subnets"
 msgstr "Совпадение по IP-адресам или подсетям назначения"
@@ -2129,6 +2189,9 @@ msgstr "Только: %d"
 msgid "Open"
 msgstr "Открыть"
 
+msgid "Open History and recovery"
+msgstr "Открыть «История и восстановление»"
+
 msgid "Open LuCI"
 msgstr "Открыть LuCI"
 
@@ -2278,6 +2341,9 @@ msgstr "Предпочитать IPv6"
 
 msgid "Prefix text"
 msgstr "Текст префикса"
+
+msgid "Preparing the change"
+msgstr "Подготовка изменения"
 
 msgid "Priority"
 msgstr "Приоритет"
@@ -2446,6 +2512,9 @@ msgstr "Вернуть обычный режим"
 
 msgid "Restore…"
 msgstr "Восстановить…"
+
+msgid "Restoring the previous configuration"
+msgstr "Восстановление предыдущей конфигурации"
 
 msgid "Result"
 msgstr "Результат"
@@ -2837,6 +2906,9 @@ msgstr "Остановить Forkop X…"
 msgid "Strategy"
 msgstr "Стратегия"
 
+msgid "Strategy %s applied and checked."
+msgstr "Стратегия %s применена и проверена."
+
 msgid "Subnets from the list will be extracted and added to nftables"
 msgstr "IP-адреса и подсети из списка будут извлечены и добавлены в nftables"
 
@@ -2951,8 +3023,14 @@ msgstr "Состояние автоподбора было повреждено 
 msgid "The autotune state was restored after damage; automatic apply waits for the cooldown."
 msgstr "Состояние автоподбора восстановлено после повреждения; автоматическое применение ждёт окончания паузы."
 
+msgid "The autotune state was restored after damage. Run the check again."
+msgstr "Состояние автоподбора восстановлено после повреждения. Запустите проверку ещё раз."
+
 msgid "The best strategy is not stable for every target of the rule."
 msgstr "Лучшая стратегия стабильна не для всех целей правила."
+
+msgid "The change affects the whole group:"
+msgstr "Изменение затронет всю группу:"
 
 msgid "The change was not saved."
 msgstr "Изменение не сохранено."
@@ -2968,6 +3046,9 @@ msgstr "Проверка неожиданно остановилась"
 
 msgid "The check was postponed. See the state above."
 msgstr "Проверка отложена. Причина — в состоянии выше."
+
+msgid "The confidence of the recommendation is below the policy minimum."
+msgstr "Уверенность рекомендации ниже минимума политики."
 
 msgid "The current strategy is already the best."
 msgstr "Текущая стратегия уже лучшая."
@@ -3011,6 +3092,12 @@ msgstr "Достигнуто максимальное число целей."
 msgid "The name does not resolve on the router, so no rule can open it. Check the DNS results above."
 msgstr "Имя не разрешается на роутере, поэтому ни одно правило его не откроет. Посмотрите результат DNS выше."
 
+msgid "The new strategy did not pass the check. Forkop X restored the previous configuration automatically."
+msgstr "Новая стратегия не прошла проверку. Forkop X автоматически восстановил предыдущую конфигурацию."
+
+msgid "The new strategy was not applied: the service reload failed and the previous configuration was restored automatically."
+msgstr "Новая стратегия не применена: перезагрузка сервиса не удалась, предыдущая конфигурация восстановлена автоматически."
+
 msgid "The NFQUEUE number is assigned by Forkop for each rule and must not be overridden here."
 msgstr "Номер NFQUEUE назначается Forkop для каждого правила и не должен переопределяться здесь."
 
@@ -3019,6 +3106,9 @@ msgstr "Пакет будет удалён с роутера."
 
 msgid "The recommendation is not confirmed yet."
 msgstr "Рекомендация ещё не подтверждена."
+
+msgid "The recommendation is outdated: the configuration changed after the check. Run the check again."
+msgstr "Рекомендация устарела: конфигурация изменилась после проверки. Запустите проверку ещё раз."
 
 msgid "The route check did not complete. Try again."
 msgstr "Проверка маршрута не завершилась. Повторите попытку."
@@ -3071,6 +3161,9 @@ msgstr "С роутера сайт открывается. Если на уст�
 msgid "The strategy contains an error"
 msgstr "В стратегии есть ошибка"
 
+msgid "The strategy could not be applied. The previous configuration is kept."
+msgstr "Стратегию не удалось применить. Предыдущая конфигурация сохранена."
+
 msgid "The strategy is changed only after %d checks in a row with the same result."
 msgstr "Стратегия меняется только после %d проверок подряд с одинаковым результатом."
 
@@ -3079,6 +3172,12 @@ msgstr "Стратегия надёжнее, чем работа без обхо
 
 msgid "The strategy is noticeably faster."
 msgstr "Стратегия заметно быстрее."
+
+msgid "The strategy of the DPI rule \"%s\" will be changed."
+msgstr "Будет изменена стратегия DPI-правила «%s»."
+
+msgid "The strategy was not applied"
+msgstr "Стратегия не применена"
 
 msgid "The target address could not be determined reliably during the check."
 msgstr "Во время проверки не удалось надёжно определить адрес цели."
@@ -3110,6 +3209,9 @@ msgstr "Есть правила, использующие Zapret2"
 msgid "There are unsaved configuration changes. Save or reset them in Settings first."
 msgstr "Есть несохранённые изменения конфигурации. Сначала сохраните или сбросьте их в «Настройках»."
 
+msgid "There is no recommendation to apply."
+msgstr "Нет рекомендации для применения."
+
 msgid "This browser could not reach the check service, so FakeIP for devices is not proven either way."
 msgstr "Этот браузер не смог обратиться к сервису проверки, поэтому работа FakeIP для устройств не доказана ни в одну сторону."
 
@@ -3136,6 +3238,12 @@ msgstr "Этой опции требуется значение."
 
 msgid "This permanently deletes saved sections and subscriptions. Other components remain installed."
 msgstr "Сохранённые секции и подписки будут удалены безвозвратно. Остальные компоненты останутся установленными."
+
+msgid "This strategy is already active; nothing was changed."
+msgstr "Эта стратегия уже активна; ничего не изменено."
+
+msgid "This strategy is not supported by the installed Zapret."
+msgstr "Эта стратегия не поддерживается установленным Zapret."
 
 msgid "This strategy was rolled back recently; it waits for the cooldown."
 msgstr "Эту стратегию недавно откатывали; она ждёт окончания паузы."
@@ -3394,6 +3502,9 @@ msgstr "При переходе на другой уровень тестиро�
 
 msgid "Where to"
 msgstr "Куда"
+
+msgid "Will be"
+msgstr "Будет"
 
 msgid "Works without bypass."
 msgstr "Работает без обхода."

@@ -85,6 +85,9 @@ export namespace Forkop {
     kind: string;
     status: string;
     timestamp: number;
+    // autotune_apply only: who started it and the catalog candidate id.
+    trigger?: 'manual' | 'automatic';
+    candidate?: string;
   }
 
   export interface HistoryResult {
@@ -153,7 +156,9 @@ export namespace Forkop {
     candidate: string | null;
     status: string;
     reason: string | null;
+    // Counted against the daily limit of automatic applies.
     counted?: boolean;
+    trigger?: 'manual' | 'automatic';
   }
 
   // Hysteresis state of a group, written by the worker.
@@ -194,6 +199,11 @@ export namespace Forkop {
     result?: string;
     reason?: string | null;
     applied?: string | null;
+    // A manual apply: kind "apply", its background job, group and candidate.
+    kind?: string;
+    job?: string | null;
+    group?: string;
+    candidate?: string;
   }
 
   export interface AutotuneStatus {
@@ -238,9 +248,18 @@ export namespace Forkop {
 
   export interface AutotuneJob {
     id: string;
+    kind?: 'run' | 'apply';
     scope: string;
     state: 'starting' | 'running' | 'finished' | 'lost';
-    result: { status: string; result?: string; reason?: string | null } | null;
+    result: {
+      status: string;
+      result?: string;
+      reason?: string | null;
+      group?: string;
+      candidate?: string;
+    } | null;
+    // Manual apply: the worker phase and the Stage 5 transaction phase.
+    progress?: { phase: string; apply_phase: string | null };
   }
 
   export interface AutotuneJobStatus {
@@ -375,6 +394,7 @@ export namespace Forkop {
     AUTOTUNE_TARGET_SET = 'autotune_target_set',
     AUTOTUNE_TARGET_REMOVE = 'autotune_target_remove',
     AUTOTUNE_RUN_ASYNC = 'autotune_run_async',
+    AUTOTUNE_APPLY_ASYNC = 'autotune_apply_async',
     AUTOTUNE_RUN_STATUS = 'autotune_run_status',
   }
 

@@ -17,6 +17,8 @@ const HISTORY_KEEP = 150;
 const EVENT_KINDS = [ "start", "reload", "restore", "recovery", "autotune_apply", "snapshot_create", "snapshot_delete",
     "autotune_mode", "autotune_recommendation", "autotune_run" ];
 const EVENT_STATUSES = [ "success", "failure", "recovered" ];
+// Autotune applies also carry who started them and the catalog candidate id.
+const EVENT_TRIGGERS = [ "manual", "automatic" ];
 
 function read_object(path) {
     let raw = fs.readfile(path);
@@ -58,6 +60,17 @@ function valid_event(event) {
         index(EVENT_STATUSES, event.status) >= 0 && type(event.timestamp) == "int";
 }
 
+// The event as stored and shown: only known fields, extras only when valid.
+function event_view(event) {
+    let view = { kind: event.kind, status: event.status, timestamp: event.timestamp };
+    if (event.kind == "autotune_apply") {
+        if (index(EVENT_TRIGGERS, event.trigger) >= 0) view.trigger = event.trigger;
+        if (type(event.candidate) == "string" && match(event.candidate, /^[a-z0-9_]{1,32}$/) != null)
+            view.candidate = event.candidate;
+    }
+    return view;
+}
+
 function history_events(all) {
     let raw = fs.readfile(HISTORY_FILE);
     if (raw == null)
@@ -68,7 +81,7 @@ function history_events(all) {
         let event;
         try { event = json(line); } catch (e) { continue; }
         if (valid_event(event))
-            push(result, { kind: event.kind, status: event.status, timestamp: event.timestamp });
+            push(result, event_view(event));
     }
     return !all && length(result) > HISTORY_MAX ? slice(result, length(result) - HISTORY_MAX) : result;
 }
@@ -104,16 +117,16 @@ function event_state() {
     if (type(value.events) != "array") return result;
     for (let event in value.events) {
         if (!valid_event(event)) continue;
-        push(result, { kind: event.kind, status: event.status, timestamp: event.timestamp });
+        push(result, event_view(event));
     }
     return length(result) > 10 ? slice(result, length(result) - 10) : result;
 }
 
-function record_event(kind, status) {
+function record_event(kind, status, trigger, candidate) {
     if (index(EVENT_KINDS, kind) < 0 || index(EVENT_STATUSES, status) < 0)
         return 1;
     fs.mkdir(RUNTIME_DIR, 0700);
-    let event = { kind, status, timestamp: int(clock()[0]) };
+    let event = event_view({ kind, status, timestamp: int(clock()[0]), trigger, candidate });
     // The journal is best effort: a full or read-only flash must not stop
     // health from recording the event.
     append_history(event);
@@ -173,7 +186,7 @@ function health(ui, guard, package_pending, events) {
 
 let mode = ARGV[0] || "";
 if (mode == "record")
-    exit(record_event(as_string(ARGV[1]), as_string(ARGV[2])));
+    exit(record_event(as_string(ARGV[1]), as_string(ARGV[2]), as_string(ARGV[3]), as_string(ARGV[4])));
 if (mode == "history") {
     let events = history_events();
     print(sprintf("%J\n", events == null ?

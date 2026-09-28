@@ -2577,6 +2577,7 @@ var Forkop;
     AvailableMethods2["AUTOTUNE_TARGET_SET"] = "autotune_target_set";
     AvailableMethods2["AUTOTUNE_TARGET_REMOVE"] = "autotune_target_remove";
     AvailableMethods2["AUTOTUNE_RUN_ASYNC"] = "autotune_run_async";
+    AvailableMethods2["AUTOTUNE_APPLY_ASYNC"] = "autotune_apply_async";
     AvailableMethods2["AUTOTUNE_RUN_STATUS"] = "autotune_run_status";
   })(
     (AvailableMethods =
@@ -2916,6 +2917,14 @@ var ForkopShellMethods = {
     callBaseMethod(
       Forkop.AvailableMethods.AUTOTUNE_RUN_ASYNC,
       [scope],
+      "/usr/bin/forkop",
+      { allowNonZeroWithStdout: true },
+    ),
+  // Only the group is sent: the backend derives the candidate itself.
+  autotuneApplyAsync: async (group) =>
+    callBaseMethod(
+      Forkop.AvailableMethods.AUTOTUNE_APPLY_ASYNC,
+      [group],
       "/usr/bin/forkop",
       { allowNonZeroWithStdout: true },
     ),
@@ -7260,6 +7269,7 @@ function confirmAction(options) {
             ),
           ]
         : []),
+      ...(options.notes ?? []).map((line) => E("p", {}, line)),
       E("div", { class: "fkp-confirm__actions" }, [
         cancelButton,
         confirmButton,
@@ -18477,13 +18487,34 @@ function historyFilterLabel(filter2) {
       return _("All");
   }
 }
+function eventTitle(event) {
+  if (event.kind !== "autotune_apply" || !event.trigger)
+    return eventKindLabel(event.kind);
+  const candidate = event.candidate ?? "";
+  const manual = event.trigger === "manual";
+  if (!candidate)
+    return manual
+      ? _("Autotune: manual apply")
+      : _("Autotune: automatic apply");
+  if (event.status === "success")
+    return (
+      manual
+        ? _("Autotune: %s applied manually")
+        : _("Autotune: %s applied automatically")
+    ).replace("%s", candidate);
+  return (
+    manual
+      ? _("Autotune: manual apply of %s")
+      : _("Autotune: automatic apply of %s")
+  ).replace("%s", candidate);
+}
 function historyItems(events, filter2, nowMs = Date.now()) {
   return events
     .filter((event) => filter2 === "all" || CATEGORY[event.kind] === filter2)
     .slice()
     .sort((a, b) => b.timestamp - a.timestamp)
     .map((event) => ({
-      title: eventKindLabel(event.kind),
+      title: eventTitle(event),
       outcome: eventOutcomeView(toEventOutcome(event.status)),
       time: formatTime(event.timestamp),
       relative: formatRelativeTime(event.timestamp, nowMs),
@@ -19347,6 +19378,18 @@ function groupCards(status2, live2) {
       explanation.push(_("The rule has a custom strategy; Forkop X keeps it."));
     const apply = state?.last_apply ?? null;
     const nowSeconds = Math.floor(Date.now() / 1e3);
+    const cooling = (candidate) =>
+      Boolean(candidate && (state?.cooldowns?.[candidate] ?? 0) > nowSeconds);
+    const applyCandidate =
+      status2.policy.mode === "recommend" &&
+      result?.status === "recommendation" &&
+      ready &&
+      !custom &&
+      result.candidate &&
+      result.candidate !== "direct" &&
+      !cooling(result.candidate)
+        ? result.candidate
+        : null;
     return {
       id,
       title: now?.label || state?.label || id,
@@ -19368,7 +19411,10 @@ function groupCards(status2, live2) {
         apply && apply.status !== "not_applied"
           ? {
               at: apply.at,
-              candidate: strategyLabel(apply.candidate),
+              candidate:
+                apply.trigger === "manual"
+                  ? `${strategyLabel(apply.candidate)} (${_("manually")})`
+                  : strategyLabel(apply.candidate),
               outcome: applyOutcomeView(apply.status),
             }
           : null,
@@ -19378,8 +19424,9 @@ function groupCards(status2, live2) {
           candidate: strategyLabel(candidate),
           until,
         })),
+      applyCandidate,
       manualHint:
-        status2.policy.mode !== "auto" &&
+        status2.policy.mode === "off" &&
         result?.status === "recommendation" &&
         ready,
       targets: targets.map((target) => hosts[target] ?? target),
@@ -19526,6 +19573,168 @@ function durationLabel(value) {
 function durationChoices(presets, current) {
   return presets.includes(current) ? presets : [...presets, current];
 }
+function applyConfirmation(card3) {
+  const candidate = strategyLabel(card3.applyCandidate);
+  return {
+    title: _("Apply %s?").replace("%s", candidate),
+    message: `${_('The strategy of the DPI rule "%s" will be changed.').replace("%s", card3.title)} ${_("The change affects the whole group:")}`,
+    consequences: card3.targets.length ? card3.targets : ["\u2014"],
+    notes: [
+      `${_("Now")}: ${card3.current}. ${_("Will be")}: ${candidate}.`,
+      _(
+        "Forkop X will create a configuration snapshot, reload the service and check the real production path. If the check fails, the previous configuration is restored automatically.",
+      ),
+    ],
+    confirmLabel: _("Apply"),
+  };
+}
+function applyPhaseLabel(progress) {
+  switch (progress?.apply_phase) {
+    case "checking":
+      return _("Checking the configuration before the change");
+    case "applying":
+      return _("Creating a snapshot and reloading the service");
+    case "verifying":
+      return _("Checking the real production path");
+    case "rolling_back":
+      return _("Restoring the previous configuration");
+  }
+  if (progress?.phase === "applying") return _("Preparing the change");
+  return _("Checking the recommendation");
+}
+var STALE_REASONS = [
+  "recommendation_stale",
+  "rule_changed",
+  "strategy_changed",
+  "targets_changed",
+  "owner_changed",
+  "recommendation_changed",
+  "measurement_unavailable",
+  "plan_candidate_differs",
+];
+function refusalText(reason) {
+  switch (reason) {
+    case "not_confirmed":
+      return _("The recommendation is not confirmed yet.");
+    case "no_recommendation":
+      return _("There is no recommendation to apply.");
+    case "conflict":
+      return _("Targets of this rule need different strategies.");
+    case "direct_not_applicable":
+      return _("Forkop X never turns DPI bypass off by itself.");
+    case "candidate_unsupported":
+      return _("This strategy is not supported by the installed Zapret.");
+    case "confidence_too_low":
+      return _(
+        "The confidence of the recommendation is below the policy minimum.",
+      );
+    case "candidate_in_cooldown":
+      return _(
+        "This strategy was rolled back recently; it waits for the cooldown.",
+      );
+    case "custom_strategy_kept":
+      return _("The rule has a custom strategy; Forkop X keeps it.");
+    case "mode_off":
+    case "mode_not_recommend":
+    case "mode_changed":
+      return _(
+        'Manual apply is available only in "Recommendations only" mode.',
+      );
+    case "state_recovered":
+      return _(
+        "The autotune state was restored after damage. Run the check again.",
+      );
+    case "resolver_missing":
+      return targetReasonText(reason);
+    case "autotune_worker_running":
+    case "autotune_in_progress":
+      return _("Another autotune operation is running.");
+    case "dpi_guard_present":
+    case "snapshot_operation_active":
+    case "apply_unresolved":
+      return `${_("The strategy was not applied")}: ${blockerText(reason)}.`;
+    default:
+      return reason &&
+        /^(reload|restart|start|stop|service)_|_pending$|_running$/.test(reason)
+        ? `${_("The strategy was not applied")}: ${blockerText(reason)}.`
+        : `${_("The strategy was not applied")}.`;
+  }
+}
+function applyResultView(result, candidate) {
+  const name = strategyLabel(candidate);
+  const outcome = result?.result ?? "";
+  const reason = result?.reason ?? null;
+  const stale = {
+    tone: "warning",
+    text: _(
+      "The recommendation is outdated: the configuration changed after the check. Run the check again.",
+    ),
+    attention: false,
+  };
+  switch (outcome) {
+    case "applied":
+      return {
+        tone: "success",
+        text: _("Strategy %s applied and checked.").replace("%s", name),
+        attention: false,
+      };
+    case "rolled_back":
+      return {
+        tone: "warning",
+        text: _(
+          "The new strategy did not pass the check. Forkop X restored the previous configuration automatically.",
+        ),
+        attention: false,
+      };
+    case "no_change_required":
+      return {
+        tone: "neutral",
+        text: _("This strategy is already active; nothing was changed."),
+        attention: false,
+      };
+    case "stale":
+      return stale;
+    case "failed":
+      if (reason === "reload_failed_recovered")
+        return {
+          tone: "warning",
+          text: _(
+            "The new strategy was not applied: the service reload failed and the previous configuration was restored automatically.",
+          ),
+          attention: false,
+        };
+      if (reason !== "interrupted_after_apply")
+        return {
+          tone: "error",
+          text: _(
+            "The strategy could not be applied. The previous configuration is kept.",
+          ),
+          attention: false,
+        };
+      break;
+    case "refused":
+    case "not_applied":
+      if (STALE_REASONS.includes(reason ?? "")) return stale;
+      return { tone: "warning", text: refusalText(reason), attention: false };
+    case "needs_attention":
+    case "unknown":
+      break;
+    default:
+      if (result?.status === "busy")
+        return {
+          tone: "warning",
+          text: refusalText("autotune_worker_running"),
+          attention: false,
+        };
+      if (!outcome && result)
+        return { tone: "error", text: refusalText(reason), attention: false };
+  }
+  return {
+    tone: "error",
+    text: _("Automatic recovery did not finish."),
+    attention: true,
+  };
+}
 
 // src/forkop/tabs/autotune/initController.ts
 var REFRESH_INTERVAL_MS2 = 15e3;
@@ -19546,6 +19755,11 @@ var history3 = null;
 var historyFailed2 = false;
 var busy = false;
 var runningScope = null;
+var applying = null;
+var applyNotice = null;
+function locked() {
+  return busy || Boolean(runningScope) || Boolean(applying);
+}
 function replace2(id, ...nodes) {
   const container = document.getElementById(id);
   if (container)
@@ -19580,6 +19794,7 @@ async function loadStatus() {
       : null;
   history3 = events && Array.isArray(events.events) ? events : null;
   historyFailed2 = !history3;
+  resumeApply();
   renderAll2();
 }
 async function loadGroups() {
@@ -19602,7 +19817,7 @@ async function loadAll2() {
   await Promise.all([loadStatus(), loadGroups()]);
 }
 async function mutate(action, success) {
-  if (busy) return false;
+  if (locked()) return false;
   busy = true;
   renderAll2();
   let ok = false;
@@ -19676,8 +19891,85 @@ async function pollJob(jobId) {
     if (mounted2) void loadStatus();
   }
 }
+function toastType(tone) {
+  return tone === "neutral" ? "info" : tone;
+}
+async function pollApply() {
+  const started = Date.now();
+  while (mounted2 && applying && Date.now() - started < JOB_TIMEOUT_MS) {
+    const current = applying;
+    const response = await ForkopShellMethods.autotuneRunStatus(current.job);
+    const job = response.success ? response.data.job : void 0;
+    if (!mounted2 || applying !== current) return;
+    if (job && (job.state === "finished" || job.state === "lost")) {
+      const view = applyResultView(
+        job.state === "finished" ? job.result : null,
+        job.result?.candidate ?? current.candidate,
+      );
+      applying = null;
+      applyNotice = { group: current.group, view };
+      showToast(view.text, toastType(view.tone), view.attention ? 15e3 : 1e4);
+      await loadAll2();
+      return;
+    }
+    if (job?.progress) {
+      current.progress = job.progress;
+      renderAll2();
+    }
+    await new Promise((resolve) => setTimeout(resolve, JOB_POLL_INTERVAL_MS));
+  }
+}
+function resumeApply() {
+  const worker = status?.worker;
+  if (
+    applying ||
+    !worker ||
+    worker.state !== "running" ||
+    worker.kind !== "apply" ||
+    !worker.job
+  )
+    return;
+  applying = {
+    group: worker.group ?? worker.scope ?? "",
+    candidate: worker.candidate ?? null,
+    job: worker.job,
+    progress: null,
+  };
+  void pollApply();
+}
+async function applyGroup(card3) {
+  if (locked() || !card3.applyCandidate) return;
+  const confirmed = await confirmAction(applyConfirmation(card3));
+  if (!confirmed || locked()) return;
+  applyNotice = null;
+  busy = true;
+  renderAll2();
+  try {
+    const response = await ForkopShellMethods.autotuneApplyAsync(card3.id);
+    const data = response.success ? response.data : null;
+    if (data?.status === "ok" && data.job) {
+      applying = {
+        group: card3.id,
+        candidate: card3.applyCandidate,
+        job: data.job,
+        progress: null,
+      };
+    } else if (data?.status === "busy") {
+      showToast(_("Another autotune operation is running."), "warning", 6e3);
+    } else {
+      showToast(_("Could not start the apply"), "error", 8e3);
+    }
+  } catch (error) {
+    logger.error("[AUTOTUNE]", "apply failed", error);
+    showToast(_("Could not start the apply"), "error", 8e3);
+  } finally {
+    busy = false;
+  }
+  renderAll2();
+  if (applying) await pollApply();
+}
 async function runCheck(scope) {
-  if (busy || runningScope) return;
+  if (locked()) return;
   runningScope = scope;
   renderAll2();
   try {
@@ -20011,7 +20303,7 @@ function renderState2() {
                   type: "button",
                   class: "btn cbi-button",
                   "aria-pressed": mode === policy.mode ? "true" : "false",
-                  disabled: busy ? true : void 0,
+                  disabled: locked() ? true : void 0,
                   click: () => void setMode(mode),
                 },
                 modeLabel(mode),
@@ -20025,7 +20317,12 @@ function renderState2() {
     ],
     [_("Policy"), policySummary(policy)],
   ];
-  if (runningScope || status.worker?.state === "running")
+  if (applying)
+    facts.push([
+      _("State"),
+      renderStatus({ label: _("Applying a strategy"), tone: "loading" }),
+    ]);
+  else if (runningScope || status.worker?.state === "running")
     facts.push([
       _("State"),
       renderStatus(worker ?? { label: _("Checking targets"), tone: "loading" }),
@@ -20083,7 +20380,7 @@ function renderState2() {
             {
               type: "button",
               class: "btn cbi-button",
-              disabled: busy ? true : void 0,
+              disabled: locked() ? true : void 0,
               click: () => showPolicyEditor(),
             },
             _("Policy\u2026"),
@@ -20093,8 +20390,7 @@ function renderState2() {
             {
               type: "button",
               class: "btn cbi-button-action",
-              disabled:
-                busy || runningScope || !status.targets.length ? true : void 0,
+              disabled: locked() || !status.targets.length ? true : void 0,
               title: !status.targets.length ? _("Add a target first") : void 0,
               click: () => void runCheck("all"),
             },
@@ -20117,6 +20413,23 @@ function renderProgress(progress) {
     _("Confirmation %d / %d")
       .replace("%d", String(progress.count))
       .replace("%d", String(progress.required)),
+  ]);
+}
+function renderApplyNotice(view) {
+  if (!view.attention)
+    return renderStatus({ label: view.text, tone: view.tone });
+  return E("div", { class: "fkp-autotune__alert", role: "alert" }, [
+    E("strong", {}, _("Action required")),
+    E("p", {}, view.text),
+    E(
+      "button",
+      {
+        type: "button",
+        class: "btn cbi-button-action",
+        click: () => openForkopPage("history"),
+      },
+      _("Open History and recovery"),
+    ),
   ]);
 }
 function renderGroup(card3) {
@@ -20172,21 +20485,49 @@ function renderGroup(card3) {
             "p",
             { class: "fkp-autotune__muted" },
             _(
-              'In "Recommendations only" mode Forkop X does not change the rule. To let it apply the strategy with a production check and automatic rollback, switch to "Automatic".',
+              'Autotune is off. To apply the recommendation, switch to "Recommendations only" and apply it here, or to "Automatic".',
             ),
           ),
         ]
+      : []),
+    ...(applying?.group === card3.id
+      ? [
+          renderStatus({
+            label: applyPhaseLabel(applying.progress),
+            tone: "loading",
+          }),
+        ]
+      : []),
+    ...(applyNotice?.group === card3.id
+      ? [renderApplyNotice(applyNotice.view)]
       : []),
     ...(readonly
       ? []
       : [
           E("div", { class: "fkp-actions" }, [
+            ...(card3.applyCandidate
+              ? [
+                  E(
+                    "button",
+                    {
+                      type: "button",
+                      class: "btn cbi-button-action",
+                      disabled: locked() ? true : void 0,
+                      click: () => void applyGroup(card3),
+                    },
+                    _("Apply %s").replace(
+                      "%s",
+                      strategyLabel(card3.applyCandidate),
+                    ),
+                  ),
+                ]
+              : []),
             E(
               "button",
               {
                 type: "button",
                 class: "btn cbi-button",
-                disabled: busy || runningScope ? true : void 0,
+                disabled: locked() ? true : void 0,
                 click: () => void runCheck(card3.id),
               },
               runningScope === card3.id ? _("Checking\u2026") : _("Check now"),
@@ -20291,7 +20632,7 @@ function renderTargets() {
             {
               type: "button",
               class: "btn cbi-button",
-              disabled: busy ? true : void 0,
+              disabled: locked() ? true : void 0,
               click: () => showTargetEditor(),
             },
             _("Add target"),
@@ -20352,12 +20693,12 @@ function renderTargets() {
                         {
                           label: _("Edit\u2026"),
                           onClick: () => showTargetEditor(target),
-                          disabled: busy,
+                          disabled: locked(),
                         },
                         {
                           label: _("Remove\u2026"),
                           onClick: () => void removeTarget(target),
-                          disabled: busy,
+                          disabled: locked(),
                           danger: true,
                         },
                       ]),
@@ -20440,6 +20781,7 @@ function onPageMount6() {
 function onPageUnmount6() {
   mounted2 = false;
   mountId2 += 1;
+  applying = null;
   if (refreshTimer2) clearInterval(refreshTimer2);
   refreshTimer2 = null;
 }
@@ -20494,6 +20836,14 @@ var styles8 = `
 .fkp-autotune__hint,
 .fkp-autotune__muted { margin: 0; color: var(--fkp-tone-neutral); overflow-wrap: anywhere; }
 .fkp-autotune__text { margin: 0; overflow-wrap: anywhere; }
+.fkp-autotune__alert {
+    padding: var(--fkp-space-2) var(--fkp-space-3);
+    border: 1px solid var(--fkp-tone-error);
+    border-left-width: 4px;
+    border-radius: 6px;
+    overflow-wrap: anywhere;
+}
+.fkp-autotune__alert p { margin: var(--fkp-space-1) 0 var(--fkp-space-2); }
 .fkp-autotune__modes { display: flex; flex-wrap: wrap; gap: var(--fkp-space-1); }
 .fkp-autotune__modes .btn[aria-pressed="true"] {
     font-weight: 600;

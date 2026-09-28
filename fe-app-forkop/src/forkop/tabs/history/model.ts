@@ -132,6 +132,30 @@ export interface HistoryItem {
   relative: string;
 }
 
+// An autotune apply names its strategy and whether a person or the
+// schedule started it; other events are named by their kind.
+export function eventTitle(event: Forkop.HistoryEvent) {
+  if (event.kind !== 'autotune_apply' || !event.trigger)
+    return eventKindLabel(event.kind);
+  const candidate = event.candidate ?? '';
+  const manual = event.trigger === 'manual';
+  if (!candidate)
+    return manual
+      ? _('Autotune: manual apply')
+      : _('Autotune: automatic apply');
+  if (event.status === 'success')
+    return (
+      manual
+        ? _('Autotune: %s applied manually')
+        : _('Autotune: %s applied automatically')
+    ).replace('%s', candidate);
+  return (
+    manual
+      ? _('Autotune: manual apply of %s')
+      : _('Autotune: automatic apply of %s')
+  ).replace('%s', candidate);
+}
+
 // Newest first.
 export function historyItems(
   events: Forkop.HistoryEvent[],
@@ -143,7 +167,7 @@ export function historyItems(
     .slice()
     .sort((a, b) => b.timestamp - a.timestamp)
     .map((event) => ({
-      title: eventKindLabel(event.kind),
+      title: eventTitle(event),
       outcome: eventOutcomeView(toEventOutcome(event.status)),
       time: formatTime(event.timestamp),
       relative: formatRelativeTime(event.timestamp, nowMs),

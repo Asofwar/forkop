@@ -1409,19 +1409,10 @@ function migrate_own_dependency_mirror(ctx) {
 // none, or an upgrade) gets 256 random bits as hex; an existing secret is
 // never replaced. Without a random source nothing is recorded, so the next
 // run retries, and the validator refuses to start without a secret.
-function random_hex_secret() {
-    let fh = fs.open("/dev/urandom", "r");
-    if (fh == null)
-        return null;
-    let bytes = fh.read(32);
-    fh.close();
-    return type(bytes) == "string" && length(bytes) == 32 ? hexenc(bytes) : null;
-}
-
 function migrate_clash_api_secret(ctx) {
     if (common.clash_api_secret(ctx.model.settings) != "")
         return true;
-    let secret = random_hex_secret();
+    let secret = common.random_hex_secret();
     if (secret == null)
         return false;
     set_option(ctx, ctx.model.settings, "yacd_secret_key", secret);

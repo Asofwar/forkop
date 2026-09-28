@@ -14,7 +14,8 @@ const HISTORY_FILE = getenv("FORKOP_HISTORY_FILE") || "/etc/forkop/history.jsonl
 const HISTORY_MAX = 200;
 const HISTORY_MAX_BYTES = 65536;
 const HISTORY_KEEP = 150;
-const EVENT_KINDS = [ "start", "reload", "restore", "recovery", "autotune_apply", "snapshot_create", "snapshot_delete" ];
+const EVENT_KINDS = [ "start", "reload", "restore", "recovery", "autotune_apply", "snapshot_create", "snapshot_delete",
+    "autotune_mode" ];
 const EVENT_STATUSES = [ "success", "failure", "recovered" ];
 
 function read_object(path) {

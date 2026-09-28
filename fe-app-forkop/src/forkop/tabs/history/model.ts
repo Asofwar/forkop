@@ -107,6 +107,7 @@ const CATEGORY: Record<string, Exclude<HistoryFilter, 'all'>> = {
   start: 'service',
   recovery: 'service',
   autotune_apply: 'autotune',
+  autotune_mode: 'autotune',
 };
 
 export function historyFilterLabel(filter: HistoryFilter) {

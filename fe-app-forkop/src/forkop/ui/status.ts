@@ -270,6 +270,8 @@ export function eventKindLabel(kind: string): string {
       return _('Recovery');
     case 'autotune_apply':
       return _('Autotune apply');
+    case 'autotune_mode':
+      return _('Autotune mode changed');
     case 'snapshot_create':
       return _('Snapshot created');
     case 'snapshot_delete':

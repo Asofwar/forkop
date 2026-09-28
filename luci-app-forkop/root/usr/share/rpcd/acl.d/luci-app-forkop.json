@@ -14,7 +14,6 @@
         "/usr/libexec/forkop-ro get_health_status": ["exec"],
         "/usr/libexec/forkop-ro get_history": ["exec"],
         "/usr/libexec/forkop-ro autotune_status": ["exec"],
-        "/usr/libexec/forkop-ro autotune_target *": ["exec"],
         "/usr/libexec/forkop-ro autotune_groups": ["exec"],
         "/usr/libexec/forkop-ro autotune_run_status *": ["exec"],
         "/usr/libexec/forkop-ro route_trace *": ["exec"],
@@ -23,15 +22,10 @@
         "/usr/libexec/forkop-ro connectivity_test *": ["exec"],
         "/usr/libexec/forkop-ro get_readonly_config_sections": ["exec"],
         "/usr/libexec/forkop-ro get_dashboard_runtime_metadata": ["exec"],
-        "/usr/libexec/forkop-ro get_outbound_metadata *": ["exec"],
         "/usr/libexec/forkop-ro show_version": ["exec"],
-        "/usr/libexec/forkop-ro show_sing_box_version": ["exec"],
-        "/usr/libexec/forkop-ro check_proxy": ["exec"],
-        "/usr/libexec/forkop-ro check_nft": ["exec"],
         "/usr/libexec/forkop-ro check_nft_rules": ["exec"],
         "/usr/libexec/forkop-ro check_sing_box": ["exec"],
         "/usr/libexec/forkop-ro check_logs": ["exec"],
-        "/usr/libexec/forkop-ro check_sing_box_logs": ["exec"],
         "/usr/libexec/forkop-ro check_fakeip": ["exec"],
         "/usr/libexec/forkop-ro check_zapret_runtime": ["exec"],
         "/usr/libexec/forkop-ro check_zapret2_runtime": ["exec"],
@@ -39,9 +33,6 @@
         "/usr/libexec/forkop-ro check_dns_available": ["exec"],
         "/usr/libexec/forkop-ro clash_api get_proxies": ["exec"],
         "/usr/libexec/forkop-ro clash_api get_connections": ["exec"],
-        "/usr/libexec/forkop-ro clash_api get_proxy_latency *": ["exec"],
-        "/usr/libexec/forkop-ro clash_api get_proxy_latencies *": ["exec"],
-        "/usr/libexec/forkop-ro clash_api get_group_latency *": ["exec"],
         "/usr/libexec/forkop-ro service_action_status *": ["exec"],
         "/usr/libexec/forkop-ro latency_test_status *": ["exec"],
         "/usr/libexec/forkop-ro component_action_status *": ["exec"],
@@ -84,9 +75,6 @@
         ],
         "network.interface": [
           "dump"
-        ],
-        "service": [
-          "list"
         ]
       }
     },

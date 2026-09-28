@@ -74,12 +74,32 @@ describe('read-only exec allowlist', () => {
     ).toBe(true);
     expect(
       isReadonlyCommandAllowed('/usr/libexec/forkop-ro', [
-        'clash_api',
-        'get_group_latency',
-        'main',
-        '5000',
+        'connectivity_test',
+        'example.org',
+        'TCP',
+        '443',
       ]),
     ).toBe(true);
+  });
+
+  // UC-034: no read-only page needs them, and they start sing-box, probe
+  // arbitrary URLs through the outbounds or dump the unmasked nft table.
+  it('does not grant commands the read-only pages never run', () => {
+    for (const args of [
+      ['check_proxy'],
+      ['check_nft'],
+      ['check_sing_box_logs'],
+      ['show_sing_box_version'],
+      ['get_outbound_metadata', 'main'],
+      ['autotune_target', 'youtube'],
+      ['clash_api', 'get_proxy_latency', 'main', '5000', 'http://10.0.0.1/'],
+      ['clash_api', 'get_proxy_latencies', '["main"]', '5000', '/tmp/x'],
+      ['clash_api', 'get_group_latency', 'main', '10000'],
+    ]) {
+      expect(isReadonlyCommandAllowed('/usr/libexec/forkop-ro', args)).toBe(
+        false,
+      );
+    }
   });
 });
 

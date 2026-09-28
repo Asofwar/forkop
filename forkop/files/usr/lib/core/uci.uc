@@ -181,6 +181,30 @@ function state_del_list(path, value) {
     return state_set(path, join(" ", values));
 }
 
+function state_rename(path, name) {
+    let parts = path_parts(path);
+    name = as_string(name);
+    if (parts == null || parts.option != "" || name == "")
+        return false;
+
+    let from = parts.package + "." + parts.section;
+    let to = parts.package + "." + name;
+    if (state_get(from) == "" || state_exists(to))
+        return false;
+
+    let lines = [];
+    for (let line in state_lines()) {
+        if (line == "")
+            continue;
+        let equals = index(line, "=");
+        let key = equals >= 0 ? substr(line, 0, equals) : line;
+        if (key == from || substr(key, 0, length(from) + 1) == from + ".")
+            line = to + substr(line, length(from));
+        push(lines, line);
+    }
+    return state_write_lines(lines);
+}
+
 function state_commit(package_name) {
     if (UCI_LOG_FILE == "")
         return true;
@@ -425,6 +449,32 @@ function set_section(path, type_name) {
     }
 }
 
+// Gives the section <package>.<section> the name <name>; an anonymous section
+// becomes a named one in place.
+function rename(path, name) {
+    path = as_string(path);
+    name = as_string(name);
+    if (fixture_enabled())
+        return state_rename(path, name);
+
+    let parts = path_parts(path);
+    let c = cursor();
+    if (c == null || parts == null || parts.option != "" || name == "")
+        return false;
+    if (!load(parts.package))
+        return false;
+    parts = resolve_parts(c, parts);
+    if (parts == null || c.get(parts.package, parts.section) == null || c.get(parts.package, name) != null)
+        return false;
+
+    try {
+        return c.rename(parts.package, parts.section, name) != false;
+    }
+    catch (e) {
+        return false;
+    }
+}
+
 function add(package_name, type_name) {
     if (fixture_enabled())
         return state_add_section(package_name, type_name);
@@ -615,6 +665,7 @@ return {
     exists,
     delete: delete_path,
     set_section,
+    rename,
     add,
     set,
     add_list,

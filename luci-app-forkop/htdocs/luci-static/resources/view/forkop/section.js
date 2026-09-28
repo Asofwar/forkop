@@ -5106,7 +5106,9 @@ function buildNfqwsRemoteValidationFallback(error) {
 
   return {
     valid: false,
-    message: _("Backend validation failed: %s").format(message),
+    message: _(
+      "Backend validation unavailable: %s. Save again to retry.",
+    ).format(message),
     needle: "",
     needles: [],
   };
@@ -5141,6 +5143,9 @@ function validateNfqwsStrategyRemotely(value) {
       const payload = JSON.parse(
         (result && result.stdout ? result.stdout : "{}").trim() || "{}",
       );
+      if (typeof payload.valid !== "boolean") {
+        throw new Error();
+      }
       return cacheNfqwsRemoteValidation(normalized, {
         valid: payload.valid === true,
         message: payload.message || "",
@@ -5152,12 +5157,9 @@ function validateNfqwsStrategyRemotely(value) {
             : [],
       });
     })
-    .catch((error) =>
-      cacheNfqwsRemoteValidation(
-        normalized,
-        buildNfqwsRemoteValidationFallback(error),
-      ),
-    )
+    // A failed call is not a verdict: it is not cached, so the next
+    // validation or Save asks the backend again (UC-040).
+    .catch((error) => buildNfqwsRemoteValidationFallback(error))
     .finally(() => {
       nfqwsRemoteValidationInflight.delete(normalized);
     });
@@ -5551,7 +5553,9 @@ function buildNfqws2RemoteValidationFallback(error) {
 
   return {
     valid: false,
-    message: _("Backend validation failed: %s").format(message),
+    message: _(
+      "Backend validation unavailable: %s. Save again to retry.",
+    ).format(message),
     needle: "",
     needles: [],
   };
@@ -5586,6 +5590,9 @@ function validateNfqws2StrategyRemotely(value) {
       const payload = JSON.parse(
         (result && result.stdout ? result.stdout : "{}").trim() || "{}",
       );
+      if (typeof payload.valid !== "boolean") {
+        throw new Error();
+      }
       return cacheNfqws2RemoteValidation(normalized, {
         valid: payload.valid === true,
         message: payload.message || "",
@@ -5597,12 +5604,9 @@ function validateNfqws2StrategyRemotely(value) {
             : [],
       });
     })
-    .catch((error) =>
-      cacheNfqws2RemoteValidation(
-        normalized,
-        buildNfqws2RemoteValidationFallback(error),
-      ),
-    )
+    // A failed call is not a verdict: it is not cached, so the next
+    // validation or Save asks the backend again (UC-040).
+    .catch((error) => buildNfqws2RemoteValidationFallback(error))
     .finally(() => {
       nfqws2RemoteValidationInflight.delete(normalized);
     });
@@ -5963,7 +5967,9 @@ function buildByedpiRemoteValidationFallback(error) {
 
   return {
     valid: false,
-    message: _("Backend validation failed: %s").format(message),
+    message: _(
+      "Backend validation unavailable: %s. Save again to retry.",
+    ).format(message),
     needle: "",
     needles: [],
   };
@@ -5998,6 +6004,9 @@ function validateByedpiStrategyRemotely(value) {
       const payload = JSON.parse(
         (result && result.stdout ? result.stdout : "{}").trim() || "{}",
       );
+      if (typeof payload.valid !== "boolean") {
+        throw new Error();
+      }
       return cacheByedpiRemoteValidation(normalized, {
         valid: payload.valid === true,
         message: payload.message || "",
@@ -6009,12 +6018,9 @@ function validateByedpiStrategyRemotely(value) {
             : [],
       });
     })
-    .catch((error) =>
-      cacheByedpiRemoteValidation(
-        normalized,
-        buildByedpiRemoteValidationFallback(error),
-      ),
-    )
+    // A failed call is not a verdict: it is not cached, so the next
+    // validation or Save asks the backend again (UC-040).
+    .catch((error) => buildByedpiRemoteValidationFallback(error))
     .finally(() => {
       byedpiRemoteValidationInflight.delete(normalized);
     });

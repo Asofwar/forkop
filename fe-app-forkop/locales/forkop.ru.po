@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-28 22:57+0000\n"
-"PO-Revision-Date: 2026-09-28 22:57+0000\n"
+"POT-Creation-Date: 2026-09-28 23:32+0000\n"
+"PO-Revision-Date: 2026-09-28 23:32+0000\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -3340,6 +3340,9 @@ msgstr "Правило, по которому она идёт, нельзя оп
 
 msgid "The rule will be removed on the next successful save. The page could not be saved now: %s"
 msgstr "Правило будет удалено при следующем успешном сохранении. Сейчас страницу сохранить не удалось: %s"
+
+msgid "The rule window was closed before the save finished. Nothing was saved."
+msgstr "Окно правила закрыто до завершения сохранения. Ничего не сохранено."
 
 msgid "the rules connect through each other in a loop"
 msgstr "правила подключаются друг через друга по кругу"

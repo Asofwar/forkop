@@ -399,6 +399,81 @@ async function check(label, fn) {
       assert.deepEqual(env.uci.data.rule, fixture, 'switching back changed the rule');
     });
 
+    // The modal stays editable, and Dismiss works, while the backend checks
+    // of a Save run. What parse writes is what was checked: a form edited
+    // meanwhile is checked again, and a Save whose modal was dismissed
+    // writes nothing (UC-008, UC-040).
+    const S1 = '--filter-tcp=443 --dpi-desync=fake';
+    const S2 = '--filter-tcp=443 --dpi-desync=fake,multisplit';
+    const pendingBackend = (answers) => {
+      let release;
+      const pending = new Promise((resolve) => { release = resolve; });
+      const fs = {
+        exec(_command, args) {
+          if (args && args[0] === 'validate_nfqws_strategy_json')
+            return args[1] === S1 ? pending : Promise.resolve(answers[args[1]]);
+          return Promise.resolve({ code: 0, stdout: '{}', stderr: '' });
+        },
+      };
+      return { fs, release: () => release({ code: 0, stdout: '{"valid":true}', stderr: '' }) };
+    };
+    const tick = () => new Promise((resolve) => setImmediate(resolve));
+    const accepted = { code: 0, stdout: '{"valid":true}', stderr: '' };
+    for (const [label, answer, edit, error] of [
+      ['strategy edited to one the backend rejects', rejected,
+        (modal) => modal.option('nfqws_opt').getUIElement('rule').setValue(S2), /Rejected by the backend parser/],
+      ['strategy edited while the backend is unavailable', unavailable,
+        (modal) => modal.option('nfqws_opt').getUIElement('rule').setValue(S2), /Backend validation unavailable/],
+      ['another field made invalid', accepted,
+        (modal) => modal.option('ip_cidr').getUIElement('rule').setValue('not-an-ip'), /invalid input value/],
+    ]) await check(`${version} ${label} during the pending strategy check: refused save writes nothing`, async () => {
+      const backendState = pendingBackend({ [S2]: answer });
+      const env = createEnvironment({ version, config: JSON.parse(JSON.stringify(connectionWithSubscription)),
+        fs: backendState.fs });
+      const modal = await env.openRule('rule');
+      modal.option('action').getUIElement('rule').setValue('zapret');
+      modal.option('nfqws_opt').getUIElement('rule').setValue(S1);
+      const saving = modal.save();
+      await tick();
+      edit(modal);
+      backendState.release();
+      await assert.rejects(saving, error);
+      assert.deepEqual(env.uci.data, connectionWithSubscription, 'a refused save changed UCI');
+    });
+
+    await check(`${version} strategy edited during the pending check: the edited value is checked and saved`, async () => {
+      const backendState = pendingBackend({ [S2]: accepted });
+      const env = createEnvironment({ version, config: JSON.parse(JSON.stringify(connectionWithSubscription)),
+        fs: backendState.fs });
+      const modal = await env.openRule('rule');
+      modal.option('action').getUIElement('rule').setValue('zapret');
+      modal.option('nfqws_opt').getUIElement('rule').setValue(S1);
+      const saving = modal.save();
+      await tick();
+      modal.option('nfqws_opt').getUIElement('rule').setValue(S2);
+      backendState.release();
+      await saving;
+      assert.equal(env.uci.data.rule.action, 'zapret');
+      assert.equal(env.uci.data.rule.nfqws_opt, S2);
+    });
+
+    await check(`${version} Dismiss during the pending strategy check: the late save writes nothing`, async () => {
+      const backendState = pendingBackend({});
+      const env = createEnvironment({ version, config: JSON.parse(JSON.stringify(connectionWithSubscription)),
+        fs: backendState.fs });
+      const modal = await env.openRule('rule');
+      modal.option('action').getUIElement('rule').setValue('zapret');
+      modal.option('nfqws_opt').getUIElement('rule').setValue(S1);
+      const saving = modal.saveButton();
+      await tick();
+      await modal.dismiss();
+      backendState.release();
+      await saving;
+      assert.deepEqual(env.uci.data, connectionWithSubscription, 'a dismissed modal changed UCI');
+      assert.deepEqual([env.uci.state.changes, env.uci.state.deletes, env.uci.state.creates], [{}, {}, {}],
+        'a dismissed modal left staged edits');
+    });
+
     // UC-003: the device filter is offered whenever a Built-in rule set #2 is set.
     await check(`${version} device filter visibility`, async () => {
       const env = createEnvironment({ version, config: { rule: fixtures.device_filter_secondary_only } });

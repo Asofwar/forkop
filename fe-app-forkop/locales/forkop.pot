@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-28 22:57+0000\n"
-"PO-Revision-Date: 2026-09-28 22:57+0000\n"
+"POT-Creation-Date: 2026-09-28 23:32+0000\n"
+"PO-Revision-Date: 2026-09-28 23:32+0000\n"
 "Last-Translator: Asofwar <7397608+Asofwar@users.noreply.github.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -933,22 +933,22 @@ msgstr ""
 #: src/forkop/ui/status.ts:135
 #: src/forkop/tabs/autotune/initController.ts:763
 #: src/forkop/tabs/autotune/initController.ts:903
-#: src/forkop/tabs/dashboard/overview.ts:136
 #: src/forkop/tabs/diagnostic/connectivityMatrix.ts:104
 #: src/forkop/tabs/diagnostic/dpiPlayground.ts:48
 #: src/forkop/tabs/diagnostic/siteCheck.ts:243
 #: src/forkop/tabs/diagnostic/statusLabels.ts:28
+#: src/forkop/tabs/dashboard/overview.ts:136
 msgid "Checking…"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:10
 #: src/forkop/tabs/diagnostic/helpers/getMeta.ts:26
+#: src/forkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:10
 msgid "Checks failed"
 msgstr ""
 
+#: src/forkop/tabs/diagnostic/helpers/getMeta.ts:13
 #: src/forkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:23
 #: src/forkop/tabs/diagnostic/checks/runFakeIPCheck.ts:43
-#: src/forkop/tabs/diagnostic/helpers/getMeta.ts:13
 msgid "Checks passed"
 msgstr ""
 
@@ -996,9 +996,9 @@ msgstr ""
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3581
 #: src/partials/modal/renderModal.ts:263
 #: src/forkop/tabs/autotune/initController.ts:608
+#: src/forkop/tabs/history/initController.ts:221
 #: src/forkop/tabs/dashboard/initController.ts:1279
 #: src/forkop/tabs/dashboard/initController.ts:1657
-#: src/forkop/tabs/history/initController.ts:221
 #: src/forkop/tabs/updates/releaseSelector.ts:121
 msgid "Close"
 msgstr ""
@@ -2678,8 +2678,8 @@ msgstr ""
 msgid "IPv6 only"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:17
 #: src/forkop/tabs/diagnostic/helpers/getMeta.ts:20
+#: src/forkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:17
 msgid "Issues detected"
 msgstr ""
 
@@ -2885,11 +2885,11 @@ msgstr ""
 #: src/forkop/tabs/autotune/render.ts:25
 #: src/forkop/tabs/autotune/render.ts:29
 #: src/forkop/tabs/autotune/render.ts:33
-#: src/forkop/tabs/dashboard/render.ts:14
 #: src/forkop/tabs/diagnostic/initController.ts:737
 #: src/forkop/tabs/history/render.ts:13
 #: src/forkop/tabs/history/render.ts:17
 #: src/forkop/tabs/history/render.ts:29
+#: src/forkop/tabs/dashboard/render.ts:14
 msgid "Loading…"
 msgstr ""
 
@@ -3153,8 +3153,8 @@ msgstr ""
 msgid "No events of this kind"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/overviewCards.ts:232
 #: src/forkop/tabs/history/initController.ts:161
+#: src/forkop/tabs/dashboard/overviewCards.ts:232
 msgid "No events recorded yet"
 msgstr ""
 
@@ -3179,8 +3179,8 @@ msgstr ""
 msgid "No recovery needed"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/overview.ts:255
 #: src/forkop/tabs/history/model.ts:87
+#: src/forkop/tabs/dashboard/overview.ts:255
 msgid "No reload recorded yet"
 msgstr ""
 
@@ -4813,8 +4813,12 @@ msgstr ""
 msgid "The rule that routes it cannot be determined unambiguously (for example, a remote list comes first)."
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9656
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9720
 msgid "The rule will be removed on the next successful save. The page could not be saved now: %s"
+msgstr ""
+
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9591
+msgid "The rule window was closed before the save finished. Nothing was saved."
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:231

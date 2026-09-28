@@ -9510,49 +9510,111 @@ function loadSectionTableOptions(sectionRef) {
 // that parse would run only after other writes refuses: the items of a list
 // (checkBeforeSave of SettingsDynamicList) or the backend check of a changed
 // DPI strategy.
+function inspectModalBeforeSave(modalMap) {
+  const checks = [];
+
+  for (const modalSection of modalMap.children) {
+    for (const section_id of modalSection.cfgsections()) {
+      for (const option of modalSection.children) {
+        if (!option.isActive(section_id)) {
+          continue;
+        }
+
+        if (
+          typeof option.checkBeforeSave === "function" &&
+          typeof option.triggerValidation === "function"
+        ) {
+          option.triggerValidation(section_id);
+        }
+
+        if (!option.isValid(section_id)) {
+          return { invalid: { option, section_id }, checks };
+        }
+
+        if (typeof option.checkBeforeSave === "function") {
+          checks.push({ option, section_id });
+        }
+      }
+    }
+  }
+
+  return { invalid: null, checks };
+}
+
+// What the checks were run on: the value and the active state of every
+// option of the modal.
+function modalFormState(modalMap) {
+  const state = [];
+
+  for (const modalSection of modalMap.children) {
+    for (const section_id of modalSection.cfgsections()) {
+      for (const option of modalSection.children) {
+        state.push([
+          option.option,
+          section_id,
+          option.isActive(section_id),
+          option.formvalue(section_id),
+        ]);
+      }
+    }
+  }
+
+  return JSON.stringify(state);
+}
+
 function refuseInvalidModalSave(modalMap) {
   const parse = modalMap.parse;
 
   modalMap.parse = function (...args) {
-    const checks = [];
-
     forgetUnavailableStrategyValidations();
 
-    for (const modalSection of this.children) {
-      for (const section_id of modalSection.cfgsections()) {
-        for (const option of modalSection.children) {
-          if (!option.isActive(section_id)) {
-            continue;
-          }
+    const { invalid, checks } = inspectModalBeforeSave(this);
 
-          if (
-            typeof option.checkBeforeSave === "function" &&
-            typeof option.triggerValidation === "function"
-          ) {
-            option.triggerValidation(section_id);
-          }
-
-          if (!option.isValid(section_id)) {
-            return rejectInvalidOption(option, section_id);
-          }
-
-          if (typeof option.checkBeforeSave === "function") {
-            checks.push({ option, section_id });
-          }
-        }
-      }
+    if (invalid) {
+      return rejectInvalidOption(invalid.option, invalid.section_id);
     }
+
+    const checkedState = modalFormState(this);
 
     return Promise.all(
       checks.map(({ option, section_id }) =>
         option.checkBeforeSave(section_id),
       ),
     ).then((results) => {
+      // LuCI keeps the modal editable, and Dismiss working, while the
+      // checks run. A dismissed modal saves nothing, and a form edited
+      // meanwhile is checked again as it is now: parse writes what it holds.
+      // Only an edit changes the state, so without one this runs once more.
+      if (this.forkopModalDismissed) {
+        return Promise.reject(
+          new Error(
+            _(
+              "The rule window was closed before the save finished. Nothing was saved.",
+            ),
+          ),
+        );
+      }
+
+      this.checkDepends();
+
+      if (modalFormState(this) !== checkedState) {
+        return this.parse(...args);
+      }
+
       const index = results.findIndex((result) => result !== true);
 
       if (index >= 0) {
         const { option, section_id } = checks[index];
         return rejectInvalidOption(option, section_id, results[index]);
+      }
+
+      const recheck = inspectModalBeforeSave(this);
+
+      if (recheck.invalid) {
+        return rejectInvalidOption(
+          recheck.invalid.option,
+          recheck.invalid.section_id,
+        );
       }
 
       return parse.apply(this, args);
@@ -9628,6 +9690,8 @@ function configureSectionSection(sectionRef, options = {}) {
   sectionRef.handleModalCancel = function (modalMap, _ev, isSaving) {
     if (modalMap) {
       if (!isSaving) {
+        // A Save still waiting for its checks must not write afterwards.
+        modalMap.forkopModalDismissed = true;
         restoreStagedUciState(modalMap.forkopStagedUciState);
       }
       delete modalMap.forkopStagedUciState;

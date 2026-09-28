@@ -3262,7 +3262,7 @@ function generate_config(output_path, service_address, mwan3_active, supports_xh
 
     assert_unique_outbound_tags(config);
     strip_internal_fields(config);
-    if (!write_json_file(output_path, config)) {
+    if (!common.write_private_json_file(output_path, config)) {
         warn("failed to write ", output_path, "\n");
         exit(1);
     }

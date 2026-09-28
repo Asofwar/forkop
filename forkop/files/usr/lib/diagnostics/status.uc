@@ -2,6 +2,7 @@
 
 let fs = require("fs");
 let core_ip = require("core.ip");
+let common = require("core.common");
 
 function as_string(value) {
     return value == null ? "" : "" + value;
@@ -1640,7 +1641,8 @@ function prepare_check_proxy_config(input_path, output_path, cache_path) {
         delete config.experimental.clash_api;
     }
 
-    if (!write_json_file(output_path, config))
+    // A copy of the full config in /tmp: private like the original (UC-037).
+    if (!common.write_private_json_file(output_path, config))
         exit(1);
 }
 

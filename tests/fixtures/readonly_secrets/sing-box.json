@@ -29,6 +29,13 @@
     { "type": "http", "tag": "http-out", "server": "http.example", "server_port": 8080, "username": "SECRET_MARKER_85", "password": "SECRET_MARKER_86",
       "headers": { "Authorization": "Basic SECRET_MARKER_87" }, "path": "/SECRET_MARKER_88" },
     { "type": "socks", "tag": "socks-out", "server": "socks.example", "server_port": 1080, "username": "SECRET_MARKER_89", "password": "SECRET_MARKER_90" },
+    { "type": "vless", "tag": "grpc-out", "server": "grpc.example", "server_port": 443, "uuid": "SECRET_MARKER_160",
+      "transport": { "type": "grpc", "service_name": "SECRET_MARKER_161" },
+      "tls": { "enabled": true, "client_key": "SECRET_MARKER_162", "key": "SECRET_MARKER_163",
+        "acme": { "email": "SECRET_MARKER_164@mail.example", "dns01_challenge": { "provider": "cloudflare", "api_token": "SECRET_MARKER_165", "access_key_id": "SECRET_MARKER_166", "secret_access_key": "SECRET_MARKER_167" },
+          "external_account": { "key_id": "SECRET_MARKER_168", "mac_key": "SECRET_MARKER_169" } } } },
+    { "type": "naive", "tag": "naive-out", "server": "naive.example", "server_port": 443, "extra_headers": { "X-Token": "SECRET_MARKER_170" } },
+    { "type": "tor", "tag": "tor-out", "torrc": { "HashedControlPassword": "SECRET_MARKER_171" } },
     { "type": "urltest", "tag": "urltest-out", "outbounds": [ "main-out", "trojan-out" ], "url": "https://urltest.example/generate_204?token=SECRET_MARKER_91", "interval": "3m" }
   ],
   "endpoints": [

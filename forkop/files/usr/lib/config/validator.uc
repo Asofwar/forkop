@@ -1650,6 +1650,39 @@ function validate_runtime_mark_ranges_context(context) {
     }
 }
 
+// Dashboard URLTest overrides (config/urltest_override.uc) replace the
+// settings of a URLTest group of a rule in the generated config; they are
+// checked as the dashboard saves them. An override that no enabled Connection
+// rule uses is never applied and is not checked: rules deleted before their
+// overrides went with them left such sections behind (UC-151).
+function validate_urltest_overrides(sections) {
+    let rules = {};
+    for (let section in sections)
+        rules[section_name(section)] = section;
+
+    for (let override in sections_by_type("urltest_override")) {
+        let rule = rules[option(override, "rule", "")];
+        let tag = option(override, "tag", "");
+        if (type(rule) != "object" || !section_enabled(rule) ||
+            !connections.is_connections_action(rule_action(rule)) || tag == "")
+            continue;
+
+        let label = "URLTest override '" + tag + "' of rule '" + section_name(rule) + "'";
+        validate_http_url_option(option(override, "testing_url", ""), label + " (testing_url)");
+        validate_required_duration_option(option(override, "check_interval", ""), label + " (check_interval)");
+        validate_required_duration_option(option(override, "idle_timeout", ""), label + " (idle_timeout)");
+
+        let tolerance = option(override, "tolerance", "");
+        if (match(tolerance, /^[0-9]+$/) == null || int(tolerance, 10) > 65535)
+            fail_validation("Invalid tolerance '" + tolerance + "' for " + label + ". Use a number from 0 to 65535. Aborted.");
+
+        // Unset means "1" (urltest_override.get).
+        let interrupt = option(override, "interrupt_exist_connections", "");
+        if (interrupt != "" && interrupt != "0" && interrupt != "1")
+            fail_validation("Invalid interrupt_exist_connections '" + interrupt + "' for " + label + ". Use 0 or 1. Aborted.");
+    }
+}
+
 function validate_runtime_config(context) {
     let settings = settings_section();
     let sections = sections_by_type("section");
@@ -1684,6 +1717,7 @@ function validate_runtime_config(context) {
     for (let section in sections)
         validate_rule(section, sections, context);
 
+    validate_urltest_overrides(sections);
     validate_clash_api_settings(settings);
 }
 

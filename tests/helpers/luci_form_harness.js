@@ -9,7 +9,8 @@
 // edits and just enough DOM for the stacked item settings modal. The form code
 // follows luci-base form.js of OpenWrt 24.10 and 25.12 (AbstractValue.parse,
 // FlagValue.parse, Map.isDependencySatisfied, isEqual,
-// AbstractSection.checkDepends, GridSection.cloneOptions):
+// AbstractSection.checkDepends, AbstractSection.formvalue,
+// GridSection.cloneOptions):
 //   - an inactive option is removed on save unless it sets `retain`;
 //   - an active option is written only when its widget value differs from the
 //     loaded cfgvalue; an active empty value is removed (rmempty);
@@ -582,6 +583,18 @@ function createForm({ version, baseclass, uci, jsonMaps }) {
     },
     cfgsections() {
       return [];
+    },
+    // AbstractSection.formvalue(section_id, option): the widget value of the
+    // named child option (null when there is none), or of every child when
+    // no option is named. Before the map renders it reads cfgvalue instead.
+    formvalue(section_id, option) {
+      const rv = arguments.length === 1 ? {} : null;
+      for (const child of this.children) {
+        const func = this.map.root ? child.formvalue : child.cfgvalue;
+        if (rv) rv[child.option] = func.call(child, section_id);
+        else if (child.option === option) return func.call(child, section_id);
+      }
+      return rv;
     },
     load() {
       const tasks = [];

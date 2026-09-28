@@ -62,6 +62,10 @@ function saveRule(store, sectionId, state) {
     getDefaultOutboundDetourSection: () => '',
     getUciSectionName: item => item,
     refreshOutboundDetourSectionOptionValues() {},
+    // The cascade pair drops itself only on an action change
+    // (tests/luci_section_hidden_options.sh); here the action is kept.
+    loadOutboundDetourOption: load => load,
+    parseOutboundDetourOption: parse => parse,
     getRuleResolvedAction: sid => store[sid].action,
     section: {
       taboption(tab, type, name) {

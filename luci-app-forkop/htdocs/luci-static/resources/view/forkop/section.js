@@ -87,15 +87,36 @@ function isOutboundDetourTargetSection(section, currentSectionId) {
 
 // Cascade is only valid on Connection rules (config/validator.uc aborts
 // otherwise). The cascade options are hidden in the modal and kept via
-// `retain`, so they are dropped explicitly once the rule stops being one.
+// `retain`, so they are dropped explicitly once the rule stops being one:
+// when the modal changes its action from a Connection action to another.
+// A save that keeps the action keeps them whatever it is (D-22 b); the
+// _hidden_cascade notice says why they fail and offers Clear.
+function isOutboundDetourRuleAction(action) {
+  return ["connection", "proxy", "outbound", "vpn"].includes(
+    `${action || "connection"}`,
+  );
+}
+
+// The action the rule had when the modal loaded it: when these options
+// parse, the action option has already written the chosen one.
+function loadOutboundDetourOption(parentLoad) {
+  return function (section_id) {
+    this.loadedRuleActions = Object.assign({}, this.loadedRuleActions, {
+      [section_id]: uci.get(UCI_PACKAGE, section_id, "action"),
+    });
+    return parentLoad.apply(this, arguments);
+  };
+}
+
 function parseOutboundDetourOption(parentParse) {
   return function (section_id) {
+    const loaded = this.loadedRuleActions?.[section_id];
     const action = this.section.formvalue(section_id, "action");
 
     if (
-      !["connection", "proxy", "outbound", "vpn"].includes(
-        `${action || "connection"}`,
-      )
+      loaded !== undefined &&
+      isOutboundDetourRuleAction(loaded) &&
+      !isOutboundDetourRuleAction(action)
     ) {
       return Promise.resolve(this.remove(section_id));
     }
@@ -8028,6 +8049,7 @@ function createSectionContent(section) {
   o.retain = true;
   o.modalonly = true;
   o.parse = parseOutboundDetourOption(o.parse);
+  o.load = loadOutboundDetourOption(o.load);
   o.write = function (section_id, value) {
     if (value === "1") {
       const currentValue =
@@ -8065,12 +8087,12 @@ function createSectionContent(section) {
   o.retain = true;
   o.modalonly = true;
   o.parse = parseOutboundDetourOption(o.parse);
-  o.load = function (section_id) {
+  o.load = loadOutboundDetourOption(function (section_id) {
     refreshOutboundDetourSectionOptionValues(this, section_id);
     return Promise.resolve(
       uci.get(UCI_PACKAGE, section_id, "outbound_detour_section") || "",
     );
-  };
+  });
   o.validate = function (section_id, value) {
     if (!value) {
       return _("Select an intermediate section");

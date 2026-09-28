@@ -12,16 +12,17 @@ const source = fs.readFileSync(process.argv[2], 'utf8');
 // the backend, so LuCI must not drop them when the modal is saved.
 const hiddenBlocks = source.split(/\n  o = section\.taboption\(/)
   .filter(block => block.includes('"__internal_hidden__"'))
-  .map(block => [block.match(/^\s*"settings",\s*form\.\w+,\s*"(\w+)"/)?.[1], block]);
+  .map(block => [block.match(/^\s*"\w+",\s*form\.\w+,\s*"(\w+)"/)?.[1], block]);
 const hiddenNames = ['outbound_detour_enabled', 'outbound_detour_section',
   'sort_by_latency', 'resolve_real_ip_for_routing'];
 assert.deepEqual(hiddenBlocks.map(([name]) => name), hiddenNames);
 for (const [name, block] of hiddenBlocks)
   assert.match(block, /\n  o\.retain = true;/, `${name} must set retain`);
 
-const helper = source.match(/\nfunction parseOutboundDetourOption\(parentParse\) \{[\s\S]*?\n\}\n/);
+// isOutboundDetourRuleAction, loadOutboundDetourOption, parseOutboundDetourOption.
+const helper = source.match(/\nfunction isOutboundDetourRuleAction\([\s\S]*?\nfunction parseOutboundDetourOption\(parentParse\) \{[\s\S]*?\n\}\n/);
 assert(helper, 'parseOutboundDetourOption not found');
-const start = source.lastIndexOf('o = section.taboption(', source.indexOf('"outbound_detour_enabled"'));
+const start = source.lastIndexOf('o = section.taboption(', source.search(/form\.\w+,\s*"outbound_detour_enabled"/));
 const end = source.indexOf('addTextConditionField(section, {', source.indexOf('"resolve_real_ip_for_routing"'));
 assert(start >= 0 && end > start, 'hidden rule options not found');
 
@@ -43,6 +44,7 @@ class AbstractValue {
   }
   depends(key, value) { this.deps.push(typeof key === 'string' ? { [key]: value } : key); }
   value() {}
+  load(sid) { return uci.get(UCI_PACKAGE, sid, this.option); }
   isActive(sid) {
     return !this.deps.length || this.deps.some(dep => Object.entries(dep).every(([key, value]) => {
       const sibling = options[key];
@@ -83,11 +85,14 @@ options.action = new AbstractValue(section, 'action');
 vm.runInNewContext(`${helper[0]}\n${source.slice(start, end)}`, {
   _: text => text,
   E: () => null,
-  form: { AbstractValue, Flag: AbstractValue, ListValue: AbstractValue, Value: AbstractValue },
+  form: { AbstractValue, DummyValue: AbstractValue, Flag: AbstractValue, ListValue: AbstractValue,
+    Value: AbstractValue },
   section,
   uci,
   UCI_PACKAGE,
   getRuleResolvedAction: sid => uci.get(UCI_PACKAGE, sid, 'action') || 'connection',
+  hiddenCascadeState: () => null,
+  refreshOutboundDetourSectionOptionValues() {},
 });
 
 const saved = {
@@ -100,6 +105,8 @@ const saved = {
 async function saveModal(action, formValues = {}) {
   store = { rule: { action, mixed_proxy_enabled: '0', mixed_proxy_port: '2080', ...saved } };
   form = { action, ...formValues };
+  // LuCI loads every option when the modal opens, then parses it on save.
+  await Promise.all(Object.values(options).map(option => option.load('rule')));
   await Promise.all(Object.values(options).map(option => option.parse('rule')));
   return store.rule;
 }
@@ -108,8 +115,16 @@ async function saveModal(action, formValues = {}) {
   // Harness sanity: a regular inactive option without `retain` is dropped.
   assert.equal((await saveModal('connection')).mixed_proxy_port, undefined);
 
-  for (const action of ['connection', 'proxy', 'outbound', 'vpn'])
+  for (const action of ['connection', 'proxy', 'outbound', 'vpn']) {
     assert.deepEqual(pick(await saveModal(action)), saved, `${action} keeps hidden settings`);
+    assert.deepEqual(pick(await saveModal('connection', { action })), saved,
+      `connection changed to ${action} keeps hidden settings`);
+  }
+
+  // A save that keeps the action never drops them (D-22 b): the cascade of a
+  // rule that is not a Connection rule is shown in the modal, with Clear.
+  for (const action of ['dns', 'block', 'bypass', 'byedpi', 'zapret'])
+    assert.deepEqual(pick(await saveModal(action)), saved, `unchanged ${action} keeps hidden settings`);
 
   // Changing the action away from Connection is the deliberate removal path
   // for the cascade: validator.uc rejects cascade on any other action.
@@ -121,6 +136,10 @@ async function saveModal(action, formValues = {}) {
       resolve_real_ip_for_routing: '1',
     }, `${action} drops only the cascade`);
   }
+
+  // Only a change away from a Connection action drops them.
+  assert.deepEqual(pick(await saveModal('bypass', { action: 'block' })), saved,
+    'bypass changed to block keeps hidden settings');
 
   console.log('LuCI hidden rule option retention checks passed');
 })().catch(error => {

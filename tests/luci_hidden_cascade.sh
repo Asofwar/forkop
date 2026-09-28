@@ -7,6 +7,7 @@ set -euo pipefail
 # (real section.js under tests/helpers/luci_form_harness.js) shows an
 # administrator that the setting exists, what it does or why it fails, and
 # offers to clear it after a confirmation; a plain save keeps it (retain).
+# Changing the action away from Connection drops it on save.
 # A role that may only read the configuration sees that a hidden setting
 # exists, without the transit rule or any action.
 
@@ -168,6 +169,33 @@ async function check(label, fn) {
           assert.equal(ro.textContent.includes(secret), false, `read-only notice shows ${secret}`);
       });
     }
+
+    // Changing the action away from Connection drops the cascade pair on
+    // save (the validator refuses cascade on any other action); the other
+    // hidden options stay. Choosing Connection again before saving keeps it.
+    await check(`${version} action changed away from Connection`, async () => {
+      const config = { rule: cascade({ sort_by_latency: '1', resolve_real_ip_for_routing: '1' }), transit };
+      let env = createEnvironment({ version, config });
+      let modal = await env.openRule('rule');
+      modal.option('action').getUIElement('rule').setValue('bypass');
+      await modal.save();
+      const saved = env.uci.data.rule;
+      assert.equal(saved.action, 'bypass');
+      assert.equal(saved.outbound_detour_enabled, undefined);
+      assert.equal(saved.outbound_detour_section, undefined);
+      assert.equal(saved.sort_by_latency, '1');
+      assert.equal(saved.resolve_real_ip_for_routing, '1');
+      const verdict = backend.validate(env.uci.data);
+      assert.equal(verdict.ok, true, verdict.message);
+
+      env = createEnvironment({ version, config });
+      modal = await env.openRule('rule');
+      const action = modal.option('action').getUIElement('rule');
+      action.setValue('bypass');
+      action.setValue('connection');
+      await modal.save();
+      assert.deepEqual(env.uci.data, config, 'choosing Connection again changed UCI');
+    });
 
     // Rules without a stored cascade (or with the old default "0") show nothing.
     for (const [name, values] of [['none', {}], ['old default', { outbound_detour_enabled: '0' }]])

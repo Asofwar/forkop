@@ -1132,16 +1132,13 @@ function validate_priority_identifier_value(value, section) {
     fail_validation("Invalid priority identifier '" + value + "' in rule '" + section + "'. Use latin letters, digits and underscores. Aborted.");
 }
 
-// For a URLTest group of a rule and a dashboard override of one alike.
-function urltest_tolerance_valid(value) {
-    value = trim(as_string(value));
-    return match(value, /^[0-9]+$/) != null && int(value, 10) <= 10000;
-}
-
 function validate_urltest_tolerance_value(value, section, urltest_id) {
     value = trim(as_string(value));
-    if (urltest_tolerance_valid(value))
-        return;
+    if (match(value, /^[0-9]+$/) != null) {
+        let parsed = int(value, 10);
+        if (parsed >= 0 && parsed <= 10000)
+            return;
+    }
 
     fail_validation("Invalid URLTest tolerance '" + value + "' in rule '" + section + "', URLTest '" + urltest_id + "'. Use a number from 0 to 10000. Aborted.");
 }
@@ -1683,10 +1680,16 @@ function validate_runtime_mark_ranges_context(context) {
 }
 
 // Dashboard URLTest overrides (config/urltest_override.uc) replace the
-// settings of a URLTest group of a rule in the generated config; they are
-// checked as the dashboard saves them. An override that no enabled Connection
-// rule uses is never applied and is not checked: rules deleted before their
-// overrides went with them left such sections behind (UC-151).
+// settings of a URLTest group of a rule in the generated config. The
+// dashboard saved them before the validator read them, so an override that
+// started before keeps starting (invariant 17): only a value that
+// urltest_override.apply() turns into a config sing-box does not load
+// refuses the configuration, the rest is a warning. The dashboard took a
+// tolerance up to 65535, which sing-box reads as uint16, and a testing URL
+// without a host, with which sing-box starts but cannot test the servers of
+// the group. An override that no enabled Connection rule uses is never
+// applied and is not checked: rules deleted before their overrides went with
+// them left such sections behind (UC-151).
 function validate_urltest_overrides(sections) {
     let rules = {};
     for (let section in sections)
@@ -1700,18 +1703,29 @@ function validate_urltest_overrides(sections) {
             continue;
 
         let label = "URLTest override '" + tag + "' of rule '" + section_name(rule) + "'";
-        validate_http_url_option(option(override, "testing_url", ""), label + " (testing_url)");
+        // Written as they are: sing-box refuses an empty or unreadable duration.
         validate_required_duration_option(option(override, "check_interval", ""), label + " (check_interval)");
         validate_required_duration_option(option(override, "idle_timeout", ""), label + " (idle_timeout)");
 
+        // Written as int(tolerance): NaN for text, which sing-box refuses like
+        // a number outside 0..65535.
         let tolerance = option(override, "tolerance", "");
-        if (!urltest_tolerance_valid(tolerance))
-            fail_validation("Invalid tolerance '" + tolerance + "' for " + label + ". Use a number from 0 to 10000. Aborted.");
+        let tolerance_value = int(tolerance, 10);
+        if (type(tolerance_value) != "int" || tolerance_value < 0 || tolerance_value > 65535)
+            fail_validation("Invalid tolerance '" + tolerance + "' for " + label + ". Use a number from 0 to 65535. Aborted.");
+        if (match(trim(tolerance), /^[0-9]+$/) == null)
+            log_message("Tolerance '" + tolerance + "' for " + label + " is not a plain number; sing-box uses " + tolerance_value + ". Save the URLTest settings on the dashboard again", "warn");
 
-        // Unset means "1" (urltest_override.get).
+        // Written as it is: sing-box loads any testing URL, uses its own for
+        // an empty one and fails to test the servers with one without a host.
+        let testing_url = option(override, "testing_url", "");
+        if (!valid_http_url(testing_url))
+            log_message("URL value for " + label + " (testing_url) is not an http:// or https:// URL with a host: " + testing_url + ". sing-box starts with it, but may be unable to test the servers of the group. Set the testing URL on the dashboard", "warn");
+
+        // Unset means "1" (urltest_override.get), any other value "0".
         let interrupt = option(override, "interrupt_exist_connections", "");
         if (interrupt != "" && interrupt != "0" && interrupt != "1")
-            fail_validation("Invalid interrupt_exist_connections '" + interrupt + "' for " + label + ". Use 0 or 1. Aborted.");
+            log_message("Invalid interrupt_exist_connections '" + interrupt + "' for " + label + "; existing connections are not interrupted. Use 0 or 1", "warn");
     }
 }
 

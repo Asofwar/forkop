@@ -3,19 +3,7 @@
 const fs = require('fs'), path = require('path'), { execFileSync } = require('child_process');
 const [lib, work, casesFile] = process.argv.slice(2);
 const cases = require(casesFile);
-const config = `config settings 'settings'
-config section 'main'
-\toption action 'connection'
-config section 'youtube'
-\toption action 'zapret'
-\toption nfqws_opt '--filter-tcp=443 --dpi-desync=fake'
-config section 'off'
-\toption action 'zapret'
-\toption enabled '0'
-config section 'discord'
-\toption action 'zapret'
-\toption nfqws_opt '--filter-tcp=443 --dpi-desync=multisplit'
-`;
+const config = fs.readFileSync(path.join(__dirname, 'forkop.uci'), 'utf8');
 fs.writeFileSync(path.join(work, 'driver.uc'), `let apply = require("autotune.apply");\nprint(sprintf("%J\\n", apply.plan(ARGV[0], "192.0.2.53").owner));\n`);
 fs.writeFileSync(path.join(work, 'dig'), '#!/bin/sh\nprintf "%s\\n" "$ROUTE_OWNER_DNS"\n', { mode: 0o755 });
 const out = {};

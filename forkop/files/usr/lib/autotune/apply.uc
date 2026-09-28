@@ -37,6 +37,7 @@ let catalog = require("autotune.catalog");
 let probe_module = require("autotune.probe");
 let select_module = require("autotune.select");
 let autotune_lock = require("autotune.lock");
+let resolver = require("routing.resolve");
 
 const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
 const CONFIG_FILE = getenv("FORKOP_CONFIG_FILE") || "/etc/config/forkop";
@@ -60,8 +61,6 @@ const CURL = getenv("FORKOP_AUTOTUNE_CURL") || "curl";
 const PROD_TABLE = constants.NFT_TABLE_NAME;
 const PROBE_TABLE = "ForkopAutotuneProbe";
 const GUARD_TABLES = [ "ForkopConfigRestoreDpiGuard", PROD_TABLE + "DpiGuard" ];
-const TPROXY_INBOUND = constants.SB_TPROXY_INBOUND_TAG || "tproxy-in";
-const FAKEIP_PREFIX = [ "198.18.0.0", 15 ];
 const VERIFY_PROBES = 3;
 const TERMINAL_PHASES = [ "applied", "rolled_back", "failed", "stale", "no_change_required", "needs_attention" ];
 
@@ -94,18 +93,6 @@ function success(args) { return system(command(args) + " >/dev/null 2>&1") == 0;
 function parse_json(text) { try { return json(as_string(text)); } catch (e) { return null; } }
 function read_json(path) { let data = fs.readfile(as_string(path)); return data == null ? null : parse_json(data); }
 function now() { return time(); }
-function number(value) {
-    let text = lc(trim(as_string(value)));
-    if (match(text, /^[0-9]+$/) != null) return int(text);
-    if (substr(text, 0, 2) != "0x") return null;
-    let result = 0;
-    for (let i = 2; i < length(text); i++) {
-        let d = index("0123456789abcdef", substr(text, i, 1));
-        if (d < 0) return null;
-        result = result * 16 + d;
-    }
-    return result;
-}
 function sha_file(path) {
     let m = match(capture([ "sha256sum", path ]).output, /^([0-9a-f]{64})/);
     return m ? m[1] : "";
@@ -135,218 +122,38 @@ function fingerprint(text) {
 
 // ---- configuration (read-only view of the file snapshots hash) ----------
 
-// A UCI value made of quoted/unquoted segments (same rules as snapshots.uc).
-function uci_value(text) {
-    let result = "", q = null;
-    for (let i = 0; i < length(text); i++) {
-        let c = substr(text, i, 1);
-        if (q == "'") { if (c == "'") q = null; else result += c; }
-        else if (q == "\"") {
-            if (c == "\\" && i + 1 < length(text)) result += substr(text, ++i, 1);
-            else if (c == "\"") q = null;
-            else result += c;
-        }
-        else if (c == "'" || c == "\"") q = c;
-        else if (c == "\\" && i + 1 < length(text)) result += substr(text, ++i, 1);
-        else if (c == " " || c == "\t") break;
-        else result += c;
-    }
-    return q == null ? result : null;
-}
-// Sections in file order: [{ type, name, options: { key: value | [values] } }].
-function parse_config(text) {
-    let sections = [], current = null;
-    let lines = split(as_string(text), "\n");
-    for (let i = 0; i < length(lines); i++) {
-        let line = lines[i];
-        let start = match(line, /^[ \t]*config[ \t]+([A-Za-z0-9_-]+)([ \t]+['"]?([A-Za-z0-9_-]+)['"]?)?/);
-        if (start != null) {
-            current = { type: start[1], name: start[3] || null, options: {} };
-            push(sections, current);
-            continue;
-        }
-        let opt = match(line, /^[ \t]*(option|list)[ \t]+([A-Za-z0-9_-]+)[ \t]+(.+)$/);
-        if (current == null || opt == null) continue;
-        let text_value = trim(opt[3]), raw = uci_value(text_value);
-        while (raw == null && i + 1 < length(lines)) { text_value += "\n" + lines[++i]; raw = uci_value(text_value); }
-        if (raw == null) raw = text_value;
-        if (opt[1] == "list") {
-            if (type(current.options[opt[2]]) != "array") current.options[opt[2]] = [];
-            push(current.options[opt[2]], raw);
-        }
-        else current.options[opt[2]] = raw;
-    }
-    return sections;
-}
-function enabled(section) {
-    let v = section.options.enabled;
-    return v == null || index([ "1", "true", "yes", "on" ], lc(as_string(v))) >= 0;
-}
-function find_section(sections, name) {
-    for (let s in sections) if (s.type == "section" && s.name == name) return s;
-    return null;
-}
-function zapret_sections(sections) {
-    return filter(sections, (s) => s.type == "section" && enabled(s) && s.options.action == "zapret");
-}
-function settings_of(sections) {
-    for (let s in sections) if (s.type == "settings") return s.options;
-    return {};
-}
-// What the rule's strategy applies to: matcher names and sizes, no values of
-// secrets (matchers are never secrets, but only counts and list names are kept).
-function rule_scope(section) {
-    let scope = {};
-    for (let key in [ "domain", "domain_suffix", "domain_keyword", "domain_regex", "ip_cidr", "community_lists",
-                      "rule_set", "rule_set_with_subnets", "domain_ip_lists", "ports", "source_ip_cidr", "fully_routed_ips" ]) {
-        let v = section.options[key];
-        if (v == null || v == "") continue;
-        scope[key] = key == "community_lists" ? (type(v) == "array" ? v : words(v)) : (type(v) == "array" ? length(v) : length(words(v)));
-    }
-    return scope;
-}
-
 // ---- which rule handles the target ---------------------------------------
+// routing/resolve.uc is the one implementation (also used by Diagnostics).
+// These wrappers keep the owner shape this file has always worked with:
+// { decided, kind: zapret|outbound|reject|final, rule, outbound, reason,
+//   section, index, mark, mark_value, queue }.
 
-function in_prefix(ip, prefix, len) {
-    let parse = (t) => {
-        let m = match(as_string(t), /^([0-9]+)\.([0-9]+)\.([0-9]+)\.([0-9]+)$/);
-        if (m == null) return null;
-        return ((int(m[1]) * 256 + int(m[2])) * 256 + int(m[3])) * 256 + int(m[4]);
-    };
-    let a = parse(ip), b = parse(prefix);
-    if (a == null || b == null) return false;
-    let size = 1;
-    for (let i = 0; i < 32 - len; i++) size *= 2;
-    return int(a / size) == int(b / size);
-}
-function cidr_contains(cidr, ip) {
-    let m = match(as_string(cidr), /^([0-9.]+)(\/([0-9]+))?$/);
-    return m != null && in_prefix(ip, m[1], m[3] ? int(m[3]) : 32);
-}
-function list_of(v) { return v == null ? [] : type(v) == "array" ? v : [ v ]; }
-function port_matches(rule, port) {
-    if (rule.port == null && rule.port_range == null) return true;
-    for (let p in list_of(rule.port)) if (int(p) == port) return true;
-    for (let r in list_of(rule.port_range)) {
-        let m = match(as_string(r), /^([0-9]*):([0-9]*)$/);
-        if (m && (m[1] == "" || port >= int(m[1])) && (m[2] == "" || port <= int(m[2]))) return true;
-    }
-    return false;
-}
-const RULE_KEYS = [ "action", "outbound", "inbound", "domain", "domain_suffix", "domain_keyword", "domain_regex",
-    "ip_cidr", "rule_set", "source_ip_cidr", "port", "port_range", "network", "protocol" ];
-// Sniffed protocols a TCP connection can never have (disable_quic adds a
-// protocol=quic reject rule in front of every section rule).
-const UDP_ONLY_PROTOCOLS = [ "quic", "dtls", "stun" ];
+function parse_config(text) { return resolver.parse_config(text); }
+function find_section(sections, name) { return resolver.find_section(sections, name); }
+function rule_scope(section) { return resolver.rule_scope(section); }
+function is_fakeip(ip) { return resolver.is_fakeip(ip); }
 
-// A copy of a rule without the given (action-specific) option keys.
-function filter_keys(r, drop) {
-    let copy = {};
-    for (let k, v in r) if (index(drop, k) < 0) copy[k] = v;
-    return copy;
+// Autotune only tunes TCP/443 and never knows the client: source-scoped
+// rules stay undecidable.
+function tcp443_target(host, ip, fakeip) {
+    return resolver.target(host, ip, { fakeip, network: "tcp", port: 443 });
 }
 
-// Whether a rule's matchers take a TCP/443 connection to host: "match",
-// "no", or { reason } when that cannot be decided statically.
-// A FakeIP connection reaches sing-box as the domain name (the FakeIP
-// address is replaced by the FQDN), so ip_cidr matches nothing unless a
-// resolve action filled real addresses in (route_owner refuses to decide
-// past one); a real-address connection is matched by ip_cidr and by the
-// sniffed domain.
-function rule_matches(r, host, ip, fakeip) {
-    if (r.type == "logical" || r.invert) return { reason: "logical_rule" };
-    for (let key in keys(r)) if (index(RULE_KEYS, key) < 0) return { reason: "unknown_rule_field:" + key };
-    if (r.network != null && index(list_of(r.network), "tcp") < 0) return "no";
-    if (!port_matches(r, 443)) return "no";
-    if (r.protocol != null) {
-        let tcp_possible = filter(list_of(r.protocol), (p) => index(UDP_ONLY_PROTOCOLS, p) < 0);
-        if (length(tcp_possible) == 0) return "no";
-        return { reason: "protocol_matcher" };
-    }
-    let dest_fields = 0, dest = "no";
-    let hit = () => { dest = "match"; };
-    let unknown = () => { if (dest != "match") dest = "unknown"; };
-    for (let d in list_of(r.domain)) { dest_fields++; if (lc(d) == host) hit(); }
-    for (let d in list_of(r.domain_suffix)) {
-        dest_fields++;
-        // sing-box: ".example.com" matches subdomains only, "example.com"
-        // the domain itself and its subdomains.
-        let s = lc(d), sub_only = substr(s, 0, 1) == ".";
-        if (sub_only) s = substr(s, 1);
-        if ((!sub_only && host == s) || (length(host) > length(s) + 1 && substr(host, length(host) - length(s) - 1) == "." + s)) hit();
-    }
-    for (let d in list_of(r.domain_keyword)) { dest_fields++; if (index(host, lc(d)) >= 0) hit(); }
-    for (let d in list_of(r.domain_regex)) { dest_fields++; unknown(); }
-    for (let c in list_of(r.ip_cidr)) { dest_fields++; if (!fakeip && cidr_contains(c, ip)) hit(); }
-    for (let t in list_of(r.rule_set)) { dest_fields++; unknown(); }
-    if (dest_fields > 0 && dest == "no") return "no";
-    if (dest == "unknown") return { reason: "undecidable_matcher" };
-    if (r.source_ip_cidr != null) return { reason: "source_scoped_rule" };
-    return "match";
-}
-
-// First sing-box route rule a TCP/443 connection to (host, ip) from any
-// client takes. { decided, kind: zapret|outbound|reject|final, outbound,
-// rule, reason }. Remote lists, regexes, logical rules, source-scoped rules,
-// unknown fields and (for FakeIP) resolve actions above the owner make the
-// answer undecidable.
-const RESOLVE_KEYS = [ "action", "server", "strategy", "disable_cache", "rewrite_ttl", "client_subnet" ];
+// Exported for callers that ask for the first route rule only.
 function route_owner(config, host, ip, fakeip) {
-    let rules = type(config) == "object" && type(config.route) == "object" && type(config.route.rules) == "array" ? config.route.rules : null;
-    if (rules == null) return { decided: false, reason: "singbox_config_unavailable" };
-    host = lc(host);
-    for (let i = 0; i < length(rules); i++) {
-        let r = rules[i];
-        if (type(r) != "object") continue;
-        if (r.inbound != null && index(list_of(r.inbound), TPROXY_INBOUND) < 0) continue;
-        let action = r.action || "route";
-        if (action == "resolve") {
-            if (!fakeip) continue;
-            if (rule_matches(filter_keys(r, RESOLVE_KEYS), host, ip, fakeip) != "no") return { decided: false, reason: "resolve_rule", rule: i };
-            continue;
-        }
-        if (action != "route" && action != "reject") continue;
-        let m = rule_matches(r, host, ip, fakeip);
-        if (m == "no") continue;
-        if (type(m) == "object") return { decided: false, reason: m.reason, rule: i };
-        if (action == "reject") return { decided: true, kind: "reject", rule: i };
-        return { decided: true, kind: "outbound", outbound: r.outbound, rule: i };
-    }
-    return { decided: true, kind: "final", outbound: config.route.final || null, rule: null };
-}
-
-// The zapret rule behind a sing-box outbound: a direct outbound whose
-// routing mark is the rule's route mark (base + position among enabled
-// zapret rules), cross-checked against the outbound tag convention.
-function zapret_owner(config, sections, outbound) {
-    let base = number(constants.ZAPRET_ROUTE_MARK_BASE), queue_base = int(constants.ZAPRET_QUEUE_BASE);
-    for (let o in list_of(config.outbounds)) {
-        if (type(o) != "object" || o.tag != outbound || o.type != "direct" || o.routing_mark == null) continue;
-        let index_value = int(o.routing_mark) - base;
-        let zs = zapret_sections(sections);
-        if (index_value < 1 || index_value > length(zs)) return null;
-        let s = zs[index_value - 1];
-        if (o.tag != s.name + "-out" && o.tag != s.name + "-out-1") return null;
-        return { section: s.name, index: index_value, mark: sprintf("0x%08x", int(o.routing_mark)),
-            mark_value: int(o.routing_mark), queue: queue_base + index_value - 1 };
-    }
-    return null;
+    return resolver.route_owner(config, tcp443_target(host, ip, fakeip));
 }
 
 function singbox_config(sections) {
-    return read_json(SINGBOX_CONFIG != "" ? SINGBOX_CONFIG : (settings_of(sections).config_path || "/etc/sing-box/config.json"));
+    return resolver.load_json(SINGBOX_CONFIG != "" ? SINGBOX_CONFIG : resolver.singbox_config_path(sections));
 }
 
 function owner_of(sections, host, ip, fakeip) {
-    let config = singbox_config(sections);
-    let route = route_owner(config, host, ip, fakeip);
-    if (!route.decided) return { decided: false, reason: route.reason, rule: route.rule };
-    if (route.kind == "outbound") {
-        let z = zapret_owner(config, sections, route.outbound);
-        if (z != null) return { decided: true, kind: "zapret", rule: route.rule, outbound: route.outbound, ...z };
-    }
-    return { decided: true, kind: route.kind, rule: route.rule, outbound: route.outbound };
+    let r = resolver.resolve(singbox_config(sections), sections, tcp443_target(host, ip, fakeip));
+    if (r.status != "decided") return { decided: false, reason: r.reason, rule: r.route_rule };
+    if (r.zapret != null)
+        return { decided: true, kind: "zapret", rule: r.route_rule, outbound: r.outbound, ...r.zapret };
+    return { decided: true, kind: r.route, rule: r.route_rule, outbound: r.outbound };
 }
 
 // One TCP/443 profile: the only strategy shape a TCP/443 candidate can
@@ -482,7 +289,7 @@ function production_dns(host) {
     let out = capture([ DIG, "+short", "+time=2", "+tries=1", host, "A" ]);
     let answers = [];
     for (let line in split(out.output, "\n")) { line = trim(line); if (probe_module.valid_ipv4(line)) push(answers, line); }
-    let fake = filter(answers, (a) => in_prefix(a, FAKEIP_PREFIX[0], FAKEIP_PREFIX[1]));
+    let fake = filter(answers, (a) => is_fakeip(a));
     return { fakeip: length(answers) > 0 && length(fake) == length(answers), answers: length(answers) };
 }
 function uncommitted_changes() {
@@ -605,7 +412,7 @@ function verify_production(plan, expected_opt, traffic) {
     };
     result.traffic = t;
     check(checks, "traffic_transport", t.stability == "stable", sprintf("%d/%d", successes, length(probes)));
-    check(checks, "traffic_sing_box_path", length(filter(probes, (p) => p.remote_ip != null && in_prefix(p.remote_ip, FAKEIP_PREFIX[0], FAKEIP_PREFIX[1]))) == length(probes),
+    check(checks, "traffic_sing_box_path", length(filter(probes, (p) => p.remote_ip != null && is_fakeip(p.remote_ip))) == length(probes),
         "FakeIP answers");
     // Every probe connection sends at least one packet through the rule's
     // queue; other traffic of the rule can only add to the count.

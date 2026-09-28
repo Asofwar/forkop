@@ -10,24 +10,24 @@ TRACE="$LIB/diagnostics/route_trace.uc"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT HUP INT TERM
 
-cat >"$WORK/state" <<STATE
-forkop.settings=settings
-forkop.settings.config_path=$WORK/sing-box.json
-forkop.youtube=section
-forkop.youtube.action=zapret
-forkop.youtube.label=YouTube
-forkop.youtube.nfqws_opt=--filter-tcp=443 --dpi-desync=multisplit --dpi-desync-split-pos=1,midsld
-forkop.discord=section
-forkop.discord.action=vpn
-forkop.discord.label=Discord
-forkop.main=section
-forkop.main.action=connection
-forkop.main.label=Main VPN
-forkop.main.proxy_string=vless://secret-uuid@example.net:443
-forkop.off=section
-forkop.off.action=connection
-forkop.off.enabled=0
-STATE
+cat >"$WORK/forkop" <<CONF
+config settings 'settings'
+	option config_path '$WORK/sing-box.json'
+config section 'youtube'
+	option action 'zapret'
+	option label 'YouTube'
+	option nfqws_opt '--filter-tcp=443 --dpi-desync=multisplit --dpi-desync-split-pos=1,midsld'
+config section 'discord'
+	option action 'vpn'
+	option label 'Discord'
+config section 'main'
+	option action 'connection'
+	option label 'Main VPN'
+	option proxy_string 'vless://secret-uuid@example.net:443'
+config section 'off'
+	option action 'connection'
+	option enabled '0'
+CONF
 
 write_config() {
   cat >"$WORK/sing-box.json" <<JSON
@@ -45,8 +45,7 @@ JSON
 }
 
 trace() {
-  FORKOP_CONFIG_NAME=forkop FORKOP_UCI_STATE_FILE="$WORK/state" \
-    ucode -L "$LIB" "$TRACE" fixture "$1" "$2" TCP 443 "$3" '' || true
+  FORKOP_CONFIG="$WORK/forkop" ucode -L "$LIB" "$TRACE" fixture "$1" "$2" TCP 443 "$3" '' || true
 }
 
 write_config ',{"action":"route","inbound":"tproxy-in","rule_set":["main-community"],"outbound":"main-urltest-out"}'
@@ -79,15 +78,17 @@ assert.deepEqual(brief(read('block')), [null, 'block', 'block', null]);
 assert.deepEqual(brief(read('bypass')), [null, 'bypass', 'bypass', 'bypass-out']);
 
 const any = read('discord-any');
-assert.deepEqual([any.rule.provenance, any.rule.reason], ['unknown', 'source_scoped_rule']);
+assert.deepEqual([any.rule.provenance, any.rule.reason, any.rule.status], ['unknown', 'source_scoped_rule', 'undecidable']);
 const dev = read('discord-dev');
 assert.deepEqual(brief(dev), ['Discord', null, 'connection', 'discord-out'], 'legacy vpn action reads as connection');
 assert.equal(dev.target.source_applied, true);
 assert.equal(dev.dpi.provenance, 'unknown');
-assert.equal(read('discord-other').rule.reason, 'list_not_checkable');
+assert.equal(read('discord-other').rule.reason, 'undecidable_matcher');
+assert.equal(read('discord-other').rule.status, 'undecidable');
 
 assert.deepEqual(brief(read('direct')), [null, 'no_rule_matched', 'direct', 'direct-out']);
 assert.equal(read('noconfig').rule.reason, 'singbox_config_unavailable');
+assert.equal(read('noconfig').rule.status, 'unavailable');
 
 for (const name of fs.readdirSync(dir).filter((f) => f.endsWith('.json') && f !== 'sing-box.json'))
   assert.doesNotMatch(fs.readFileSync(`${dir}/${name}`, 'utf8'), /secret|vless:|dpi-desync|nfqws/,

@@ -2547,7 +2547,6 @@ var Forkop;
     AvailableMethods2["CHECK_ZAPRET2_RUNTIME"] = "check_zapret2_runtime";
     AvailableMethods2["CHECK_BYEDPI_RUNTIME"] = "check_byedpi_runtime";
     AvailableMethods2["GET_STATUS"] = "get_status";
-    AvailableMethods2["GET_OUTBOUND_METADATA"] = "get_outbound_metadata";
     AvailableMethods2["GET_SUBSCRIPTION_METADATA"] =
       "get_subscription_metadata";
     AvailableMethods2["CHECK_SING_BOX"] = "check_sing_box";
@@ -2562,7 +2561,6 @@ var Forkop;
     AvailableMethods2["SUPPORT_REPORT"] = "support_report";
     AvailableMethods2["SHOW_SING_BOX_CONFIG"] = "show_sing_box_config";
     AvailableMethods2["CHECK_LOGS"] = "check_logs";
-    AvailableMethods2["CHECK_SING_BOX_LOGS"] = "check_sing_box_logs";
     AvailableMethods2["GET_SYSTEM_INFO"] = "get_system_info";
     AvailableMethods2["GET_UI_CAPABILITIES"] = "get_ui_capabilities";
     AvailableMethods2["GET_UI_STATE"] = "get_ui_state";
@@ -2809,8 +2807,6 @@ var ForkopShellMethods = {
     callBaseMethod(Forkop.AvailableMethods.GET_READONLY_CONFIG_SECTIONS),
   getDashboardRuntimeMetadata: async () =>
     callBaseMethod(Forkop.AvailableMethods.GET_DASHBOARD_RUNTIME_METADATA),
-  getOutboundMetadata: async (section) =>
-    callBaseMethod(Forkop.AvailableMethods.GET_OUTBOUND_METADATA, [section]),
   getSubscriptionMetadata: async (section) =>
     callBaseMethod(Forkop.AvailableMethods.GET_SUBSCRIPTION_METADATA, [
       section,
@@ -2886,8 +2882,6 @@ var ForkopShellMethods = {
       masked ? "masked" : "raw",
     ]),
   checkLogs: async () => callBaseMethod(Forkop.AvailableMethods.CHECK_LOGS),
-  checkSingBoxLogs: async () =>
-    callBaseMethod(Forkop.AvailableMethods.CHECK_SING_BOX_LOGS),
   getSystemInfo: async () =>
     callBaseMethod(Forkop.AvailableMethods.GET_SYSTEM_INFO),
   getUiCapabilities: async () =>

@@ -7,7 +7,8 @@ set -euo pipefail
 # (real section.js under tests/helpers/luci_form_harness.js) shows an
 # administrator that the setting exists, what it does or why it fails, and
 # offers to clear it after a confirmation; a plain save keeps it (retain).
-# Changing the action away from Connection drops it on save.
+# Changing the action away from Connection drops it on save, and the modal
+# warns about that before Save.
 # A role that may only read the configuration sees that a hidden setting
 # exists, without the transit rule or any action.
 
@@ -195,6 +196,55 @@ async function check(label, fn) {
       action.setValue('connection');
       await modal.save();
       assert.deepEqual(env.uci.data, config, 'choosing Connection again changed UCI');
+    });
+
+    // The removal is never silent: once another action is chosen, the modal
+    // warns before Save that the cascade goes, and the warning goes away when
+    // Connection is chosen again or the cascade was cleared already.
+    for (const [name, rule, text] of [
+      ['working', cascade(), /saving the rule removes it.*through the rule “Transit VPN”/],
+      ['switched off', cascade({ outbound_detour_enabled: '0' }), /removes the switched-off cascade setting/],
+    ]) await check(`${version} action change warning: ${name}`, async () => {
+      const config = { rule, transit };
+      let env = createEnvironment({ version, config });
+      let modal = await env.openRule('rule');
+      const action = modal.option('action').getUIElement('rule');
+      assert.equal(modal.active('_cascade_action_warning'), false, 'no warning while the action is kept');
+      action.setValue('block');
+      modal.map.checkDepends();
+      assert.equal(modal.active('_cascade_action_warning'), true, 'the warning must be shown');
+      assert.match(modal.option('_cascade_action_warning').renderWidget('rule').textContent, text);
+      action.setValue('connection');
+      modal.map.checkDepends();
+      assert.equal(modal.active('_cascade_action_warning'), false, 'no warning after choosing Connection again');
+
+      // Cleared first: nothing left to remove, nothing to warn about.
+      env = createEnvironment({ version, config });
+      modal = await env.openRule('rule');
+      const widget = modal.option('_hidden_cascade').renderWidget('rule');
+      button(widget, 'Clear…').attrs.click();
+      button(widget, 'Clear').attrs.click();
+      modal.option('action').getUIElement('rule').setValue('block');
+      modal.map.checkDepends();
+      assert.equal(modal.active('_cascade_action_warning'), false, 'a cleared cascade needs no warning');
+    });
+
+    // A rule that is not a Connection rule keeps its cascade whatever action
+    // it gets (the notice offers Clear): no warning. A read-only role cannot
+    // change the action.
+    await check(`${version} action change warning: not a Connection rule`, async () => {
+      const env = createEnvironment({ version, config: cases.source_not_connection.config });
+      const modal = await env.openRule('rule');
+      modal.option('action').getUIElement('rule').setValue('block');
+      modal.map.checkDepends();
+      assert.equal(modal.active('_cascade_action_warning'), false);
+    });
+    await check(`${version} action change warning: read-only`, async () => {
+      const env = createEnvironment({ version, config: { rule: cascade(), transit } });
+      const modal = await env.openRule('rule', { readonly: true });
+      modal.option('action').getUIElement('rule').setValue('block');
+      modal.map.checkDepends();
+      assert.equal(modal.active('_cascade_action_warning'), false);
     });
 
     // Rules without a stored cascade (or with the old default "0") show nothing.

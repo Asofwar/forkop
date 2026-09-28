@@ -8123,6 +8123,51 @@ function createSectionContent(section) {
     return renderHiddenCascadeNotice(this, section_id);
   };
 
+  // Saving a Connection rule with another action drops its cascade
+  // (parseOutboundDetourOption): the modal says so before Save (D-22 b).
+  o = section.taboption(
+    "basic",
+    form.DummyValue,
+    "_cascade_action_warning",
+    _("Cascade connection"),
+  );
+  o.modalonly = true;
+  o.load = loadOutboundDetourOption(function () {
+    return Promise.resolve(null);
+  });
+  o.checkDepends = function (section_id) {
+    const loaded = this.loadedRuleActions?.[section_id];
+
+    return (
+      !this.map.readonly &&
+      loaded !== undefined &&
+      isOutboundDetourRuleAction(loaded) &&
+      !isOutboundDetourRuleAction(
+        this.section.formvalue(section_id, "action"),
+      ) &&
+      hiddenCascadeState(section_id) !== null
+    );
+  };
+  o.renderWidget = function (section_id) {
+    const state = hiddenCascadeState(section_id);
+
+    return E(
+      "div",
+      { class: "alert-message warning fkp-legacy-settings" },
+      E(
+        "p",
+        {},
+        state && state.enabled
+          ? _(
+              "With another action the rule cannot use its cascade setting: saving the rule removes it, and its servers no longer connect through the rule “%s”.",
+            ).format(state.targetLabel)
+          : _(
+              "With another action the rule cannot use its cascade setting: saving the rule removes the switched-off cascade setting.",
+            ),
+      ),
+    );
+  };
+
   o = section.taboption(
     "target",
     form.Flag,

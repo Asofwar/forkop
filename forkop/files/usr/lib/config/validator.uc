@@ -13,6 +13,7 @@ let core_url = require("core.url");
 let core_ip = require("core.ip");
 let rule_config = require("config.rule");
 let connections = require("config.connections");
+let rule_conditions = require("routing.rule_conditions");
 
 const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || "forkop";
 const DEFAULT_LATENCY_TEST_URL = "https://www.gstatic.com/generate_204";
@@ -1344,14 +1345,33 @@ function validate_provider_strategy(kind, section, context) {
         fail_validation("Invalid ByeDPI strategy for rule '" + name + "': " + result.message);
 }
 
+// The domains a DNS rule matches, read the way the generator reads them
+// (routing/rule_conditions.uc: text mode, legacy lists, normalized values),
+// plus the legacy remote domain lists the generator also uses (UC-042).
 function dns_action_has_domain_matchers(section) {
+    let domains = rule_conditions.domain_conditions(section);
     for (let key in [ "domain", "domain_suffix", "domain_keyword", "domain_regex" ])
-        if (option(section, key, "") != "" || option(section, key + "_text", "") != "" || length(list_option(section, key)) > 0)
+        if (length(domains[key]) > 0)
+            return true;
+
+    for (let reference in list_option(section, "remote_domain_lists"))
+        if (as_string(reference) != "")
             return true;
 
     return length(connections.community_lists(section)) > 0 ||
         length(connections.rule_sets(section)) > 0 ||
         length(list_option(section, "domain_ip_lists")) > 0;
+}
+
+// Podkop-era matchers the generator refuses (singbox/generator.uc
+// unsupported_matcher_key). Refuse them before apply, with the fix.
+const UNSUPPORTED_LEGACY_MATCHERS = [ "subnet", "subnet_text", "local_domain_lists", "local_subnet_lists" ];
+
+function validate_unsupported_legacy_matchers(section) {
+    for (let key in UNSUPPORTED_LEGACY_MATCHERS)
+        if (length(list_option(section, key)) > 0 || option(section, key, "") != "")
+            fail_validation("Rule '" + section_name(section) + "' uses the legacy option '" + key +
+                "', which is no longer supported. Remove it in the rule editor (Legacy settings). Aborted.");
 }
 
 function validate_dns_action(section, sections, context) {
@@ -1399,6 +1419,7 @@ function validate_rule(section, sections, context) {
         fail_validation("Enabled rule '" + name + "' has no action. Aborted.");
     if (!rule_action_supported(action))
         fail_validation("Enabled rule '" + name + "' uses unsupported action '" + action + "'. Aborted.");
+    validate_unsupported_legacy_matchers(section);
 
     if (action != "dns")
         for (let value in list_option(section, "ports"))

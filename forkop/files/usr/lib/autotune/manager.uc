@@ -34,6 +34,7 @@ let probe_module = require("autotune.probe");
 let hysteresis = require("autotune.hysteresis");
 let autoapply = require("autotune.autoapply");
 let identity = require("core.process_identity");
+let catalog = require("autotune.catalog");
 
 const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
 const CONFIG_FILE = getenv("FORKOP_CONFIG_FILE") || "/etc/config/" + (getenv("FORKOP_CONFIG_NAME") || "forkop");
@@ -57,6 +58,11 @@ const CRON_SCHEDULE = "*/15 * * * *";
 const RETRY_SECONDS = 900;
 const JOB_KEEP = 10;
 const JOB_STARTING_GRACE = 30;
+const APPLY_STATE_FILE = getenv("FORKOP_AUTOTUNE_APPLY_STATE") || "/etc/forkop/autotune-apply.json";
+// Stage 5 transaction phases a running manual apply reports.
+const APPLY_PHASES = [ "checking", "applying", "verifying", "rolling_back" ];
+// A recommendation measured longer ago than this many intervals is stale.
+const MANUAL_MAX_AGE_INTERVALS = 2;
 
 function as_string(v) { return v == null ? "" : "" + v; }
 function quote(v) { return "'" + replace(as_string(v), /'/g, "'\\''") + "'"; }
@@ -236,8 +242,10 @@ function uncommitted_changes() {
     return st != null && st.size > 0;
 }
 
-function history(kind, status) {
-    success([ "ucode", "-L", LIB_DIR, LIB_DIR + "/diagnostics/health.uc", "record", kind, status ]);
+// trigger and candidate (a catalog id) only for autotune applies.
+function history(kind, status, trigger, candidate) {
+    success([ "ucode", "-L", LIB_DIR, LIB_DIR + "/diagnostics/health.uc", "record", kind, status,
+        as_string(trigger), as_string(candidate) ]);
 }
 
 // Set/delete UCI values with a private save directory, so the commit carries
@@ -400,15 +408,19 @@ function merge(updates) {
 // the representative's tune output of this run, then apply (snapshot,
 // guarded reload, production verification, automatic rollback). Returns the
 // apply record for the state.
-function apply_group(name, aggregate, full, dns_resolver) {
+// trigger: "schedule" (autonomous, mode auto) or "manual" (the operator's
+// explicit apply, mode recommend). A manual apply never counts against the
+// daily limit of autonomous applies; everything else is the same.
+function apply_group(name, aggregate, full, dns_resolver, trigger) {
+    let manual = trigger == "manual";
     let record = { at: now(), group: name, candidate: aggregate.candidate, representative: aggregate.representative,
-        status: "not_applied", reason: null, counted: false };
+        status: "not_applied", reason: null, counted: false, trigger: manual ? "manual" : "automatic" };
     let reason = blocker();
     if (reason != null) { record.reason = reason; return record; }
     // The policy is read again: the mode may have been switched off while
     // the targets were measured.
     let sections = config_sections();
-    if (sections == null || policy_module.read(sections).policy.mode != "auto") { record.reason = "mode_changed"; return record; }
+    if (sections == null || policy_module.read(sections).policy.mode != (manual ? "recommend" : "auto")) { record.reason = "mode_changed"; return record; }
     let dir = trim(capture([ "mktemp", "-d", TMP_DIR + "/forkop-autotune-apply.XXXXXX" ]).output);
     if (dir == "") { record.reason = "tempdir_unavailable"; return record; }
     let selection = dir + "/selection.json", plan_file = dir + "/plan.json";
@@ -432,9 +444,10 @@ function apply_group(name, aggregate, full, dns_resolver) {
         let o = autoapply.outcome(result);
         record.status = o.status;
         record.reason = type(result) == "object" ? result.reason || null : "apply_output_invalid";
-        record.counted = o.counted;
+        record.counted = manual ? false : o.counted;
+        record.attempted = o.counted;
         record.outcome = o;
-        if (o.history != null) history("autotune_apply", o.history);
+        if (o.history != null) history("autotune_apply", o.history, record.trigger, aggregate.candidate);
     }
     system(command([ "rm", "-rf", dir ]));
     return record;
@@ -453,14 +466,19 @@ function remove_stale_apply_dirs() {
 // running died: it is recorded, and an apply it was doing counts against
 // the daily limit and cools its candidate down, since its outcome is not
 // known (autotune/apply.uc itself keeps the transaction recoverable).
-function begin_run(trigger, scope, started, policy) {
-    let crashed = null;
+// A manual apply (kind "apply") is marked the same way; its crash cools the
+// candidate down but is not counted against the autonomous daily limit.
+function begin_run(trigger, scope, started, policy, extra) {
+    let crashed = null, previous = null;
     with_state((state) => {
+        previous = state.worker;
         if (type(state.worker) == "object" && state.worker.state == "running") {
             crashed = { ...state.worker, state: "crashed", detected_at: now() };
             if (crashed.phase == "applying" && state_module.valid_id(crashed.group)) {
+                let manual = crashed.kind == "apply";
                 push(state.applies, { at: int(crashed.phase_at) || now(), group: crashed.group, candidate: crashed.candidate,
-                    representative: null, status: "unknown", reason: "worker_crashed_during_apply", counted: true });
+                    representative: null, status: "unknown", reason: "worker_crashed_during_apply", counted: !manual,
+                    attempted: true, trigger: manual ? "manual" : "automatic" });
                 let g = type(state.groups[crashed.group]) == "object" ? state.groups[crashed.group] : hysteresis.empty_group();
                 g = hysteresis.start_cooldown(g, crashed.candidate, policy.cooldown_seconds, now());
                 g.pending = null;
@@ -470,10 +488,10 @@ function begin_run(trigger, scope, started, policy) {
         }
         let pid = self_pid();
         state.worker = { state: "running", pid, ticks: identity.start_ticks(pid), trigger, scope, started_at: started,
-            phase: "measuring" };
+            phase: "measuring", ...(extra || {}) };
     });
     if (crashed != null) history("autotune_run", "failure");
-    return crashed;
+    return { crashed, previous };
 }
 
 function run_locked(scope, trigger) {
@@ -481,7 +499,7 @@ function run_locked(scope, trigger) {
     let sections = config_sections();
     if (sections == null) return { status: "failed", reason: "config_unavailable" };
     let read = policy_module.read(sections), policy = read.policy;
-    let crashed = begin_run(trigger, scope, started, policy);
+    let crashed = begin_run(trigger, scope, started, policy).crashed;
     remove_stale_apply_dirs();
     let local = state_module.read();
     // A state recovered from a corrupt file in this very run.
@@ -531,7 +549,7 @@ function run_locked(scope, trigger) {
             group.decision = { reason: decision.reason, at: now() };
             if (decision.apply) {
                 let rep = results[aggregate.representative];
-                applied = apply_group(name, aggregate, rep.full, rep.resolver);
+                applied = apply_group(name, aggregate, rep.full, rep.resolver, trigger);
                 group.last_apply = applied;
                 if (applied.outcome != null && applied.outcome.cooldown)
                     group = hysteresis.start_cooldown(group, aggregate.candidate, policy.cooldown_seconds, now());
@@ -587,7 +605,140 @@ function if_due() {
     return run("auto", "schedule");
 }
 
+// ---- manual apply ------------------------------------------------------------
+//
+// The operator's explicit apply of a confirmed recommendation (mode
+// recommend). The caller names only the group: the candidate, the current
+// strategy, the owner and the measurement all come from the state and are
+// checked again against the configuration and the routing right now. The
+// change itself is the Stage 5 plan + apply transaction (apply_group), never
+// a lighter path. Every refusal happens before any production change.
+
+// What the stored recommendation of a group says, or why it cannot be
+// applied: { reason } or { group, result }.
+function manual_recommendation(state, name, policy, at) {
+    let g = state.groups[name];
+    if (type(g) != "object" || type(g.result) != "object") return { reason: "no_recommendation" };
+    let r = g.result;
+    if (r.status == "conflict") return { reason: "conflict" };
+    if (r.status == "direct_stable" || r.candidate == "direct") return { reason: "direct_not_applicable" };
+    if (r.status != "recommendation" || !r.candidate) return { reason: "no_recommendation" };
+    if (g.ready !== true || type(g.pending) != "object" || g.pending.candidate != r.candidate) return { reason: "not_confirmed" };
+    if (!policy_module.confidence_at_least(r.confidence, policy.min_confidence)) return { reason: "confidence_too_low" };
+    let measured = type(g.last) == "object" ? int(g.last.at) : 0;
+    if (measured <= 0 || at - measured > MANUAL_MAX_AGE_INTERVALS * int(policy.interval_seconds))
+        return { reason: "recommendation_stale" };
+    if (hysteresis.in_cooldown(g, r.candidate, at)) return { reason: "candidate_in_cooldown" };
+    return { group: g, result: r };
+}
+
+// The group as the configuration and the routing define it now must still
+// be the one measured: same rule, same targets, same rule options, same
+// strategy, and the stored measurements still recommend the same candidate.
+function manual_fresh(sections, targets, state, name, stored) {
+    let computed = compute_groups(sections, targets, state);
+    let now_g = computed.groups[name];
+    if (now_g == null) return { reason: "owner_changed" };
+    // As for autonomous applies: a custom strategy of the user is kept.
+    if (now_g.custom === true) return { reason: "custom_strategy_kept" };
+    if (now_g.fingerprint != stored.group.fingerprint) return { reason: "rule_changed" };
+    if (as_string(now_g.current) != as_string(stored.group.current)) return { reason: "strategy_changed" };
+    if (join(",", sort([ ...now_g.targets ])) != join(",", sort([ ...(stored.group.targets || []) ]))) return { reason: "targets_changed" };
+    let r = now_g.result;
+    if (r.status != "recommendation" || r.candidate != stored.result.candidate || r.representative == null)
+        return { reason: "recommendation_changed" };
+    for (let id in now_g.targets) {
+        let summary = state.targets[id];
+        if (type(summary) == "object" && summary.fingerprint != null && summary.fingerprint != now_g.fingerprint)
+            return { reason: "rule_changed" };
+    }
+    return { group: now_g, result: r };
+}
+
+function manual_apply_locked(name, job) {
+    let started = now();
+    let sections = config_sections();
+    if (sections == null) return { status: "failed", reason: "config_unavailable", group: name };
+    let read = policy_module.read(sections), policy = read.policy;
+    let refuse = (reason) => ({ status: "refused", result: "refused", reason, group: name });
+    if (policy.mode != "recommend") return refuse(policy.mode == "off" ? "mode_off" : "mode_not_recommend");
+    let state = state_module.read();
+    if (state.recovered_from != null) return refuse("state_recovered");
+    let stored = manual_recommendation(state, name, policy, started);
+    if (stored.reason) return refuse(stored.reason);
+    let candidate = stored.result.candidate;
+    let entry = catalog.find(candidate);
+    let checked = entry ? catalog.validate_entry(entry) : null;
+    if (checked == null || checked.state != "supported" || checked.protocol != "tcp") return refuse("candidate_unsupported");
+    let reason = blocker();
+    if (reason != null) return refuse(reason);
+
+    let begun = begin_run("manual", name, started, policy,
+        { kind: "apply", job: job || null, phase: "checking", group: name, candidate, phase_at: started });
+    let finish = (output) => {
+        with_state((s) => {
+            // The last run stays what the status shows; the apply is in the
+            // group record and the apply list.
+            let prev = begun.previous;
+            s.worker = type(prev) == "object" && prev.state == "running" ? { ...prev, state: "crashed", detected_at: now() } : prev;
+        });
+        return output;
+    };
+
+    let fresh = manual_fresh(sections, read.targets, state, name, stored);
+    if (fresh.reason) return finish(refuse(fresh.reason));
+    let rep = fresh.result.representative;
+    let t = filter(read.targets, (x) => x.id == rep)[0];
+    let full = state_module.load_full(rep);
+    if (t == null || type(full) != "object" || full.status != "selected" || full.selected != candidate ||
+        type(full.target) != "object" || full.target.host != t.host)
+        return finish(refuse("measurement_unavailable"));
+    let dns_resolver = resolver_for(t, sections);
+    if (dns_resolver == null) return finish(refuse("resolver_missing"));
+
+    let record = apply_group(name, fresh.result, full, dns_resolver.ip, "manual");
+    with_state((s) => {
+        let g = type(s.groups[name]) == "object" ? s.groups[name] : hysteresis.empty_group();
+        g.last_apply = record;
+        if (record.outcome != null && record.outcome.cooldown)
+            g = hysteresis.start_cooldown(g, candidate, policy.cooldown_seconds, now());
+        if (record.outcome != null && record.outcome.reset) { g.pending = null; g.ready = false; }
+        s.groups[name] = g;
+        push(s.applies, record);
+    });
+    let ran = record.outcome != null || record.status == "no_change_required";
+    return finish({ status: record.status == "applied" || record.status == "no_change_required" ? "ok" : ran ? "failed" : "refused",
+        result: ran ? record.status : "refused", reason: record.reason, group: name, candidate,
+        trigger: "manual", finished_at: now() });
+}
+
+function manual_apply(name, job) {
+    name = as_string(name);
+    if (!state_module.valid_id(name)) return { status: "failed", reason: "invalid_group" };
+    if (!ensure_state_dir()) return { status: "failed", reason: "state_dir_unavailable" };
+    let lock = flock(WORKER_LOCK, false);
+    if (lock == null) return { status: "busy", result: "refused", reason: "autotune_worker_running", group: name };
+    let output = manual_apply_locked(name, job);
+    unlock(lock);
+    return output;
+}
+
 // ---- background jobs ---------------------------------------------------------
+
+// Where a running manual apply is: the worker phase, and while the Stage 5
+// transaction runs, its phase (only the phase name of the apply record).
+function apply_progress(id) {
+    let w = state_module.read().worker;
+    if (type(w) != "object" || w.kind != "apply" || w.job != id || w.state != "running") return { phase: "starting", apply_phase: null };
+    let apply_phase = null;
+    if (w.phase == "applying") {
+        let data = fs.readfile(APPLY_STATE_FILE), s = null;
+        try { s = data == null ? null : json(data); } catch (e) { s = null; }
+        if (type(s) == "object" && int(s.started_at) >= int(w.phase_at) - 1 && index(APPLY_PHASES, s.phase) >= 0)
+            apply_phase = s.phase;
+    }
+    return { phase: index([ "checking", "applying" ], w.phase) >= 0 ? w.phase : "checking", apply_phase };
+}
 
 function valid_job_id(id) { return match(as_string(id), /^[0-9]{1,12}_[0-9]{1,10}$/) != null; }
 function job_path(id) { return JOBS_DIR + "/" + id + ".json"; }
@@ -613,23 +764,25 @@ function job_prune() {
     for (let i = 0; i < length(ids) - JOB_KEEP; i++) fs.unlink(job_path(ids[i]));
 }
 
+// A job is a run (kind "run", the default of older job files) or a manual
+// apply (kind "apply"); both go through the same files and status command.
+function job_mode(job) { return job.kind == "apply" ? "apply-job" : "run-job"; }
+
 function job_alive(job) {
     return type(job.pid) == "string" && type(job.ticks) == "string" &&
         identity.matches_record({ pid: job.pid, ticks: job.ticks }, "ucode",
-            [ "ucode", "-L", LIB_DIR, script("manager"), "run-job", job.id ], false, true) != "";
+            [ "ucode", "-L", LIB_DIR, script("manager"), job_mode(job), job.id ], false, true) != "";
 }
 
-function run_async(scope) {
-    scope = as_string(scope);
-    if (scope != "all" && !state_module.valid_id(scope)) return { status: "failed", reason: "invalid_scope" };
+function job_start(kind, scope) {
     if (!ensure_state_dir()) return { status: "failed", reason: "state_dir_unavailable" };
     let probe = flock(WORKER_LOCK, false);
     if (probe == null) return { status: "busy", reason: "autotune_worker_running" };
     unlock(probe);
-    let job = { id: now() + "_" + self_pid(), scope, state: "starting", created_at: now(),
+    let job = { id: now() + "_" + self_pid(), kind, scope, state: "starting", created_at: now(),
         started_at: null, finished_at: null, pid: null, ticks: null, result: null };
     if (!job_write(job)) return { status: "failed", reason: "job_write_failed" };
-    let worker = command([ "ucode", "-L", LIB_DIR, script("manager"), "run-job", job.id, scope ]);
+    let worker = command([ "ucode", "-L", LIB_DIR, script("manager"), job_mode(job), job.id, scope ]);
     if (system(command([ "sh", "-c", worker + " >/dev/null 2>&1 </dev/null &" ])) != 0) {
         fs.unlink(job_path(job.id));
         return { status: "failed", reason: "job_start_failed" };
@@ -638,15 +791,28 @@ function run_async(scope) {
     return { status: "ok", job: job.id };
 }
 
-function run_job(id, scope) {
+function run_async(scope) {
+    scope = as_string(scope);
+    if (scope != "all" && !state_module.valid_id(scope)) return { status: "failed", reason: "invalid_scope" };
+    return job_start("run", scope);
+}
+
+function apply_async(name) {
+    name = as_string(name);
+    if (!state_module.valid_id(name)) return { status: "failed", reason: "invalid_group" };
+    return job_start("apply", name);
+}
+
+function run_job(id, scope, kind) {
     let job = valid_job_id(id) ? job_read(id) : null;
-    if (job == null || job.state != "starting" || job.scope != scope) return { status: "failed", reason: "unknown_job" };
+    if (job == null || job.state != "starting" || job.scope != scope || (job.kind || "run") != kind)
+        return { status: "failed", reason: "unknown_job" };
     job.pid = self_pid();
     job.ticks = identity.start_ticks(job.pid);
     job.state = "running";
     job.started_at = now();
     job_write(job);
-    let output = run(scope, "manual");
+    let output = kind == "apply" ? manual_apply(scope, id) : run(scope, "manual");
     job.state = "finished";
     job.finished_at = now();
     job.result = output;
@@ -662,6 +828,7 @@ function run_status(id) {
     if ((job.state == "running" && !job_alive(job)) ||
         (job.state == "starting" && now() - int(job.created_at) > JOB_STARTING_GRACE))
         job.state = "lost";
+    if (job.kind == "apply" && job.state == "running") job.progress = apply_progress(id);
     return { status: "ok", job };
 }
 
@@ -669,7 +836,7 @@ function run_status(id) {
 
 if (sourcepath(1) != null && sourcepath(1) != "")
     return { status, target, groups, policy_set, target_set, target_remove, run, if_due, run_async, run_status,
-        cron_sync, cron_remove };
+        manual_apply, apply_async, cron_sync, cron_remove };
 
 let mode = ARGV[0] || "";
 let output = null;
@@ -679,21 +846,23 @@ else if (mode == "groups") output = groups();
 else if (mode == "policy-set") output = policy_set(ARGV[1], ARGV[2]);
 else if (mode == "target-set") output = target_set(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
 else if (mode == "target-remove") output = target_remove(ARGV[1]);
-else if (index([ "run", "if-due", "run-job" ], mode) >= 0) {
+else if (index([ "run", "if-due", "run-job", "apply", "apply-job" ], mode) >= 0) {
     // A stop request ends the run after the current target.
     if (type(signal) == "function")
         for (let name in [ "SIGINT", "SIGTERM", "SIGHUP" ])
             signal(name, function() { interrupted = true; });
-    output = mode == "run" ? run(ARGV[1], "manual") : mode == "if-due" ? if_due() : run_job(ARGV[1], ARGV[2]);
+    output = mode == "run" ? run(ARGV[1], "manual") : mode == "if-due" ? if_due() : mode == "apply" ? manual_apply(ARGV[1]) :
+        run_job(ARGV[1], ARGV[2], mode == "apply-job" ? "apply" : "run");
 }
 else if (mode == "run-async") output = run_async(ARGV[1]);
+else if (mode == "apply-async") output = apply_async(ARGV[1]);
 else if (mode == "run-status") output = run_status(ARGV[1]);
 else if (mode == "cron-sync") output = cron_sync();
 else if (mode == "cron-remove") output = cron_remove();
 else {
     warn("Usage: autotune/manager.uc <status|target <id>|groups|policy-set <option> <value>|" +
         "target-set <id> <host> [enabled] [resolver]|target-remove <id>|run <all|group>|if-due|" +
-        "run-async <all|group>|run-status <job>|cron-sync|cron-remove>\n");
+        "run-async <all|group>|run-status <job>|apply <group>|apply-async <group>|cron-sync|cron-remove>\n");
     exit(1);
 }
 print(sprintf("%J\n", output));

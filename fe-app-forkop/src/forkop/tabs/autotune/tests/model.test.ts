@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  applyConfirmation,
+  applyPhaseLabel,
+  applyResultView,
   candidateRows,
   currentStrategyLabel,
   decisionText,
@@ -192,16 +195,53 @@ describe('groupCards', () => {
     expect(card.targets).toEqual(['youtube.com', 'googlevideo.com']);
     expect(card.explanation.join(' ')).toContain('3 checks in a row');
     expect(card.manualHint).toBe(false);
+    expect(card.applyCandidate).toBeNull();
   });
 
-  it('offers the manual hint only for a confirmed recommendation outside auto mode', () => {
+  it('offers a manual apply only for a confirmed recommendation in recommend mode', () => {
     const ready = groupState({
       pending: { candidate: 'multisplit', count: 3 },
       ready: true,
     });
     const [card] = groupCards(status({ groups: { youtube: ready } }), live());
     expect(card.badge.label).toBe('Recommendation confirmed');
-    expect(card.manualHint).toBe(true);
+    expect(card.applyCandidate).toBe('multisplit');
+    expect(card.manualHint).toBe(false);
+
+    const [off] = groupCards(
+      status({ policy: policy({ mode: 'off' }), groups: { youtube: ready } }),
+      live(),
+    );
+    expect(off.applyCandidate).toBeNull();
+    expect(off.manualHint).toBe(true);
+
+    const [cooling] = groupCards(
+      status({
+        groups: { youtube: { ...ready, cooldowns: { multisplit: NOW + 60 } } },
+      }),
+      live(),
+    );
+    expect(cooling.applyCandidate).toBeNull();
+
+    const [custom] = groupCards(
+      status({ groups: { youtube: ready } }),
+      live({ custom: true }),
+    );
+    expect(custom.applyCandidate).toBeNull();
+
+    const [direct] = groupCards(
+      status({
+        groups: {
+          youtube: {
+            ...ready,
+            pending: { candidate: 'direct', count: 3 },
+            result: { ...recommendation, candidate: 'direct' },
+          },
+        },
+      }),
+      live(),
+    );
+    expect(direct.applyCandidate).toBeNull();
 
     const [auto] = groupCards(
       status({
@@ -216,6 +256,7 @@ describe('groupCards', () => {
       live(),
     );
     expect(auto.manualHint).toBe(false);
+    expect(auto.applyCandidate).toBeNull();
     expect(auto.explanation).toContain(decisionText('daily_limit_reached'));
   });
 
@@ -457,5 +498,108 @@ describe('durationChoices', () => {
   it('keeps a custom configured value selectable', () => {
     expect(durationChoices(['1h', '6h'], '6h')).toEqual(['1h', '6h']);
     expect(durationChoices(['1h', '6h'], '90m')).toEqual(['1h', '6h', '90m']);
+  });
+});
+
+describe('manual apply', () => {
+  const ready = groupState({
+    pending: { candidate: 'multisplit', count: 3 },
+    ready: true,
+  });
+
+  it('confirms with the rule, the targets and both strategy names only', () => {
+    const [card] = groupCards(status({ groups: { youtube: ready } }), live());
+    const confirm = applyConfirmation(card);
+    expect(confirm.title).toBe('Apply multisplit?');
+    expect(confirm.message).toContain('"YouTube"');
+    expect(confirm.message).toContain('whole group');
+    expect(confirm.consequences).toEqual(['youtube.com', 'googlevideo.com']);
+    expect(confirm.notes[0]).toBe('Now: fake. Will be: multisplit.');
+    expect(confirm.notes[1]).toContain('snapshot');
+    expect(confirm.notes[1]).toContain('restored automatically');
+    expect(JSON.stringify(confirm)).not.toMatch(/dpi-desync|nfqws|--/);
+  });
+
+  it('labels only the reported steps', () => {
+    expect(applyPhaseLabel(null)).toBe('Checking the recommendation');
+    expect(applyPhaseLabel({ phase: 'applying', apply_phase: null })).toBe(
+      'Preparing the change',
+    );
+    expect(
+      applyPhaseLabel({ phase: 'applying', apply_phase: 'verifying' }),
+    ).toBe('Checking the real production path');
+    expect(
+      applyPhaseLabel({ phase: 'applying', apply_phase: 'rolling_back' }),
+    ).toBe('Restoring the previous configuration');
+  });
+
+  it('explains every outcome', () => {
+    const view = (result: string | undefined, reason: string | null = null) =>
+      applyResultView({ status: 'failed', result, reason }, 'multisplit');
+    expect(
+      applyResultView({ status: 'ok', result: 'applied' }, 'multisplit'),
+    ).toEqual({
+      tone: 'success',
+      text: 'Strategy multisplit applied and checked.',
+      attention: false,
+    });
+    expect(view('rolled_back').tone).toBe('warning');
+    expect(view('rolled_back').text).toContain('restored the previous');
+    expect(view('stale', 'config_changed').text).toContain('outdated');
+    expect(view('refused', 'rule_changed').text).toContain('outdated');
+    expect(view('refused', 'owner_changed').text).toContain('outdated');
+    expect(view('refused', 'not_confirmed').text).toBe(
+      'The recommendation is not confirmed yet.',
+    );
+    expect(view('refused', 'dpi_guard_present').text).toContain(
+      'DPI protection is active',
+    );
+    expect(view('failed', 'reload_failed_recovered')).toMatchObject({
+      tone: 'warning',
+      attention: false,
+    });
+    expect(view('needs_attention', 'lkg_confirm_failed')).toEqual({
+      tone: 'error',
+      text: 'Automatic recovery did not finish.',
+      attention: true,
+    });
+    expect(view('failed', 'interrupted_after_apply').attention).toBe(true);
+    expect(applyResultView(null, 'multisplit').attention).toBe(true);
+    expect(
+      applyResultView({ status: 'failed', reason: 'invalid_group' }, null)
+        .attention,
+    ).toBe(false);
+    expect(
+      applyResultView(
+        {
+          status: 'busy',
+          result: 'refused',
+          reason: 'autotune_worker_running',
+        },
+        null,
+      ).text,
+    ).toBe('Another autotune operation is running.');
+  });
+
+  it('marks a manual last apply', () => {
+    const [card] = groupCards(
+      status({
+        groups: {
+          youtube: groupState({
+            last_apply: {
+              at: NOW - 10,
+              group: 'youtube',
+              candidate: 'multisplit',
+              status: 'applied',
+              reason: null,
+              counted: false,
+              trigger: 'manual',
+            },
+          }),
+        },
+      }),
+      live(),
+    );
+    expect(card.lastApply?.candidate).toBe('multisplit (manually)');
   });
 });

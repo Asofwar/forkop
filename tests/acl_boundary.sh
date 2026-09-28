@@ -31,6 +31,7 @@ for (const command of [
   '/usr/bin/forkop autotune_target_set yt youtube.com',
   '/usr/bin/forkop autotune_target_remove yt',
   '/usr/bin/forkop autotune_apply youtube',
+  '/usr/bin/forkop autotune_apply_async youtube',
   '/usr/bin/forkop autotune_rollback',
   '/usr/bin/forkop autotune_run_async all',
   '/usr/bin/forkop autotune_run all',

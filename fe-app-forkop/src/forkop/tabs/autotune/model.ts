@@ -256,7 +256,10 @@ export interface GroupCard {
     outcome: { label: string; tone: StatusTone };
   } | null;
   cooldowns: { candidate: string; until: number }[];
-  // In "recommend" mode the rule is changed by the user.
+  // The confirmed recommendation an administrator may apply now (mode
+  // "recommend" only); the backend checks everything again.
+  applyCandidate: string | null;
+  // Mode "off" with a confirmed recommendation: how to apply it.
   manualHint: boolean;
   targets: string[];
 }
@@ -365,6 +368,18 @@ export function groupCards(
 
     const apply = state?.last_apply ?? null;
     const nowSeconds = Math.floor(Date.now() / 1000);
+    const cooling = (candidate: string | null) =>
+      Boolean(candidate && (state?.cooldowns?.[candidate] ?? 0) > nowSeconds);
+    const applyCandidate =
+      status.policy.mode === 'recommend' &&
+      result?.status === 'recommendation' &&
+      ready &&
+      !custom &&
+      result.candidate &&
+      result.candidate !== 'direct' &&
+      !cooling(result.candidate)
+        ? result.candidate
+        : null;
 
     return {
       id,
@@ -387,7 +402,10 @@ export function groupCards(
         apply && apply.status !== 'not_applied'
           ? {
               at: apply.at,
-              candidate: strategyLabel(apply.candidate),
+              candidate:
+                apply.trigger === 'manual'
+                  ? `${strategyLabel(apply.candidate)} (${_('manually')})`
+                  : strategyLabel(apply.candidate),
               outcome: applyOutcomeView(apply.status),
             }
           : null,
@@ -397,8 +415,9 @@ export function groupCards(
           candidate: strategyLabel(candidate),
           until,
         })),
+      applyCandidate,
       manualHint:
-        status.policy.mode !== 'auto' &&
+        status.policy.mode === 'off' &&
         result?.status === 'recommendation' &&
         ready,
       targets: targets.map((target) => hosts[target] ?? target),
@@ -582,4 +601,193 @@ export function durationLabel(value: string) {
 // Choices of a select: the presets plus the configured value, if custom.
 export function durationChoices(presets: string[], current: string) {
   return presets.includes(current) ? presets : [...presets, current];
+}
+
+// ---- manual apply ----------------------------------------------------------
+
+// The confirmation of a manual apply: what changes, for which targets, and
+// what Forkop X does to keep it safe. Strategy names only, never options.
+export function applyConfirmation(card: GroupCard) {
+  const candidate = strategyLabel(card.applyCandidate);
+  return {
+    title: _('Apply %s?').replace('%s', candidate),
+    message: `${_('The strategy of the DPI rule "%s" will be changed.').replace('%s', card.title)} ${_('The change affects the whole group:')}`,
+    consequences: card.targets.length ? card.targets : ['—'],
+    notes: [
+      `${_('Now')}: ${card.current}. ${_('Will be')}: ${candidate}.`,
+      _(
+        'Forkop X will create a configuration snapshot, reload the service and check the real production path. If the check fails, the previous configuration is restored automatically.',
+      ),
+    ],
+    confirmLabel: _('Apply'),
+  };
+}
+
+// The step a running manual apply reports (manager.uc apply progress and
+// the Stage 5 transaction phase). Only reported steps are shown.
+export function applyPhaseLabel(
+  progress: { phase: string; apply_phase: string | null } | null | undefined,
+) {
+  switch (progress?.apply_phase) {
+    case 'checking':
+      return _('Checking the configuration before the change');
+    case 'applying':
+      return _('Creating a snapshot and reloading the service');
+    case 'verifying':
+      return _('Checking the real production path');
+    case 'rolling_back':
+      return _('Restoring the previous configuration');
+  }
+  if (progress?.phase === 'applying') return _('Preparing the change');
+  return _('Checking the recommendation');
+}
+
+// Refusals and Stage 5 results that mean the measurement no longer fits
+// the configuration: the check must run again.
+const STALE_REASONS = [
+  'recommendation_stale',
+  'rule_changed',
+  'strategy_changed',
+  'targets_changed',
+  'owner_changed',
+  'recommendation_changed',
+  'measurement_unavailable',
+  'plan_candidate_differs',
+];
+
+export interface ApplyResultView {
+  tone: 'success' | 'warning' | 'error' | 'neutral';
+  text: string;
+  // Recovery did not finish: the user must act (History & Recovery).
+  attention: boolean;
+}
+
+function refusalText(reason: string | null | undefined) {
+  switch (reason) {
+    case 'not_confirmed':
+      return _('The recommendation is not confirmed yet.');
+    case 'no_recommendation':
+      return _('There is no recommendation to apply.');
+    case 'conflict':
+      return _('Targets of this rule need different strategies.');
+    case 'direct_not_applicable':
+      return _('Forkop X never turns DPI bypass off by itself.');
+    case 'candidate_unsupported':
+      return _('This strategy is not supported by the installed Zapret.');
+    case 'confidence_too_low':
+      return _(
+        'The confidence of the recommendation is below the policy minimum.',
+      );
+    case 'candidate_in_cooldown':
+      return _(
+        'This strategy was rolled back recently; it waits for the cooldown.',
+      );
+    case 'custom_strategy_kept':
+      return _('The rule has a custom strategy; Forkop X keeps it.');
+    case 'mode_off':
+    case 'mode_not_recommend':
+    case 'mode_changed':
+      return _(
+        'Manual apply is available only in "Recommendations only" mode.',
+      );
+    case 'state_recovered':
+      return _(
+        'The autotune state was restored after damage. Run the check again.',
+      );
+    case 'resolver_missing':
+      return targetReasonText(reason);
+    case 'autotune_worker_running':
+    case 'autotune_in_progress':
+      return _('Another autotune operation is running.');
+    case 'dpi_guard_present':
+    case 'snapshot_operation_active':
+    case 'apply_unresolved':
+      return `${_('The strategy was not applied')}: ${blockerText(reason)}.`;
+    default:
+      return reason &&
+        /^(reload|restart|start|stop|service)_|_pending$|_running$/.test(reason)
+        ? `${_('The strategy was not applied')}: ${blockerText(reason)}.`
+        : `${_('The strategy was not applied')}.`;
+  }
+}
+
+// What the finished apply job means for the user.
+export function applyResultView(
+  result: { status: string; result?: string; reason?: string | null } | null,
+  candidate: string | null,
+): ApplyResultView {
+  const name = strategyLabel(candidate);
+  const outcome = result?.result ?? '';
+  const reason = result?.reason ?? null;
+  const stale = {
+    tone: 'warning' as const,
+    text: _(
+      'The recommendation is outdated: the configuration changed after the check. Run the check again.',
+    ),
+    attention: false,
+  };
+  switch (outcome) {
+    case 'applied':
+      return {
+        tone: 'success',
+        text: _('Strategy %s applied and checked.').replace('%s', name),
+        attention: false,
+      };
+    case 'rolled_back':
+      return {
+        tone: 'warning',
+        text: _(
+          'The new strategy did not pass the check. Forkop X restored the previous configuration automatically.',
+        ),
+        attention: false,
+      };
+    case 'no_change_required':
+      return {
+        tone: 'neutral',
+        text: _('This strategy is already active; nothing was changed.'),
+        attention: false,
+      };
+    case 'stale':
+      return stale;
+    case 'failed':
+      if (reason === 'reload_failed_recovered')
+        return {
+          tone: 'warning',
+          text: _(
+            'The new strategy was not applied: the service reload failed and the previous configuration was restored automatically.',
+          ),
+          attention: false,
+        };
+      if (reason !== 'interrupted_after_apply')
+        return {
+          tone: 'error',
+          text: _(
+            'The strategy could not be applied. The previous configuration is kept.',
+          ),
+          attention: false,
+        };
+      break;
+    case 'refused':
+    case 'not_applied':
+      if (STALE_REASONS.includes(reason ?? '')) return stale;
+      return { tone: 'warning', text: refusalText(reason), attention: false };
+    case 'needs_attention':
+    case 'unknown':
+      break;
+    default:
+      if (result?.status === 'busy')
+        return {
+          tone: 'warning',
+          text: refusalText('autotune_worker_running'),
+          attention: false,
+        };
+      // Refused before the transaction (invalid request, no configuration).
+      if (!outcome && result)
+        return { tone: 'error', text: refusalText(reason), attention: false };
+  }
+  return {
+    tone: 'error',
+    text: _('Automatic recovery did not finish.'),
+    attention: true,
+  };
 }

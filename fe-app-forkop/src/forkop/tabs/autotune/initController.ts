@@ -17,6 +17,9 @@ import {
 import { formatRelativeTime } from '../../ui/time';
 import { historyItems } from '../history/model';
 import {
+  applyConfirmation,
+  applyPhaseLabel,
+  applyResultView,
   candidateRows,
   confidenceLabel,
   COOLDOWN_CHOICES,
@@ -33,6 +36,7 @@ import {
   targetIdFor,
   targetRows,
   workerView,
+  type ApplyResultView,
   type GroupCard,
 } from './model';
 
@@ -59,6 +63,20 @@ let historyFailed = false;
 let busy = false;
 // Scope of the check started from this page ("all" or a group), if any.
 let runningScope: string | null = null;
+// The manual apply running now (started here or found running on load).
+let applying: {
+  group: string;
+  candidate: string | null;
+  job: string;
+  progress: Forkop.AutotuneJob['progress'] | null;
+} | null = null;
+// The outcome of the last manual apply, shown on its group card.
+let applyNotice: { group: string; view: ApplyResultView } | null = null;
+
+// No other change while a change, a check or an apply runs.
+function locked() {
+  return busy || Boolean(runningScope) || Boolean(applying);
+}
 
 function replace(id: string, ...nodes: Node[]) {
   const container = document.getElementById(id);
@@ -98,6 +116,7 @@ async function loadStatus() {
       : null;
   history = events && Array.isArray(events.events) ? events : null;
   historyFailed = !history;
+  resumeApply();
   renderAll();
 }
 
@@ -128,7 +147,7 @@ async function mutate(
   action: () => Promise<Forkop.MethodResponse<Forkop.AutotuneMutationResult>>,
   success: string,
 ) {
-  if (busy) return false;
+  if (locked()) return false;
   busy = true;
   renderAll();
   let ok = false;
@@ -205,8 +224,96 @@ async function pollJob(jobId: string) {
   }
 }
 
+// ---- manual apply ------------------------------------------------------
+
+function toastType(tone: ApplyResultView['tone']) {
+  return tone === 'neutral' ? 'info' : tone;
+}
+
+async function pollApply() {
+  const started = Date.now();
+  while (mounted && applying && Date.now() - started < JOB_TIMEOUT_MS) {
+    const current = applying;
+    const response = await ForkopShellMethods.autotuneRunStatus(current.job);
+    const job = response.success ? response.data.job : undefined;
+    if (!mounted || applying !== current) return;
+    if (job && (job.state === 'finished' || job.state === 'lost')) {
+      const view = applyResultView(
+        job.state === 'finished' ? job.result : null,
+        job.result?.candidate ?? current.candidate,
+      );
+      applying = null;
+      applyNotice = { group: current.group, view };
+      showToast(
+        view.text,
+        toastType(view.tone),
+        view.attention ? 15000 : 10000,
+      );
+      await loadAll();
+      return;
+    }
+    if (job?.progress) {
+      current.progress = job.progress;
+      renderAll();
+    }
+    await new Promise((resolve) => setTimeout(resolve, JOB_POLL_INTERVAL_MS));
+  }
+}
+
+// A page opened (or reloaded) while a manual apply runs follows it.
+function resumeApply() {
+  const worker = status?.worker;
+  if (
+    applying ||
+    !worker ||
+    worker.state !== 'running' ||
+    worker.kind !== 'apply' ||
+    !worker.job
+  )
+    return;
+  applying = {
+    group: worker.group ?? worker.scope ?? '',
+    candidate: worker.candidate ?? null,
+    job: worker.job,
+    progress: null,
+  };
+  void pollApply();
+}
+
+async function applyGroup(card: GroupCard) {
+  if (locked() || !card.applyCandidate) return;
+  const confirmed = await confirmAction(applyConfirmation(card));
+  if (!confirmed || locked()) return;
+  applyNotice = null;
+  busy = true;
+  renderAll();
+  try {
+    const response = await ForkopShellMethods.autotuneApplyAsync(card.id);
+    const data = response.success ? response.data : null;
+    if (data?.status === 'ok' && data.job) {
+      applying = {
+        group: card.id,
+        candidate: card.applyCandidate,
+        job: data.job,
+        progress: null,
+      };
+    } else if (data?.status === 'busy') {
+      showToast(_('Another autotune operation is running.'), 'warning', 6000);
+    } else {
+      showToast(_('Could not start the apply'), 'error', 8000);
+    }
+  } catch (error) {
+    logger.error('[AUTOTUNE]', 'apply failed', error);
+    showToast(_('Could not start the apply'), 'error', 8000);
+  } finally {
+    busy = false;
+  }
+  renderAll();
+  if (applying) await pollApply();
+}
+
 async function runCheck(scope: string) {
-  if (busy || runningScope) return;
+  if (locked()) return;
   runningScope = scope;
   renderAll();
   try {
@@ -558,7 +665,7 @@ function renderState() {
                   type: 'button',
                   class: 'btn cbi-button',
                   'aria-pressed': mode === policy.mode ? 'true' : 'false',
-                  disabled: busy ? true : undefined,
+                  disabled: locked() ? true : undefined,
                   click: () => void setMode(mode),
                 },
                 modeLabel(mode),
@@ -572,7 +679,12 @@ function renderState() {
     ],
     [_('Policy'), policySummary(policy)],
   ];
-  if (runningScope || status.worker?.state === 'running')
+  if (applying)
+    facts.push([
+      _('State'),
+      renderStatus({ label: _('Applying a strategy'), tone: 'loading' }),
+    ]);
+  else if (runningScope || status.worker?.state === 'running')
     facts.push([
       _('State'),
       renderStatus(worker ?? { label: _('Checking targets'), tone: 'loading' }),
@@ -632,7 +744,7 @@ function renderState() {
             {
               type: 'button',
               class: 'btn cbi-button',
-              disabled: busy ? true : undefined,
+              disabled: locked() ? true : undefined,
               click: () => showPolicyEditor(),
             },
             _('Policy…'),
@@ -642,10 +754,7 @@ function renderState() {
             {
               type: 'button',
               class: 'btn cbi-button-action',
-              disabled:
-                busy || runningScope || !status.targets.length
-                  ? true
-                  : undefined,
+              disabled: locked() || !status.targets.length ? true : undefined,
               title: !status.targets.length
                 ? _('Add a target first')
                 : undefined,
@@ -671,6 +780,24 @@ function renderProgress(progress: NonNullable<GroupCard['progress']>) {
     _('Confirmation %d / %d')
       .replace('%d', String(progress.count))
       .replace('%d', String(progress.required)),
+  ]);
+}
+
+function renderApplyNotice(view: ApplyResultView) {
+  if (!view.attention)
+    return renderStatus({ label: view.text, tone: view.tone });
+  return E('div', { class: 'fkp-autotune__alert', role: 'alert' }, [
+    E('strong', {}, _('Action required')),
+    E('p', {}, view.text),
+    E(
+      'button',
+      {
+        type: 'button',
+        class: 'btn cbi-button-action',
+        click: () => openForkopPage('history'),
+      },
+      _('Open History and recovery'),
+    ),
   ]);
 }
 
@@ -728,21 +855,49 @@ function renderGroup(card: GroupCard) {
             'p',
             { class: 'fkp-autotune__muted' },
             _(
-              'In "Recommendations only" mode Forkop X does not change the rule. To let it apply the strategy with a production check and automatic rollback, switch to "Automatic".',
+              'Autotune is off. To apply the recommendation, switch to "Recommendations only" and apply it here, or to "Automatic".',
             ),
           ),
         ]
+      : []),
+    ...(applying?.group === card.id
+      ? [
+          renderStatus({
+            label: applyPhaseLabel(applying.progress),
+            tone: 'loading',
+          }),
+        ]
+      : []),
+    ...(applyNotice?.group === card.id
+      ? [renderApplyNotice(applyNotice.view)]
       : []),
     ...(readonly
       ? []
       : [
           E('div', { class: 'fkp-actions' }, [
+            ...(card.applyCandidate
+              ? [
+                  E(
+                    'button',
+                    {
+                      type: 'button',
+                      class: 'btn cbi-button-action',
+                      disabled: locked() ? true : undefined,
+                      click: () => void applyGroup(card),
+                    },
+                    _('Apply %s').replace(
+                      '%s',
+                      strategyLabel(card.applyCandidate),
+                    ),
+                  ),
+                ]
+              : []),
             E(
               'button',
               {
                 type: 'button',
                 class: 'btn cbi-button',
-                disabled: busy || runningScope ? true : undefined,
+                disabled: locked() ? true : undefined,
                 click: () => void runCheck(card.id),
               },
               runningScope === card.id ? _('Checking…') : _('Check now'),
@@ -851,7 +1006,7 @@ function renderTargets() {
             {
               type: 'button',
               class: 'btn cbi-button',
-              disabled: busy ? true : undefined,
+              disabled: locked() ? true : undefined,
               click: () => showTargetEditor(),
             },
             _('Add target'),
@@ -913,12 +1068,12 @@ function renderTargets() {
                         {
                           label: _('Edit…'),
                           onClick: () => showTargetEditor(target),
-                          disabled: busy,
+                          disabled: locked(),
                         },
                         {
                           label: _('Remove…'),
                           onClick: () => void removeTarget(target),
-                          disabled: busy,
+                          disabled: locked(),
                           danger: true,
                         },
                       ]),
@@ -1007,6 +1162,8 @@ function onPageMount() {
 function onPageUnmount() {
   mounted = false;
   mountId += 1;
+  // Followed again from the status when the page comes back.
+  applying = null;
   if (refreshTimer) clearInterval(refreshTimer);
   refreshTimer = null;
 }

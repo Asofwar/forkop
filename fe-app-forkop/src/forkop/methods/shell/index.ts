@@ -416,6 +416,14 @@ export const ForkopShellMethods = {
       '/usr/bin/forkop',
       { allowNonZeroWithStdout: true },
     ),
+  // Only the group is sent: the backend derives the candidate itself.
+  autotuneApplyAsync: async (group: string) =>
+    callBaseMethod<Forkop.AutotuneMutationResult>(
+      Forkop.AvailableMethods.AUTOTUNE_APPLY_ASYNC,
+      [group],
+      '/usr/bin/forkop',
+      { allowNonZeroWithStdout: true },
+    ),
   autotuneRunStatus: async (job: string) =>
     callBaseMethod<Forkop.AutotuneJobStatus>(
       Forkop.AvailableMethods.AUTOTUNE_RUN_STATUS,

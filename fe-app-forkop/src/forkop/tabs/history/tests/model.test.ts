@@ -130,6 +130,34 @@ describe('history list', () => {
     });
   });
 
+  it('names manual and automatic autotune applies', () => {
+    const titles = historyItems(
+      [
+        {
+          kind: 'autotune_apply',
+          status: 'success',
+          timestamp: 4,
+          trigger: 'manual',
+          candidate: 'multisplit',
+        },
+        {
+          kind: 'autotune_apply',
+          status: 'recovered',
+          timestamp: 3,
+          trigger: 'automatic',
+          candidate: 'fake',
+        },
+        { kind: 'autotune_apply', status: 'success', timestamp: 2 },
+      ],
+      'autotune',
+    ).map((item) => item.title);
+    expect(titles).toEqual([
+      'Autotune: multisplit applied manually',
+      'Autotune: automatic apply of fake',
+      'Autotune apply',
+    ]);
+  });
+
   it('filters by category', () => {
     expect(historyItems(events, 'config').map((item) => item.title)).toEqual([
       'Snapshot deleted',

@@ -3,6 +3,8 @@ interface ConfirmActionOptions {
   message: string;
   // What will happen, one line per consequence.
   consequences?: string[];
+  // Further paragraphs after the consequences.
+  notes?: string[];
   confirmLabel: string;
   danger?: boolean;
 }
@@ -48,6 +50,7 @@ export function confirmAction(options: ConfirmActionOptions): Promise<boolean> {
             ),
           ]
         : []),
+      ...(options.notes ?? []).map((line) => E('p', {}, line)),
       E('div', { class: 'fkp-confirm__actions' }, [
         cancelButton,
         confirmButton,

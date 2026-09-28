@@ -26,6 +26,14 @@ export const styles = `
 .fkp-autotune__hint,
 .fkp-autotune__muted { margin: 0; color: var(--fkp-tone-neutral); overflow-wrap: anywhere; }
 .fkp-autotune__text { margin: 0; overflow-wrap: anywhere; }
+.fkp-autotune__alert {
+    padding: var(--fkp-space-2) var(--fkp-space-3);
+    border: 1px solid var(--fkp-tone-error);
+    border-left-width: 4px;
+    border-radius: 6px;
+    overflow-wrap: anywhere;
+}
+.fkp-autotune__alert p { margin: var(--fkp-space-1) 0 var(--fkp-space-2); }
 .fkp-autotune__modes { display: flex; flex-wrap: wrap; gap: var(--fkp-space-1); }
 .fkp-autotune__modes .btn[aria-pressed="true"] {
     font-weight: 600;

@@ -7,7 +7,8 @@ set -euo pipefail
 # strategy field says the check is unavailable (LuCI drops the rejection of a
 # modal save silently), but it is not remembered as a verdict: the next Save
 # asks the backend again and succeeds once it answers (UC-040). Real verdicts
-# stay cached.
+# stay cached. A read-only session, which may not run the backend parser and
+# cannot save, does not ask it when the field renders.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 node - "$ROOT_DIR/tests/helpers/luci_form_harness.js" <<'NODE'
@@ -70,6 +71,38 @@ function rule(action, option, value) {
         assert.equal(env.uci.data.rule[option], edited);
         assert.equal(modal.option(option).isValid('rule'), true, 'the answered check must clear the field');
       });
+
+  // The rendered NFQWS and NFQWS2 fields ask the backend at once. The ACL
+  // grants /usr/bin/forkop only with write access, so for a read-only
+  // session the call fails, and the field would show "Backend validation
+  // unavailable ... Save again to retry" to a user who cannot save.
+  for (const version of ['24.10', '25.12'])
+    for (const [action, option, command, original] of cases.filter(([action]) => action !== 'byedpi'))
+      for (const readonly of [true, false])
+        await check(`${version} ${action}: rendered field, ${readonly ? 'read-only' : 'writable'} session`, async () => {
+          let calls = 0;
+          const env = createEnvironment({ version, config: { rule: rule(action, option, original) },
+            fs: {
+              exec(_command, args) {
+                if (args && args[0] === command) {
+                  calls += 1;
+                  return Promise.reject(new Error('Access denied'));
+                }
+                return Promise.resolve({ code: 0, stdout: '{}', stderr: '' });
+              },
+            } });
+          const modal = await env.openRule('rule', { readonly });
+          env.window.setTimeout = (fn) => { fn(); return 1; };
+          modal.option(option).renderWidget('rule', 0, original);
+          await new Promise((resolve) => setImmediate(resolve));
+          if (readonly) {
+            assert.equal(calls, 0, 'a read-only field must not ask the backend');
+            assert.equal(modal.option(option).isValid('rule'), true, 'a read-only field must not show a failed check');
+          } else {
+            assert.equal(calls, 1, 'the rendered field must ask the backend');
+            assert.match(modal.option(option).getValidationError('rule'), /Backend validation unavailable/);
+          }
+        });
 
   // A real verdict is cached: an invalid strategy is not re-sent.
   for (const version of ['24.10', '25.12'])

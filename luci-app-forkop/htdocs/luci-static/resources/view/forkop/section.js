@@ -7649,7 +7649,13 @@ function configureTextareaOption(option, analyzer, remoteValidationAttacher) {
       if (typeof analyzer === "function") {
         attachAnnotatedTextarea(textarea, analyzer);
       }
-      if (typeof remoteValidationAttacher === "function") {
+      // The ACL grants the backend parser only with write access: for a
+      // read-only session, which cannot save, the call fails and the field
+      // would ask to save again.
+      if (
+        typeof remoteValidationAttacher === "function" &&
+        !(this.readonly != null ? this.readonly : this.map.readonly)
+      ) {
         remoteValidationAttacher(this, section_id, textarea);
       }
     }

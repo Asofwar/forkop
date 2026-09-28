@@ -392,6 +392,10 @@ class FakeNode {
   getAttribute(name) {
     return this.attrs[name] ?? null;
   }
+  // Style sheets section.js injects into document.head.
+  insertAdjacentHTML(_position, html) {
+    this.childNodes.push(`${html}`);
+  }
   addEventListener() {}
   removeEventListener() {}
   dispatchEvent() {
@@ -870,7 +874,15 @@ function createForm({ version, baseclass, uci, jsonMaps }) {
   });
 
   const Value = AbstractValue.extend({});
-  const TextValue = Value.extend({});
+  // form.TextValue.renderWidget(): the field's textarea. The model does not
+  // render it; tests call it to reach what section.js attaches to it.
+  const TextValue = Value.extend({
+    renderWidget(section_id, _option_index, cfgvalue) {
+      const textarea = E("textarea", { id: this.cbid(section_id) });
+      textarea.value = cfgvalue != null ? `${cfgvalue}` : "";
+      return E("div", {}, [textarea]);
+    },
+  });
   const ListValue = Value.extend({ widgetKind: "select" });
   const DynamicList = Value.extend({ widgetKind: "list" });
   const DummyValue = Value.extend({

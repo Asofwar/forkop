@@ -30,8 +30,8 @@ grep -Fq 'return fetch_github_release_json(parts[0], parts[1]);' "$ACTION_UC" ||
 grep -Fq 'asset_url: forkop_mirror_url(asset_url)' "$ACTION_UC" ||
   fail "sing-box Extended relative assets must stay on the dependency mirror"
 
-grep -Fq "text: 'Tiny'" "$UPDATES_TS" || fail "Tiny switch is missing"
-grep -Fq "text: 'Extended'" "$UPDATES_TS" || fail "Extended switch is missing"
+grep -Fq "text: _('Install Tiny build')" "$UPDATES_TS" || fail "Tiny switch is missing"
+grep -Fq "text: _('Install Extended build')" "$UPDATES_TS" || fail "Extended switch is missing"
 if grep -Fq "text: 'Stable'" "$UPDATES_TS"; then
   fail "Stable sing-box must not be offered in LuCI"
 fi

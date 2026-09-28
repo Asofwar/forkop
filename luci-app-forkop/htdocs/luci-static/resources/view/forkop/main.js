@@ -1100,6 +1100,30 @@ var DOMAIN_LIST_OPTIONS = {
   digitalocean: "Digital Ocean ASN",
   cloudfront: "CloudFront ASN",
 };
+function domainListLabel(key) {
+  switch (key) {
+    case "russia_inside":
+      return _("Russia: blocked inside");
+    case "russia_outside":
+      return _("Russia: blocked from outside");
+    case "ukraine_inside":
+      return _("Ukraine");
+    case "geoblock":
+      return _("Geo-blocked services");
+    case "block":
+      return _("Block list");
+    case "porn":
+      return _("Adult sites");
+    case "news":
+      return _("News");
+    case "anime":
+      return _("Anime");
+    case "ads_hagezi_pro":
+      return _("Ads (Hagezi Pro)");
+    default:
+      return DOMAIN_LIST_OPTIONS[key] ?? key;
+  }
+}
 var SECONDARY_RULESET_OPTIONS = {
   blizzard: "Blizzard",
   bungie: "Bungie",
@@ -2141,7 +2165,9 @@ function renderDefaultState({
                   ? "fkp_dashboard-page__outbound-grid__item__latency--green"
                   : "fkp_dashboard-page__outbound-grid__item__latency--empty",
               },
-              member.latency ? `${member.latency}ms` : "N/A",
+              member.latency
+                ? _("%d ms").replace("%d", String(member.latency))
+                : "\u2014",
             ),
           ],
         ),
@@ -2299,7 +2325,9 @@ function renderDefaultState({
           E(
             "div",
             { class: getLatencyClass() },
-            outbound.latency ? `${outbound.latency}ms` : "N/A",
+            outbound.latency
+              ? _("%d ms").replace("%d", String(outbound.latency))
+              : "\u2014",
           ),
         ]),
         ...(priorityMembers ? [priorityMembers] : []),
@@ -4719,7 +4747,26 @@ var TabServiceInstance = TabService.getInstance();
 
 // src/forkop/tabs/diagnostic/helpers/getCheckTitle.ts
 function getCheckTitle(name) {
-  return `${name} ${_("checks")}`;
+  switch (name) {
+    case "DNS":
+      return _("DNS checks");
+    case "Sing-box":
+      return _("sing-box checks");
+    case "Nftables":
+      return _("nftables checks");
+    case "Zapret":
+      return _("Zapret checks");
+    case "Zapret2":
+      return _("Zapret2 checks");
+    case "ByeDPI":
+      return _("ByeDPI checks");
+    case "Outbounds":
+      return _("Outbound checks");
+    case "FakeIP":
+      return _("FakeIP checks");
+    default:
+      return name;
+  }
 }
 
 // src/forkop/tabs/diagnostic/checks/contstants.ts
@@ -8173,7 +8220,7 @@ function getUrlTestLatencyClass(latency) {
   return "fkp_dashboard-page__outbound-grid__item__latency--red";
 }
 function formatUrlTestLatency(latency) {
-  return latency ? `${latency}ms` : "N/A";
+  return latency ? _("%d ms").replace("%d", String(latency)) : "\u2014";
 }
 function renderDetailsUrl(value) {
   const url = `${value ?? ""}`.trim();
@@ -13059,6 +13106,23 @@ function renderDiagnosticAvailableActionsWidget() {
     container?.replaceChildren(renderedActions);
   });
 }
+function displayValue(value) {
+  switch (
+    String(value ?? "")
+      .trim()
+      .toLowerCase()
+  ) {
+    case "":
+    case "unknown":
+      return _("unknown");
+    case "loading":
+      return _("Loading\u2026");
+    case "not installed":
+      return _("Not installed");
+    default:
+      return value;
+  }
+}
 function renderDiagnosticSystemInfoWidget() {
   logger.debug("[DIAGNOSTIC]", "renderDiagnosticSystemInfoWidget");
   const diagnosticsSystemInfo = store.get().diagnosticsSystemInfo;
@@ -13069,11 +13133,11 @@ function renderDiagnosticSystemInfoWidget() {
       value: normalizeCompiledVersion(diagnosticsSystemInfo.forkop_version),
     },
     {
-      key: "Luci App",
+      key: _("LuCI app"),
       value: normalizeCompiledVersion(FORKOP_LUCI_APP_VERSION),
     },
     {
-      key: "Sing-box",
+      key: "sing-box",
       value: formatSingBoxVersion(diagnosticsSystemInfo),
     },
   ];
@@ -13097,16 +13161,16 @@ function renderDiagnosticSystemInfoWidget() {
   }
   items.push(
     {
-      key: "OS",
+      key: _("OS"),
       value: diagnosticsSystemInfo.openwrt_version,
     },
     {
-      key: "Device",
+      key: _("Device"),
       value: diagnosticsSystemInfo.device_model,
     },
   );
   const renderedSystemInfo = renderSystemInfo({
-    items,
+    items: items.map((item) => ({ ...item, value: displayValue(item.value) })),
   });
   return preserveScrollForPage(() => {
     container.replaceChildren(renderedSystemInfo);
@@ -14165,8 +14229,8 @@ function getDisplayName2(section) {
 }
 function buildRouteDisplayNames(sections) {
   const map = {
-    "bypass-out": "Bypass",
-    "direct-out": "direct",
+    "bypass-out": _("Bypass"),
+    "direct-out": _("direct"),
   };
   const routeSectionItems = [];
   const rulesByTag = {};
@@ -14820,9 +14884,15 @@ function connectionTechnicalDetails(connection) {
     [_("Rule"), safeText(connection.rule)],
     [_("Rule payload"), safeText(connection.rulePayload)],
     [_("Outbound chain"), safeText((connection.chains || []).join(" \u2192 "))],
-    [_("Started"), safeText(connection.start)],
+    [_("Started"), formatStarted(connection.start)],
     [_("Connection ID"), connection.id],
   ];
+}
+function formatStarted(start) {
+  const time = Date.parse(start || "");
+  return Number.isFinite(time)
+    ? new Date(time).toLocaleString()
+    : safeText(start);
 }
 function connectionDetails(connection) {
   const target = getTargetCellParts(connection);
@@ -17556,7 +17626,7 @@ function getComponentCards() {
   if (!singBoxTiny) {
     singBoxActions.push({
       key: "singBoxInstallTiny",
-      text: "Tiny",
+      text: _("Install Tiny build"),
       icon: renderDownloadIcon24,
       component: "sing_box",
       action: "install_tiny",
@@ -17565,7 +17635,7 @@ function getComponentCards() {
   if (!singBoxExtended) {
     singBoxActions.push({
       key: "singBoxInstallExtended",
-      text: "Extended",
+      text: _("Install Extended build"),
       icon: renderDownloadIcon24,
       component: "sing_box",
       action: "install_extended",
@@ -21261,6 +21331,7 @@ return baseclass.extend({
   bulkValidate,
   confirmAction,
   coreService,
+  domainListLabel,
   getClashUIUrl,
   getProxyUrlName,
   injectGlobalStyles,

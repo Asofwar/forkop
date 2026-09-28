@@ -723,6 +723,25 @@ function renderDiagnosticAvailableActionsWidget() {
   });
 }
 
+// Placeholders the backend or the store report as raw words.
+function displayValue(value: string) {
+  switch (
+    String(value ?? '')
+      .trim()
+      .toLowerCase()
+  ) {
+    case '':
+    case 'unknown':
+      return _('unknown');
+    case 'loading':
+      return _('Loading…');
+    case 'not installed':
+      return _('Not installed');
+    default:
+      return value;
+  }
+}
+
 function renderDiagnosticSystemInfoWidget() {
   logger.debug('[DIAGNOSTIC]', 'renderDiagnosticSystemInfoWidget');
   const diagnosticsSystemInfo = store.get().diagnosticsSystemInfo;
@@ -735,11 +754,11 @@ function renderDiagnosticSystemInfoWidget() {
       value: normalizeCompiledVersion(diagnosticsSystemInfo.forkop_version),
     },
     {
-      key: 'Luci App',
+      key: _('LuCI app'),
       value: normalizeCompiledVersion(FORKOP_LUCI_APP_VERSION),
     },
     {
-      key: 'Sing-box',
+      key: 'sing-box',
       value: formatSingBoxVersion(diagnosticsSystemInfo),
     },
   ];
@@ -767,17 +786,17 @@ function renderDiagnosticSystemInfoWidget() {
 
   items.push(
     {
-      key: 'OS',
+      key: _('OS'),
       value: diagnosticsSystemInfo.openwrt_version,
     },
     {
-      key: 'Device',
+      key: _('Device'),
       value: diagnosticsSystemInfo.device_model,
     },
   );
 
   const renderedSystemInfo = renderSystemInfo({
-    items,
+    items: items.map((item) => ({ ...item, value: displayValue(item.value) })),
   });
 
   return preserveScrollForPage(() => {

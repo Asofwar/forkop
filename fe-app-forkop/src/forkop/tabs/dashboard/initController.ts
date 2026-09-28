@@ -1048,7 +1048,7 @@ function getUrlTestLatencyClass(latency: number) {
 }
 
 function formatUrlTestLatency(latency: number) {
-  return latency ? `${latency}ms` : 'N/A';
+  return latency ? _('%d ms').replace('%d', String(latency)) : '—';
 }
 
 function renderDetailsUrl(value: unknown) {

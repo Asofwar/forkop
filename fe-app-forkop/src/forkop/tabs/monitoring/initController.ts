@@ -205,8 +205,8 @@ function getDisplayName(section: Forkop.ConfigSection) {
 
 function buildRouteDisplayNames(sections: Forkop.ConfigSection[]) {
   const map: Record<string, string> = {
-    'bypass-out': 'Bypass',
-    'direct-out': 'direct',
+    'bypass-out': _('Bypass'),
+    'direct-out': _('direct'),
   };
   const routeSectionItems: Array<{ sectionName: string; displayName: string }> =
     [];
@@ -1004,9 +1004,17 @@ function connectionTechnicalDetails(connection: MonitoredConnection) {
     [_('Rule'), safeText(connection.rule)],
     [_('Rule payload'), safeText(connection.rulePayload)],
     [_('Outbound chain'), safeText((connection.chains || []).join(' → '))],
-    [_('Started'), safeText(connection.start)],
+    [_('Started'), formatStarted(connection.start)],
     [_('Connection ID'), connection.id],
   ];
+}
+
+// The Clash API gives an ISO time; shown in the browser's locale.
+function formatStarted(start: string | undefined) {
+  const time = Date.parse(start || '');
+  return Number.isFinite(time)
+    ? new Date(time).toLocaleString()
+    : safeText(start);
 }
 
 function connectionDetails(connection: MonitoredConnection) {

@@ -88,6 +88,28 @@ async function check(label, fn) {
         `${version}: Device filter must stay hidden without destination conditions`);
     });
 
+    // A hidden device filter is kept only while legacy remote lists (no widget)
+    // still match; removing the last destination condition clears it, and a
+    // visible device filter can always be cleared.
+    for (const [label, values, edit, expected] of [
+      ['last condition removed', { community_lists: ['youtube'] },
+        { community_lists: [] }, undefined],
+      ['last visible condition removed, legacy list left',
+        { community_lists: ['youtube'], remote_domain_lists: ['https://example.com/domains.lst'] },
+        { community_lists: [] }, ['192.168.1.50']],
+      ['visible filter cleared next to legacy list',
+        { community_lists: ['youtube'], remote_domain_lists: ['https://example.com/domains.lst'] },
+        { source_ip_cidr: [] }, undefined],
+    ]) await check(`${version} device filter: ${label}`, async () => {
+      const env = createEnvironment({ version, config: { rule: rule({ action: 'block', ...values,
+        source_ip_cidr: ['192.168.1.50'] }) } });
+      const modal = await env.openRule('rule');
+      for (const [name, value] of Object.entries(edit))
+        modal.option(name).getUIElement('rule').setValue(value);
+      await modal.save();
+      assert.deepEqual(env.uci.data.rule.source_ip_cidr, expected);
+    });
+
     // UC-004: the item settings modal of a user rule set keeps Built-in #2.
     for (const [include, expected] of [
       ['0', { rule_set: [CUSTOM], rule_set_with_subnets: [CUSTOM_SUBNETS, VALVE] }],

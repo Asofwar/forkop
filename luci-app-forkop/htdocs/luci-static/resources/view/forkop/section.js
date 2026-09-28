@@ -7790,9 +7790,21 @@ function createSectionContent(section) {
   });
   dependsOnRuleConditions(sourceIpOption);
   // The backend also matches legacy remote_domain_lists/remote_subnet_lists,
-  // which have no widget: a hidden device filter must not be erased on save,
-  // or a per-device rule would silently apply to every device.
-  sourceIpOption.retain = true;
+  // which have no widget: while they are set, a hidden device filter must not
+  // be erased on save, or a per-device rule would silently apply to every
+  // device. Without any destination condition the filter is dropped.
+  sourceIpOption.remove = function (section_id) {
+    if (
+      !this.isActive(section_id) &&
+      ["remote_domain_lists", "remote_subnet_lists"].some(
+        (key) =>
+          normalizeOptionValues(uci.get(UCI_PACKAGE, section_id, key)).length,
+      )
+    ) {
+      return;
+    }
+    uci.unset(UCI_PACKAGE, section_id, "source_ip_cidr");
+  };
 
   const fullyRoutedOption = addLocalDeviceSubnetDynamicField(section, {
     key: "fully_routed_ips",

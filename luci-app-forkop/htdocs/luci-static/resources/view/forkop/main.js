@@ -12382,152 +12382,316 @@ function clearPersistedDiagnosticRun(storage = getSessionStorage3()) {
 // src/forkop/tabs/diagnostic/helpers/maskDiagnostics.ts
 var MASKED_VALUE = "MASKED";
 var SING_BOX_MASKED_KEYS = /* @__PURE__ */ new Set([
-  "auth_key",
-  "control_url",
-  "exit_node",
-  "hostname",
-  "listen",
-  "listen_port",
-  "username",
-  "uuid",
-  "server",
-  "server_name",
-  "secret",
-  "password",
-  "private_key",
-  "public_key",
-  "short_id",
-  "fingerprint",
-  "server_port",
-  "server_ports",
+  "address",
   "advertise_routes",
+  "auth",
+  "auth_key",
+  "auth_str",
+  "control_url",
   "domain",
-  "domain_suffix",
   "domain_keyword",
   "domain_regex",
-  "ip_cidr",
-  "source_ip_cidr",
+  "domain_suffix",
   "excluded_source_ip_cidr",
+  "exit_node",
+  "fingerprint",
+  "headers",
+  "host",
+  "hostname",
+  "ip_cidr",
+  "listen",
+  "listen_port",
+  "local_address",
+  "obfs",
+  "password",
+  "path",
+  "peer_public_key",
+  "plugin_opts",
+  "pre_shared_key",
+  "private_key",
+  "private_key_passphrase",
+  "public_key",
+  "secret",
+  "server",
+  "server_name",
+  "server_port",
+  "server_ports",
+  "short_id",
+  "source_ip_cidr",
+  "user",
+  "username",
+  "uuid",
 ]);
-var FORKOP_MASK_AFTER_TOKEN = [
-  "option proxy_string",
-  "option hwid",
-  "option subscription_url",
-  "list subscription_urls",
-  "list urltest_proxy_links",
-  "list selector_proxy_links",
-  "list server_users",
-  "option server_uuid",
-  "option server_username",
-  "option server_password",
-  "option mtproto_secret",
-  "option hysteria2_obfs_password",
-  "option reality_private_key",
-  "option reality_public_key",
-  "option reality_short_id",
-  "list reality_short_id",
-  "option yacd_secret_key",
-];
-var FORKOP_MASK_AFTER_TOKEN_SPACE = [
-  "option outbound_json",
-  "list domain",
-  "list domain_suffix",
-  "list domain_keyword",
-  "list domain_regex",
-  "list ip_cidr",
-  "list source_ip_cidr",
-  "list excluded_source_ip_cidr",
-  "list fully_routed_ips",
-  "option dns_server",
-  "option bootstrap_dns_server",
-  "list dns_server",
-  "list bootstrap_dns_server",
-  "option listen",
-  "option listen_port",
-  "option public_host",
-  "option mtproto_faketls",
-  "option mtproto_domain_fronting_ip",
-  "option tls_server_name",
-  "option reality_handshake_server",
-  "option reality_handshake_server_port",
-  "option transport_host",
-  "list transport_hosts",
-  "option tailscale_auth_key",
-  "option tailscale_control_url",
-  "option tailscale_hostname",
-  "list tailscale_advertise_routes",
-  "option tailscale_ephemeral",
-  "option tailscale_exit_node",
-  "option tailscale_exit_node_allow_lan_access",
-  "option mixed_proxy_username",
-  "option mixed_proxy_password",
-  "option ipaddr",
-  "option netmask",
-  "option gateway",
-  "option username",
-  "option password",
-  "option private_key",
-  "option url",
-];
+var UCI_SAFE_OPTIONS = /* @__PURE__ */ new Set([
+  "action",
+  "active_check_interval",
+  "applied_migrations",
+  "auto_hwid",
+  "auto_user_agent",
+  "badwan_monitored_interfaces",
+  "badwan_reload_delay",
+  "cache_path",
+  "check_interval",
+  "check_timeout",
+  "community_lists",
+  "component_update_check_enabled",
+  "component_update_check_interval",
+  "conditions_text_mode",
+  "config_path",
+  "config_version",
+  "connection_type",
+  "detect_server_country",
+  "direct_proxy_enabled",
+  "direct_proxy_port",
+  "disable_quic",
+  "dns_check_interval",
+  "dns_check_timeout",
+  "dns_detour_enabled",
+  "dns_detour_section",
+  "dns_failover_failure_threshold",
+  "dns_recovery_check_interval",
+  "dns_rewrite_ttl",
+  "dns_strategy",
+  "dns_type",
+  "domain_resolver_dns_type",
+  "domain_resolver_enabled",
+  "dont_touch_dhcp",
+  "download_components_via_proxy",
+  "download_components_via_proxy_section",
+  "download_lists_via_proxy",
+  "download_lists_via_proxy_section",
+  "download_subscriptions_via_proxy",
+  "download_via_proxy_enabled",
+  "download_via_proxy_section",
+  "enable_badwan_interface_monitoring",
+  "enable_output_network_interface",
+  "enable_yacd",
+  "enable_yacd_wan_access",
+  "enabled",
+  "exclude_countries",
+  "exclude_ntp",
+  "exclude_outbounds",
+  "exclude_regex",
+  "fastest_check_interval",
+  "filter_mode",
+  "group",
+  "hide_detour_outbounds",
+  "hide_urltest_group_outbounds",
+  "idle_timeout",
+  "include_countries",
+  "include_outbounds",
+  "include_regex",
+  "include_subnets",
+  "include_urltest_groups",
+  "interface",
+  "interfaces",
+  "interrupt_exist_connections",
+  "label",
+  "list_update_enabled",
+  "log_level",
+  "mixed_proxy_auth_enabled",
+  "mixed_proxy_enabled",
+  "mixed_proxy_port",
+  "name",
+  "node_prefix",
+  "order",
+  "outbound_detour_enabled",
+  "outbound_detour_section",
+  "output_network_interface",
+  "pick_fastest",
+  "pin_dashboard",
+  "ports",
+  "prefix_nodes",
+  "priority_groups",
+  "proxy_config_type",
+  "recovery_check_interval",
+  "resolve_real_ip_for_routing",
+  "rule",
+  "secondary_rule_sets",
+  "section",
+  "show_dashboard_metadata",
+  "shutdown_correctly",
+  "sort_by_latency",
+  "source_network_interfaces",
+  "subscription_update_enabled",
+  "subscription_update_interval",
+  "switch_to_faster_same_priority",
+  "tag",
+  "tolerance",
+  "torrserver_direct_enabled",
+  "update_interval",
+  "urltest_check_interval",
+  "urltest_enabled",
+  "urltest_exclude_countries",
+  "urltest_filter_mode",
+  "urltest_include_countries",
+  "urltest_tolerance",
+  "urltests",
+  "user_domain_list_type",
+]);
+var UCI_SAFE_SECTION_OPTIONS = {
+  interface: /* @__PURE__ */ new Set([
+    "auto",
+    "defaultroute",
+    "delegate",
+    "demand",
+    "device",
+    "disabled",
+    "force_link",
+    "ifname",
+    "ip6assign",
+    "ipv6",
+    "keepalive",
+    "metric",
+    "mtu",
+    "multipath",
+    "norelease",
+    "peerdns",
+    "proto",
+    "reqaddress",
+    "reqprefix",
+    "type",
+  ]),
+  dnsmasq: /* @__PURE__ */ new Set([
+    "allservers",
+    "authoritative",
+    "boguspriv",
+    "cachesize",
+    "confdir",
+    "dnsforwardmax",
+    "domain",
+    "domainneeded",
+    "ednspacket_max",
+    "expandhosts",
+    "filter_a",
+    "filter_aaaa",
+    "filterwin2k",
+    "leasefile",
+    "local",
+    "localise_queries",
+    "localservice",
+    "localuse",
+    "logqueries",
+    "nonegcache",
+    "nonwildcard",
+    "noresolv",
+    "port",
+    "readethers",
+    "rebind_localhost",
+    "rebind_protection",
+    "resolvfile",
+    "sequential_ip",
+    "server",
+    "strictorder",
+  ]),
+};
+var UCI_URL_OPTIONS = /* @__PURE__ */ new Set([
+  "domain_ip_lists",
+  "health_url",
+  "latency_test_url",
+  "local_domain_lists",
+  "local_subnet_lists",
+  "mirror_base_url",
+  "remote_domain_lists",
+  "remote_subnet_lists",
+  "rule_set",
+  "rule_set_with_subnets",
+  "testing_url",
+  "urltest_testing_url",
+]);
+var URL_PARTS =
+  /^([A-Za-z][A-Za-z0-9+.-]*:\/\/)?([^/?#]*)([^?#]*)(\?[^#]*)?(#.*)?$/;
+var URL_SCHEME = /^([A-Za-z][A-Za-z0-9+.-]*):\/\//;
+var UCI_HEADER =
+  /^[ \t]*(#[ \t#]*)?config[ \t]+([A-Za-z0-9_-]+)([ \t]+['"]?[A-Za-z0-9_-]+['"]?)?[ \t]*$/;
+var UCI_OPTION =
+  /^([ \t]*(#[ \t#]*)?(option|list)[ \t]+([A-Za-z0-9_-]+)[ \t]*)(.*)$/;
 function isRecord2(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
-function isSpaceChar(value) {
-  return value === " " || value === "	" || value === "\r" || value === "\n";
+function maskUrlValue(value, maskPath = false) {
+  const parts = `${value}`.match(URL_PARTS);
+  if (!parts) {
+    return MASKED_VALUE;
+  }
+  const scheme = parts[1] ?? "";
+  let authority = parts[2] ?? "";
+  let path = parts[3] ?? "";
+  const at = authority.lastIndexOf("@");
+  if (at >= 0) {
+    authority = `${MASKED_VALUE}@${authority.slice(at + 1)}`;
+  }
+  if (maskPath && path !== "" && path !== "/") {
+    path = `/${MASKED_VALUE}`;
+  }
+  return `${scheme}${authority}${path}${parts[4] !== void 0 ? `?${MASKED_VALUE}` : ""}${parts[5] !== void 0 ? `#${MASKED_VALUE}` : ""}`;
 }
-function maskAfterToken(line, token) {
-  const position = line.indexOf(token);
-  return position < 0
-    ? line
-    : `${line.slice(0, position)}${token} '${MASKED_VALUE}'`;
+function maskHttpUrlValue(value) {
+  const scheme = `${value}`.match(URL_SCHEME);
+  if (scheme && !["http", "https"].includes(scheme[1].toLowerCase())) {
+    return MASKED_VALUE;
+  }
+  return maskUrlValue(value, false);
 }
-function maskAfterTokenSpace(line, token) {
-  const position = line.indexOf(token);
-  if (position < 0) {
+function uciValueScan(text, initialQuote) {
+  let quote = initialQuote;
+  let value = "";
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quote === "'") {
+      if (c === "'") quote = null;
+      else value += c;
+    } else if (quote === '"') {
+      if (c === "\\" && i + 1 < text.length) value += text[++i];
+      else if (c === '"') quote = null;
+      else value += c;
+    } else if (c === "'" || c === '"') quote = c;
+    else if (c === "\\" && i + 1 < text.length) value += text[++i];
+    else if (c === "#") break;
+    else if (c !== " " && c !== "	" && c !== "\r") value += c;
+  }
+  return { quote, value };
+}
+function uciOptionSafe(state, name) {
+  return (
+    UCI_SAFE_OPTIONS.has(name) ||
+    Boolean(UCI_SAFE_SECTION_OPTIONS[state.sectionType]?.has(name))
+  );
+}
+function maskUciLine(state, line) {
+  const indent = line.match(/^[ \t]*/)?.[0] ?? "";
+  if (state.quote !== null) {
+    const closing = state.quote;
+    state.quote = uciValueScan(line, state.quote).quote;
+    return `${indent}${MASKED_VALUE}${state.quote === null ? closing : ""}`;
+  }
+  const header = line.match(UCI_HEADER);
+  if (header) {
+    if (header[1] === void 0) {
+      state.sectionType = header[2];
+    }
     return line;
   }
-  const spacePosition = position + token.length;
-  if (
-    spacePosition >= line.length ||
-    !isSpaceChar(line.slice(spacePosition, spacePosition + 1))
-  ) {
+  const option = line.match(UCI_OPTION);
+  if (option) {
+    const name = option[4];
+    const scan = uciValueScan(option[5], null);
+    if (scan.quote === null && uciOptionSafe(state, name)) {
+      return line;
+    }
+    if (scan.quote === null && UCI_URL_OPTIONS.has(name)) {
+      return `${option[1]}'${maskHttpUrlValue(scan.value).replace(/'/g, "'\\''")}'`;
+    }
+    state.quote = scan.quote;
+    return `${option[1]}'${MASKED_VALUE}${scan.quote === null ? "'" : ""}`;
+  }
+  if (/^[ \t]*$/.test(line)) {
     return line;
   }
-  return `${line.slice(0, spacePosition + 1)}'${MASKED_VALUE}'`;
-}
-function maskOptionPath(line, token) {
-  const position = line.indexOf(token);
-  if (position < 0) {
-    return line;
+  if (/^[ \t]*#/.test(line)) {
+    return `${indent}# ${MASKED_VALUE}`;
   }
-  const slashOffset = line.slice(position + token.length).indexOf("/");
-  if (slashOffset < 0) {
-    return line;
-  }
-  const slash = slashOffset + position + token.length;
-  const quoteOffset = line.slice(slash + 1).indexOf("'");
-  if (quoteOffset < 0) {
-    return line;
-  }
-  const quote = quoteOffset + slash + 1;
-  return `${line.slice(0, slash)}/MASKED'${line.slice(quote + 1)}`;
-}
-function maskGlobalCheckLine(line) {
-  let maskedLine = line;
-  for (const token of FORKOP_MASK_AFTER_TOKEN) {
-    maskedLine = maskAfterToken(maskedLine, token);
-  }
-  for (const token of FORKOP_MASK_AFTER_TOKEN_SPACE) {
-    maskedLine = maskAfterTokenSpace(maskedLine, token);
-  }
-  maskedLine = maskOptionPath(maskedLine, "option dns_server '");
-  maskedLine = maskOptionPath(maskedLine, "list dns_server '");
-  return maskedLine;
-}
-function maskMultilineContinuation(line) {
-  const leadingSpace = line.match(/^\s*/)?.[0] ?? "";
-  const hasClosingQuote = line.includes("'");
-  return `${leadingSpace}${MASKED_VALUE}${hasClosingQuote ? "'" : ""}`;
+  return null;
 }
 function maskSingBoxConfigValue(value) {
   if (Array.isArray(value)) {
@@ -12537,11 +12701,15 @@ function maskSingBoxConfigValue(value) {
     return Object.fromEntries(
       Object.entries(value).map(([key, item]) => [
         key,
-        SING_BOX_MASKED_KEYS.has(key)
+        SING_BOX_MASKED_KEYS.has(key) ||
+        (key === "port" && value.address !== void 0 && value.address !== null)
           ? MASKED_VALUE
           : maskSingBoxConfigValue(item),
       ]),
     );
+  }
+  if (typeof value === "string" && URL_SCHEME.test(value)) {
+    return maskHttpUrlValue(value);
   }
   return value;
 }
@@ -12559,25 +12727,10 @@ function formatMaskedSingBoxConfig(value) {
   return JSON.stringify(maskSingBoxConfigValue(value), null, 2);
 }
 function maskGlobalCheckText(text = "") {
-  let inMaskedMultiline = false;
+  const state = { quote: null, sectionType: "" };
   return `${text}`
     .split("\n")
-    .map((line) => {
-      if (inMaskedMultiline) {
-        if (line.includes("'")) {
-          inMaskedMultiline = false;
-        }
-        return maskMultilineContinuation(line);
-      }
-      const maskedLine = maskGlobalCheckLine(line);
-      if (line.includes("option outbound_json")) {
-        const firstQuote = line.indexOf("'");
-        if (firstQuote >= 0 && line.slice(firstQuote + 1).indexOf("'") < 0) {
-          inMaskedMultiline = true;
-        }
-      }
-      return maskedLine;
-    })
+    .map((line) => maskUciLine(state, line) ?? line)
     .join("\n");
 }
 

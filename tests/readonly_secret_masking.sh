@@ -238,6 +238,33 @@ for proto in static pppoe pppoa l2tp pptp 3g qmi ncm mbim modemmanager wireguard
   grep -Fq "option device 'eth1'" "$out" || fail "masked WAN config lost the device ($proto)"
 done
 
+# The frontend copy (admin "mask values" toggle) masks exactly like the
+# backend. Node imports the TypeScript module directly when it can strip
+# types (Node >= 22.18); older Node skips this comparison.
+MASK_TS="$ROOT_DIR/fe-app-forkop/src/forkop/tabs/diagnostic/helpers/maskDiagnostics.ts"
+"$UCODE_BIN" -L "$FORKOP_LIB" "$STATUS_UC" forkop-config-masked "$FORKOP_CONFIG" >"$WORK_DIR/backend-forkop" ||
+  fail "forkop-config-masked failed"
+"$UCODE_BIN" -L "$FORKOP_LIB" "$STATUS_UC" mask-sing-box-config "$WORK_DIR/sing-box.json" >"$WORK_DIR/backend-sing-box" ||
+  fail "mask-sing-box-config failed"
+if node -e 'import(process.argv[1]).then(() => process.exit(0), () => process.exit(1))' "$MASK_TS" 2>/dev/null; then
+  node --input-type=module - "$MASK_TS" "$WORK_DIR" <<'NODE' || fail "frontend masking differs from the backend"
+import { readFileSync } from 'node:fs';
+import assert from 'node:assert/strict';
+const [module, dir] = process.argv.slice(2);
+const { maskGlobalCheckText, formatMaskedSingBoxConfig } = await import(module);
+assert.equal(
+  maskGlobalCheckText(readFileSync(`${dir}/etc/forkop`, 'utf8')),
+  readFileSync(`${dir}/backend-forkop`, 'utf8'),
+);
+assert.deepEqual(
+  JSON.parse(formatMaskedSingBoxConfig(readFileSync(`${dir}/sing-box.json`, 'utf8'))),
+  JSON.parse(readFileSync(`${dir}/backend-sing-box`, 'utf8')),
+);
+NODE
+else
+  printf 'SKIP: frontend/backend masking comparison needs Node with type stripping\n'
+fi
+
 if [ -n "$leaks" ]; then
   printf 'FAIL: secrets reached read-only outputs:%s\n' "$leaks" >&2
   exit 1

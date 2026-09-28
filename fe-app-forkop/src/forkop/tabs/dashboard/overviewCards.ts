@@ -207,7 +207,7 @@ function renderRecoveryCard(recovery: OverviewRecovery) {
       ]),
       renderLines(recovery.lines),
     ],
-    [linkButton(_('Recovery details'), () => openForkopPage('diagnostics'))],
+    [linkButton(_('Recovery details'), () => openForkopPage('history'))],
   );
 }
 
@@ -227,7 +227,7 @@ function renderEventCard(event: OverviewEvent | null) {
           E('p', { class: 'fkp-overview__hint' }, event.time),
         ]
       : [E('p', { class: 'fkp-overview__hint' }, _('No events recorded yet'))],
-    [linkButton(_('All events'), () => openForkopPage('diagnostics'))],
+    [linkButton(_('All events'), () => openForkopPage('history'))],
   );
 }
 

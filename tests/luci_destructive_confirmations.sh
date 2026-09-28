@@ -59,13 +59,14 @@ assert.match(componentAction,
 assert(componentAction.indexOf('confirmComponentRemoval') < componentAction.indexOf('componentActionStart('),
   'component removal is confirmed before the backend call');
 
+const history = read('fe-app-forkop/src/forkop/tabs/history/initController.ts');
+assertConfirmedBefore(functionBody(history, 'async function restoreSnapshot(id: string, label: string)'),
+  'confirmAction(', 'snapshotRestore(', 'restore snapshot');
+assertConfirmedBefore(functionBody(history, 'async function deleteSnapshot(id: string, label: string)'),
+  'confirmAction(', 'snapshotDelete(', 'delete snapshot');
 const settings = read('luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js');
-assertConfirmedBefore(settings, 'confirmSnapshotAction({\n            title: _("Restore',
-  'snapshotRestore(', 'restore snapshot');
-assertConfirmedBefore(settings, 'confirmSnapshotAction({\n            title: _("Delete',
-  'snapshotDelete(', 'delete snapshot');
-assert.equal(settings.match(/window\.confirm\(/g).length, 1,
-  'window.confirm is only the fallback for a stale bundle');
+assert.doesNotMatch(settings, /snapshotRestore|snapshotDelete|window\.confirm\(/,
+  'snapshots live on the History and recovery page only');
 
 console.log('Destructive actions ask for confirmation first');
 NODE

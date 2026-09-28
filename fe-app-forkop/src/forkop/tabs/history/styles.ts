@@ -1,0 +1,66 @@
+// language=CSS
+export const styles = `
+.fkp-history {
+    display: flex;
+    flex-direction: column;
+    gap: var(--fkp-space-3);
+    min-width: 0;
+}
+.fkp-history__card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--fkp-space-2);
+    min-width: 0;
+    padding: var(--fkp-space-3) var(--fkp-space-4);
+    border: 1px solid var(--fkp-border);
+    border-radius: 6px;
+}
+.fkp-history__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--fkp-space-2);
+}
+.fkp-history__title { margin: 0; font-size: 1.05em; }
+.fkp-history__hint { margin: 0; color: var(--fkp-tone-neutral); overflow-wrap: anywhere; }
+.fkp-history__facts {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: var(--fkp-space-1) var(--fkp-space-4);
+    margin: 0;
+}
+.fkp-history__facts dt { font-weight: 600; }
+.fkp-history__facts dd { margin: 0; overflow-wrap: anywhere; }
+.fkp-history__filter { display: flex; flex-wrap: wrap; gap: var(--fkp-space-1); }
+.fkp-history__filter .btn[aria-pressed="true"] { font-weight: 600; border-color: var(--fkp-tone-loading); }
+.fkp-history__list { margin: 0; padding: 0; list-style: none; }
+.fkp-history__event,
+.fkp-history__snapshot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--fkp-space-1) var(--fkp-space-3);
+    padding: var(--fkp-space-2) 0;
+    border-top: 1px solid var(--fkp-border);
+}
+.fkp-history__event:first-child,
+.fkp-history__snapshot:first-child { border-top: 0; }
+.fkp-history__time { color: var(--fkp-tone-neutral); min-width: 0; }
+.fkp-history__what { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }
+.fkp-history__lkg {
+    padding: 0 var(--fkp-space-2);
+    border: 1px solid var(--fkp-tone-success);
+    border-radius: 999px;
+    color: var(--fkp-tone-success);
+    font-size: 0.85em;
+}
+.fkp-history__diff-wrap { width: 0; min-width: 100%; overflow-x: auto; }
+.fkp-history__diff { width: 100%; }
+.fkp-history__diff td { overflow-wrap: anywhere; vertical-align: top; }
+
+@media (max-width: 599px) {
+    .fkp-history__facts { grid-template-columns: minmax(0, 1fr); }
+    .fkp-history__facts dd { margin-bottom: var(--fkp-space-2); }
+}
+`;

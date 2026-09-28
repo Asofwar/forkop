@@ -78,7 +78,6 @@ import {
   type Target,
 } from '../connectivityMatrix';
 import { routeFacts, routeTraceFailureText } from '../routeDebugger';
-import { recentEvents, recoveryRows } from '../safetyCenter';
 import { validationView } from '../dpiPlayground';
 import { checkStatus, eventStatus, healthStatus } from '../statusLabels';
 import {
@@ -363,102 +362,7 @@ describe('route check failures', () => {
   });
 });
 
-describe('recovery and statuses', () => {
-  const health = (
-    overrides: Partial<Forkop.HealthStatus> = {},
-  ): Forkop.HealthStatus => ({
-    overall: 'ok',
-    service: { forkop: 'ok', sing_box: 'ok' },
-    dns: { status: 'unknown' },
-    dpi: { status: 'unknown' },
-    lists: { status: 'unknown' },
-    guard: { active: false },
-    recovery: {
-      pending: false,
-      last_event: { kind: 'start', status: 'success', timestamp: 1 },
-    },
-    package_recovery: { pending: false },
-    last_reload: { status: 'success', timestamp: 2 },
-    recent_activity: [
-      { kind: 'start', status: 'success', timestamp: 1 },
-      { kind: 'reload', status: 'success', timestamp: 2 },
-    ],
-    ...overrides,
-  });
-
-  it('shows only recovery facts, localized, without duplicating Dashboard health', () => {
-    const rows = recoveryRows(health());
-    expect(rows.map(([label]) => label)).toEqual([
-      'DPI guard',
-      'Last recovery',
-      'Package recovery',
-      'Last reload',
-    ]);
-    expect(rows[0][1].text).toBe('Inactive');
-    expect(rows[1][1].text).toBe('Not needed');
-    expect(rows[3][1].text).toMatch(/^Succeeded · /);
-    for (const [, status] of rows)
-      expect(status.text).not.toMatch(/^(ok|success|unknown|failure)$/);
-  });
-
-  it('never presents an ordinary reload as the last recovery', () => {
-    const reloadOnly = health({
-      recovery: {
-        pending: false,
-        last_event: { kind: 'reload', status: 'success', timestamp: 9 },
-      },
-      recent_activity: [
-        { kind: 'start', status: 'success', timestamp: 1 },
-        { kind: 'reload', status: 'success', timestamp: 9 },
-      ],
-    });
-    expect(recoveryRows(reloadOnly)[1][1].text).toBe('Not needed');
-    const restoredEarlier = health({
-      recovery: {
-        pending: false,
-        last_event: { kind: 'reload', status: 'success', timestamp: 9 },
-      },
-      recent_activity: [
-        { kind: 'restore', status: 'success', timestamp: 5 },
-        { kind: 'reload', status: 'success', timestamp: 9 },
-      ],
-    });
-    expect(recoveryRows(restoredEarlier)[1][1].text).toMatch(
-      /^Snapshot restore: Succeeded · /,
-    );
-    const rolledBack = health({
-      recent_activity: [{ kind: 'reload', status: 'recovered', timestamp: 7 }],
-    });
-    expect(recoveryRows(rolledBack)[1][1].text).toMatch(
-      /^Configuration reload: Recovered · /,
-    );
-  });
-
-  it('maps active guard, recoveries and failures', () => {
-    const rows = recoveryRows(
-      health({
-        guard: { active: true },
-        recovery: {
-          pending: false,
-          last_event: { kind: 'restore', status: 'recovered', timestamp: 3 },
-        },
-        package_recovery: { pending: true },
-        last_reload: null,
-      }),
-    );
-    expect(rows[0][1]).toMatchObject({
-      text: 'Active: DPI switch not confirmed',
-      tone: 'warning',
-    });
-    expect(rows[1][1].text).toMatch(/^Snapshot restore: Recovered · /);
-    expect(rows[2][1].text).toBe('Waiting to finish');
-    expect(rows[3][1].text).toBe('No reload recorded yet');
-    expect(recentEvents(health())[0]).toMatchObject({
-      kind: 'Configuration reload',
-      status: { text: 'Succeeded' },
-    });
-  });
-
+describe('statuses', () => {
   it('uses the shared status vocabulary', () => {
     expect(eventStatus('success').text).toBe('Succeeded');
     expect(eventStatus('failure').text).toBe('Failed');
@@ -550,7 +454,6 @@ describe('page layout', () => {
       'fkp_diagnostic-page-checks',
       'connectivity-rows',
       'trace-target',
-      'safety-center',
       'dpi-strategy',
     ])
       expect(found).toContain(id);

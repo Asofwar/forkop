@@ -34,6 +34,7 @@ for (const command of [
   '/usr/bin/forkop get_status', '/usr/bin/forkop get_ui_state',
   '/usr/bin/forkop get_readonly_config_sections',
   '/usr/bin/forkop get_health_status',
+  '/usr/bin/forkop get_history',
   '/usr/bin/forkop route_trace example.org 192.168.1.1 TCP 443',
   '/usr/bin/forkop config_snapshot_list',
   '/usr/bin/forkop config_snapshot_diff 123',

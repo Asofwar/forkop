@@ -1080,6 +1080,7 @@ var READONLY_EXEC_PATTERNS = [
   "/usr/bin/forkop get_ui_capabilities",
   "/usr/bin/forkop get_ui_state",
   "/usr/bin/forkop get_health_status",
+  "/usr/bin/forkop get_history",
   "/usr/bin/forkop route_trace *",
   "/usr/bin/forkop config_snapshot_list",
   "/usr/bin/forkop config_snapshot_diff *",
@@ -2456,6 +2457,7 @@ var Forkop;
     AvailableMethods2["GET_UI_CAPABILITIES"] = "get_ui_capabilities";
     AvailableMethods2["GET_UI_STATE"] = "get_ui_state";
     AvailableMethods2["GET_HEALTH_STATUS"] = "get_health_status";
+    AvailableMethods2["GET_HISTORY"] = "get_history";
     AvailableMethods2["ROUTE_TRACE"] = "route_trace";
     AvailableMethods2["CONFIG_SNAPSHOT_CREATE"] = "config_snapshot_create";
     AvailableMethods2["CONFIG_SNAPSHOT_LIST"] = "config_snapshot_list";
@@ -2770,6 +2772,7 @@ var ForkopShellMethods = {
   getHealthStatus: async () => callBaseMethod(
     Forkop.AvailableMethods.GET_HEALTH_STATUS
   ),
+  getHistory: async () => callBaseMethod(Forkop.AvailableMethods.GET_HISTORY),
   routeTrace: async (target, source, protocol, port) => (
     // An invalid target exits non-zero with {"error":"invalid_input"}.
     callBaseMethod(
@@ -5730,13 +5733,19 @@ function eventOutcomeView(outcome) {
 function eventKindLabel(kind) {
   switch (kind) {
     case "start":
-      return _("Start");
+      return _("Service start");
     case "reload":
       return _("Configuration reload");
     case "restore":
       return _("Snapshot restore");
     case "recovery":
       return _("Recovery");
+    case "autotune_apply":
+      return _("Autotune apply");
+    case "snapshot_create":
+      return _("Snapshot created");
+    case "snapshot_delete":
+      return _("Snapshot deleted");
     default:
       return _("Other event");
   }
@@ -5763,17 +5772,17 @@ function formatRelativeTime(timestampSeconds, nowMs = Date.now()) {
 }
 
 // src/forkop/tabs/dashboard/overview.ts
-function lastEvent(health) {
-  const events = health?.recent_activity || [];
+function lastEvent(health2) {
+  const events = health2?.recent_activity || [];
   return events.length ? events[events.length - 1] : null;
 }
-function overviewWarning(health) {
-  if (!health) return null;
+function overviewWarning(health2) {
+  if (!health2) return null;
   const details = {
-    page: "diagnostics",
+    page: "history",
     label: _("Recovery details")
   };
-  if (health.guard?.active) {
+  if (health2.guard?.active) {
     return {
       title: _("DPI protection is holding traffic"),
       text: _(
@@ -5782,7 +5791,7 @@ function overviewWarning(health) {
       link: details
     };
   }
-  if (health.package_recovery?.pending) {
+  if (health2.package_recovery?.pending) {
     return {
       title: _("Package recovery has not finished"),
       text: _(
@@ -5791,7 +5800,7 @@ function overviewWarning(health) {
       link: details
     };
   }
-  if (lastEvent(health)?.status === "failure") {
+  if (lastEvent(health2)?.status === "failure") {
     return {
       title: _("The last configuration change failed"),
       text: _("Forkop X kept or restored the previous configuration."),
@@ -5801,7 +5810,7 @@ function overviewWarning(health) {
   return null;
 }
 function overviewState(input) {
-  const { health, availability } = input;
+  const { health: health2, availability } = input;
   const lines = [];
   let status;
   let title;
@@ -5817,16 +5826,16 @@ function overviewState(input) {
   } else if (availability === "unavailable") {
     status = "unknown";
     title = _("State unavailable");
-  } else if (health?.overall === "transitioning") {
+  } else if (health2?.overall === "transitioning") {
     status = "busy";
     title = _("Applying changes\u2026");
-  } else if (health?.overall === "error") {
+  } else if (health2?.overall === "error") {
     status = "error";
     title = _("Forkop X needs attention");
   } else {
-    status = health?.overall === "recovered" ? "warning" : "healthy";
+    status = health2?.overall === "recovered" ? "warning" : "healthy";
     title = _("Forkop X is running");
-    if (health?.overall === "recovered") {
+    if (health2?.overall === "recovered") {
       lines.push({
         text: _("The last change was rolled back automatically."),
         tone: "warning"
@@ -5837,7 +5846,7 @@ function overviewState(input) {
     lines.push(
       input.singBoxRunning ? { text: _("sing-box is running") } : { text: _("sing-box is not running"), tone: "error" }
     );
-    if (health?.dns?.status === "warning") {
+    if (health2?.dns?.status === "warning") {
       lines.push({
         text: _("Router DNS is not pointed to Forkop X"),
         tone: "warning"
@@ -5897,13 +5906,13 @@ function overviewRouting(input) {
   };
 }
 function overviewRecovery(input) {
-  const { health } = input;
-  if (!health) {
+  const { health: health2 } = input;
+  if (!health2) {
     return { status: "unknown", title: _("State unavailable"), lines: [] };
   }
-  const guard = Boolean(health.guard?.active);
+  const guard = Boolean(health2.guard?.active);
   const lines = [];
-  const reload = health.last_reload;
+  const reload = health2.last_reload;
   if (reload) {
     const outcome = eventOutcomeView(toEventOutcome(reload.status));
     lines.push({
@@ -6150,7 +6159,7 @@ function renderRecoveryCard(recovery) {
       ]),
       renderLines(recovery.lines)
     ],
-    [linkButton(_("Recovery details"), () => openForkopPage("diagnostics"))]
+    [linkButton(_("Recovery details"), () => openForkopPage("history"))]
   );
 }
 function renderEventCard(event) {
@@ -6167,7 +6176,7 @@ function renderEventCard(event) {
       ]),
       E("p", { class: "fkp-overview__hint" }, event.time)
     ] : [E("p", { class: "fkp-overview__hint" }, _("No events recorded yet"))],
-    [linkButton(_("All events"), () => openForkopPage("diagnostics"))]
+    [linkButton(_("All events"), () => openForkopPage("history"))]
   );
 }
 function renderOverview(vm, actions) {
@@ -6835,22 +6844,22 @@ var overviewHealth = null;
 var overviewRuleCount = null;
 var overviewSnapshotCount = null;
 var overviewServiceBusy = false;
-async function refreshHealth(mountId) {
+async function refreshHealth(mountId2) {
   const response = await ForkopShellMethods.getHealthStatus();
-  if (!dashboardMounted || mountId !== dashboardMountId) return;
+  if (!dashboardMounted || mountId2 !== dashboardMountId) return;
   overviewHealth = response.success && response.data ? response.data : null;
   renderOverviewCards();
 }
-async function loadOverviewCounts(mountId) {
-  const [sections, snapshots] = await Promise.allSettled([
+async function loadOverviewCounts(mountId2) {
+  const [sections, snapshots2] = await Promise.allSettled([
     CustomForkopMethods.getConfigSections(),
     ForkopShellMethods.snapshotList()
   ]);
-  if (!dashboardMounted || mountId !== dashboardMountId) return;
+  if (!dashboardMounted || mountId2 !== dashboardMountId) return;
   overviewRuleCount = sections.status === "fulfilled" ? sections.value.filter(
     (section) => section[".type"] === "section" && section.enabled !== "0"
   ).length : null;
-  overviewSnapshotCount = snapshots.status === "fulfilled" && snapshots.value.success && Array.isArray(snapshots.value.data) ? snapshots.value.data.length : null;
+  overviewSnapshotCount = snapshots2.status === "fulfilled" && snapshots2.value.success && Array.isArray(snapshots2.value.data) ? snapshots2.value.data.length : null;
   renderOverviewCards();
 }
 function overviewInput() {
@@ -6952,7 +6961,7 @@ if (typeof window !== "undefined") {
     pageUnloading = false;
   });
 }
-async function fetchDashboardSectionsOnce(mountId) {
+async function fetchDashboardSectionsOnce(mountId2) {
   if (getDashboardServiceAvailability() === "stopped") {
     return false;
   }
@@ -6967,7 +6976,7 @@ async function fetchDashboardSectionsOnce(mountId) {
   });
   try {
     const { data, success } = await CustomForkopMethods.getDashboardSections();
-    if (!dashboardMounted || mountId !== dashboardMountId || getDashboardServiceAvailability() === "stopped") {
+    if (!dashboardMounted || mountId2 !== dashboardMountId || getDashboardServiceAvailability() === "stopped") {
       return false;
     }
     if (!success) {
@@ -6985,7 +6994,7 @@ async function fetchDashboardSectionsOnce(mountId) {
     return true;
   } catch (error) {
     logger.error("[DASHBOARD]", "fetchDashboardSections: failed", error);
-    if (!dashboardMounted || mountId !== dashboardMountId || getDashboardServiceAvailability() === "stopped") {
+    if (!dashboardMounted || mountId2 !== dashboardMountId || getDashboardServiceAvailability() === "stopped") {
       return false;
     }
     const current = store.get().sectionsWidget;
@@ -7007,13 +7016,13 @@ async function fetchDashboardSections(options = {}) {
     }
     return sectionsRefreshPromise;
   }
-  const mountId = dashboardMountId;
+  const mountId2 = dashboardMountId;
   const promise = (async () => {
     let success = false;
     do {
       sectionsRefreshQueued = false;
-      success = await fetchDashboardSectionsOnce(mountId);
-    } while (sectionsRefreshQueued && dashboardMounted && mountId === dashboardMountId);
+      success = await fetchDashboardSectionsOnce(mountId2);
+    } while (sectionsRefreshQueued && dashboardMounted && mountId2 === dashboardMountId);
     return success;
   })();
   sectionsRefreshPromise = promise;
@@ -7244,9 +7253,9 @@ function stopActionStateWatcher() {
   actionStateUnsubscribe = null;
 }
 async function connectToClashSockets(dataUpdatesId) {
-  const mountId = dashboardMountId;
+  const mountId2 = dashboardMountId;
   const clashApiSecret = await getClashApiSecret2();
-  if (!dashboardMounted || mountId !== dashboardMountId || dataUpdatesId !== dashboardDataUpdatesId || getDashboardServiceAvailability() === "stopped") {
+  if (!dashboardMounted || mountId2 !== dashboardMountId || dataUpdatesId !== dashboardDataUpdatesId || getDashboardServiceAvailability() === "stopped") {
     return;
   }
   socket.subscribe(
@@ -8304,13 +8313,13 @@ async function onPageMount() {
   onPageUnmount();
   dashboardMounted = true;
   dashboardMountId += 1;
-  const mountId = dashboardMountId;
-  void refreshHealth(mountId);
-  healthRefreshTimer = setInterval(() => void refreshHealth(mountId), 1e4);
+  const mountId2 = dashboardMountId;
+  void refreshHealth(mountId2);
+  healthRefreshTimer = setInterval(() => void refreshHealth(mountId2), 1e4);
   const hasRuntimeSnapshot = Boolean(getCachedRuntimeUiState());
   if (!hasRuntimeSnapshot) {
     const uiState = await refreshRuntimeUiState({ force: true });
-    if (!dashboardMounted || mountId !== dashboardMountId) {
+    if (!dashboardMounted || mountId2 !== dashboardMountId) {
       return;
     }
     if (!uiState) {
@@ -8320,7 +8329,7 @@ async function onPageMount() {
   store.subscribe(onStoreUpdate);
   startActionStateWatcher();
   void renderSectionsWidget();
-  void loadOverviewCounts(mountId);
+  void loadOverviewCounts(mountId2);
   syncDashboardServiceAvailability();
   renderOverviewCards();
   if (hasRuntimeSnapshot) {
@@ -9253,25 +9262,6 @@ function render2() {
     E("h3", { class: "fkp-diag-section-title" }, _("Additional tools")),
     E(
       "details",
-      { class: "fkp-diag-card fkp-diag-details", id: "safety-center" },
-      [
-        E("summary", {}, _("Recovery and protection")),
-        E("div", { id: "safety-center-state", role: "status" }, _("Loading\u2026")),
-        E("div", { class: "fkp-diag-actions" }, [
-          E(
-            "button",
-            {
-              id: "safety-center-refresh",
-              type: "button",
-              class: "btn cbi-button"
-            },
-            _("Refresh state")
-          )
-        ])
-      ]
-    ),
-    E(
-      "details",
       { class: "fkp-diag-card fkp-diag-details", id: "dpi-playground" },
       [
         E("summary", {}, _("DPI strategy syntax check")),
@@ -10115,23 +10105,6 @@ function checkStatus(state) {
       return { text: _("Not checked"), tone: "neutral" };
   }
 }
-function eventStatus(status) {
-  switch (status) {
-    case "success":
-      return { text: _("Succeeded"), tone: "success" };
-    case "recovered":
-      return { text: _("Recovered"), tone: "warning" };
-    case "failure":
-      return { text: _("Failed"), tone: "error" };
-    case "needs_attention":
-      return { text: _("Needs attention"), tone: "error" };
-    default:
-      return { text: _("Not available for checking"), tone: "neutral" };
-  }
-}
-function formatTime(timestamp) {
-  return new Date(timestamp * 1e3).toLocaleString();
-}
 function renderStatusBadge(status) {
   return E(
     "span",
@@ -10840,7 +10813,7 @@ function initConnectivityMatrix() {
             click: () => {
               rows.splice(rows.indexOf(row), 1);
               save();
-              render5();
+              render6();
             }
           },
           "\u2715"
@@ -10849,7 +10822,7 @@ function initConnectivityMatrix() {
     ]);
     return row.element;
   };
-  const render5 = () => {
+  const render6 = () => {
     root.replaceChildren(
       E("div", { class: "fkp-conn__head", role: "presentation" }, [
         E("span", {}, _("Address")),
@@ -10869,7 +10842,7 @@ function initConnectivityMatrix() {
       result: { state: "idle" }
     });
     save();
-    render5();
+    render6();
     rows[rows.length - 1].element?.querySelector("input")?.focus();
   };
   run.onclick = async () => {
@@ -10883,7 +10856,7 @@ function initConnectivityMatrix() {
       updateButtons();
     }
   };
-  render5();
+  render6();
 }
 
 // src/forkop/tabs/diagnostic/dpiPlayground.ts
@@ -10942,97 +10915,6 @@ function initDpiPlayground() {
       button.disabled = false;
     }
   };
-}
-
-// src/forkop/tabs/diagnostic/safetyCenter.ts
-function lastRecoveryEvent(health) {
-  const events = [
-    ...health.recent_activity,
-    ...health.recovery.last_event ? [health.recovery.last_event] : []
-  ].filter(
-    (event) => event.kind === "restore" || event.kind === "recovery" || event.status === "recovered"
-  );
-  return events.sort((a, b) => b.timestamp - a.timestamp)[0] ?? null;
-}
-function recoveryRows(health) {
-  const last = lastRecoveryEvent(health);
-  return [
-    [
-      _("DPI guard"),
-      health.guard.active ? { text: _("Active: DPI switch not confirmed"), tone: "warning" } : { text: _("Inactive"), tone: "success" }
-    ],
-    [
-      _("Last recovery"),
-      health.recovery.pending ? { text: _("In progress"), tone: "loading" } : last ? {
-        text: `${eventKindLabel(last.kind)}: ${eventStatus(last.status).text} \xB7 ${formatTime(last.timestamp)}`,
-        tone: eventStatus(last.status).tone
-      } : { text: _("Not needed"), tone: "success" }
-    ],
-    [
-      _("Package recovery"),
-      health.package_recovery.pending ? { text: _("Waiting to finish"), tone: "warning" } : { text: _("Not needed"), tone: "success" }
-    ],
-    [
-      _("Last reload"),
-      health.last_reload ? {
-        text: `${eventStatus(health.last_reload.status).text} \xB7 ${formatTime(health.last_reload.timestamp)}`,
-        tone: eventStatus(health.last_reload.status).tone
-      } : { text: _("No reload recorded yet"), tone: "neutral" }
-    ]
-  ];
-}
-function recentEvents(health) {
-  return health.recent_activity.slice(-10).reverse().map((event) => ({
-    time: formatTime(event.timestamp),
-    kind: eventKindLabel(event.kind),
-    status: eventStatus(event.status)
-  }));
-}
-function initSafetyCenter() {
-  const button = document.getElementById(
-    "safety-center-refresh"
-  );
-  const container = document.getElementById("safety-center-state");
-  if (!button || !container || button.onclick) return;
-  const refresh = async () => {
-    button.disabled = true;
-    try {
-      const response = await ForkopShellMethods.getHealthStatus();
-      if (!response.success || !response.data) {
-        container.textContent = _("Recovery state is unavailable");
-        return;
-      }
-      const events = recentEvents(response.data);
-      container.replaceChildren(
-        E(
-          "dl",
-          { class: "fkp-diag-facts" },
-          recoveryRows(response.data).flatMap(([label, status]) => [
-            E("dt", {}, label),
-            E("dd", {}, renderStatusBadge(status))
-          ])
-        ),
-        E("h4", {}, _("Recent events")),
-        events.length ? E(
-          "table",
-          { class: "fkp-diag-events" },
-          events.map(
-            (event) => E("tr", {}, [
-              E("td", {}, event.time),
-              E("td", {}, event.kind),
-              E("td", {}, renderStatusBadge(event.status))
-            ])
-          )
-        ) : E("p", { class: "fkp-diag-hint" }, _("No events recorded yet"))
-      );
-    } catch (_error) {
-      container.textContent = _("Recovery state is unavailable");
-    } finally {
-      button.disabled = false;
-    }
-  };
-  button.onclick = () => void refresh();
-  void refresh();
 }
 
 // src/forkop/tabs/diagnostic/diagnosticRunPersistence.ts
@@ -11367,8 +11249,8 @@ function setDiagnosticActionLoading(action, loading2, local = false) {
     }
   });
 }
-function isDiagnosticMountActive(mountId = diagnosticMountId) {
-  return diagnosticMounted && diagnosticMountId === mountId;
+function isDiagnosticMountActive(mountId2 = diagnosticMountId) {
+  return diagnosticMounted && diagnosticMountId === mountId2;
 }
 function isLocalMutatingServiceActionLoading() {
   const actions = store.get().diagnosticsActions;
@@ -11435,10 +11317,10 @@ function setDisplayedForkopRunning(running) {
 }
 async function refreshDiagnosticServicesInfo({
   force = false,
-  mountId = diagnosticMountId,
+  mountId: mountId2 = diagnosticMountId,
   allowInactive = false
 } = {}) {
-  if (!allowInactive && !isDiagnosticMountActive(mountId)) {
+  if (!allowInactive && !isDiagnosticMountActive(mountId2)) {
     return;
   }
   if (shouldSkipServicesInfoAutoRefresh({
@@ -12238,11 +12120,11 @@ async function onPageMount2() {
   });
   diagnosticMounted = true;
   diagnosticMountId += 1;
-  const mountId = diagnosticMountId;
+  const mountId2 = diagnosticMountId;
   const hasRuntimeSnapshot = Boolean(getCachedRuntimeUiState());
   if (!hasRuntimeSnapshot) {
     const uiState = await refreshRuntimeUiState({ force: true });
-    if (!diagnosticMounted || mountId !== diagnosticMountId) {
+    if (!diagnosticMounted || mountId2 !== diagnosticMountId) {
       return;
     }
     if (!uiState) {
@@ -12329,7 +12211,6 @@ async function initController2() {
     initRouteDebugger();
     initConnectivityMatrix();
     initDpiPlayground();
-    initSafetyCenter();
     logger.debug("[DIAGNOSTIC]", "initController", "onMount");
     registerLifecycleListeners2();
     if (store.get().tabService.current === "diagnostic" || isActiveLuciTab("diagnostic")) {
@@ -13242,7 +13123,7 @@ function applyConnectionsPayload(payload) {
     pendingConnectionsPayload = payload;
     return;
   }
-  const mountId = monitoringMountId;
+  const mountId2 = monitoringMountId;
   const now = Date.now();
   const incomingIds = /* @__PURE__ */ new Set();
   const rawConnections = Array.isArray(payload.connections) ? payload.connections : [];
@@ -13268,7 +13149,7 @@ function applyConnectionsPayload(payload) {
   trimClosedConnections();
   loading = false;
   failed = false;
-  if (monitoringMounted && mountId === monitoringMountId) {
+  if (monitoringMounted && mountId2 === monitoringMountId) {
     renderControls();
     renderConnections();
   }
@@ -14030,11 +13911,11 @@ async function pollConnectionsSnapshot() {
   if (pollingConnections || !monitoringMounted || monitoringPaused || serviceAvailability !== "running") {
     return;
   }
-  const mountId = monitoringMountId;
+  const mountId2 = monitoringMountId;
   pollingConnections = true;
   try {
     const response = await ForkopShellMethods.getClashApiConnections();
-    if (!monitoringMounted || mountId !== monitoringMountId || serviceAvailability !== "running") {
+    if (!monitoringMounted || mountId2 !== monitoringMountId || serviceAvailability !== "running") {
       return;
     }
     if (!response.success) {
@@ -14045,7 +13926,7 @@ async function pollConnectionsSnapshot() {
     }
     applyConnectionsPayload(normalizeConnectionsPayload(response.data));
   } catch (error) {
-    if (!monitoringMounted || mountId !== monitoringMountId || serviceAvailability !== "running") {
+    if (!monitoringMounted || mountId2 !== monitoringMountId || serviceAvailability !== "running") {
       return;
     }
     logger.error("[MONITORING]", "connections polling failed", error);
@@ -14066,9 +13947,9 @@ function startConnectionsPolling() {
   }, CONNECTIONS_RPC_POLL_INTERVAL_MS);
 }
 async function connectToConnectionsSocket(updatesId) {
-  const mountId = monitoringMountId;
+  const mountId2 = monitoringMountId;
   const clashApiSecret = await getClashApiSecret2();
-  if (!monitoringMounted || mountId !== monitoringMountId || updatesId !== connectionsUpdatesId || serviceAvailability !== "running") {
+  if (!monitoringMounted || mountId2 !== monitoringMountId || updatesId !== connectionsUpdatesId || serviceAvailability !== "running") {
     return;
   }
   connectionsSocketUrl = `${getClashWsUrl()}/connections?token=${clashApiSecret}`;
@@ -14085,7 +13966,7 @@ async function connectToConnectionsSocket(updatesId) {
       }
     },
     (_err) => {
-      if (!monitoringMounted || mountId !== monitoringMountId || updatesId !== connectionsUpdatesId || serviceAvailability !== "running") {
+      if (!monitoringMounted || mountId2 !== monitoringMountId || updatesId !== connectionsUpdatesId || serviceAvailability !== "running") {
         return;
       }
       logger.warn("[MONITORING]", "connections socket unavailable, polling");
@@ -14186,7 +14067,7 @@ async function onPageMount3() {
   onPageUnmount3();
   monitoringMounted = true;
   monitoringMountId += 1;
-  const mountId = monitoringMountId;
+  const mountId2 = monitoringMountId;
   resetMonitoringState();
   loadMonitoringPreferences();
   bindControls();
@@ -14199,7 +14080,7 @@ async function onPageMount3() {
     void refreshRuntimeUiState({ force: true });
   } else {
     const uiState = await refreshRuntimeUiState({ force: true });
-    if (!monitoringMounted || mountId !== monitoringMountId) {
+    if (!monitoringMounted || mountId2 !== monitoringMountId) {
       return;
     }
     if (!uiState && serviceAvailability === "loading") {
@@ -15048,9 +14929,9 @@ async function showReleaseSelector(currentVersion, install) {
 // src/forkop/tabs/updates/checkResultLifecycle.ts
 function shouldPreserveCompletedCheckResultOnNextMount({
   action,
-  mounted
+  mounted: mounted2
 }) {
-  return action === "check_update" && !mounted;
+  return action === "check_update" && !mounted2;
 }
 function shouldResetCheckResultsOnMount({
   anyActionLoading,
@@ -15065,10 +14946,10 @@ function shouldRefreshComponentStateBeforeRender(uiState) {
   );
 }
 function shouldExposeCheckResults({
-  mounted,
+  mounted: mounted2,
   cacheResolved
 }) {
-  return mounted && cacheResolved;
+  return mounted2 && cacheResolved;
 }
 
 // src/forkop/tabs/updates/fullUninstall.ts
@@ -16253,7 +16134,7 @@ async function onPageMount4() {
   onPageUnmount4();
   updatesMounted = true;
   updatesMountId += 1;
-  const mountId = updatesMountId;
+  const mountId2 = updatesMountId;
   const cachedRuntimeState = getCachedRuntimeUiState();
   const hasRuntimeSnapshot = Boolean(cachedRuntimeState);
   const needsFreshStateBeforeRender = shouldRefreshComponentStateBeforeRender(cachedRuntimeState);
@@ -16266,7 +16147,7 @@ async function onPageMount4() {
   const componentUpdateCheckCache = await loadComponentUpdateCheckCache({
     force: Boolean(prefetchedComponentUpdateCheckCache)
   });
-  if (!updatesMounted || mountId !== updatesMountId) {
+  if (!updatesMounted || mountId2 !== updatesMountId) {
     return;
   }
   applyComponentUpdateCheckCache(componentUpdateCheckCache);
@@ -16274,7 +16155,7 @@ async function onPageMount4() {
   renderUpdatesComponents();
   if (runtimeStateRefreshPromise) {
     await runtimeStateRefreshPromise;
-    if (!updatesMounted || mountId !== updatesMountId) {
+    if (!updatesMounted || mountId2 !== updatesMountId) {
       return;
     }
   }
@@ -16500,8 +16381,648 @@ var UpdatesTab = {
   styles: styles6
 };
 
-// src/forkop/ui/styles.ts
+// src/forkop/tabs/history/render.ts
+function render5() {
+  const card3 = (title, body, actions) => E("section", { class: "fkp-history__card" }, [
+    E("div", { class: "fkp-history__head" }, [
+      E("h3", { class: "fkp-history__title" }, title),
+      ...actions ? [actions] : []
+    ]),
+    ...body
+  ]);
+  return E("div", { id: "history-status", class: "fkp-history" }, [
+    card3(_("Protection and recovery"), [
+      E("div", { id: "history-state", role: "status" }, _("Loading\u2026"))
+    ]),
+    card3(_("History"), [
+      E("div", { id: "history-filter", class: "fkp-history__filter" }),
+      E("div", { id: "history-events" }, _("Loading\u2026"))
+    ]),
+    card3(
+      _("Configuration snapshots"),
+      [
+        E(
+          "p",
+          { class: "fkp-history__hint" },
+          _(
+            "Changes compare a snapshot with the saved configuration. Unsaved form edits are not included."
+          )
+        ),
+        E("div", { id: "history-snapshots" }, _("Loading\u2026"))
+      ],
+      E("div", { id: "history-snapshot-actions", class: "fkp-actions" })
+    )
+  ]);
+}
+
+// src/forkop/ui/states.ts
+function renderAction(action) {
+  if (!action) return [];
+  return [
+    E(
+      "button",
+      {
+        type: "button",
+        class: "btn cbi-button",
+        click: () => action.onClick()
+      },
+      action.label
+    )
+  ];
+}
+function renderEmptyState(title, hint, action) {
+  return E("div", { class: "fkp-state fkp-state--empty" }, [
+    E("div", { class: "fkp-state__title" }, title),
+    ...hint ? [E("div", { class: "fkp-state__hint" }, hint)] : [],
+    ...renderAction(action)
+  ]);
+}
+function renderLoadingState2(label = _("Loading\u2026")) {
+  return E(
+    "div",
+    { class: "fkp-state fkp-state--loading", role: "status" },
+    E("div", { class: "fkp-state__title" }, label)
+  );
+}
+function renderErrorState(title, onRetry, details) {
+  return E("div", { class: "fkp-state fkp-state--error", role: "alert" }, [
+    E("div", { class: "fkp-state__title" }, title),
+    ...renderAction(
+      onRetry ? { label: _("Retry"), onClick: onRetry } : void 0
+    ),
+    ...details ? [renderTechnicalDetails(details)] : []
+  ]);
+}
+function renderTechnicalDetails(text) {
+  return E("details", { class: "fkp-tech" }, [
+    E("summary", {}, _("Technical details")),
+    E("pre", { class: "fkp-tech__content" }, text)
+  ]);
+}
+
+// src/forkop/tabs/history/model.ts
+function formatTime(timestamp) {
+  return new Date(timestamp * 1e3).toLocaleString();
+}
+function lastRecoveryEvent(health2) {
+  const events = [
+    ...health2.recent_activity,
+    ...health2.recovery.last_event ? [health2.recovery.last_event] : []
+  ].filter(
+    (event) => event.kind === "restore" || event.kind === "recovery" || event.status === "recovered"
+  );
+  return events.sort((a, b) => b.timestamp - a.timestamp)[0] ?? null;
+}
+function eventText(event) {
+  const outcome = eventOutcomeView(toEventOutcome(event.status));
+  return {
+    value: `${eventKindLabel(event.kind)}: ${outcome.label} \xB7 ${formatTime(event.timestamp)}`,
+    tone: outcome.tone
+  };
+}
+function recoveryRows(health2, snapshots2) {
+  const last = lastRecoveryEvent(health2);
+  const reload = health2.last_reload;
+  const lkg = snapshots2?.find((snapshot) => snapshot.is_lkg);
+  const reloadOutcome = reload ? eventOutcomeView(toEventOutcome(reload.status)) : null;
+  return [
+    {
+      label: _("DPI guard"),
+      ...health2.guard.active ? {
+        value: _("Active: DPI switch not confirmed"),
+        tone: "error"
+      } : { value: _("Inactive"), tone: "success" }
+    },
+    {
+      label: _("Last recovery"),
+      ...health2.recovery.pending ? { value: _("In progress"), tone: "loading" } : last ? eventText(last) : { value: _("Not needed"), tone: "success" }
+    },
+    {
+      label: _("Package recovery"),
+      ...health2.package_recovery.pending ? { value: _("Waiting to finish"), tone: "warning" } : { value: _("Not needed"), tone: "success" }
+    },
+    {
+      label: _("Last reload"),
+      ...reload && reloadOutcome ? {
+        value: `${reloadOutcome.label} \xB7 ${formatTime(reload.timestamp)}`,
+        tone: reloadOutcome.tone
+      } : { value: _("No reload recorded yet"), tone: "neutral" }
+    },
+    {
+      label: _("Last known good configuration"),
+      ...lkg ? { value: formatTime(lkg.created_at), tone: "success" } : snapshots2 ? { value: _("Not recorded yet"), tone: "neutral" } : { value: _("Unknown"), tone: "neutral" }
+    }
+  ];
+}
+var CATEGORY = {
+  reload: "config",
+  restore: "config",
+  snapshot_create: "config",
+  snapshot_delete: "config",
+  start: "service",
+  recovery: "service",
+  autotune_apply: "autotune"
+};
+function historyFilterLabel(filter2) {
+  switch (filter2) {
+    case "config":
+      return _("Configuration");
+    case "service":
+      return _("Service");
+    case "autotune":
+      return _("Autotune");
+    default:
+      return _("All");
+  }
+}
+function historyItems(events, filter2, nowMs = Date.now()) {
+  return events.filter((event) => filter2 === "all" || CATEGORY[event.kind] === filter2).slice().sort((a, b) => b.timestamp - a.timestamp).map((event) => ({
+    title: eventKindLabel(event.kind),
+    outcome: eventOutcomeView(toEventOutcome(event.status)),
+    time: formatTime(event.timestamp),
+    relative: formatRelativeTime(event.timestamp, nowMs)
+  }));
+}
+function snapshotReasonLabel(reason) {
+  switch (reason) {
+    case "manual":
+      return _("Manual");
+    case "before-reload":
+      return _("Before applying changes");
+    case "pre-restore":
+      return _("Before restore");
+    case "last-known-working":
+      return _("Last known good");
+    case "before-autotune":
+      return _("Before autotune");
+    default:
+      return _("Other");
+  }
+}
+function snapshotRows(snapshots2) {
+  return snapshots2.slice().sort((a, b) => b.created_at - a.created_at).map((snapshot) => ({
+    id: snapshot.id,
+    time: formatTime(snapshot.created_at),
+    // The badge already says "last known good" for such snapshots.
+    reason: snapshot.is_lkg && snapshot.reason === "last-known-working" ? "" : snapshotReasonLabel(snapshot.reason),
+    lkg: Boolean(snapshot.is_lkg),
+    canDelete: !snapshot.is_lkg
+  }));
+}
+function diffValue(value) {
+  if (Array.isArray(value)) return value.length ? value.join(", ") : "\u2014";
+  return value === void 0 || value === "" ? "\u2014" : value;
+}
+function diffRows(changes) {
+  return changes.map((change) => ({
+    where: `${change.section} \xB7 ${change.option}`,
+    snapshot: diffValue(change.before),
+    current: diffValue(change.after)
+  }));
+}
+
+// src/forkop/tabs/history/initController.ts
+var REFRESH_INTERVAL_MS = 15e3;
+var FILTERS = ["all", "config", "service", "autotune"];
+var MAX_RESTORE_PREVIEW = 8;
+var mounted = false;
+var mountId = 0;
+var refreshTimer = null;
+var filter = "all";
+var health = null;
+var healthFailed = false;
+var history = null;
+var historyFailed = false;
+var snapshots = null;
+var snapshotsFailed = false;
+var snapshotBusy = false;
+async function loadAll() {
+  const id = mountId;
+  const [healthResponse, historyResponse, snapshotResponse] = await Promise.allSettled([
+    ForkopShellMethods.getHealthStatus(),
+    ForkopShellMethods.getHistory(),
+    ForkopShellMethods.snapshotList()
+  ]);
+  if (!mounted || id !== mountId) return;
+  const value = (result) => result.status === "fulfilled" && result.value.success ? result.value.data : null;
+  health = value(healthResponse);
+  healthFailed = !health;
+  history = value(historyResponse);
+  historyFailed = !history || !Array.isArray(history.events);
+  const list = value(snapshotResponse);
+  snapshots = Array.isArray(list) ? list : null;
+  snapshotsFailed = !snapshots;
+  renderAll();
+}
+function replace(id, ...nodes) {
+  const container = document.getElementById(id);
+  if (container)
+    preserveScrollForPage(() => container.replaceChildren(...nodes));
+}
+function renderState() {
+  if (healthFailed || !health) {
+    replace(
+      "history-state",
+      healthFailed ? renderErrorState(
+        _("Recovery state is unavailable"),
+        () => void loadAll()
+      ) : renderLoadingState2()
+    );
+    return;
+  }
+  replace(
+    "history-state",
+    E(
+      "dl",
+      { class: "fkp-history__facts" },
+      recoveryRows(health, snapshots).flatMap((row) => [
+        E("dt", {}, row.label),
+        E("dd", {}, renderStatus({ label: row.value, tone: row.tone }))
+      ])
+    )
+  );
+}
+function renderHistory() {
+  replace(
+    "history-filter",
+    ...FILTERS.map(
+      (item) => E(
+        "button",
+        {
+          type: "button",
+          class: "btn cbi-button",
+          "aria-pressed": item === filter ? "true" : "false",
+          click: () => {
+            filter = item;
+            renderHistory();
+          }
+        },
+        historyFilterLabel(item)
+      )
+    )
+  );
+  if (historyFailed || !history) {
+    replace(
+      "history-events",
+      historyFailed ? renderErrorState(_("History is unavailable"), () => void loadAll()) : renderLoadingState2()
+    );
+    return;
+  }
+  const items = historyItems(history.events, filter);
+  const notes = history.persistent ? [] : [
+    E(
+      "p",
+      { class: "fkp-history__hint" },
+      _("History is kept in memory until the router restarts.")
+    )
+  ];
+  replace(
+    "history-events",
+    ...notes,
+    items.length ? E(
+      "ul",
+      { class: "fkp-history__list" },
+      items.map(
+        (item) => E("li", { class: "fkp-history__event" }, [
+          E(
+            "span",
+            { class: "fkp-history__time", title: item.time },
+            item.relative
+          ),
+          E("span", { class: "fkp-history__what" }, item.title),
+          renderStatus(item.outcome)
+        ])
+      )
+    ) : renderEmptyState(
+      filter === "all" ? _("No events recorded yet") : _("No events of this kind")
+    )
+  );
+}
+function snapshotBusyMessage() {
+  return _(
+    "Another snapshot operation is already in progress. Try again in a moment."
+  );
+}
+function renderDiffTable(changes) {
+  const rows = diffRows(changes);
+  if (!rows.length) {
+    return E("p", {}, _("No saved changes since this snapshot"));
+  }
+  return E("div", { class: "fkp-history__diff-wrap" }, [
+    E("table", { class: "table fkp-history__diff" }, [
+      E("tr", { class: "tr table-titles" }, [
+        E("th", { class: "th" }, _("Setting")),
+        E("th", { class: "th" }, _("In snapshot")),
+        E("th", { class: "th" }, _("Now"))
+      ]),
+      ...rows.map(
+        (row) => E("tr", { class: "tr" }, [
+          E("td", { class: "td" }, row.where),
+          E("td", { class: "td" }, row.snapshot),
+          E("td", { class: "td" }, row.current)
+        ])
+      )
+    ])
+  ]);
+}
+async function loadDiff(id) {
+  const response = await ForkopShellMethods.snapshotDiff(id);
+  return response.success && Array.isArray(response.data) ? response.data : null;
+}
+async function showChanges(id) {
+  const changes = await loadDiff(id);
+  if (!changes) {
+    showToast(_("Could not compare configurations"), "error");
+    return;
+  }
+  ui.showModal(_("Changes since this snapshot"), [
+    renderDiffTable(changes),
+    E("div", { class: "fkp-confirm__actions" }, [
+      E(
+        "button",
+        {
+          type: "button",
+          class: "btn cbi-button",
+          click: () => ui.hideModal()
+        },
+        _("Close")
+      )
+    ])
+  ]);
+}
+async function runSnapshotAction(action) {
+  if (snapshotBusy) return;
+  snapshotBusy = true;
+  renderSnapshots();
+  try {
+    await action();
+  } catch (error) {
+    logger.error("[HISTORY]", "snapshot action failed", error);
+    showToast(_("Could not load data"), "error");
+  } finally {
+    snapshotBusy = false;
+    await loadAll();
+  }
+}
+async function restoreSnapshot(id, label) {
+  const changes = await loadDiff(id);
+  const rows = changes ? diffRows(changes) : [];
+  const preview = rows.slice(0, MAX_RESTORE_PREVIEW).map((row) => `${row.where}: ${row.current} \u2192 ${row.snapshot}`);
+  if (rows.length > MAX_RESTORE_PREVIEW) {
+    preview.push(
+      _("and %d more").replace("%d", String(rows.length - MAX_RESTORE_PREVIEW))
+    );
+  }
+  const confirmed = await confirmAction({
+    title: _("Restore configuration snapshot?"),
+    message: `${label}. ${_("Forkop X reloads the configuration. If the reload fails, the previous configuration is restored automatically.")}`,
+    consequences: changes ? rows.length ? preview : [_("No saved changes since this snapshot")] : [_("Could not compare configurations")],
+    confirmLabel: _("Restore"),
+    danger: true
+  });
+  if (!confirmed) return;
+  await runSnapshotAction(async () => {
+    const result = await ForkopShellMethods.snapshotRestore(id);
+    const status = result.success ? result.data.status : void 0;
+    if (status === "busy") showToast(snapshotBusyMessage(), "warning", 6e3);
+    else if (status === "success")
+      showToast(_("Configuration restored and reloaded"), "success", 6e3);
+    else if (status === "recovered")
+      showToast(
+        _("Restore failed; previous configuration and runtime recovered"),
+        "warning",
+        8e3
+      );
+    else
+      showToast(
+        _("Restore failed; check the recovery state before retrying"),
+        "error",
+        8e3
+      );
+  });
+}
+async function deleteSnapshot(id, label) {
+  const confirmed = await confirmAction({
+    title: _("Delete snapshot?"),
+    message: `${label}. ${_("Delete this configuration snapshot?")}`,
+    confirmLabel: _("Delete"),
+    danger: true
+  });
+  if (!confirmed) return;
+  await runSnapshotAction(async () => {
+    const result = await ForkopShellMethods.snapshotDelete(id);
+    const status = result.success ? result.data.status : void 0;
+    if (status === "busy") showToast(snapshotBusyMessage(), "warning", 6e3);
+    else if (status === "deleted") showToast(_("Snapshot deleted"), "success");
+    else showToast(_("Could not delete snapshot"), "error");
+  });
+}
+async function createSnapshot() {
+  await runSnapshotAction(async () => {
+    const result = await ForkopShellMethods.snapshotCreate("manual");
+    const status = result.success ? result.data.status : void 0;
+    if (status === "busy") showToast(snapshotBusyMessage(), "warning", 6e3);
+    else if (status === "created") showToast(_("Snapshot saved"), "success");
+    else showToast(_("Could not create snapshot"), "error");
+  });
+}
+function renderSnapshots() {
+  const readonly = isReadonlyMode();
+  replace(
+    "history-snapshot-actions",
+    ...readonly ? [] : [
+      E(
+        "button",
+        {
+          type: "button",
+          class: "btn cbi-button",
+          disabled: snapshotBusy ? true : void 0,
+          click: () => void createSnapshot()
+        },
+        _("Create snapshot")
+      )
+    ]
+  );
+  if (snapshotsFailed || !snapshots) {
+    replace(
+      "history-snapshots",
+      snapshotsFailed ? renderErrorState(
+        _("Could not load configuration snapshots"),
+        () => void loadAll()
+      ) : renderLoadingState2()
+    );
+    return;
+  }
+  const rows = snapshotRows(snapshots);
+  replace(
+    "history-snapshots",
+    rows.length ? E(
+      "ul",
+      { class: "fkp-history__list" },
+      rows.map((row) => {
+        const label = row.reason ? `${row.time} \xB7 ${row.reason}` : row.time;
+        return E("li", { class: "fkp-history__snapshot" }, [
+          E("span", { class: "fkp-history__what" }, [
+            label,
+            ...row.lkg ? [
+              " ",
+              E(
+                "span",
+                { class: "fkp-history__lkg" },
+                _("Last known good")
+              )
+            ] : []
+          ]),
+          E("span", { class: "fkp-actions" }, [
+            E(
+              "button",
+              {
+                type: "button",
+                class: "btn cbi-button",
+                click: () => void showChanges(row.id)
+              },
+              _("Changes")
+            ),
+            ...readonly ? [] : [
+              renderOverflowMenu(_("Snapshot actions"), [
+                {
+                  label: _("Restore\u2026"),
+                  onClick: () => void restoreSnapshot(row.id, label),
+                  disabled: snapshotBusy,
+                  danger: true
+                },
+                {
+                  label: row.canDelete ? _("Delete\u2026") : _(
+                    "The last known good snapshot cannot be deleted"
+                  ),
+                  onClick: () => void deleteSnapshot(row.id, label),
+                  disabled: snapshotBusy || !row.canDelete,
+                  danger: row.canDelete
+                }
+              ])
+            ]
+          ])
+        ]);
+      })
+    ) : renderEmptyState(_("No snapshots yet"))
+  );
+}
+function renderAll() {
+  renderState();
+  renderHistory();
+  renderSnapshots();
+}
+function onPageMount5() {
+  onPageUnmount5();
+  mounted = true;
+  mountId += 1;
+  renderAll();
+  void loadAll();
+  refreshTimer = setInterval(() => {
+    if (!snapshotBusy) void loadAll();
+  }, REFRESH_INTERVAL_MS);
+}
+function onPageUnmount5() {
+  mounted = false;
+  mountId += 1;
+  if (refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = null;
+}
+var initialized = false;
+async function initController5() {
+  if (initialized) return;
+  initialized = true;
+  onMount("history-status").then(() => {
+    store.subscribe(
+      (next, prev, diff) => {
+        if (diff.tabService && next.tabService.current !== prev.tabService.current) {
+          if (next.tabService.current === "history") onPageMount5();
+          else onPageUnmount5();
+        }
+      }
+    );
+    if (store.get().tabService.current === "history" || isActiveLuciTab("history")) {
+      onPageMount5();
+    }
+  });
+}
+
+// src/forkop/tabs/history/styles.ts
 var styles7 = `
+.fkp-history {
+    display: flex;
+    flex-direction: column;
+    gap: var(--fkp-space-3);
+    min-width: 0;
+}
+.fkp-history__card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--fkp-space-2);
+    min-width: 0;
+    padding: var(--fkp-space-3) var(--fkp-space-4);
+    border: 1px solid var(--fkp-border);
+    border-radius: 6px;
+}
+.fkp-history__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--fkp-space-2);
+}
+.fkp-history__title { margin: 0; font-size: 1.05em; }
+.fkp-history__hint { margin: 0; color: var(--fkp-tone-neutral); overflow-wrap: anywhere; }
+.fkp-history__facts {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: var(--fkp-space-1) var(--fkp-space-4);
+    margin: 0;
+}
+.fkp-history__facts dt { font-weight: 600; }
+.fkp-history__facts dd { margin: 0; overflow-wrap: anywhere; }
+.fkp-history__filter { display: flex; flex-wrap: wrap; gap: var(--fkp-space-1); }
+.fkp-history__filter .btn[aria-pressed="true"] { font-weight: 600; border-color: var(--fkp-tone-loading); }
+.fkp-history__list { margin: 0; padding: 0; list-style: none; }
+.fkp-history__event,
+.fkp-history__snapshot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--fkp-space-1) var(--fkp-space-3);
+    padding: var(--fkp-space-2) 0;
+    border-top: 1px solid var(--fkp-border);
+}
+.fkp-history__event:first-child,
+.fkp-history__snapshot:first-child { border-top: 0; }
+.fkp-history__time { color: var(--fkp-tone-neutral); min-width: 0; }
+.fkp-history__what { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }
+.fkp-history__lkg {
+    padding: 0 var(--fkp-space-2);
+    border: 1px solid var(--fkp-tone-success);
+    border-radius: 999px;
+    color: var(--fkp-tone-success);
+    font-size: 0.85em;
+}
+.fkp-history__diff-wrap { width: 0; min-width: 100%; overflow-x: auto; }
+.fkp-history__diff { width: 100%; }
+.fkp-history__diff td { overflow-wrap: anywhere; vertical-align: top; }
+
+@media (max-width: 599px) {
+    .fkp-history__facts { grid-template-columns: minmax(0, 1fr); }
+    .fkp-history__facts dd { margin-bottom: var(--fkp-space-2); }
+}
+`;
+
+// src/forkop/tabs/history/index.ts
+var HistoryTab = {
+  render: render5,
+  initController: initController5,
+  styles: styles7
+};
+
+// src/forkop/ui/styles.ts
+var styles8 = `
 :root {
     --fkp-space-1: 4px;
     --fkp-space-2: 8px;
@@ -16628,11 +17149,12 @@ var styles7 = `
 
 // src/styles.ts
 var GlobalStyles = `
-${styles7}
+${styles8}
 ${DashboardTab.styles}
 ${DiagnosticTab.styles}
 ${MonitoringTab.styles}
 ${UpdatesTab.styles}
+${HistoryTab.styles}
 ${PartialStyles}
 
 
@@ -16824,6 +17346,7 @@ return baseclass.extend({
   FORKOP_ACTION_PROVIDERS_AVAILABILITY_EVENT,
   FORKOP_UCI_PACKAGE,
   ForkopShellMethods,
+  HistoryTab,
   LATENCY_TEST_URL_OPTIONS,
   MonitoringTab,
   SECONDARY_RULESET_OPTIONS,

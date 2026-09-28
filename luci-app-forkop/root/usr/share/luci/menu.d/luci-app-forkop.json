@@ -34,6 +34,14 @@
       "path": "forkop/page/diagnostics"
     }
   },
+  "admin/services/forkop/history": {
+    "title": "History and recovery",
+    "order": 40,
+    "action": {
+      "type": "view",
+      "path": "forkop/page/history"
+    }
+  },
   "admin/services/forkop/settings": {
     "title": "Settings",
     "order": 90,

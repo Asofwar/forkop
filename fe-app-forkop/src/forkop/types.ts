@@ -41,7 +41,7 @@ export namespace Forkop {
       last_event: { kind: string; status: string; timestamp: number } | null;
     };
     package_recovery: { pending: boolean };
-    last_reload: { status: string; timestamp: number } | null;
+    last_reload: { kind?: string; status: string; timestamp: number } | null;
     recent_activity: Array<{ kind: string; status: string; timestamp: number }>;
   }
 
@@ -73,6 +73,19 @@ export namespace Forkop {
     reason: string;
     config_hash: string;
     forkop_version: string;
+    is_lkg?: boolean;
+  }
+
+  export interface HistoryEvent {
+    kind: string;
+    status: string;
+    timestamp: number;
+  }
+
+  export interface HistoryResult {
+    // false: no journal on flash yet, events come from runtime memory.
+    persistent: boolean;
+    events: HistoryEvent[];
   }
   export interface SnapshotChange {
     section: string;
@@ -171,6 +184,7 @@ export namespace Forkop {
     GET_UI_CAPABILITIES = 'get_ui_capabilities',
     GET_UI_STATE = 'get_ui_state',
     GET_HEALTH_STATUS = 'get_health_status',
+    GET_HISTORY = 'get_history',
     ROUTE_TRACE = 'route_trace',
     CONFIG_SNAPSHOT_CREATE = 'config_snapshot_create',
     CONFIG_SNAPSHOT_LIST = 'config_snapshot_list',

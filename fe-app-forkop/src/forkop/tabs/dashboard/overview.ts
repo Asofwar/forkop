@@ -12,7 +12,11 @@ import { formatRelativeTime } from '../../ui/time';
 // View model of the overview page: short answers, each with a link to the
 // page that has the details. Pure, so every state is covered by tests.
 
-export type OverviewPage = 'monitoring' | 'diagnostics' | 'settings';
+export type OverviewPage =
+  | 'monitoring'
+  | 'diagnostics'
+  | 'history'
+  | 'settings';
 
 export interface OverviewInput {
   health: Forkop.HealthStatus | null;
@@ -82,7 +86,7 @@ export function overviewWarning(
 ): OverviewWarning | null {
   if (!health) return null;
   const details = {
-    page: 'diagnostics' as const,
+    page: 'history' as const,
     label: _('Recovery details'),
   };
 

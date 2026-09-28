@@ -261,13 +261,19 @@ export function eventOutcomeView(outcome: EventOutcome): {
 export function eventKindLabel(kind: string): string {
   switch (kind) {
     case 'start':
-      return _('Start');
+      return _('Service start');
     case 'reload':
       return _('Configuration reload');
     case 'restore':
       return _('Snapshot restore');
     case 'recovery':
       return _('Recovery');
+    case 'autotune_apply':
+      return _('Autotune apply');
+    case 'snapshot_create':
+      return _('Snapshot created');
+    case 'snapshot_delete':
+      return _('Snapshot deleted');
     default:
       return _('Other event');
   }

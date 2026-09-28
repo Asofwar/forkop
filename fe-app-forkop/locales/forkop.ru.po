@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-28 00:39+0000\n"
-"PO-Revision-Date: 2026-09-28 00:39+0000\n"
+"POT-Creation-Date: 2026-09-28 00:58+0000\n"
+"PO-Revision-Date: 2026-09-28 00:58+0000\n"
 "Last-Translator: Claude\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -34,6 +34,9 @@ msgstr "Ещё групп: %d"
 
 msgid "%d node groups"
 msgstr "Групп узлов: %d"
+
+msgid "%d rules"
+msgstr "Правил: %d"
 
 msgid "%d rules · %d node groups"
 msgstr "Правил: %d · групп узлов: %d"
@@ -155,6 +158,9 @@ msgstr "Позволяет ограничить список серверов д
 msgid "An interrupted package update is being recovered. Avoid changes until it completes."
 msgstr "Восстанавливается прерванное обновление пакетов. Не вносите изменений, пока оно не завершится."
 
+msgid "and %d more"
+msgstr "и ещё %d"
+
 msgid "Another snapshot operation is already in progress. Changes were not applied; try again in a moment."
 msgstr "Уже выполняется другая операция со снимками. Изменения не применены, повторите через минуту."
 
@@ -206,6 +212,12 @@ msgstr "Автозапуск выключен"
 msgid "Autostart is on"
 msgstr "Автозапуск включён"
 
+msgid "Autotune"
+msgstr "Автоподбор"
+
+msgid "Autotune apply"
+msgstr "Применение автоподбора"
+
 msgid "Available actions"
 msgstr "Доступные действия"
 
@@ -214,6 +226,15 @@ msgstr "Доступно только администратору."
 
 msgid "Backend validation failed: %s"
 msgstr "Backend-проверка завершилась ошибкой: %s"
+
+msgid "Before applying changes"
+msgstr "Перед применением изменений"
+
+msgid "Before autotune"
+msgstr "Перед автоподбором"
+
+msgid "Before restore"
+msgstr "Перед восстановлением"
 
 msgid "Bootstrap DNS"
 msgstr "Bootstrap DNS"
@@ -305,6 +326,15 @@ msgstr "Не удалось сохранить настройки"
 msgid "Cascade connection"
 msgstr "Каскадное подключение"
 
+msgid "Changes"
+msgstr "Изменения"
+
+msgid "Changes compare a snapshot with the saved configuration. Unsaved form edits are not included."
+msgstr "Изменения сравнивают снимок с сохранённой конфигурацией. Несохранённые правки в формах не учитываются."
+
+msgid "Changes since this snapshot"
+msgstr "Изменения после этого снимка"
+
 msgid "Check"
 msgstr "Проверить"
 
@@ -395,6 +425,9 @@ msgstr "Условия"
 msgid "Config File Path"
 msgstr "Путь к файлу конфигурации"
 
+msgid "Configuration"
+msgstr "Конфигурация"
+
 msgid "Configuration applied successfully"
 msgstr "Конфигурация успешно применена"
 
@@ -404,8 +437,8 @@ msgstr "Перезагрузка конфигурации"
 msgid "Configuration restored and reloaded"
 msgstr "Конфигурация восстановлена и применена"
 
-msgid "Configuration saved. Runtime reload has not been confirmed; check Safety Center."
-msgstr "Конфигурация сохранена. Перезагрузка сервиса не подтверждена; проверьте Центр безопасности."
+msgid "Configuration saved. Runtime reload has not been confirmed; check History and recovery."
+msgstr "Конфигурация сохранена. Перезагрузка не подтверждена; проверьте раздел «История и восстановление»."
 
 msgid "Configuration snapshots"
 msgstr "Снимки конфигурации"
@@ -517,6 +550,9 @@ msgstr "Удалить снимок?"
 
 msgid "Delete this configuration snapshot?"
 msgstr "Удалить этот снимок конфигурации?"
+
+msgid "Delete…"
+msgstr "Удалить…"
 
 msgid "Derived from configuration"
 msgstr "Определено по конфигурации"
@@ -953,6 +989,9 @@ msgstr "Forkop X сохранил или восстановил прежнюю �
 msgid "Forkop X needs attention"
 msgstr "Forkop X требует внимания"
 
+msgid "Forkop X reloads the configuration. If the reload fails, the previous configuration is restored automatically."
+msgstr "Forkop X перезагрузит конфигурацию. Если перезагрузка не удастся, прежняя конфигурация восстановится автоматически."
+
 msgid "Forkop X stops handling traffic until it is started again."
 msgstr "Forkop X перестанет обрабатывать трафик, пока его снова не запустят."
 
@@ -1016,6 +1055,18 @@ msgstr "Интервал проверки высших уровней"
 msgid "Higher-priority DNS Check"
 msgstr "Проверка верхних DNS"
 
+msgid "History"
+msgstr "История"
+
+msgid "History and recovery"
+msgstr "История и восстановление"
+
+msgid "History is kept in memory until the router restarts."
+msgstr "История хранится в памяти до перезагрузки роутера."
+
+msgid "History is unavailable"
+msgstr "История недоступна"
+
 msgid "Host"
 msgstr "Хост"
 
@@ -1037,9 +1088,6 @@ msgstr "Ошибка HTTP"
 msgid "Idle timeout"
 msgstr "Таймаут простоя"
 
-msgid "If the reload fails, the previous configuration is restored automatically"
-msgstr "Если перезагрузка не удастся, прежняя конфигурация восстановится автоматически"
-
 msgid "Import subscription URLTest groups"
 msgstr "Добавлять URLTest группы из подписки"
 
@@ -1048,6 +1096,9 @@ msgstr "Импортировать URLTest группы, если провайд
 
 msgid "In progress"
 msgstr "Выполняется"
+
+msgid "In snapshot"
+msgstr "В снимке"
 
 msgid "Inactive"
 msgstr "Неактивна"
@@ -1325,6 +1376,12 @@ msgstr "Последняя диагностика: %s"
 msgid "Last important event"
 msgstr "Последнее важное событие"
 
+msgid "Last known good"
+msgstr "Последняя рабочая"
+
+msgid "Last known good configuration"
+msgstr "Последняя рабочая конфигурация"
+
 msgid "Last recovery"
 msgstr "Последнее восстановление"
 
@@ -1378,6 +1435,9 @@ msgstr "Основной DNS"
 
 msgid "Main DNS server. If multiple servers are selected, a timeout switches to a backup."
 msgstr "Основной DNS-сервер. Если выбрать несколько, то при таймауте произойдёт переключение на резервный."
+
+msgid "Manual"
+msgstr "Вручную"
 
 msgid "Match destination IPs or subnets"
 msgstr "Совпадение по IP-адресам или подсетям назначения"
@@ -1481,6 +1541,9 @@ msgstr "Нет данных"
 msgid "No DNS records for this name"
 msgstr "Для этого имени нет DNS-записей"
 
+msgid "No events of this kind"
+msgstr "Событий этого типа нет"
+
 msgid "No events recorded yet"
 msgstr "Событий пока нет"
 
@@ -1507,6 +1570,9 @@ msgstr "Нет правил, использующих Zapret2"
 
 msgid "No saved changes since this snapshot"
 msgstr "После этого снимка изменений нет"
+
+msgid "No snapshots yet"
+msgstr "Снимки ещё не создавались"
 
 msgid "Node list is empty"
 msgstr "Список узлов пуст"
@@ -1535,6 +1601,9 @@ msgstr "Не установлено"
 msgid "Not needed"
 msgstr "Не требовалось"
 
+msgid "Not recorded yet"
+msgstr "Пока не записана"
+
 msgid "Not resolved"
 msgstr "Не разрешён"
 
@@ -1549,6 +1618,9 @@ msgstr "Не поддерживается"
 
 msgid "not used"
 msgstr "не используется"
+
+msgid "Now"
+msgstr "Сейчас"
 
 msgid "Observed"
 msgstr "Наблюдается"
@@ -1609,6 +1681,9 @@ msgstr "Необязательные значения здесь должны з
 
 msgid "Original repositories could not be restored. Removal was cancelled before deleting packages."
 msgstr "Не удалось восстановить исходные репозитории. Удаление отменено до удаления пакетов."
+
+msgid "Other"
+msgstr "Другое"
 
 msgid "Other event"
 msgstr "Другое событие"
@@ -1715,6 +1790,9 @@ msgstr "На роутере нет инструмента для проверк�
 msgid "Profile"
 msgstr "Профиль"
 
+msgid "Protection and recovery"
+msgstr "Защита и восстановление"
+
 msgid "Protection is active"
 msgstr "Защита активна"
 
@@ -1730,17 +1808,11 @@ msgstr "Проверка доступности"
 msgid "Reachable"
 msgstr "Доступно"
 
-msgid "Recent events"
-msgstr "Последние события"
-
 msgid "Recovered"
 msgstr "Восстановлено"
 
 msgid "Recovery"
 msgstr "Восстановление"
-
-msgid "Recovery and protection"
-msgstr "Восстановление и защита"
 
 msgid "Recovery details"
 msgstr "Подробнее о восстановлении"
@@ -1750,9 +1822,6 @@ msgstr "Состояние восстановления недоступно"
 
 msgid "Refill"
 msgstr "Сброс"
-
-msgid "Refresh state"
-msgstr "Обновить состояние"
 
 msgid "Refreshing Dashboard…"
 msgstr "Обновление дашборда…"
@@ -1829,8 +1898,8 @@ msgstr "Восстановить"
 msgid "Restore configuration snapshot?"
 msgstr "Восстановить снимок конфигурации?"
 
-msgid "Restore failed; inspect Safety Center before retrying"
-msgstr "Восстановление не удалось; проверьте Центр безопасности перед повтором"
+msgid "Restore failed; check the recovery state before retrying"
+msgstr "Восстановление не удалось; проверьте состояние восстановления перед повтором"
 
 msgid "Restore failed; previous configuration and runtime recovered"
 msgstr "Восстановление не удалось; прежняя конфигурация и работающий сервис возвращены"
@@ -1838,11 +1907,8 @@ msgstr "Восстановление не удалось; прежняя кон�
 msgid "Restore normal mode"
 msgstr "Вернуть обычный режим"
 
-msgid "Restore this configuration snapshot and reload Forkop?"
-msgstr "Восстановить этот снимок и перезагрузить Forkop?"
-
-msgid "Restoring configuration"
-msgstr "Восстановление конфигурации"
+msgid "Restore…"
+msgstr "Восстановить…"
 
 msgid "Result"
 msgstr "Результат"
@@ -1852,12 +1918,6 @@ msgstr "Продолжить обновление"
 
 msgid "Retry"
 msgstr "Повторить"
-
-msgid "Review compares saved configuration with a snapshot. Unsaved form edits are not included."
-msgstr "Сравниваются сохранённая конфигурация и снимок. Несохранённые изменения формы не учитываются."
-
-msgid "Review saved changes"
-msgstr "Просмотреть сохранённые изменения"
 
 msgid "Rolled back"
 msgstr "Откачено"
@@ -2036,6 +2096,9 @@ msgstr "Серверный outbound должен содержать числов
 msgid "server_port must be a number from 1 to 65535"
 msgstr "server_port должен быть числом от 1 до 65535"
 
+msgid "Service"
+msgstr "Служба"
+
 msgid "Service action failed"
 msgstr "Действие сервиса не выполнено"
 
@@ -2047,6 +2110,12 @@ msgstr "Управление сервисом доступно только ад
 
 msgid "Service list"
 msgstr "Список сервисов"
+
+msgid "Service start"
+msgstr "Запуск службы"
+
+msgid "Setting"
+msgstr "Параметр"
 
 msgid "Settings"
 msgstr "Настройки"
@@ -2086,6 +2155,12 @@ msgstr "Сервис sing-box существует"
 
 msgid "Sing-box version is compatible (newer than 1.12.4)"
 msgstr "Версия Sing-box совместима (новее 1.12.4)"
+
+msgid "Snapshot actions"
+msgstr "Действия со снимком"
+
+msgid "Snapshot created"
+msgstr "Снимок создан"
 
 msgid "Snapshot deleted"
 msgstr "Снимок удалён"
@@ -2146,9 +2221,6 @@ msgstr "Отдельная служба Zapret2 активна"
 
 msgid "Standalone Zapret2 service is inactive"
 msgstr "Отдельная служба Zapret2 неактивна"
-
-msgid "Start"
-msgstr "Запуск"
 
 msgid "Start Forkop"
 msgstr "Запустить Forkop"
@@ -2278,6 +2350,9 @@ msgstr "Последнее изменение было автоматическ�
 
 msgid "The last configuration change failed"
 msgstr "Последнее изменение конфигурации не удалось"
+
+msgid "The last known good snapshot cannot be deleted"
+msgstr "Последнюю рабочую конфигурацию удалить нельзя"
 
 msgid "The NFQUEUE number is assigned by Forkop for each rule and must not be overridden here."
 msgstr "Номер NFQUEUE назначается Forkop для каждого правила и не должен переопределяться здесь."

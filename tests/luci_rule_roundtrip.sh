@@ -153,6 +153,20 @@ async function check(label, fn) {
       assert.equal(env.uci.data.rule.dns_detour_section, 'vpn');
     });
 
+    // UC-008 control: DNS through a DPI section whose provider is installed
+    // round-trips on the first open of the editor, before anything else has
+    // asked for provider availability.
+    await check(`${version} dns through installed DPI section`, async () => {
+      const config = { rule: dnsThrough('dpi'), ...targets };
+      const env = createEnvironment({ version, config });
+      const modal = await env.openRule('rule');
+      const option = modal.option('dns_detour_section');
+      assert.equal(option.formvalue('rule'), 'dpi');
+      assert.equal(option.vallist[option.keylist.indexOf('dpi')], 'Zapret');
+      await modal.save();
+      assert.deepEqual(env.uci.data, config, 'an unchanged rule modal save changed UCI');
+    });
+
     // UC-008: a subscription downloaded through a disabled section.
     await check(`${version} subscription download through disabled section`, async () => {
       const config = {
@@ -173,6 +187,16 @@ async function check(label, fn) {
       await settings.save();
       assert.deepEqual(env.uci.data, config, 'a refused subscription settings save changed UCI');
       await assert.rejects(settings.map.parse(), /disabled/);
+
+      // Control: an installed DPI section stays a plain choice.
+      const dpiConfig = { ...config, sub: { ...config.sub, download_via_proxy_section: 'dpi' } };
+      const dpiEnv = createEnvironment({ version, config: dpiConfig });
+      const dpiSettings = await (await dpiEnv.openRule('rule')).openItemSettings('subscription_url', 'sub');
+      const dpiOption = dpiSettings.map.children[0].children.find((o) => o.option === 'download_via_proxy_section');
+      assert.equal(dpiOption.vallist[dpiOption.keylist.indexOf('dpi')], 'Zapret');
+      await dpiSettings.map.parse();
+      await dpiSettings.save();
+      assert.deepEqual(dpiEnv.uci.data, dpiConfig, 'an unchanged subscription settings save changed UCI');
     });
 
     // UC-046: Built-in rule sets #2 are hidden for DNS rules and edits of the

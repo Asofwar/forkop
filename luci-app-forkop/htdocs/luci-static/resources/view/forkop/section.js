@@ -2382,9 +2382,11 @@ function addSubscriptionUrlItemOptions(itemSection, options = {}) {
     const sectionId = parentSectionForItem(itemId);
     const value =
       optionMapValue(this, itemId, "download_via_proxy_section") || "";
-    refreshOptionChoices(this, subscriptionDownloadTargetChoices(sectionId));
-    keepUnavailableChoice(this, value, describeUnavailableSection);
-    return value;
+    return ensureActionProvidersAvailabilityLoaded().then(() => {
+      refreshOptionChoices(this, subscriptionDownloadTargetChoices(sectionId));
+      keepUnavailableChoice(this, value, describeUnavailableSection);
+      return value;
+    });
   };
   o.validate = function (itemId, value) {
     const sectionId = parentSectionForItem(itemId);
@@ -7052,9 +7054,13 @@ function createSectionContent(section) {
   o.modalonly = true;
   o.load = function (section_id) {
     const value = uci.get(UCI_PACKAGE, section_id, "dns_detour_section") || "";
-    refreshDnsDetourSectionOptionValues(this, section_id);
-    keepUnavailableChoice(this, value, describeUnavailableSection);
-    return value;
+    // DPI sections are offered while their provider is installed: build the
+    // list once availability is known, as the action list does.
+    return ensureActionProvidersAvailabilityLoaded().then(() => {
+      refreshDnsDetourSectionOptionValues(this, section_id);
+      keepUnavailableChoice(this, value, describeUnavailableSection);
+      return value;
+    });
   };
   o.validate = function (_section_id, value) {
     if (!value) {

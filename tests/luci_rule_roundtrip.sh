@@ -12,7 +12,7 @@ set -euo pipefail
 # refuses to save until the user picks another one (UC-008). Built-in rule
 # sets #2 are hidden for DNS rules; values a DNS rule already has stay visible
 # and the rule is refused until they are removed, never dropped or kept
-# silently (UC-046).
+# silently (UC-046). A refused save leaves UCI untouched.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 node - "$ROOT_DIR/tests/helpers/luci_form_harness.js" <<'NODE'
@@ -242,8 +242,7 @@ async function check(label, fn) {
       modal.option('action').getUIElement('rule').setValue('dns');
       modal.option('dns_server').getUIElement('rule').setValue('1.1.1.1');
       await assert.rejects(modal.save(), SECONDARY_ON_DNS);
-      assert.equal(env.uci.data.rule.action, 'connection');
-      assert.deepEqual(env.uci.data.rule.rule_set_with_subnets, [VALVE]);
+      assert.deepEqual(env.uci.data.rule, fixture, 'a refused save changed UCI');
       assert.equal(modal.active('secondary_rule_sets'), true, 'the values to remove must stay visible');
 
       modal.option('secondary_rule_sets').getUIElement('rule').setValue([]);
@@ -262,6 +261,34 @@ async function check(label, fn) {
       assert.equal(freshModal.active('secondary_rule_sets'), false);
       assert.equal(fresh.uci.data.rule.action, 'dns');
       assert.equal(fresh.uci.data.rule.rule_set_with_subnets, undefined);
+    });
+
+    // A refused save writes nothing. LuCI parses every option even when one
+    // is invalid; the writes and removals of the others (DNS fields of the
+    // new action, routing ports and links) must not stay behind for the next
+    // modal save or, after Dismiss, for Save & Apply (UC-008, UC-046).
+    for (const [name, fixture, dnsServer, error] of [
+      ['block rule with Built-in rule sets #2', rule({ action: 'block', community_lists: ['youtube'],
+        ports: ['443'], ip_cidr: '10.0.0.0/8', rule_set_with_subnets: [VALVE] }), '1.1.1.1', SECONDARY_ON_DNS],
+      ['connection rule with Built-in rule sets #2', rule({ action: 'connection', ...routed,
+        community_lists: ['youtube'], selector_proxy_links: ['socks5://10.0.0.1:1080'], ports: ['443'],
+        rule_set_with_subnets: [VALVE] }), '1.1.1.1', SECONDARY_ON_DNS],
+      ['connection rule without a DNS server', rule({ action: 'connection', ...routed,
+        community_lists: ['youtube'], selector_proxy_links: ['socks5://10.0.0.1:1080'], ports: ['443'],
+        ip_cidr: '10.0.0.0/8' }), '', /DNS server address cannot be empty/],
+    ]) await check(`${version} ${name}: refused switch to DNS writes nothing`, async () => {
+      const env = createEnvironment({ version, config: { rule: fixture } });
+      const modal = await env.openRule('rule');
+      const action = modal.option('action').getUIElement('rule');
+      action.setValue('dns');
+      modal.option('dns_server').getUIElement('rule').setValue(dnsServer);
+      await assert.rejects(modal.save(), error);
+      assert.deepEqual(env.uci.data.rule, fixture, 'a refused save changed UCI');
+
+      // Choosing the old action again, as the message suggests, saves nothing new.
+      action.setValue(fixture.action);
+      await modal.save();
+      assert.deepEqual(env.uci.data.rule, fixture, 'switching back changed the rule');
     });
 
     // UC-003: the device filter is offered whenever a Built-in rule set #2 is set.

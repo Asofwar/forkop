@@ -441,6 +441,11 @@ function createForm({ version, baseclass, uci, jsonMaps }) {
         for (const option of this.children) tasks.push(option.parse(sid));
       return Promise.all(tasks);
     },
+    // TypedSection.handleRemove(): remove, then save the whole map silently.
+    handleRemove(section_id) {
+      this.map.data.remove(this.uciconfig ?? this.map.config, section_id);
+      return this.map.save(null, true);
+    },
   });
 
   const NamedSection = AbstractSection.extend({
@@ -453,7 +458,10 @@ function createForm({ version, baseclass, uci, jsonMaps }) {
     },
   });
   const TypedSection = AbstractSection.extend({});
-  const GridSection = TypedSection.extend({});
+  const GridSection = TypedSection.extend({
+    // TableSection.addModalOptions(): hook called for every Add/Edit modal.
+    addModalOptions() {},
+  });
 
   class ModelWidget {
     constructor(kind, value, option, section_id) {
@@ -828,15 +836,20 @@ function createEnvironment({
     },
     globals,
   );
-  section.setActionProvidersAvailabilityLoader(() => Promise.resolve(Object.assign({}, providers)));
   const moduleGlobals = globals;
   let settingsModule = null;
   let shellModule = null;
 
-  // The Settings page declares the rules grid once.
+  // The rules grid as page/settings.js declares it.
+  const loadActionProvidersAvailability = () => Promise.resolve(Object.assign({}, providers));
+  function rulesGrid(map) {
+    const rules = map.section(form.GridSection, "section");
+    section.configureSectionSection(rules, { loadActionProvidersAvailability });
+    section.createSectionContent(rules);
+    return rules;
+  }
   const pageMap = new form.Map("forkop");
-  const grid = pageMap.section(form.GridSection, "section");
-  section.createSectionContent(grid);
+  const grid = rulesGrid(pageMap);
 
   return {
     version,
@@ -847,13 +860,15 @@ function createEnvironment({
     document,
     window,
     CustomEvent: globals.CustomEvent,
+    ui,
     // view/forkop/shell.js sharing this environment's main.js and window.
     shell() {
       shellModule ??= loadModule("shell.js", { baseclass, uci, main }, moduleGlobals);
       return shellModule;
     },
-    // The Settings tabs of page/settings.js (one "settings" section) for the
-    // given provider capabilities object (shell.uiCapabilities on the page).
+    // The Settings page of page/settings.js: the rules grid and the Settings
+    // tabs (one "settings" section) share one map; `capabilities` is the
+    // provider capabilities object (shell.uiCapabilities on the page).
     async openSettings(capabilities) {
       settingsModule ??= loadModule(
         "settings.js",
@@ -867,6 +882,7 @@ function createEnvironment({
         moduleGlobals,
       );
       const map = new form.Map("forkop");
+      const rules = rulesGrid(map);
       const tab = (type) => {
         const tabSection = map.section(form.TypedSection, type);
         tabSection.cfgsections = () => ["settings"];
@@ -886,12 +902,15 @@ function createEnvironment({
         map,
         option(name) {
           for (const tabSection of map.children) {
+            if (tabSection === rules) continue;
             const found = tabSection.children.find((option) => option.option === name);
             if (found) return found;
           }
           throw new Error(`settings have no option ${name}`);
         },
         save: () => map.save(),
+        // The Delete button of a rule row.
+        removeRule: (section_id) => rules.handleRemove(section_id),
       };
     },
     // GridSection.renderMoreOptionsModal() for an existing rule.
@@ -900,6 +919,7 @@ function createEnvironment({
       const named = map.section(form.NamedSection, section_id, "section");
       map.parent = pageMap;
       form.cloneOptions(grid, named);
+      await grid.addModalOptions(named, section_id);
       openModalShell(document);
       await map.render();
       return {

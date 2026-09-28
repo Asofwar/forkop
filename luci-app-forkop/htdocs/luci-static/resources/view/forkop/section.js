@@ -6472,7 +6472,7 @@ function getOptionTextarea(option, section_id) {
     : null;
 }
 
-function rejectStrategyValidation(option, section_id, message) {
+function rejectInvalidOption(option, section_id, message) {
   const title = option.stripTags(option.title).trim();
   const error = message || option.getValidationError(section_id) || "";
 
@@ -6492,7 +6492,7 @@ function parseStrategyWithRemoteValidation(section_id, config) {
     }
 
     if (!this.isValid(section_id)) {
-      return rejectStrategyValidation(
+      return rejectInvalidOption(
         this,
         section_id,
         this.getValidationError(section_id),
@@ -6521,7 +6521,7 @@ function parseStrategyWithRemoteValidation(section_id, config) {
       }
 
       if (!result || result.valid !== true) {
-        return rejectStrategyValidation(
+        return rejectInvalidOption(
           this,
           section_id,
           result && result.message ? result.message : config.invalidMessage,
@@ -8030,8 +8030,37 @@ function loadSectionTableOptions(sectionRef) {
   return Promise.all(tasks);
 }
 
+// LuCI parses every option of the rule modal even when one of them is
+// invalid, and a refused save keeps what the other options wrote or removed:
+// a rule switched to DNS and back would lose its ports and links, and after
+// Dismiss the next Save & Apply would send them. Refuse the save before
+// anything is written while an active option is invalid.
+function refuseInvalidModalSave(modalMap) {
+  const parse = modalMap.parse;
+
+  modalMap.parse = function () {
+    for (const modalSection of this.children) {
+      for (const section_id of modalSection.cfgsections()) {
+        for (const option of modalSection.children) {
+          if (option.isActive(section_id) && !option.isValid(section_id)) {
+            return rejectInvalidOption(option, section_id);
+          }
+        }
+      }
+    }
+
+    return parse.apply(this, arguments);
+  };
+}
+
 function configureSectionSection(sectionRef, options = {}) {
   setActionProvidersAvailabilityLoader(options.loadActionProvidersAvailability);
+
+  const addModalOptions = sectionRef.addModalOptions;
+  sectionRef.addModalOptions = function (modalSection) {
+    refuseInvalidModalSave(modalSection.map);
+    return addModalOptions.apply(this, arguments);
+  };
 
   const handleRemove = sectionRef.handleRemove;
   sectionRef.handleRemove = function (section_id) {

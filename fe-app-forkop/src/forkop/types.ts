@@ -372,6 +372,10 @@ export namespace Forkop {
     nfqws_opt?: string;
     nfqws2_opt?: string;
     byedpi_cmd_opts?: string;
+    // Derived read-only strategy view (get_readonly_config_sections).
+    dpi_provider?: string;
+    dpi_strategy?: string;
+    dpi_strategy_custom?: boolean;
     cmd_opts?: string;
     selector_proxy_links?: string[];
     subscription_urls?: string[];

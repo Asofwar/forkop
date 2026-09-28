@@ -70,6 +70,11 @@ let overviewHealth: Forkop.HealthStatus | null = null;
 let overviewRuleCount: number | null = null;
 let overviewSnapshotCount: number | null = null;
 let overviewServiceBusy = false;
+// The controller runs on two pages: Overview (summary cards, live traffic)
+// and Monitoring → Nodes (node selection only). Summary data, the health
+// poll and the Clash traffic stream are loaded only where they are shown.
+let overviewHost = false;
+let clashUpdatesStarted = false;
 
 async function refreshHealth(mountId: number) {
   const response = await ForkopShellMethods.getHealthStatus();
@@ -840,7 +845,10 @@ function stopDashboardDataUpdates() {
 
   sectionsRefreshQueued = false;
   stopClashRpcPolling();
-  socket.resetAll();
+  // Never close sockets this controller did not open (Monitoring owns its
+  // connections stream when it hosts the Nodes view).
+  if (clashUpdatesStarted) socket.resetAll();
+  clashUpdatesStarted = false;
 }
 
 function startDashboardDataUpdates() {
@@ -855,10 +863,13 @@ function startDashboardDataUpdates() {
   dashboardDataUpdatesStarted = true;
   const dataUpdatesId = ++dashboardDataUpdatesId;
   void fetchDashboardSections({ force: true });
-  if (canUseDirectClashApi()) {
-    void connectToClashSockets(dataUpdatesId);
-  } else {
-    startClashRpcPolling(dataUpdatesId);
+  if (overviewHost) {
+    clashUpdatesStarted = true;
+    if (canUseDirectClashApi()) {
+      void connectToClashSockets(dataUpdatesId);
+    } else {
+      startClashRpcPolling(dataUpdatesId);
+    }
   }
   sectionsRefreshTimer = setInterval(() => {
     void fetchDashboardSections();
@@ -1932,8 +1943,11 @@ async function onPageMount() {
   dashboardMounted = true;
   dashboardMountId += 1;
   const mountId = dashboardMountId;
-  void refreshHealth(mountId);
-  healthRefreshTimer = setInterval(() => void refreshHealth(mountId), 10000);
+  overviewHost = Boolean(document.getElementById('dashboard-overview'));
+  if (overviewHost) {
+    void refreshHealth(mountId);
+    healthRefreshTimer = setInterval(() => void refreshHealth(mountId), 10000);
+  }
   const hasRuntimeSnapshot = Boolean(getCachedRuntimeUiState());
 
   if (!hasRuntimeSnapshot) {
@@ -1952,7 +1966,7 @@ async function onPageMount() {
   store.subscribe(onStoreUpdate);
   startActionStateWatcher();
   void renderSectionsWidget();
-  void loadOverviewCounts(mountId);
+  if (overviewHost) void loadOverviewCounts(mountId);
   syncDashboardServiceAvailability();
   renderOverviewCards();
 

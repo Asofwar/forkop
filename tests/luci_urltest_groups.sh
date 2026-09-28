@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# URLTest groups of a rule in the LuCI editor. The dashboard keeps its
+# URLTest groups of a rule in the LuCI editor. sing-box tags a group
+# <rule>-urltest-<section name>, and libuci names an anonymous section after
+# its position in the file, so a group added in the editor gets a named
+# section (ut_<8 hex digits>, like pg_ priorities): adding or removing
+# another section no longer changes its tag (UC-044). The dashboard keeps its
 # URLTest settings for a rule in urltest_override sections (rule, tag);
 # deleting the rule deletes them too, so a later rule with the same name does
 # not inherit them, and the overrides of other rules stay (UC-151). The real
@@ -36,7 +40,45 @@ async function check(label, fn) {
 }
 
 (async () => {
+  const urltestGroups = (env) => Object.values(env.uci.data).filter((item) => item['.type'] === 'urltest');
+
   for (const version of ['24.10', '25.12']) {
+    // UC-044: the "+ Add URLTest" button, the group settings, then the rule's Save.
+    await check(`${version} a URLTest group added in the editor gets a stable section name`, async () => {
+      const env = createEnvironment({ version, config: { settings, main: rule('main') } });
+      const modal = await env.openRule('main');
+      const group = await modal.openItemSettings('urltest', '', { adding: true });
+      group.setValue('name', 'Fastest');
+      await group.save();
+      modal.option('urltest').getUIElement('main').setValue(['Fastest']);
+      await modal.saveButton();
+
+      const [created, ...others] = urltestGroups(env);
+      assert.equal(others.length, 0);
+      assert.match(created['.name'], /^ut_[0-9a-f]{8}$/, 'the group got an anonymous section');
+      assert.equal(created['.anonymous'], false);
+      assert.equal(created.section, 'main');
+      assert.equal(created.name, 'Fastest');
+
+      // Saving the rule again keeps the group and its name.
+      await (await env.openRule('main')).saveButton();
+      assert.deepEqual(urltestGroups(env), [created]);
+    });
+
+    // Existing groups, anonymous ones included, keep their sections.
+    await check(`${version} existing URLTest groups keep their sections`, async () => {
+      const group = (name, anonymous, label) => ({ '.name': name, '.type': 'urltest', '.anonymous': anonymous,
+        section: 'main', name: label, check_interval: '3m', tolerance: '50',
+        testing_url: 'https://www.gstatic.com/generate_204', idle_timeout: '30m',
+        interrupt_exist_connections: '1', pin_dashboard: '1', filter_mode: 'disabled',
+        detect_server_country: 'flag_emoji' });
+      const config = { settings, main: rule('main'), cfg032898: group('cfg032898', true, 'Old'),
+        ut_1a2b3c4d: group('ut_1a2b3c4d', false, 'New') };
+      const env = createEnvironment({ version, config });
+      await (await env.openRule('main')).saveButton();
+      assert.deepEqual(env.uci.data, config);
+    });
+
     // UC-151: the rule's dashboard URLTest overrides go with the rule.
     await check(`${version} removing a rule removes its URLTest overrides`, async () => {
       const config = {

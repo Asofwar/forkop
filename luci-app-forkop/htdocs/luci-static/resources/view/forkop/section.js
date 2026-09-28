@@ -2324,19 +2324,31 @@ function defaultPriorityLevelSettings() {
   };
 }
 
-function randomPriorityGroupId() {
+// A named section for a group: sing-box tags it after the section name, and
+// libuci names an anonymous section after its position in the file, so the
+// tag (and the choice sing-box keeps for it) would change whenever a section
+// before it is added or removed (UC-044).
+function randomChildItemId(prefix) {
   for (let i = 0; i < 100; i += 1) {
     const value = Math.floor(Math.random() * 0xffffffff)
       .toString(16)
       .padStart(8, "0");
-    const id = `pg_${value}`;
+    const id = `${prefix}_${value}`;
 
     if (!uci.get(UCI_PACKAGE, id)) {
       return id;
     }
   }
 
-  return `pg_${Date.now().toString(16)}`;
+  return `${prefix}_${Date.now().toString(16)}`;
+}
+
+function randomPriorityGroupId() {
+  return randomChildItemId("pg");
+}
+
+function randomUrlTestId() {
+  return randomChildItemId("ut");
 }
 
 function addSubscriptionUrlItemOptions(itemSection, options = {}) {
@@ -7493,6 +7505,7 @@ function createSectionContent(section) {
   o.childType = "urltest";
   o.childValueOption = "name";
   o.childDefaults = urlTestChildDefaults();
+  o.createId = () => randomUrlTestId();
   o.renderItemSettingsModal = showUrlTestSettingsModal;
   o.validateItemsOnSave = function (section_id, values) {
     return validateUrlTestItemsBeforeSave(section_id, values, this);

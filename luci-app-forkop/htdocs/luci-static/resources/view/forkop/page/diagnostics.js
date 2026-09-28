@@ -2,6 +2,7 @@
 "require view";
 "require view.forkop.main as main";
 "require view.forkop.shell as shell";
+"require view.forkop.local_devices as localDevices";
 
 const EntryPoint = {
   load() {
@@ -11,7 +12,9 @@ const EntryPoint = {
   },
 
   render() {
-    main.DiagnosticTab.initController();
+    main.DiagnosticTab.initController({
+      loadLocalDeviceChoices: localDevices.loadLocalDeviceChoices,
+    });
     return shell.renderPage(_("Diagnostics"), main.DiagnosticTab.render());
   },
 

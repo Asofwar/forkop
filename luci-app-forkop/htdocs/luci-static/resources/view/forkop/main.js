@@ -1556,66 +1556,6 @@ function renderRotateCcwIcon24() {
   );
 }
 
-// src/icons/renderCircleStopIcon24.ts
-function renderCircleStopIcon24() {
-  const NS = "http://www.w3.org/2000/svg";
-  return svgEl(
-    "svg",
-    {
-      xmlns: NS,
-      viewBox: "0 0 24 24",
-      fill: "none",
-      stroke: "currentColor",
-      "stroke-width": "2",
-      "stroke-linecap": "round",
-      "stroke-linejoin": "round",
-      class: "lucide lucide-circle-stop-icon lucide-circle-stop"
-    },
-    [
-      svgEl("circle", {
-        cx: "12",
-        cy: "12",
-        r: "10"
-      }),
-      svgEl("rect", {
-        x: "9",
-        y: "9",
-        width: "6",
-        height: "6",
-        rx: "1"
-      })
-    ]
-  );
-}
-
-// src/icons/renderCirclePlayIcon24.ts
-function renderCirclePlayIcon24() {
-  const NS = "http://www.w3.org/2000/svg";
-  return svgEl(
-    "svg",
-    {
-      xmlns: NS,
-      viewBox: "0 0 24 24",
-      fill: "none",
-      stroke: "currentColor",
-      "stroke-width": "2",
-      "stroke-linecap": "round",
-      "stroke-linejoin": "round",
-      class: "lucide lucide-circle-play-icon lucide-circle-play"
-    },
-    [
-      svgEl("path", {
-        d: "M9 9.003a1 1 0 0 1 1.517-.859l4.997 2.997a1 1 0 0 1 0 1.718l-4.997 2.997A1 1 0 0 1 9 14.996z"
-      }),
-      svgEl("circle", {
-        cx: "12",
-        cy: "12",
-        r: "10"
-      })
-    ]
-  );
-}
-
 // src/icons/renderCircleCheckBigIcon24.ts
 function renderCircleCheckBigIcon24() {
   const NS = "http://www.w3.org/2000/svg";
@@ -1724,34 +1664,6 @@ function renderSearchIcon24() {
     [
       svgEl("path", { d: "m21 21-4.34-4.34" }),
       svgEl("circle", { cx: "11", cy: "11", r: "8" })
-    ]
-  );
-}
-
-// src/icons/renderBookOpenTextIcon24.ts
-function renderBookOpenTextIcon24() {
-  const NS = "http://www.w3.org/2000/svg";
-  return svgEl(
-    "svg",
-    {
-      xmlns: NS,
-      viewBox: "0 0 24 24",
-      fill: "none",
-      stroke: "currentColor",
-      "stroke-width": "2",
-      "stroke-linecap": "round",
-      "stroke-linejoin": "round",
-      class: "lucide lucide-book-open-text-icon lucide-book-open-text"
-    },
-    [
-      svgEl("path", { d: "M12 7v14" }),
-      svgEl("path", { d: "M16 12h2" }),
-      svgEl("path", { d: "M16 8h2" }),
-      svgEl("path", {
-        d: "M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"
-      }),
-      svgEl("path", { d: "M6 12h2" }),
-      svgEl("path", { d: "M6 8h2" })
     ]
   );
 }
@@ -6678,13 +6590,6 @@ function lastRunText(storage) {
 function isServiceTransitionStatus(status) {
   return ["starting", "stopping", "restarting", "reloading"].includes(status);
 }
-function getServiceTransition(status) {
-  return {
-    starting: status === "starting",
-    stopping: status === "stopping",
-    restarting: status === "restarting" || status === "reloading"
-  };
-}
 function hasLocalMutatingServiceActionLoading(actions) {
   return actions.restart.loading || actions.start.loading || actions.stop.loading || actions.enable.loading || actions.disable.loading;
 }
@@ -6721,30 +6626,6 @@ function getAvailableActionsDisabledState({
     utilityActionsDisabled: mutatingServiceActionLoading || componentActionLoading,
     viewLogsDisabled: false
   };
-}
-function shouldShowRestartAction({
-  forkopRunning,
-  restartLoading,
-  startLoading,
-  stopLoading
-}) {
-  return restartLoading || forkopRunning && !startLoading && !stopLoading;
-}
-function shouldShowStartAction({
-  forkopRunning,
-  restartLoading,
-  startLoading,
-  stopLoading
-}) {
-  return startLoading || !restartLoading && !forkopRunning && !stopLoading;
-}
-function shouldShowStopAction({
-  forkopRunning,
-  restartLoading,
-  startLoading,
-  stopLoading
-}) {
-  return stopLoading || restartLoading || forkopRunning && !startLoading;
 }
 function serviceActionErrorText(error) {
   const detail = error instanceof Error ? error.message.trim() : "";
@@ -9236,12 +9117,58 @@ function renderDpiValidator() {
     ])
   ];
 }
+var HELP_URL = "https://github.com/slayer326/forkop#readme";
+function renderSiteCheck() {
+  return card2(
+    "site-check",
+    _("Check a site or app"),
+    _(
+      "The route is calculated from the configuration; DNS and the HTTPS request are made by the router itself."
+    ),
+    [
+      E("div", { class: "fkp-route__form" }, [
+        E("label", { class: "fkp-diag-field fkp-diag-field--wide" }, [
+          E("span", {}, _("Domain or IP address")),
+          E("input", {
+            id: "site-check-target",
+            class: "cbi-input-text",
+            placeholder: "youtube.com",
+            maxLength: 253
+          })
+        ]),
+        E("label", { class: "fkp-diag-field" }, [
+          E("span", {}, _("Device")),
+          E("select", { id: "site-check-device", class: "cbi-input-select" }, [
+            E("option", { value: "" }, _("Any device"))
+          ])
+        ]),
+        E(
+          "button",
+          {
+            id: "site-check-run",
+            class: "btn cbi-button cbi-button-apply",
+            type: "button"
+          },
+          _("Check")
+        )
+      ]),
+      E("div", { id: "site-check-result", role: "status" })
+    ]
+  );
+}
 function render2() {
   return E("div", { id: "diagnostic-status", class: "fkp-diag" }, [
+    E("div", { class: "fkp-diag-help" }, [
+      E(
+        "a",
+        { href: HELP_URL, target: "_blank", rel: "noopener noreferrer" },
+        _("Help")
+      )
+    ]),
     E("section", { class: "fkp-diag-card fkp-diag-system" }, [
       E("div", { class: "fkp-diag-card__head" }, [
         E("div", {}, [
-          E("h3", { class: "fkp-diag-card__title" }, _("System diagnostics")),
+          E("h3", { class: "fkp-diag-card__title" }, _("System check")),
           E("span", {
             id: "fkp_diagnostic-last-run",
             class: "fkp-diag-hint",
@@ -9251,19 +9178,28 @@ function render2() {
         E("div", { id: "fkp_diagnostic-page-run-check" })
       ]),
       E("div", {
+        id: "fkp_diagnostic-run-reason",
+        class: "fkp-diag-run-reason",
+        role: "status"
+      }),
+      E("div", {
         class: "fkp-diag-checks",
         id: "fkp_diagnostic-page-checks"
       })
     ]),
-    E("div", { class: "fkp-diag-row" }, [
-      E("div", { id: "fkp_diagnostic-page-actions" }),
-      E("div", { id: "fkp_diagnostic-page-system-info" })
-    ]),
-    card2(
-      "connectivity-matrix",
-      _("Reachability check"),
-      _("Checks run on the router and do not prove the path of a LAN client."),
+    renderSiteCheck(),
+    E(
+      "details",
+      { class: "fkp-diag-card fkp-diag-details", id: "connectivity-matrix" },
       [
+        E("summary", {}, _("Address set for checking")),
+        E(
+          "p",
+          { class: "fkp-diag-hint" },
+          _(
+            "Checks run on the router and do not prove the path of a LAN client."
+          )
+        ),
         E("div", { id: "connectivity-rows", class: "fkp-conn" }),
         E("div", { class: "fkp-diag-actions" }, [
           E(
@@ -9283,42 +9219,21 @@ function render2() {
         ])
       ]
     ),
-    card2(
-      "route-debugger",
-      _("Route check"),
-      _(
-        "Shows the address the router DNS returns and the interface of the router kernel route."
-      ),
-      [
-        E("div", { class: "fkp-route__form" }, [
-          E("label", { class: "fkp-diag-field fkp-diag-field--wide" }, [
-            E("span", {}, _("Domain or IP address")),
-            E("input", {
-              id: "trace-target",
-              class: "cbi-input-text",
-              placeholder: "example.com",
-              maxLength: 253
-            })
-          ]),
-          E(
-            "button",
-            { id: "trace-run", class: "btn cbi-button", type: "button" },
-            _("Check")
-          )
-        ]),
-        E("div", { id: "trace-result", role: "status" })
-      ]
-    ),
-    E("h3", { class: "fkp-diag-section-title" }, _("Additional tools")),
     E(
       "details",
-      { class: "fkp-diag-card fkp-diag-details", id: "dpi-playground" },
+      { class: "fkp-diag-card fkp-diag-details", id: "technical-data" },
       [
-        E("summary", {}, _("DPI strategy syntax check")),
-        ...renderDpiValidator()
+        E("summary", {}, _("Technical data")),
+        E("div", { class: "fkp-diag-row" }, [
+          E("div", { id: "fkp_diagnostic-page-actions" }),
+          E("div", { id: "fkp_diagnostic-page-system-info" })
+        ]),
+        E("div", { class: "fkp-diag-subsection", id: "dpi-playground" }, [
+          E("h4", {}, _("DPI strategy syntax check")),
+          ...renderDpiValidator()
+        ])
       ]
-    ),
-    E("div", { id: "fkp_diagnostic-page-wiki" })
+    )
   ]);
 }
 
@@ -10037,68 +9952,12 @@ async function ensureSystemInfo({
 
 // src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts
 function renderAvailableActions({
-  restart,
-  start,
-  stop,
-  enable,
-  disable,
   globalCheck,
   viewLogs,
   showSingBoxConfig,
   supportReport
 }) {
   return E("div", { class: "fkp_diagnostic-page__right-bar__actions" }, [
-    E("b", {}, _("Available actions")),
-    ...insertIf(restart.visible, [
-      renderButton({
-        classNames: ["cbi-button-apply"],
-        onClick: restart.onClick,
-        icon: renderRotateCcwIcon24,
-        text: _("Restart Forkop X"),
-        loading: restart.loading,
-        disabled: restart.disabled
-      })
-    ]),
-    ...insertIf(stop.visible, [
-      renderButton({
-        classNames: ["cbi-button-remove"],
-        onClick: stop.onClick,
-        icon: renderCircleStopIcon24,
-        text: _("Stop Forkop X"),
-        loading: stop.loading,
-        disabled: stop.disabled
-      })
-    ]),
-    ...insertIf(start.visible, [
-      renderButton({
-        classNames: ["cbi-button-save"],
-        onClick: start.onClick,
-        icon: renderCirclePlayIcon24,
-        text: _("Start Forkop"),
-        loading: start.loading,
-        disabled: start.disabled
-      })
-    ]),
-    ...insertIf(disable.visible, [
-      renderButton({
-        classNames: ["cbi-button-remove"],
-        onClick: disable.onClick,
-        icon: renderPauseIcon24,
-        text: _("Disable autostart"),
-        loading: disable.loading,
-        disabled: disable.disabled
-      })
-    ]),
-    ...insertIf(enable.visible, [
-      renderButton({
-        classNames: ["cbi-button-save"],
-        onClick: enable.onClick,
-        icon: renderPlayIcon24,
-        text: _("Enable autostart"),
-        loading: enable.loading,
-        disabled: enable.disabled
-      })
-    ]),
     ...insertIf(globalCheck.visible, [
       renderButton({
         onClick: globalCheck.onClick,
@@ -10163,6 +10022,126 @@ function renderStatusBadge(status) {
   );
 }
 
+// src/forkop/tabs/diagnostic/checkCards.ts
+function checkAdvice(check) {
+  if (check.state !== "error" && check.state !== "warning") return null;
+  switch (check.code) {
+    case "DNS" /* DNS */:
+      return {
+        meaning: _(
+          "Domains in rules may not resolve, or resolve past Forkop, so their rules do not apply."
+        ),
+        action: _(
+          "Check the DNS server addresses in Settings or choose another server."
+        ),
+        link: "settings"
+      };
+    case "SINGBOX" /* SINGBOX */:
+      return {
+        meaning: _(
+          "Traffic of the rules does not reach sing-box, so connections through rules fail."
+        ),
+        action: _(
+          "Restart Forkop X on the Overview. If it repeats, open the logs under Technical data."
+        ),
+        link: "overview"
+      };
+    case "NFT" /* NFT */:
+      return {
+        meaning: _(
+          "Firewall rules that send traffic to Forkop are missing or not hit, so rules may not apply."
+        ),
+        action: _(
+          "Restart Forkop X. If another add-on marks traffic, make sure it does not conflict."
+        ),
+        link: "overview"
+      };
+    case "ZAPRET" /* ZAPRET */:
+    case "ZAPRET2" /* ZAPRET2 */:
+    case "BYEDPI" /* BYEDPI */:
+      return {
+        meaning: _("DPI bypass of the rules using this provider may not work."),
+        action: _(
+          "Make sure the provider is installed and the rule strategy is valid, then restart Forkop X."
+        ),
+        link: "settings"
+      };
+    case "OUTBOUNDS" /* OUTBOUNDS */:
+      return {
+        meaning: _(
+          "Some connections or nodes do not respond, so sites of their rules may not open."
+        ),
+        action: _(
+          "Test latency in Monitoring \u2192 Nodes and groups, choose a working node or update the subscription."
+        ),
+        link: "nodes"
+      };
+    case "FAKEIP" /* FAKEIP */:
+      if (check.description === _("Browser FakeIP check could not be completed"))
+        return {
+          meaning: _(
+            "This browser could not reach the check service, so FakeIP for devices is not proven either way."
+          ),
+          action: _(
+            "Retry the check when this device has internet access through the router."
+          )
+        };
+      if (check.description === _("FakeIP works; public IP comparison is inconclusive"))
+        return {
+          meaning: _(
+            "FakeIP works; only the comparison with the control address did not give an answer."
+          ),
+          action: _("Usually harmless. Retry the check later.")
+        };
+      return {
+        meaning: _(
+          "Devices may bypass the router DNS, so domain rules do not apply to them."
+        ),
+        action: _(
+          "Make sure devices use the router as DNS: turn off secure DNS (DoH, Private DNS) in browsers and phones."
+        )
+      };
+    default:
+      return {
+        meaning: _("Part of Forkop X does not work as expected."),
+        action: _(
+          "Retry the check. If it repeats, open the logs under Technical data."
+        )
+      };
+  }
+}
+function provenFacts(check) {
+  const failing = check.items.filter(
+    (item) => item.state === "error" || item.state === "warning"
+  );
+  return failing.length ? failing.map(
+    (item) => item.value ? `${item.key}: ${item.value}` : item.key
+  ) : [check.description].filter(Boolean);
+}
+var RANK = { error: 0, warning: 1 };
+function groupChecks(checks) {
+  const sorted = [...checks].sort((a, b) => a.order - b.order);
+  return {
+    attention: sorted.filter((check) => check.state === "error" || check.state === "warning").sort((a, b) => RANK[a.state] - RANK[b.state] || a.order - b.order),
+    other: sorted.filter(
+      (check) => !["error", "warning", "success"].includes(check.state)
+    ),
+    passed: sorted.filter((check) => check.state === "success")
+  };
+}
+function checkSummary(checks) {
+  const count = (state) => checks.filter((check) => check.state === state).length;
+  const errors = count("error");
+  const warnings = count("warning");
+  const passed = count("success");
+  const parts = [
+    errors ? _("Errors: %d").replace("%d", String(errors)) : "",
+    warnings ? _("Warnings: %d").replace("%d", String(warnings)) : "",
+    passed ? _("Passed: %d").replace("%d", String(passed)) : ""
+  ].filter(Boolean);
+  return { errors, warnings, passed, text: parts.join(" \xB7 ") };
+}
+
 // src/forkop/tabs/diagnostic/partials/renderCheckSection.ts
 function diagnosticActionSummary(props) {
   return [
@@ -10170,41 +10149,6 @@ function diagnosticActionSummary(props) {
     props.description,
     ...props.items.map((item) => `${item.key}: ${item.value}`)
   ].join("\n");
-}
-function renderRecoveryActions(props) {
-  return E("div", { class: "fkp-check__actions" }, [
-    E(
-      "button",
-      {
-        type: "button",
-        class: "btn cbi-button",
-        click: () => document.querySelector("#fkp_diagnostic-page-run-check button")?.click()
-      },
-      _("Retry")
-    ),
-    // Read-only sessions have no Settings page.
-    !isReadonlyMode() ? E(
-      "button",
-      {
-        type: "button",
-        class: "btn cbi-button",
-        click: () => openForkopPage("settings")
-      },
-      _("Open settings")
-    ) : "",
-    E(
-      "button",
-      {
-        type: "button",
-        class: "btn cbi-button",
-        click: () => (
-          // navigator.clipboard needs a secure context; LuCI is usually plain HTTP.
-          copyToClipboard(diagnosticActionSummary(props))
-        )
-      },
-      _("Copy details")
-    )
-  ]);
 }
 function itemIcon(state) {
   const icon = E("span", { class: "fkp-check__item-icon" });
@@ -10227,46 +10171,127 @@ function stateIcon(state) {
       return renderCircleSlashIcon24();
   }
 }
-function checkDetailsOpen(state) {
-  return state === "error" || state === "warning";
-}
-function renderCheckSection(props) {
-  const status = checkStatus(props.state);
+function renderHead(props) {
   const icon = E("span", { class: "fkp-check__icon" });
   icon.appendChild(stateIcon(props.state));
-  const hasDetails = props.items.length > 0 || checkDetailsOpen(props.state);
+  return E("div", { class: "fkp-check__head" }, [
+    icon,
+    E("b", { class: "fkp-check__title" }, props.title),
+    renderStatusBadge(checkStatus(props.state))
+  ]);
+}
+function renderItems(props) {
+  return props.items.map(
+    (item) => E("div", { class: `fkp-check__item fkp-diag-text--${item.state}` }, [
+      itemIcon(item.state),
+      E("b", {}, item.key),
+      E("span", {}, item.value)
+    ])
+  );
+}
+function adviceLink(link) {
+  if (!link || isReadonlyMode() && link !== "nodes") return "";
+  const [label, open] = link === "settings" ? [_("Open settings"), () => openForkopPage("settings")] : link === "nodes" ? [
+    _("Nodes and groups"),
+    () => openForkopPage("monitoring", { view: "nodes" })
+  ] : [_("Overview"), () => openForkopPage("overview")];
+  return E("button", { type: "button", class: "btn cbi-button", click: open }, [
+    label
+  ]);
+}
+function renderCheckSection(props, handlers) {
+  const status = checkStatus(props.state);
+  const advice = checkAdvice(props);
   return E("div", { class: `fkp-check fkp-check--${status.tone}` }, [
-    E("div", { class: "fkp-check__head" }, [
-      icon,
-      E("b", { class: "fkp-check__title" }, props.title),
-      renderStatusBadge(status)
-    ]),
-    // An unsupported check explains why instead of pretending to have run.
-    props.state === "unsupported" ? E("div", { class: "fkp-check__description" }, props.description) : "",
-    hasDetails ? E(
-      "details",
-      {
-        class: "fkp-check__details",
-        open: checkDetailsOpen(props.state) || void 0
-      },
-      [
-        E("summary", {}, _("Details")),
-        E("div", { class: "fkp-check__description" }, props.description),
-        ...props.items.map(
-          (item) => E(
-            "div",
-            { class: `fkp-check__item fkp-diag-text--${item.state}` },
-            [
-              itemIcon(item.state),
-              E("b", {}, item.key),
-              E("span", {}, item.value)
-            ]
+    renderHead(props),
+    ...advice ? [
+      E("dl", { class: "fkp-check__advice" }, [
+        E("dt", {}, _("What it means")),
+        E("dd", {}, advice.meaning),
+        E("dt", {}, _("What was proven")),
+        E(
+          "dd",
+          {},
+          E(
+            "ul",
+            {},
+            provenFacts(props).map((fact) => E("li", {}, fact))
           )
         ),
-        checkDetailsOpen(props.state) ? renderRecoveryActions(props) : ""
-      ]
-    ) : ""
+        E("dt", {}, _("What to do")),
+        E("dd", {}, advice.action)
+      ])
+    ] : [E("div", { class: "fkp-check__description" }, props.description)],
+    E("div", { class: "fkp-check__actions" }, [
+      E(
+        "button",
+        {
+          type: "button",
+          class: "btn cbi-button",
+          disabled: handlers.busy ? true : void 0,
+          click: () => handlers.onRetry(props.code)
+        },
+        _("Retry this check")
+      ),
+      adviceLink(advice?.link),
+      E(
+        "button",
+        {
+          type: "button",
+          class: "btn cbi-button",
+          click: () => (
+            // navigator.clipboard needs a secure context; LuCI is usually plain HTTP.
+            copyToClipboard(diagnosticActionSummary(props))
+          )
+        },
+        _("Copy details")
+      )
+    ]),
+    props.items.length ? E("details", { class: "fkp-check__details" }, [
+      E("summary", {}, _("All check results")),
+      E("div", { class: "fkp-check__description" }, props.description),
+      ...renderItems(props)
+    ]) : ""
   ]);
+}
+function renderCheckRow(props) {
+  const status = checkStatus(props.state);
+  return E(
+    "div",
+    { class: `fkp-check fkp-check--compact fkp-check--${status.tone}` },
+    [
+      renderHead(props),
+      // An unsupported check explains why instead of pretending to have run.
+      props.state === "unsupported" ? E("div", { class: "fkp-check__description" }, props.description) : "",
+      props.state === "success" && props.items.length ? E("details", { class: "fkp-check__details" }, [
+        E("summary", {}, _("Details")),
+        E("div", { class: "fkp-check__description" }, props.description),
+        ...renderItems(props)
+      ]) : ""
+    ]
+  );
+}
+function renderChecks(checks, handlers) {
+  const groups = groupChecks(checks);
+  const summary = checkSummary(checks);
+  return [
+    ...summary.text ? [E("p", { class: "fkp-diag-summary", role: "status" }, summary.text)] : [],
+    ...groups.attention.map((check) => renderCheckSection(check, handlers)),
+    ...groups.other.map(renderCheckRow),
+    ...groups.passed.length ? [
+      E("details", { class: "fkp-check-passed" }, [
+        E(
+          "summary",
+          {},
+          _("Passed checks: %d").replace(
+            "%d",
+            String(groups.passed.length)
+          )
+        ),
+        ...groups.passed.map(renderCheckRow)
+      ])
+    ] : []
+  ];
 }
 
 // src/forkop/tabs/diagnostic/partials/renderSystemInfo.ts
@@ -10311,41 +10336,6 @@ function normalizeCompiledVersion(version) {
     return "dev";
   }
   return version;
-}
-
-// src/forkop/tabs/diagnostic/partials/renderWikiDisclaimer.ts
-function renderWikiDisclaimer(kind) {
-  const iconWrap = E("span", {
-    class: "fkp_diagnostic-page__right-bar__wiki__icon"
-  });
-  iconWrap.appendChild(renderBookOpenTextIcon24());
-  const className = [
-    "fkp_diagnostic-page__right-bar__wiki",
-    ...insertIf(kind === "error", [
-      "fkp_diagnostic-page__right-bar__wiki--error"
-    ]),
-    ...insertIf(kind === "warning", [
-      "fkp_diagnostic-page__right-bar__wiki--warning"
-    ])
-  ].join(" ");
-  return E("div", { class: className }, [
-    E("div", { class: "fkp_diagnostic-page__right-bar__wiki__content" }, [
-      iconWrap,
-      E("div", { class: "fkp_diagnostic-page__right-bar__wiki__texts" }, [
-        E("b", {}, _("Troubleshooting")),
-        E("div", {}, _("Do not panic, everything can be fixed, just..."))
-      ])
-    ]),
-    renderButton({
-      classNames: ["cbi-button-save"],
-      text: _("Open Project Page"),
-      onClick: () => window.open(
-        "https://github.com/slayer326/forkop#readme",
-        "_blank",
-        "noopener,noreferrer"
-      )
-    })
-  ]);
 }
 
 // src/forkop/tabs/diagnostic/checks/runSectionsCheck.ts
@@ -10490,154 +10480,139 @@ async function runSectionsCheck() {
   }
 }
 
-// src/forkop/tabs/diagnostic/routeDebugger.ts
-function provenanceNote(provenance) {
-  switch (provenance) {
-    case "observed":
-      return _("Seen in an active connection");
-    case "configured":
-      return _("Derived from configuration");
+// src/forkop/tabs/monitoring/connectionView.ts
+function trafficSortValue(connection, mode) {
+  if (mode === "download") return connection.download || 0;
+  if (mode === "upload") return connection.upload || 0;
+  if (mode === "total")
+    return (connection.download || 0) + (connection.upload || 0);
+  return null;
+}
+var BYPASS_TAG = "bypass-out";
+var DIRECT_TAG = "direct-out";
+function routeTagFromRule(rule) {
+  const match = String(rule || "").match(/=>\s*route\(([^)]+)\)/);
+  return String(match?.[1] || "").trim().replace(/^['"]|['"]$/g, "");
+}
+function kindForAction(action) {
+  switch (action) {
+    case "zapret":
+    case "zapret2":
+    case "byedpi":
+      return "dpi";
+    case "connection":
+    case "proxy":
+    case "outbound":
+    case "vpn":
+      return "connection";
+    case "bypass":
+      return "bypass";
+    case "block":
+      return "block";
     default:
-      return _("Calculated result");
+      return "unknown";
   }
 }
-function routeFacts(trace) {
-  const target = String(trace.target.value || "");
-  const isLiteral = trace.dns.provenance === "simulated";
-  const facts = [
+function connectionPath(chains, rule, ruleByTag) {
+  const list = (Array.isArray(chains) ? chains : []).filter(Boolean);
+  const routeTag = routeTagFromRule(rule);
+  for (let index = list.length - 1; index >= 0; index--) {
+    const owner2 = ruleByTag(list[index]);
+    if (owner2)
+      return {
+        kind: kindForAction(owner2.action),
+        rule: owner2,
+        node: index > 0 ? list[0] : "",
+        tag: ""
+      };
+  }
+  const owner = routeTag ? ruleByTag(routeTag) : null;
+  if (owner)
+    return {
+      kind: kindForAction(owner.action),
+      rule: owner,
+      node: list[0] && list[0] !== routeTag ? list[0] : "",
+      tag: ""
+    };
+  const tag = list[list.length - 1] || routeTag;
+  if (list.includes(BYPASS_TAG) || routeTag === BYPASS_TAG)
+    return { kind: "bypass", rule: null, node: "", tag: "" };
+  if (/\breject\b/.test(String(rule || "")))
+    return { kind: "block", rule: null, node: "", tag: "" };
+  if (!tag || tag === DIRECT_TAG)
+    return { kind: "direct", rule: null, node: "", tag: "" };
+  return { kind: "unknown", rule: null, node: "", tag };
+}
+function pathKindLabel(kind) {
+  switch (kind) {
+    case "dpi":
+      return _("DPI");
+    case "connection":
+      return _("Connection");
+    case "bypass":
+      return _("Bypass");
+    case "direct":
+      return _("Direct");
+    case "block":
+      return _("Block");
+    default:
+      return _("Other");
+  }
+}
+function dpiProviderLabel(provider) {
+  switch (provider) {
+    case "zapret":
+      return "Zapret";
+    case "zapret2":
+      return "Zapret2";
+    case "byedpi":
+      return "ByeDPI";
+    default:
+      return _("DPI");
+  }
+}
+function dpiStrategyLabel(rule) {
+  if (rule.dpiCustom) return _("custom strategy");
+  if (rule.dpiStrategy === "default") return _("default strategy");
+  return rule.dpiStrategy || "";
+}
+function pathSummary(path) {
+  const base = { kind: path.kind, kindLabel: pathKindLabel(path.kind) };
+  if (path.rule && path.kind === "dpi") {
+    const strategy = dpiStrategyLabel(path.rule);
+    return {
+      ...base,
+      primary: path.rule.label,
+      secondary: [dpiProviderLabel(path.rule.dpiProvider), strategy].filter(Boolean).join(" \xB7 ")
+    };
+  }
+  if (path.rule)
+    return { ...base, primary: path.rule.label, secondary: path.node };
+  if (path.kind === "direct")
+    return { ...base, primary: "", secondary: _("No rule matched") };
+  return { ...base, primary: path.tag, secondary: "" };
+}
+function matchesPathFilter(path, filter2) {
+  if (!filter2 || filter2 === "all") return true;
+  if (filter2.startsWith("kind:")) return path.kind === filter2.slice(5);
+  if (filter2.startsWith("rule:")) return path.rule?.name === filter2.slice(5);
+  return true;
+}
+function connectionActions(active, readonly = false) {
+  const actions = [
     {
-      label: isLiteral ? _("IP address") : _("Domain"),
-      value: target,
-      note: "",
-      tone: "neutral"
+      kind: "details",
+      label: _("Details"),
+      className: "fkp-monitoring-details"
     }
   ];
-  if (!isLiteral) {
-    facts.push(
-      trace.dns.address ? {
-        label: _("Resolved IP"),
-        value: trace.dns.address,
-        note: _("Answer of the router DNS"),
-        tone: "success"
-      } : {
-        label: _("Resolved IP"),
-        value: _("Not resolved"),
-        note: _("The router DNS returned no address"),
-        tone: "error"
-      }
-    );
-  }
-  if (trace.interface.provenance === "observed" && trace.interface.value) {
-    facts.push({
-      label: _("Router kernel route"),
-      value: trace.interface.value,
-      note: _("Interface the router itself would use for this address"),
-      tone: "success"
+  if (active && !readonly)
+    actions.push({
+      kind: "close",
+      label: _("Close connection"),
+      className: "fkp_monitoring-page__row-action"
     });
-  } else if (trace.dns.address) {
-    facts.push({
-      label: _("Router kernel route"),
-      value: _("No route"),
-      note: _("The router has no route to this address"),
-      tone: "error"
-    });
-  }
-  const extra = [
-    [_("Matched rule"), trace.rule],
-    [_("Action"), trace.action],
-    [_("Outbound"), trace.outbound],
-    [_("DPI provider"), trace.dpi],
-    [_("Current runtime"), trace.runtime]
-  ];
-  for (const [label, stage] of extra)
-    if (stage.provenance !== "unknown" && stage.value)
-      facts.push({
-        label,
-        value: String(stage.value),
-        note: provenanceNote(stage.provenance),
-        tone: "neutral"
-      });
-  return facts;
-}
-function routeTraceFailureText(response) {
-  const data = response.data;
-  if (response.success && data?.error === "invalid_input") {
-    return _("Enter a valid domain or IP address");
-  }
-  return _("The route check did not complete. Try again.");
-}
-function openMonitoring(target) {
-  openForkopPage("monitoring", { search: target });
-}
-function initRouteDebugger() {
-  const button = document.getElementById(
-    "trace-run"
-  );
-  const input = document.getElementById(
-    "trace-target"
-  );
-  const container = document.getElementById("trace-result");
-  if (!button || !input || !container || button.onclick) return;
-  input.onkeydown = (event) => {
-    if (event.key === "Enter") button.click();
-  };
-  input.oninput = () => container.replaceChildren();
-  button.onclick = async () => {
-    const target = input.value.trim();
-    if (!target) {
-      container.textContent = _("Enter a domain or IP address");
-      return;
-    }
-    container.textContent = _("Checking\u2026");
-    button.disabled = true;
-    try {
-      const response = await ForkopShellMethods.routeTrace(
-        target,
-        "",
-        "TCP",
-        ""
-      );
-      if (input.value.trim() !== target) return;
-      if (!response.success || !response.data?.target) {
-        container.textContent = routeTraceFailureText(response);
-        return;
-      }
-      container.replaceChildren(
-        E(
-          "dl",
-          { class: "fkp-route__facts" },
-          routeFacts(response.data).flatMap((fact) => [
-            E("dt", {}, fact.label),
-            E("dd", {}, [
-              E("span", { class: `fkp-diag-text--${fact.tone}` }, fact.value),
-              fact.note ? E("small", {}, fact.note) : ""
-            ])
-          ])
-        ),
-        E("p", { class: "fkp-diag-hint" }, [
-          _(
-            "The Forkop rule and outbound are only known for a real connection. The check runs on the router and does not prove the path of a LAN client."
-          ),
-          " ",
-          E(
-            "button",
-            {
-              type: "button",
-              class: "btn cbi-button",
-              click: () => openMonitoring(target)
-            },
-            _("Trace a real connection in Monitoring")
-          )
-        ])
-      );
-    } catch (_error) {
-      if (input.value.trim() === target) {
-        container.textContent = routeTraceFailureText({ success: false });
-      }
-    } finally {
-      button.disabled = false;
-    }
-  };
+  return actions;
 }
 
 // src/forkop/tabs/diagnostic/connectivityMatrix.ts
@@ -10786,7 +10761,7 @@ function initConnectivityMatrix() {
     row.result = result;
     paintResult(row);
   };
-  const renderRow = (row) => {
+  const renderRow2 = (row) => {
     const host = E("input", {
       class: "cbi-input-text",
       value: row.target.host,
@@ -10820,7 +10795,7 @@ function initConnectivityMatrix() {
       row.target = changeType(row.target, type.value);
       row.result = { state: "idle" };
       save();
-      row.element?.replaceWith(renderRow(row));
+      row.element?.replaceWith(renderRow2(row));
       updateButtons();
     };
     const portCell = row.target.type === "DNS" ? E("div", { class: "fkp-conn__cell fkp-conn__cell--muted" }, [
@@ -10881,7 +10856,7 @@ function initConnectivityMatrix() {
         E("span", {}, _("Result")),
         E("span", {}, "")
       ]),
-      ...rows.map(renderRow)
+      ...rows.map(renderRow2)
     );
     updateButtons();
   };
@@ -10907,6 +10882,267 @@ function initConnectivityMatrix() {
     }
   };
   render6();
+}
+
+// src/forkop/tabs/diagnostic/siteCheck.ts
+function undecidedReasonText(reason) {
+  switch (reason) {
+    case "singbox_config_unavailable":
+    case "config_unavailable":
+      return _(
+        "the sing-box configuration is not available; is Forkop X running?"
+      );
+    case "list_not_checkable":
+      return _(
+        "an earlier rule uses a list whose contents cannot be checked here"
+      );
+    case "source_scoped_rule":
+      return _("a rule applies to selected devices only; choose a device");
+    default:
+      return _("a rule is too complex to calculate");
+  }
+}
+function kindOf(action) {
+  if (action === "zapret" || action === "zapret2" || action === "byedpi")
+    return "dpi";
+  if (["connection", "bypass", "block", "direct"].includes(action))
+    return action;
+  return "unknown";
+}
+function routeRow(trace) {
+  const action = String(trace.action.value || "");
+  if (trace.action.provenance === "unknown" || !action)
+    return {
+      label: _("Route"),
+      value: _("Rule not calculated"),
+      note: undecidedReasonText(trace.rule.reason),
+      provenance: "unknown",
+      tone: "neutral"
+    };
+  const kind = kindOf(action);
+  const parts = [pathKindLabel(kind)];
+  if (trace.rule.value) parts.push(`${_("rule")} \xAB${trace.rule.value}\xBB`);
+  if (kind === "dpi")
+    parts.push(
+      [
+        dpiProviderLabel(String(trace.dpi.value || action)),
+        dpiStrategyLabel({
+          name: "",
+          label: "",
+          action,
+          dpiStrategy: trace.dpi.strategy,
+          dpiCustom: trace.dpi.strategy_custom
+        })
+      ].filter(Boolean).join(" \xB7 ")
+    );
+  return {
+    label: _("Route"),
+    value: parts.join(" \xB7 "),
+    note: kind === "direct" ? _("No rule matched") : kind === "block" ? _("The address is blocked by a rule") : "",
+    provenance: "simulated",
+    tone: "neutral"
+  };
+}
+function dnsRow(trace) {
+  const address = trace.dns.address || "";
+  if (trace.dns.provenance === "simulated")
+    return {
+      label: _("Address"),
+      value: address,
+      note: _("An IP address needs no DNS"),
+      provenance: "simulated",
+      tone: "neutral"
+    };
+  if (!address)
+    return {
+      label: _("DNS"),
+      value: _("Not resolved"),
+      note: _("The router DNS returned no address"),
+      provenance: "observed",
+      tone: "error"
+    };
+  return {
+    label: _("DNS"),
+    value: /^198\.1[89]\./.test(address) ? `${address} (FakeIP)` : address,
+    note: _("Answer of the router DNS"),
+    provenance: "observed",
+    tone: "success"
+  };
+}
+function probeRow(result) {
+  const view = resultView(result);
+  return {
+    label: _("From the router"),
+    value: view.text,
+    note: _("HTTPS request made by the router itself"),
+    provenance: result.state === "done" ? "observed" : "unknown",
+    tone: view.tone
+  };
+}
+function siteConclusion(trace, result) {
+  const action = String(trace.action.value || "");
+  if (!trace.dns.address)
+    return _(
+      "The name does not resolve on the router, so no rule can open it. Check the DNS results above."
+    );
+  if (action === "block")
+    return _(
+      "A rule blocks this address. This is intended for ads and trackers."
+    );
+  const reachable = result.state === "done" && result.result.status === "ok";
+  if (reachable)
+    return _(
+      "The site opens from the router. If it does not open on a device, look at its real connections."
+    );
+  const hint = kindOf(action) === "dpi" ? _(
+    "For a DPI rule this can mean the strategy does not work with your provider."
+  ) : action === "connection" ? _("Check the node of the rule in Monitoring \u2192 Nodes and groups.") : action === "direct" ? _("No rule handles it; it may need to be added to a rule.") : "";
+  return [
+    _(
+      "The site did not open from the router. The router may take a different path than devices."
+    ),
+    hint
+  ].filter(Boolean).join(" ");
+}
+function renderRow(row) {
+  return [
+    E("dt", {}, row.label),
+    E("dd", {}, [
+      // Value and its provenance on one line; neutral values keep the text colour.
+      E("span", { class: "fkp-site__value" }, [
+        E(
+          "span",
+          row.tone === "neutral" ? {} : { class: `fkp-diag-text--${row.tone}` },
+          row.value
+        ),
+        " ",
+        renderProvenance(row.provenance)
+      ]),
+      row.note ? E("small", {}, row.note) : ""
+    ])
+  ];
+}
+function routeTraceFailureText(response) {
+  const data = response.data;
+  if (response.success && data?.error === "invalid_input") {
+    return _("Enter a valid domain or IP address");
+  }
+  return _("The route check did not complete. Try again.");
+}
+function initSiteCheck(loadDevices) {
+  const button = document.getElementById(
+    "site-check-run"
+  );
+  const input = document.getElementById(
+    "site-check-target"
+  );
+  const device = document.getElementById(
+    "site-check-device"
+  );
+  const container = document.getElementById("site-check-result");
+  if (!button || !input || !container || button.onclick) return;
+  void loadDevices?.().then((devices) => {
+    if (!device) return;
+    for (const [ip, name] of Object.entries(devices || {}))
+      device.appendChild(E("option", { value: ip }, `${name || ip} (${ip})`));
+  }).catch(() => {
+  });
+  input.onkeydown = (event) => {
+    if (event.key === "Enter") button.click();
+  };
+  input.oninput = () => container.replaceChildren();
+  button.onclick = async () => {
+    const target = input.value.trim();
+    if (!target) {
+      container.textContent = _("Enter a domain or IP address");
+      return;
+    }
+    const source = device?.value || "";
+    container.textContent = _("Checking\u2026");
+    button.disabled = true;
+    try {
+      const [trace, reach] = await Promise.all([
+        ForkopShellMethods.routeTrace(target, source, "TCP", "443"),
+        probe({ host: target, type: "HTTPS", port: "443" })
+      ]);
+      if (input.value.trim() !== target) return;
+      if (!trace.success || !trace.data?.target) {
+        container.textContent = routeTraceFailureText(trace);
+        return;
+      }
+      const rows = [routeRow(trace.data), dnsRow(trace.data), probeRow(reach)];
+      container.replaceChildren(
+        E("dl", { class: "fkp-route__facts" }, rows.flatMap(renderRow)),
+        E(
+          "p",
+          { class: "fkp-site__conclusion" },
+          siteConclusion(trace.data, reach)
+        ),
+        E("div", { class: "fkp-diag-actions" }, [
+          E(
+            "a",
+            {
+              class: "btn cbi-button",
+              href: forkopPageUrl("monitoring", { search: target })
+            },
+            _("See connections to this address")
+          )
+        ]),
+        ...trace.data.interface.value ? [
+          E(
+            "p",
+            { class: "fkp-diag-hint" },
+            `${_("Router kernel route")}: ${trace.data.interface.value}`
+          )
+        ] : []
+      );
+    } catch (_error) {
+      if (input.value.trim() === target)
+        container.textContent = routeTraceFailureText({ success: false });
+    } finally {
+      button.disabled = false;
+    }
+  };
+  const host = readPageParams().host;
+  if (host && !input.value) {
+    input.value = host.slice(0, 253);
+    button.click();
+  }
+}
+
+// src/forkop/tabs/shared/startService.ts
+var starting = false;
+function renderStartServiceAction() {
+  if (isReadonlyMode()) {
+    return [];
+  }
+  const button = E(
+    "button",
+    {
+      type: "button",
+      class: "btn cbi-button cbi-button-action fkp-start-service",
+      disabled: starting ? true : void 0,
+      click: async () => {
+        if (starting) {
+          return;
+        }
+        starting = true;
+        button.disabled = true;
+        button.textContent = _("Starting\u2026");
+        try {
+          await runForkopServiceAction("start");
+        } catch (error) {
+          showToast(serviceActionErrorText(error), "error", 6e3);
+        } finally {
+          starting = false;
+          button.disabled = false;
+          button.textContent = _("Start Forkop X");
+        }
+      }
+    },
+    starting ? _("Starting\u2026") : _("Start Forkop X")
+  );
+  return [button];
 }
 
 // src/forkop/tabs/diagnostic/dpiPlayground.ts
@@ -11254,8 +11490,6 @@ function maskGlobalCheckText(text = "") {
 }
 
 // src/forkop/tabs/diagnostic/initController.ts
-var SERVICE_STATUS_REFRESH_INTERVAL_MS = 2e3;
-var SERVICE_ACTION_STATUS_TIMEOUT_MS = 45e3;
 var latestProviderInfoRequestId = 0;
 var diagnosticLifecycleRegistered = false;
 var diagnosticControllerInitialized = false;
@@ -11266,9 +11500,6 @@ var servicesInfoStateUnsubscribe = null;
 var servicesInfoRefreshPromise = null;
 var followedServiceActionJobs = /* @__PURE__ */ new Set();
 var handledServiceActionJobs = /* @__PURE__ */ new Set();
-function sleep2(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 function getDiagnosticsProviderOptions(systemInfo = store.get().diagnosticsSystemInfo) {
   return {
     includeZapret: Boolean(systemInfo.zapret_installed),
@@ -11344,27 +11575,6 @@ async function handleDownloadSupportReport() {
     setDiagnosticActionLoading("supportReport", false);
   }
 }
-function getForkopStatusText(running, enabled) {
-  if (running) {
-    return enabled ? "running & enabled" : "running but disabled";
-  }
-  return enabled ? "stopped but enabled" : "stopped & disabled";
-}
-function setDisplayedForkopRunning(running) {
-  const servicesInfoWidget = store.get().servicesInfoWidget;
-  const enabled = Boolean(servicesInfoWidget.data.forkopEnabled);
-  store.set({
-    servicesInfoWidget: {
-      ...servicesInfoWidget,
-      loading: false,
-      data: {
-        ...servicesInfoWidget.data,
-        forkopRunning: running ? 1 : 0,
-        forkopStatus: getForkopStatusText(running, enabled)
-      }
-    }
-  });
-}
 async function refreshDiagnosticServicesInfo({
   force = false,
   mountId: mountId2 = diagnosticMountId,
@@ -11397,20 +11607,6 @@ async function refreshDiagnosticServicesInfo({
   });
   servicesInfoRefreshPromise = promise;
   return promise;
-}
-async function waitForForkopRunningState(expectedRunning) {
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < SERVICE_ACTION_STATUS_TIMEOUT_MS) {
-    await refreshDiagnosticServicesInfo({ force: true, allowInactive: true });
-    const forkopRunning = Boolean(
-      store.get().servicesInfoWidget.data.forkopRunning
-    );
-    if (forkopRunning === expectedRunning) {
-      return true;
-    }
-    await sleep2(SERVICE_STATUS_REFRESH_INTERVAL_MS);
-  }
-  return false;
 }
 function startServiceActionStateWatcher() {
   if (servicesInfoStateUnsubscribe) {
@@ -11597,18 +11793,35 @@ async function fetchDiagnosticsProviderInfo({
     }
   }
 }
+var retryingCheck = null;
 function renderDiagnosticsChecks() {
   logger.debug("[DIAGNOSTIC]", "renderDiagnosticsChecks");
-  const diagnosticsChecks = [...store.get().diagnosticsChecks].sort(
-    (a, b) => a.order - b.order
-  );
   const container = document.getElementById("fkp_diagnostic-page-checks");
-  const renderedDiagnosticsChecks = diagnosticsChecks.map(
-    (check) => renderCheckSection(check)
-  );
-  return preserveScrollForPage(() => {
-    container.replaceChildren(...renderedDiagnosticsChecks);
+  if (!container) return;
+  const rendered = renderChecks(store.get().diagnosticsChecks, {
+    onRetry: (code) => void retryCheck(code),
+    busy: store.get().diagnosticsRunAction.loading || retryingCheck !== null
   });
+  return preserveScrollForPage(() => {
+    container.replaceChildren(...rendered);
+  });
+}
+async function retryCheck(code) {
+  if (store.get().diagnosticsRunAction.loading || retryingCheck) return;
+  const runner = getDiagnosticRunners(getDiagnosticsProviderOptions()).find(
+    (item) => item.code === code
+  );
+  if (!runner) return;
+  retryingCheck = code;
+  setDiagnosticCheckLoading(code);
+  try {
+    await runner.run();
+  } catch (e) {
+    logger.error("[DIAGNOSTIC]", `retryCheck - ${code} failed`, e);
+  } finally {
+    retryingCheck = null;
+    renderDiagnosticsChecks();
+  }
 }
 function renderDiagnosticRunActionWidget() {
   logger.debug("[DIAGNOSTIC]", "renderDiagnosticRunActionWidget");
@@ -11628,125 +11841,21 @@ function renderDiagnosticRunActionWidget() {
     click: () => runChecks()
   });
   const lastRun = document.getElementById("fkp_diagnostic-last-run");
+  const reason = document.getElementById("fkp_diagnostic-run-reason");
+  const blocked = servicesInfoWidget.loading || loading2 ? null : !forkopRunning ? {
+    text: _("Forkop X is stopped. Start it to run the checks."),
+    actions: renderStartServiceAction()
+  } : isMutatingServiceActionLoading() ? {
+    text: _("Waiting for the service action to finish."),
+    actions: []
+  } : null;
   return preserveScrollForPage(() => {
     container.replaceChildren(renderedAction);
     if (lastRun) lastRun.textContent = lastRunText(localStorage);
+    reason?.replaceChildren(
+      ...blocked ? [E("span", {}, blocked.text), ...blocked.actions] : []
+    );
   });
-}
-async function handleServiceRuntimeAction({
-  action,
-  expectedRunning,
-  optimisticRunning
-}) {
-  setDiagnosticActionLoading(action, true, true);
-  let jobId = "";
-  let ownsJobFollow = false;
-  let delegatedToWatcher = false;
-  if (optimisticRunning !== void 0) {
-    setDisplayedForkopRunning(optimisticRunning);
-  }
-  try {
-    const startResponse = await ForkopShellMethods.serviceActionStart(action);
-    if (!startResponse.success) {
-      throw new Error(startResponse.error);
-    }
-    jobId = startResponse.data.job_id;
-    if (followedServiceActionJobs.has(jobId)) {
-      delegatedToWatcher = true;
-      return;
-    }
-    followedServiceActionJobs.add(jobId);
-    ownsJobFollow = true;
-    const result = await ForkopShellMethods.waitServiceActionJob(jobId);
-    if (!result.success) {
-      throw new Error(result.error);
-    }
-    if (result.data.success === false) {
-      throw new Error(result.data.message || _("Service action failed"));
-    }
-    if (!await waitForForkopRunningState(expectedRunning)) {
-      showToast(
-        _("The service state has not changed yet. Check again in a moment."),
-        "warning",
-        6e3
-      );
-    }
-  } catch (e) {
-    logger.error("[DIAGNOSTIC]", `handleServiceRuntimeAction(${action})`, e);
-    showToast(serviceActionErrorText(e), "error", 6e3);
-  } finally {
-    if (!delegatedToWatcher) {
-      if (ownsJobFollow) {
-        followedServiceActionJobs.delete(jobId);
-      }
-      setDiagnosticActionLoading(action, false);
-      await refreshDiagnosticServicesInfo({ force: true, allowInactive: true });
-      if (jobId) {
-        handledServiceActionJobs.add(jobId);
-        void ForkopShellMethods.uiActionAck("service", jobId);
-      }
-      resetDiagnosticsChecks();
-    }
-  }
-}
-async function handleRestart() {
-  await handleServiceRuntimeAction({
-    action: "restart",
-    expectedRunning: true,
-    optimisticRunning: false
-  });
-}
-async function handleStart() {
-  await handleServiceRuntimeAction({
-    action: "start",
-    expectedRunning: true
-  });
-}
-async function handleStop() {
-  const confirmed = await confirmStopForkop();
-  if (!confirmed) {
-    return;
-  }
-  await handleServiceRuntimeAction({
-    action: "stop",
-    expectedRunning: false
-  });
-}
-function reportAutostartResult(expectedEnabled) {
-  const enabled = Boolean(store.get().servicesInfoWidget.data.forkopEnabled);
-  if (enabled !== expectedEnabled) {
-    showToast(_("Could not change autostart"), "error", 6e3);
-  }
-}
-async function handleEnable() {
-  setDiagnosticActionLoading("enable", true);
-  try {
-    await ForkopShellMethods.enable();
-  } catch (e) {
-    logger.error("[DIAGNOSTIC]", "handleEnable - e", e);
-  } finally {
-    await refreshDiagnosticServicesInfo({
-      force: true,
-      allowInactive: true
-    });
-    reportAutostartResult(true);
-    setDiagnosticActionLoading("enable", false);
-  }
-}
-async function handleDisable() {
-  setDiagnosticActionLoading("disable", true);
-  try {
-    await ForkopShellMethods.disable();
-  } catch (e) {
-    logger.error("[DIAGNOSTIC]", "handleDisable - e", e);
-  } finally {
-    await refreshDiagnosticServicesInfo({
-      force: true,
-      allowInactive: true
-    });
-    reportAutostartResult(false);
-    setDiagnosticActionLoading("disable", false);
-  }
 }
 async function handleShowGlobalCheck() {
   setDiagnosticActionLoading("globalCheck", true);
@@ -11843,93 +11952,19 @@ async function handleShowSingBoxConfig() {
     setDiagnosticActionLoading("showSingBoxConfig", false);
   }
 }
-function renderWikiDisclaimerWidget() {
-  const diagnosticsChecks = store.get().diagnosticsChecks;
-  function getWikiKind() {
-    const allResults = diagnosticsChecks.map((check) => check.state);
-    if (allResults.includes("error")) {
-      return "error";
-    }
-    if (allResults.includes("warning")) {
-      return "warning";
-    }
-    return "default";
-  }
-  const container = document.getElementById("fkp_diagnostic-page-wiki");
-  return preserveScrollForPage(() => {
-    container.replaceChildren(renderWikiDisclaimer(getWikiKind()));
-  });
-}
 function renderDiagnosticAvailableActionsWidget() {
   const diagnosticsActions = store.get().diagnosticsActions;
   const updatesActions = store.get().updatesActions;
   const servicesInfoWidget = store.get().servicesInfoWidget;
   logger.debug("[DIAGNOSTIC]", "renderDiagnosticAvailableActionsWidget");
-  const forkopEnabled = Boolean(servicesInfoWidget.data.forkopEnabled);
-  const forkopRunning = Boolean(servicesInfoWidget.data.forkopRunning);
-  const serviceTransition = getServiceTransition(
-    servicesInfoWidget.data.forkopStatus
-  );
-  const restartLoading = diagnosticsActions.restart.loading || serviceTransition.restarting;
-  const startLoading = diagnosticsActions.start.loading || serviceTransition.starting;
-  const stopLoading = diagnosticsActions.stop.loading || serviceTransition.stopping;
-  const atLeastOneMutatingActionLoading = restartLoading || startLoading || stopLoading || diagnosticsActions.enable.loading || diagnosticsActions.disable.loading;
-  const componentActionLoading = hasComponentActionLoading(updatesActions);
-  const { serviceControlsDisabled, utilityActionsDisabled, viewLogsDisabled } = getAvailableActionsDisabledState({
+  const { utilityActionsDisabled, viewLogsDisabled } = getAvailableActionsDisabledState({
     servicesInfoLoading: servicesInfoWidget.loading,
-    mutatingServiceActionLoading: atLeastOneMutatingActionLoading,
-    componentActionLoading
-  });
-  const startVisible = shouldShowStartAction({
-    forkopRunning,
-    restartLoading,
-    startLoading,
-    stopLoading
-  });
-  const stopVisible = shouldShowStopAction({
-    forkopRunning,
-    restartLoading,
-    startLoading,
-    stopLoading
+    mutatingServiceActionLoading: isMutatingServiceActionLoading(),
+    componentActionLoading: hasComponentActionLoading(updatesActions)
   });
   const container = document.getElementById("fkp_diagnostic-page-actions");
   const readonly = isReadonlyMode();
   const renderedActions = renderAvailableActions({
-    restart: {
-      loading: restartLoading,
-      visible: !readonly && shouldShowRestartAction({
-        forkopRunning,
-        restartLoading,
-        startLoading,
-        stopLoading
-      }),
-      onClick: handleRestart,
-      disabled: serviceControlsDisabled
-    },
-    start: {
-      loading: startLoading,
-      visible: !readonly && startVisible,
-      onClick: handleStart,
-      disabled: serviceControlsDisabled
-    },
-    stop: {
-      loading: stopLoading,
-      visible: !readonly && stopVisible,
-      onClick: handleStop,
-      disabled: serviceControlsDisabled
-    },
-    enable: {
-      loading: diagnosticsActions.enable.loading,
-      visible: !readonly && !forkopEnabled,
-      onClick: handleEnable,
-      disabled: serviceControlsDisabled
-    },
-    disable: {
-      loading: diagnosticsActions.disable.loading,
-      visible: !readonly && forkopEnabled,
-      onClick: handleDisable,
-      disabled: serviceControlsDisabled
-    },
     globalCheck: {
       loading: diagnosticsActions.globalCheck.loading,
       visible: true,
@@ -11956,16 +11991,7 @@ function renderDiagnosticAvailableActionsWidget() {
     }
   });
   return preserveScrollForPage(() => {
-    container.replaceChildren(
-      renderedActions,
-      ...readonly ? [
-        E(
-          "p",
-          { class: "fkp-diag-hint" },
-          _("Service control is available to administrators only.")
-        )
-      ] : []
-    );
+    container?.replaceChildren(renderedActions);
   });
 }
 function renderDiagnosticSystemInfoWidget() {
@@ -12022,9 +12048,8 @@ function renderDiagnosticSystemInfoWidget() {
   });
 }
 async function onStoreUpdate2(_next, _prev, diff) {
-  if (diff.diagnosticsChecks) {
+  if (diff.diagnosticsChecks || diff.diagnosticsRunAction) {
     renderDiagnosticsChecks();
-    renderWikiDisclaimerWidget();
   }
   if (diff.diagnosticsRunAction) {
     renderDiagnosticRunActionWidget();
@@ -12194,7 +12219,6 @@ async function onPageMount2() {
   renderDiagnosticRunActionWidget();
   renderDiagnosticAvailableActionsWidget();
   renderDiagnosticSystemInfoWidget();
-  renderWikiDisclaimerWidget();
   if (hasRuntimeSnapshot) {
     void refreshRuntimeUiState({ force: true });
   }
@@ -12252,13 +12276,13 @@ function registerLifecycleListeners2() {
     }
   });
 }
-async function initController2() {
+async function initController2(dependencies2 = {}) {
   if (diagnosticControllerInitialized) {
     return;
   }
   diagnosticControllerInitialized = true;
   onMount("diagnostic-status").then(() => {
-    initRouteDebugger();
+    initSiteCheck(dependencies2.loadLocalDeviceChoices);
     initConnectivityMatrix();
     initDpiPlayground();
     logger.debug("[DIAGNOSTIC]", "initController", "onMount");
@@ -12433,13 +12457,94 @@ var styles4 = `
     vertical-align: top;
 }
 
-/* System checks: compact grid instead of full-width alert cards. */
+/* System checks: problems first as full-width cards, then one-line rows;
+   passed checks fold into one group. */
 .fkp-diag-checks {
     display: grid;
-    align-items: start;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    grid-template-columns: minmax(0, 1fr);
     gap: 8px;
     margin-top: 10px;
+}
+
+.fkp-diag-summary {
+    margin: 0;
+    font-weight: 600;
+}
+
+.fkp-diag-run-reason:empty {
+    display: none;
+}
+
+.fkp-diag-run-reason {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    margin-top: 8px;
+    color: var(--text-color-medium, gray);
+}
+
+.fkp-diag-run-reason .btn {
+    margin: 0;
+}
+
+.fkp-check-passed > summary {
+    cursor: pointer;
+    color: var(--success-color-medium, green);
+}
+
+.fkp-check-passed[open] {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    align-items: start;
+    gap: 8px;
+}
+
+.fkp-check-passed[open] > summary {
+    grid-column: 1 / -1;
+}
+
+.fkp-check__advice {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 4px 12px;
+    margin: 8px 0 0;
+}
+
+.fkp-check__advice dt {
+    font-weight: 600;
+    color: var(--text-color-medium, gray);
+}
+
+.fkp-check__advice dd {
+    margin: 0;
+}
+
+.fkp-check__advice ul {
+    margin: 0;
+    padding-left: 1.2em;
+}
+
+.fkp-diag-help {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: -4px;
+}
+
+.fkp-diag-subsection h4 {
+    margin: 12px 0 4px;
+}
+
+.fkp-site__value {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 8px;
+}
+
+.fkp-site__conclusion {
+    margin: 10px 0 0;
+    font-weight: 600;
 }
 
 .fkp-check {
@@ -12583,34 +12688,9 @@ var styles4 = `
 .fkp-route__facts small { color: var(--text-color-medium, gray); }
 
 @media (max-width: 560px) {
-    .fkp-diag-facts, .fkp-route__facts { grid-template-columns: minmax(0, 1fr); }
+    .fkp-diag-facts, .fkp-route__facts, .fkp-check__advice { grid-template-columns: minmax(0, 1fr); }
     .fkp-diag-checks { grid-template-columns: minmax(0, 1fr); }
 }
-
-.fkp_diagnostic-page__right-bar__wiki {
-    border: 2px var(--background-color-low, lightgray) solid;
-    border-radius: 4px;
-    padding: 10px;
-
-    display: grid;
-    grid-template-columns: auto;
-    grid-row-gap: 10px;
-}
-
-.fkp_diagnostic-page__right-bar__wiki--warning {
-    border: 2px var(--warn-color-medium, orange) solid;
-}
-.fkp_diagnostic-page__right-bar__wiki--error {
-    border: 2px var(--error-color-medium, red) solid;
-}
-
-.fkp_diagnostic-page__right-bar__wiki__content {
-    display: grid;
-    grid-template-columns: 1fr 5fr;
-    grid-column-gap: 10px;
-}
-
-.fkp_diagnostic-page__right-bar__wiki__texts {}
 
 .fkp_diagnostic-page__right-bar__actions {
     border: 2px var(--background-color-low, lightgray) solid;
@@ -12893,176 +12973,6 @@ function render3() {
       )
     ]
   );
-}
-
-// src/forkop/tabs/shared/startService.ts
-var starting = false;
-function renderStartServiceAction() {
-  if (isReadonlyMode()) {
-    return [];
-  }
-  const button = E(
-    "button",
-    {
-      type: "button",
-      class: "btn cbi-button cbi-button-action fkp-start-service",
-      disabled: starting ? true : void 0,
-      click: async () => {
-        if (starting) {
-          return;
-        }
-        starting = true;
-        button.disabled = true;
-        button.textContent = _("Starting\u2026");
-        try {
-          await runForkopServiceAction("start");
-        } catch (error) {
-          showToast(serviceActionErrorText(error), "error", 6e3);
-        } finally {
-          starting = false;
-          button.disabled = false;
-          button.textContent = _("Start Forkop X");
-        }
-      }
-    },
-    starting ? _("Starting\u2026") : _("Start Forkop X")
-  );
-  return [button];
-}
-
-// src/forkop/tabs/monitoring/connectionView.ts
-function trafficSortValue(connection, mode) {
-  if (mode === "download") return connection.download || 0;
-  if (mode === "upload") return connection.upload || 0;
-  if (mode === "total")
-    return (connection.download || 0) + (connection.upload || 0);
-  return null;
-}
-var BYPASS_TAG = "bypass-out";
-var DIRECT_TAG = "direct-out";
-function routeTagFromRule(rule) {
-  const match = String(rule || "").match(/=>\s*route\(([^)]+)\)/);
-  return String(match?.[1] || "").trim().replace(/^['"]|['"]$/g, "");
-}
-function kindForAction(action) {
-  switch (action) {
-    case "zapret":
-    case "zapret2":
-    case "byedpi":
-      return "dpi";
-    case "connection":
-    case "proxy":
-    case "outbound":
-    case "vpn":
-      return "connection";
-    case "bypass":
-      return "bypass";
-    case "block":
-      return "block";
-    default:
-      return "unknown";
-  }
-}
-function connectionPath(chains, rule, ruleByTag) {
-  const list = (Array.isArray(chains) ? chains : []).filter(Boolean);
-  const routeTag = routeTagFromRule(rule);
-  for (let index = list.length - 1; index >= 0; index--) {
-    const owner2 = ruleByTag(list[index]);
-    if (owner2)
-      return {
-        kind: kindForAction(owner2.action),
-        rule: owner2,
-        node: index > 0 ? list[0] : "",
-        tag: ""
-      };
-  }
-  const owner = routeTag ? ruleByTag(routeTag) : null;
-  if (owner)
-    return {
-      kind: kindForAction(owner.action),
-      rule: owner,
-      node: list[0] && list[0] !== routeTag ? list[0] : "",
-      tag: ""
-    };
-  const tag = list[list.length - 1] || routeTag;
-  if (list.includes(BYPASS_TAG) || routeTag === BYPASS_TAG)
-    return { kind: "bypass", rule: null, node: "", tag: "" };
-  if (/\breject\b/.test(String(rule || "")))
-    return { kind: "block", rule: null, node: "", tag: "" };
-  if (!tag || tag === DIRECT_TAG)
-    return { kind: "direct", rule: null, node: "", tag: "" };
-  return { kind: "unknown", rule: null, node: "", tag };
-}
-function pathKindLabel(kind) {
-  switch (kind) {
-    case "dpi":
-      return _("DPI");
-    case "connection":
-      return _("Connection");
-    case "bypass":
-      return _("Bypass");
-    case "direct":
-      return _("Direct");
-    case "block":
-      return _("Block");
-    default:
-      return _("Other");
-  }
-}
-function dpiProviderLabel(provider) {
-  switch (provider) {
-    case "zapret":
-      return "Zapret";
-    case "zapret2":
-      return "Zapret2";
-    case "byedpi":
-      return "ByeDPI";
-    default:
-      return _("DPI");
-  }
-}
-function dpiStrategyLabel(rule) {
-  if (rule.dpiCustom) return _("custom strategy");
-  if (rule.dpiStrategy === "default") return _("default strategy");
-  return rule.dpiStrategy || "";
-}
-function pathSummary(path) {
-  const base = { kind: path.kind, kindLabel: pathKindLabel(path.kind) };
-  if (path.rule && path.kind === "dpi") {
-    const strategy = dpiStrategyLabel(path.rule);
-    return {
-      ...base,
-      primary: path.rule.label,
-      secondary: [dpiProviderLabel(path.rule.dpiProvider), strategy].filter(Boolean).join(" \xB7 ")
-    };
-  }
-  if (path.rule)
-    return { ...base, primary: path.rule.label, secondary: path.node };
-  if (path.kind === "direct")
-    return { ...base, primary: "", secondary: _("No rule matched") };
-  return { ...base, primary: path.tag, secondary: "" };
-}
-function matchesPathFilter(path, filter2) {
-  if (!filter2 || filter2 === "all") return true;
-  if (filter2.startsWith("kind:")) return path.kind === filter2.slice(5);
-  if (filter2.startsWith("rule:")) return path.rule?.name === filter2.slice(5);
-  return true;
-}
-function connectionActions(active, readonly = false) {
-  const actions = [
-    {
-      kind: "details",
-      label: _("Details"),
-      className: "fkp-monitoring-details"
-    }
-  ];
-  if (active && !readonly)
-    actions.push({
-      kind: "close",
-      label: _("Close connection"),
-      className: "fkp_monitoring-page__row-action"
-    });
-  return actions;
 }
 
 // src/forkop/tabs/monitoring/initController.ts

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-28 01:21+0000\n"
-"PO-Revision-Date: 2026-09-28 01:21+0000\n"
+"POT-Creation-Date: 2026-09-28 02:11+0000\n"
+"PO-Revision-Date: 2026-09-28 02:11+0000\n"
 "Last-Translator: Claude\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -59,6 +59,15 @@ msgstr "Резервная копия настроек будет сохране
 msgid "A configuration change was not confirmed. Traffic that needs DPI bypass may be blocked until recovery completes."
 msgstr "Изменение конфигурации не подтвердилось. Трафик, которому нужен обход DPI, может блокироваться, пока не завершится восстановление."
 
+msgid "a rule applies to selected devices only; choose a device"
+msgstr "одно из правил действует только для отдельных устройств — выберите устройство"
+
+msgid "A rule blocks this address. This is intended for ads and trackers."
+msgstr "Адрес блокируется правилом. Так и задумано для рекламы и трекеров."
+
+msgid "a rule is too complex to calculate"
+msgstr "правило слишком сложное для расчёта"
+
 msgid "Action"
 msgstr "Действие"
 
@@ -107,9 +116,6 @@ msgstr "Добавьте URL или локальные пути к списка�
 msgid "Additional marking rules found"
 msgstr "Найдены дополнительные правила маркировки"
 
-msgid "Additional tools"
-msgstr "Дополнительные инструменты"
-
 msgid "Additionally exclude servers by protocol, transport, and security. Exclude only servers matching the specified parameters."
 msgstr "Дополнительно исключать серверы по протоколу, транспорту и защите. Исключать только серверы, совпавшие по указанным параметрам."
 
@@ -119,11 +125,17 @@ msgstr "Дополнительно отбирать серверы по прот
 msgid "Address"
 msgstr "Адрес"
 
+msgid "Address set for checking"
+msgstr "Набор адресов для проверки"
+
 msgid "Advanced settings"
 msgstr "Дополнительные настройки"
 
 msgid "All"
 msgstr "Все"
+
+msgid "All check results"
+msgstr "Все результаты проверки"
 
 msgid "All devices"
 msgstr "Все устройства"
@@ -161,8 +173,14 @@ msgstr "Обеспечивает доступ к YACD из WAN. Убедитес
 msgid "Allows limiting the list of servers for URLTest"
 msgstr "Позволяет ограничить список серверов для URLTest"
 
+msgid "an earlier rule uses a list whose contents cannot be checked here"
+msgstr "раньше стоит правило со списком, содержимое которого здесь не проверить"
+
 msgid "An interrupted package update is being recovered. Avoid changes until it completes."
 msgstr "Восстанавливается прерванное обновление пакетов. Не вносите изменений, пока оно не завершится."
+
+msgid "An IP address needs no DNS"
+msgstr "Для IP-адреса DNS не нужен"
 
 msgid "and %d more"
 msgstr "и ещё %d"
@@ -175,6 +193,9 @@ msgstr "Уже выполняется другая операция со сни�
 
 msgid "Answer of the router DNS"
 msgstr "Ответ DNS роутера"
+
+msgid "Any device"
+msgstr "Любое устройство"
 
 msgid "Apply section rules only to the specified local IP addresses"
 msgstr "Применять правила секции только к указанным локальным IP-адресам"
@@ -223,9 +244,6 @@ msgstr "Автоподбор"
 
 msgid "Autotune apply"
 msgstr "Применение автоподбора"
-
-msgid "Available actions"
-msgstr "Доступные действия"
 
 msgid "Available to administrators only."
 msgstr "Доступно только администратору."
@@ -350,6 +368,9 @@ msgstr "Изменения после этого снимка"
 msgid "Check"
 msgstr "Проверить"
 
+msgid "Check a site or app"
+msgstr "Проверить сайт или приложение"
+
 msgid "Check address in Diagnostics"
 msgstr "Проверить адрес в Диагностике"
 
@@ -361,6 +382,12 @@ msgstr "Проверка не удалась"
 
 msgid "Check interval"
 msgstr "Интервал проверки"
+
+msgid "Check the DNS server addresses in Settings or choose another server."
+msgstr "Проверьте адреса DNS-серверов в «Настройках» или выберите другой сервер."
+
+msgid "Check the node of the rule in Monitoring → Nodes and groups."
+msgstr "Проверьте узел правила в «Мониторинг → Узлы и группы»."
 
 msgid "Check timeout after which the server is considered dead"
 msgstr "Таймаут проверки, после которого сервер считается мёртвым"
@@ -542,9 +569,6 @@ msgstr "Не удалось начать удаление. Возможно, в�
 msgid "Create snapshot"
 msgstr "Создать снимок"
 
-msgid "Current runtime"
-msgstr "Текущее состояние"
-
 msgid "Current section cannot be used as its own transit section"
 msgstr "Текущую секцию нельзя использовать как транзит для самой себя"
 
@@ -614,6 +638,9 @@ msgstr "Устройство или IP"
 msgid "Devices keep using the router without Forkop X"
 msgstr "Устройства продолжат работать через роутер без Forkop X"
 
+msgid "Devices may bypass the router DNS, so domain rules do not apply to them."
+msgstr "Устройства могут обходить DNS роутера, и правила по доменам к ним не применяются."
+
 msgid "DHCP has DNS server"
 msgstr "DHCP содержит DNS сервер"
 
@@ -655,6 +682,9 @@ msgstr "Отключение перехвата несовместимо с acti
 
 msgid "Display name"
 msgstr "Отображаемое имя"
+
+msgid "DNS"
+msgstr "DNS"
 
 msgid "DNS Check Interval"
 msgstr "Период проверки DNS"
@@ -716,9 +746,6 @@ msgstr "Таймаут недоступности DNS"
 msgid "Do not apply this section to the specified local IP addresses; matching continues with the next section."
 msgstr "Не применять эту секцию к указанным локальным IP-адресам; поиск продолжится в следующей секции."
 
-msgid "Do not panic, everything can be fixed, just..."
-msgstr "Не паникуйте, всё можно исправить, просто..."
-
 msgid "Do not test servers from these countries."
 msgstr "Не тестировать серверы из этих стран."
 
@@ -737,9 +764,6 @@ msgstr "Не тестировать серверы с одним из выбра
 msgid "Do not test specified servers."
 msgstr "Не тестировать указанные серверы."
 
-msgid "Domain"
-msgstr "Домен"
-
 msgid "Domain and IP lists"
 msgstr "Списки доменов и IP"
 
@@ -757,6 +781,9 @@ msgstr "Резолвер доменов"
 
 msgid "Domains"
 msgstr "Домены"
+
+msgid "Domains in rules may not resolve, or resolve past Forkop, so their rules do not apply."
+msgstr "Домены из правил могут не разрешаться или разрешаться в обход Forkop — тогда правила к ним не применяются."
 
 msgid "Dont Touch My DHCP!"
 msgstr "Отключить управление DHCP"
@@ -797,14 +824,14 @@ msgstr "Скачивать через"
 msgid "DPI"
 msgstr "DPI"
 
+msgid "DPI bypass of the rules using this provider may not work."
+msgstr "Обход DPI в правилах с этим провайдером может не работать."
+
 msgid "DPI guard"
 msgstr "Защита DPI"
 
 msgid "DPI protection is holding traffic"
 msgstr "DPI-защита удерживает трафик"
-
-msgid "DPI provider"
-msgstr "Провайдер DPI"
 
 msgid "DPI strategy"
 msgstr "Стратегия DPI"
@@ -902,6 +929,9 @@ msgstr "Введите URL подписки"
 msgid "Error"
 msgstr "Ошибка"
 
+msgid "Errors: %d"
+msgstr "Ошибки: %d"
+
 msgid "Exclude by proxy parameters"
 msgstr "Исключить по параметрам прокси"
 
@@ -980,6 +1010,9 @@ msgstr "FakeIP и контрольная проверка используют �
 msgid "FakeIP and control checks use the same public IP"
 msgstr "FakeIP и контрольная проверка используют один публичный IP"
 
+msgid "FakeIP works; only the comparison with the control address did not give an answer."
+msgstr "FakeIP работает; не удалось только сравнение с контрольным адресом."
+
 msgid "FakeIP works; public IP comparison is inconclusive"
 msgstr "FakeIP работает; сравнение публичных IP не дает однозначного результата"
 
@@ -989,6 +1022,9 @@ msgstr "Интервал поиска более быстрого сервера
 msgid "Fastest"
 msgstr "Самый быстрый"
 
+msgid "Firewall rules that send traffic to Forkop are missing or not hit, so rules may not apply."
+msgstr "Правила межсетевого экрана, которые направляют трафик в Forkop, отсутствуют или не срабатывают — правила могут не применяться."
+
 msgid "Fix the highlighted fields and save again."
 msgstr "Исправьте подсвеченные поля и сохраните снова."
 
@@ -997,6 +1033,9 @@ msgstr "Следить за новыми"
 
 msgid "Following new connections"
 msgstr "Показаны только новые соединения"
+
+msgid "For a DPI rule this can mean the strategy does not work with your provider."
+msgstr "Для правила DPI это может значить, что стратегия не работает у вашего провайдера."
 
 msgid "Forced device routing"
 msgstr "Принудительная маршрутизация устройств"
@@ -1030,6 +1069,9 @@ msgstr "Forkop X работает"
 
 msgid "Forkop X is stopped"
 msgstr "Forkop X остановлен"
+
+msgid "Forkop X is stopped. Start it to run the checks."
+msgstr "Forkop X остановлен. Запустите его, чтобы выполнить проверки."
 
 msgid "Forkop X kept or restored the previous configuration."
 msgstr "Forkop X сохранил или восстановил прежнюю конфигурацию."
@@ -1076,6 +1118,9 @@ msgstr "NFQWS2 Forkop готов"
 msgid "From configuration"
 msgstr "Из конфигурации"
 
+msgid "From the router"
+msgstr "С роутера"
+
 msgid "Full removal"
 msgstr "Полное удаление"
 
@@ -1093,6 +1138,9 @@ msgstr "Глобальная проверка"
 
 msgid "Healthy"
 msgstr "Норма"
+
+msgid "Help"
+msgstr "Справка"
 
 msgid "Hide values"
 msgstr "Скрывать значения"
@@ -1132,6 +1180,9 @@ msgstr "Как часто проверять, восстановился ли DN
 
 msgid "HTTP error"
 msgstr "Ошибка HTTP"
+
+msgid "HTTPS request made by the router itself"
+msgstr "HTTPS-запрос выполняет сам роутер"
 
 msgid "Idle timeout"
 msgstr "Таймаут простоя"
@@ -1192,9 +1243,6 @@ msgstr "Задержка при мониторинге интерфейсов"
 
 msgid "Interface monitoring for Bad WAN"
 msgstr "Мониторинг интерфейса для Bad WAN"
-
-msgid "Interface the router itself would use for this address"
-msgstr "Интерфейс, через который роутер сам отправил бы трафик на этот адрес"
 
 msgid "Interrupt connections"
 msgstr "Прерывать соединения"
@@ -1367,9 +1415,6 @@ msgstr "Неверный URL VLESS: ошибка разбора"
 msgid "Invalid VMess URL: parsing failed"
 msgstr "Некорректный VMess URL: ошибка разбора"
 
-msgid "IP address"
-msgstr "IP-адрес"
-
 msgid "IP address of the DNS server used to resolve upstream DNS and proxies. Hostnames are not supported for Bootstrap DNS. If multiple servers are selected, a timeout switches to a backup."
 msgstr "IP-адрес DNS-сервера для разрешения вышестоящих DNS и прокси. Имена хостов не поддерживаются. Если указано несколько серверов, при тайм-ауте используется резервный."
 
@@ -1484,6 +1529,12 @@ msgstr "Основной DNS"
 msgid "Main DNS server. If multiple servers are selected, a timeout switches to a backup."
 msgstr "Основной DNS-сервер. Если выбрать несколько, то при таймауте произойдёт переключение на резервный."
 
+msgid "Make sure devices use the router as DNS: turn off secure DNS (DoH, Private DNS) in browsers and phones."
+msgstr "Убедитесь, что устройства используют роутер как DNS: отключите защищённый DNS (DoH, «Частный DNS») в браузерах и телефонах."
+
+msgid "Make sure the provider is installed and the rule strategy is valid, then restart Forkop X."
+msgstr "Убедитесь, что провайдер установлен, а стратегия правила корректна, затем перезапустите Forkop X."
+
 msgid "Manual"
 msgstr "Вручную"
 
@@ -1492,9 +1543,6 @@ msgstr "Совпадение по IP-адресам или подсетям на
 
 msgid "Match destination ports. Use a single port or a range"
 msgstr "Совпадение по портам назначения. Используйте одиночный порт или диапазон"
-
-msgid "Matched rule"
-msgstr "Совпавшее правило"
 
 msgid "Maximum time to wait for example.com to resolve during a DNS health check."
 msgstr "Максимальное время ожидания разрешения example.com при проверке доступности DNS."
@@ -1613,8 +1661,8 @@ msgstr "Восстановление не требуется"
 msgid "No reload recorded yet"
 msgstr "Перезагрузок пока не было"
 
-msgid "No route"
-msgstr "Нет маршрута"
+msgid "No rule handles it; it may need to be added to a rule."
+msgstr "Ни одно правило его не обрабатывает — возможно, адрес нужно добавить в правило."
 
 msgid "No rule matched"
 msgstr "Ни одно правило не сработало"
@@ -1718,9 +1766,6 @@ msgstr "Открыть LuCI"
 msgid "Open priority settings and enter a display name"
 msgstr "Откройте настройки приоритета и укажите отображаемое имя"
 
-msgid "Open Project Page"
-msgstr "Открыть страницу проекта"
-
 msgid "Open settings"
 msgstr "Открыть настройки"
 
@@ -1745,9 +1790,6 @@ msgstr "Другое"
 msgid "Other event"
 msgstr "Другое событие"
 
-msgid "Outbound"
-msgstr "Выход"
-
 msgid "Outbound chain"
 msgstr "Цепочка выходов"
 
@@ -1768,6 +1810,15 @@ msgstr "Восстановление пакетов"
 
 msgid "Package recovery has not finished"
 msgstr "Восстановление пакетов не завершено"
+
+msgid "Part of Forkop X does not work as expected."
+msgstr "Часть Forkop X работает не так, как ожидается."
+
+msgid "Passed checks: %d"
+msgstr "Пройденные проверки: %d"
+
+msgid "Passed: %d"
+msgstr "Пройдено: %d"
 
 msgid "Password cannot be empty"
 msgstr "Пароль не может быть пустым"
@@ -1865,9 +1916,6 @@ msgstr "Протокол"
 msgid "Provider"
 msgstr "Провайдер"
 
-msgid "Reachability check"
-msgstr "Проверка доступности"
-
 msgid "Reachable"
 msgstr "Доступно"
 
@@ -1940,9 +1988,6 @@ msgstr "Разрешать доменные имена перед маршрут
 msgid "Resolve real IP for routing"
 msgstr "Разрешать реальный IP для маршрутизации"
 
-msgid "Resolved IP"
-msgstr "Разрешённый IP"
-
 msgid "Resource selection by hostname inside nfqws is not supported here; sing-box selects resources before NFQUEUE."
 msgstr "Выбор ресурсов по hostname внутри nfqws здесь не поддерживается; ресурсы выбирает sing-box до NFQUEUE."
 
@@ -1957,6 +2002,12 @@ msgstr "Выбор ресурсов по IP или CIDR внутри nfqws2 зд
 
 msgid "Restart Forkop X"
 msgstr "Перезапустить Forkop X"
+
+msgid "Restart Forkop X on the Overview. If it repeats, open the logs under Technical data."
+msgstr "Перезапустите Forkop X на «Обзоре». Если ошибка повторится, откройте логи в «Технических данных»."
+
+msgid "Restart Forkop X. If another add-on marks traffic, make sure it does not conflict."
+msgstr "Перезапустите Forkop X. Если трафик маркирует другое дополнение, убедитесь, что оно не конфликтует."
 
 msgid "Restore"
 msgstr "Восстановить"
@@ -1985,14 +2036,20 @@ msgstr "Продолжить обновление"
 msgid "Retry"
 msgstr "Повторить"
 
+msgid "Retry the check when this device has internet access through the router."
+msgstr "Повторите проверку, когда у этого устройства будет доступ в интернет через роутер."
+
+msgid "Retry the check. If it repeats, open the logs under Technical data."
+msgstr "Повторите проверку. Если ошибка повторится, откройте логи в «Технических данных»."
+
+msgid "Retry this check"
+msgstr "Повторить эту проверку"
+
 msgid "Rolled back"
 msgstr "Откачено"
 
 msgid "Route"
 msgstr "Маршрут"
-
-msgid "Route check"
-msgstr "Проверка маршрута"
 
 msgid "Route main DNS requests through the selected section."
 msgstr "Маршрутизировать основные DNS-запросы через выбранную секцию."
@@ -2015,8 +2072,14 @@ msgstr "Маршрутизация приостановлена, пока Forkop
 msgid "Routing, DNS and DPI bypass rules stop applying"
 msgstr "Правила маршрутизации, DNS и обхода DPI перестанут действовать"
 
+msgid "rule"
+msgstr "правило"
+
 msgid "Rule"
 msgstr "Правило"
+
+msgid "Rule not calculated"
+msgstr "Правило не рассчитано"
 
 msgid "Rule payload"
 msgstr "Данные правила"
@@ -2080,6 +2143,9 @@ msgstr "Секции"
 
 msgid "Security"
 msgstr "Защита"
+
+msgid "See connections to this address"
+msgstr "Смотреть соединения с этим адресом"
 
 msgid "Seen in an active connection"
 msgstr "Наблюдается в активном соединении"
@@ -2171,9 +2237,6 @@ msgstr "Действие сервиса не выполнено"
 msgid "Service actions"
 msgstr "Действия со службой"
 
-msgid "Service control is available to administrators only."
-msgstr "Управление сервисом доступно только администратору."
-
 msgid "Service list"
 msgstr "Список сервисов"
 
@@ -2194,9 +2257,6 @@ msgstr "Показать sing-box конфигурацию"
 
 msgid "Shown %d of %d"
 msgstr "Показано %d из %d"
-
-msgid "Shows the address the router DNS returns and the interface of the router kernel route."
-msgstr "Показывает адрес, который возвращает DNS роутера, и интерфейс маршрута ядра роутера."
 
 msgid "Sing-box autostart disabled"
 msgstr "Автостарт sing-box отключен"
@@ -2249,6 +2309,9 @@ msgstr "Снимок сохранён"
 msgid "Snapshots: %d"
 msgstr "Снимков: %d"
 
+msgid "Some connections or nodes do not respond, so sites of their rules may not open."
+msgstr "Часть подключений или узлов не отвечает — сайты из их правил могут не открываться."
+
 msgid "Sort by latency"
 msgstr "Сортировать по задержке"
 
@@ -2297,9 +2360,6 @@ msgstr "Отдельная служба Zapret2 активна"
 msgid "Standalone Zapret2 service is inactive"
 msgstr "Отдельная служба Zapret2 неактивна"
 
-msgid "Start Forkop"
-msgstr "Запустить Forkop"
-
 msgid "Start Forkop X"
 msgstr "Запустить Forkop X"
 
@@ -2326,9 +2386,6 @@ msgstr "Остановить"
 
 msgid "Stop checking when URLTest group is not used. Use sing-box duration format like 1d, 12h or 30m."
 msgstr "Останавливать проверку если URLTest группа не используется. Используйте формат длительности sing-box, например 1d, 12h или 30m."
-
-msgid "Stop Forkop X"
-msgstr "Остановить Forkop X"
 
 msgid "Stop Forkop X?"
 msgstr "Остановить Forkop X?"
@@ -2381,8 +2438,8 @@ msgstr "Проверка синтаксиса недоступна"
 msgid "Syntax is correct"
 msgstr "Синтаксис корректен"
 
-msgid "System diagnostics"
-msgstr "Диагностика системы"
+msgid "System check"
+msgstr "Проверка системы"
 
 msgid "System information"
 msgstr "Системная информация"
@@ -2390,11 +2447,17 @@ msgstr "Системная информация"
 msgid "Table exist"
 msgstr "Таблица существует"
 
+msgid "Technical data"
+msgstr "Технические данные"
+
 msgid "Technical details"
 msgstr "Технические детали"
 
 msgid "Test latency"
 msgstr "Тестирование задержки"
+
+msgid "Test latency in Monitoring → Nodes and groups, choose a working node or update the subscription."
+msgstr "Проверьте задержку в «Мониторинг → Узлы и группы», выберите рабочий узел или обновите подписку."
 
 msgid "Test only selected servers."
 msgstr "Тестировать только выбранные серверы."
@@ -2417,11 +2480,11 @@ msgstr "Тестировать серверы, имена которых сов�
 msgid "Testing URL"
 msgstr "URL проверки"
 
+msgid "The address is blocked by a rule"
+msgstr "Адрес блокируется правилом"
+
 msgid "The desync fwmark is managed by Forkop for loop prevention and must not be overridden here."
 msgstr "Desync fwmark управляется Forkop для защиты от циклов и не должен переопределяться здесь."
-
-msgid "The Forkop rule and outbound are only known for a real connection. The check runs on the router and does not prove the path of a LAN client."
-msgstr "Правило и outbound Forkop известны только для реального соединения. Проверка выполняется на роутере и не подтверждает маршрут клиента LAN."
 
 msgid "The last change was rolled back automatically."
 msgstr "Последнее изменение было автоматически откачено."
@@ -2432,6 +2495,9 @@ msgstr "Последнее изменение конфигурации не уд
 msgid "The last known good snapshot cannot be deleted"
 msgstr "Последнюю рабочую конфигурацию удалить нельзя"
 
+msgid "The name does not resolve on the router, so no rule can open it. Check the DNS results above."
+msgstr "Имя не разрешается на роутере, поэтому ни одно правило его не откроет. Посмотрите результат DNS выше."
+
 msgid "The NFQUEUE number is assigned by Forkop for each rule and must not be overridden here."
 msgstr "Номер NFQUEUE назначается Forkop для каждого правила и не должен переопределяться здесь."
 
@@ -2440,6 +2506,9 @@ msgstr "Пакет будет удалён с роутера."
 
 msgid "The route check did not complete. Try again."
 msgstr "Проверка маршрута не завершилась. Повторите попытку."
+
+msgid "The route is calculated from the configuration; DNS and the HTTPS request are made by the router itself."
+msgstr "Маршрут рассчитывается по конфигурации; DNS-запрос и HTTPS-запрос выполняет сам роутер."
 
 msgid "The router did not respond"
 msgstr "Роутер не ответил"
@@ -2450,17 +2519,20 @@ msgstr "Роутер не ответил за %d с"
 msgid "The router DNS returned no address"
 msgstr "DNS роутера не вернул адрес"
 
-msgid "The router has no route to this address"
-msgstr "У роутера нет маршрута к этому адресу"
-
 msgid "The router rejected this check"
 msgstr "Роутер отклонил эту проверку"
 
 msgid "The rule applies to the domain and all its subdomains. Use full:, keyword:, or regex: prefixes for exact match, keyword match, or regular expression."
 msgstr "Правило применяется к домену и всем его поддоменам. Для полного совпадения, совпадению по слову или регулярному выражению используйте префиксы full:, keyword: или regex:."
 
-msgid "The service state has not changed yet. Check again in a moment."
-msgstr "Состояние службы пока не изменилось. Проверьте ещё раз чуть позже."
+msgid "the sing-box configuration is not available; is Forkop X running?"
+msgstr "конфигурация sing-box недоступна — Forkop X запущен?"
+
+msgid "The site did not open from the router. The router may take a different path than devices."
+msgstr "С роутера сайт не открылся. Роутер может ходить иначе, чем устройства."
+
+msgid "The site opens from the router. If it does not open on a device, look at its real connections."
+msgstr "С роутера сайт открывается. Если на устройстве он не открывается — посмотрите его реальные соединения."
 
 msgid "The strategy contains an error"
 msgstr "В стратегии есть ошибка"
@@ -2473,6 +2545,9 @@ msgstr "Есть правила использующие Zapret"
 
 msgid "There are rules using Zapret2"
 msgstr "Есть правила, использующие Zapret2"
+
+msgid "This browser could not reach the check service, so FakeIP for devices is not proven either way."
+msgstr "Этот браузер не смог обратиться к сервису проверки, поэтому работа FakeIP для устройств не доказана ни в одну сторону."
 
 msgid "This field must start a working ciadpi strategy; help/version options exit immediately and are not allowed here."
 msgstr "Это поле должно запускать рабочую стратегию ciadpi; параметры help/version сразу завершают процесс и здесь запрещены."
@@ -2525,9 +2600,6 @@ msgstr "TorrServer не найден"
 msgid "Total traffic"
 msgstr "Общий трафик"
 
-msgid "Trace a real connection in Monitoring"
-msgstr "Проверить по реальному соединению в «Мониторинге»"
-
 msgid "Traffic"
 msgstr "Трафик"
 
@@ -2537,14 +2609,14 @@ msgstr "Трафик этого уровня пойдёт напрямую."
 msgid "Traffic goes through the router without Forkop X."
 msgstr "Трафик идёт через роутер без Forkop X."
 
+msgid "Traffic of the rules does not reach sing-box, so connections through rules fail."
+msgstr "Трафик правил не доходит до sing-box, поэтому соединения через правила не работают."
+
 msgid "Transparent proxy mode is incompatible with action=byedpi because Forkop connects to ciadpi through SOCKS."
 msgstr "Режим прозрачного прокси несовместим с action=byedpi, потому что Forkop подключается к ciadpi через SOCKS."
 
 msgid "Transport"
 msgstr "Транспорт"
-
-msgid "Troubleshooting"
-msgstr "Устранение неполадок"
 
 msgid "TTL must be a positive number"
 msgstr "TTL должно быть положительным числом"
@@ -2675,6 +2747,9 @@ msgstr "Использовать исходные значения"
 msgid "Username cannot be empty"
 msgstr "Логин не может быть пустым"
 
+msgid "Usually harmless. Retry the check later."
+msgstr "Обычно это не страшно. Повторите проверку позже."
+
 msgid "Valid"
 msgstr "Валидно"
 
@@ -2696,6 +2771,9 @@ msgstr "Видимое имя этой секции"
 msgid "vless://, vmess://, ss://, trojan://, socks4/5://, hy2/hysteria2:// links"
 msgstr "ссылки vless://, vmess://, ss://, trojan://, socks4/5://, hy2/hysteria2://"
 
+msgid "Waiting for the service action to finish."
+msgstr "Ожидание завершения действия со службой."
+
 msgid "Waiting for TorrServer"
 msgstr "Ожидание TorrServer"
 
@@ -2705,8 +2783,20 @@ msgstr "Ожидает завершения"
 msgid "Warning"
 msgstr "Предупреждение"
 
+msgid "Warnings: %d"
+msgstr "Предупреждения: %d"
+
 msgid "What Forkop should do when this section matches"
 msgstr "Что Forkop должен делать при совпадении этой секции"
+
+msgid "What it means"
+msgstr "Что это значит"
+
+msgid "What to do"
+msgstr "Что сделать"
+
+msgid "What was proven"
+msgstr "Что доказано"
 
 msgid "When switching to another level, test every server and select the fastest instead of the first working one."
 msgstr "При переходе на другой уровень тестировать все сервера и выбирать самый быстрый, а не первый работающий."

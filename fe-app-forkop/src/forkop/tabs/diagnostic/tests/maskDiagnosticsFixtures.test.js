@@ -100,6 +100,32 @@ describe('diagnostic masking of the secret fixtures', () => {
     );
   });
 
+  it('drops inline comments, schemeless userinfo and the raw validator message', () => {
+    const raw = [
+      "config settings 'settings'",
+      "\toption enabled '1' # SECRET_MARKER_180",
+      "\tlist rule_set '//SECRET_MARKER_182@rules.example/x.srs'",
+      "\tlist rule_set 'https:/SECRET_MARKER_183@rules.example/x.srs'",
+      "\tlist rule_set 'https://cdn.example/gh/user/repo@main/rules.srs'",
+      '━━━━━━━━━━━━━━━━━━━━━━━━━━━',
+      '🧪 Forkop configuration validation',
+      "❌ Invalid main DNS server 'SECRET_MARKER_189'",
+      'SECRET_MARKER_190',
+      '━━━━━━━━━━━━━━━━━━━━━━━━━━━',
+    ].join('\n');
+
+    const masked = maskGlobalCheckText(raw);
+
+    expect(markers(masked)).toEqual([]);
+    expect(masked).toContain("\toption enabled '1'\n");
+    expect(masked).toContain(
+      "list rule_set 'https://cdn.example/gh/user/repo@main/rules.srs'",
+    );
+    expect(masked).toContain(
+      '🧪 Forkop configuration validation\n❌ Forkop configuration validation failed\n━',
+    );
+  });
+
   it('uses the same tables as the backend masking in status.uc', () => {
     expect([...SING_BOX_MASKED_KEYS].sort()).toEqual(
       ucodeKeys(ucodeTable('masked_sing_box_keys')),

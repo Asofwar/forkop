@@ -343,6 +343,10 @@ function mask_url_value(value, mask_path) {
     let scheme = as_string(parts[1]);
     let authority = as_string(parts[2]);
     let path = as_string(parts[3]);
+    // Without a scheme, userinfo can hide in what looks like a path
+    // ("//user@host", "https:/user@host").
+    if (scheme == "" && (substr(value, 0, 2) == "//" || index(value, "@") >= 0))
+        return UCI_MASKED_VALUE;
     let at = rindex(authority, "@");
     if (at >= 0)
         authority = UCI_MASKED_VALUE + "@" + substr(authority, at + 1);
@@ -360,9 +364,11 @@ function mask_http_url_value(value) {
 }
 
 // Scans UCI value text from the given quote state; returns the quote that is
-// still open at the end (null when closed) and the unquoted value.
+// still open at the end (null when closed), the unquoted value and whether a
+// trailing comment follows it.
 function uci_value_scan(text, quote) {
     let result = "";
+    let comment = false;
     for (let i = 0; i < length(text); i++) {
         let c = substr(text, i, 1);
         if (quote == "'") {
@@ -375,10 +381,10 @@ function uci_value_scan(text, quote) {
         }
         else if (c == "'" || c == "\"") quote = c;
         else if (c == "\\" && i + 1 < length(text)) result += substr(text, ++i, 1);
-        else if (c == "#") break;
+        else if (c == "#") { comment = true; break; }
         else if (c != " " && c != "\t" && c != "\r") result += c;
     }
-    return { quote, value: result };
+    return { quote, value: result, comment };
 }
 
 function uci_mask_state() {
@@ -388,6 +394,11 @@ function uci_mask_state() {
 function uci_option_safe(state, name) {
     let extra = uci_safe_section_options[state.section_type];
     return uci_safe_options[name] || (extra != null && extra[name]);
+}
+
+// The option prefix with a re-quoted value (a trailing comment is dropped).
+function uci_quoted_line(prefix, value) {
+    return prefix + "'" + replace(value, /'/g, "'\\''") + "'";
 }
 
 // Masks one UCI line. Lines that are not UCI (and are not the continuation
@@ -414,9 +425,9 @@ function mask_uci_line(state, line) {
         let name = option[4];
         let scan = uci_value_scan(option[5], null);
         if (scan.quote == null && uci_option_safe(state, name))
-            return line;
+            return scan.comment ? uci_quoted_line(option[1], scan.value) : line;
         if (scan.quote == null && uci_url_options[name])
-            return option[1] + "'" + replace(mask_http_url_value(scan.value), /'/g, "'\\''") + "'";
+            return uci_quoted_line(option[1], mask_http_url_value(scan.value));
         state.quote = scan.quote;
         return option[1] + "'" + UCI_MASKED_VALUE + (scan.quote == null ? "'" : "");
     }
@@ -1151,8 +1162,14 @@ function mask_dns_server(value) {
         return;
     }
 
-    // A DoH path or URL userinfo/query can identify the account (UC-002).
-    print_line(mask_url_value(value, true));
+    // A DoH path or URL userinfo/query can identify the account (UC-002),
+    // as can the first label of a private resolver host such as
+    // <id>.dns.controld.com or <id>.d.adguard-dns.com.
+    let masked = mask_url_value(value, true);
+    let host = match(masked, /^([A-Za-z][A-Za-z0-9+.-]*:\/\/)?([^\/?#@]*@)?([^.\/?#:@\[]+)(\.[^\/?#:@]+)(.*)$/);
+    if (host != null && length(split(host[4], ".")) >= 4 && match(host[3] + host[4], /^[0-9.]+$/) == null)
+        masked = as_string(host[1]) + as_string(host[2]) + UCI_MASKED_VALUE + host[4] + host[5];
+    print_line(masked);
 }
 
 function render_flag_line(value, key, ok_message, fail_message) {

@@ -247,6 +247,39 @@ for proto in static pppoe pppoa l2tp pptp 3g qmi ncm mbim modemmanager wireguard
   grep -Fq "option device 'eth1'" "$out" || fail "masked WAN config lost the device ($proto)"
 done
 
+# Hand-edited UCI: an inline comment after a safe value and malformed or
+# scheme-relative URLs whose userinfo would otherwise look like a path.
+cat >"$WORK_DIR/hand-edited" <<'EOF'
+config settings 'settings'
+	option enabled '1' # SECRET_MARKER_180
+	option log_level "warn"	#SECRET_MARKER_181
+	list rule_set '//SECRET_MARKER_182@rules.example/x.srs'
+	list rule_set 'https:/SECRET_MARKER_183@rules.example/x.srs'
+	list rule_set 'SECRET_MARKER_184:pw@rules.example/x.srs'
+	list rule_set 'https://cdn.example/gh/user/repo@main/rules.srs'
+	list rule_set '/etc/forkop/local.srs'
+EOF
+"$UCODE_BIN" -L "$FORKOP_LIB" "$STATUS_UC" forkop-config-masked "$WORK_DIR/hand-edited" >"$WORK_DIR/backend-hand-edited" ||
+  fail "forkop-config-masked failed on the hand-edited config"
+check_output "forkop-config-masked (hand-edited)" "$WORK_DIR/backend-hand-edited"
+grep -Fxq "	option enabled '1'" "$WORK_DIR/backend-hand-edited" || fail "safe option lost its value"
+grep -Fq "list rule_set 'https://cdn.example/gh/user/repo@main/rules.srs'" "$WORK_DIR/backend-hand-edited" ||
+  fail "an @ inside a URL path must stay visible"
+grep -Fq "list rule_set '/etc/forkop/local.srs'" "$WORK_DIR/backend-hand-edited" ||
+  fail "a local list path must stay visible"
+
+# Private resolvers carry the account ID in the first host label.
+for server in SECRET_MARKER_185.dns.controld.com tls://SECRET_MARKER_186.d.adguard-dns.com:853 \
+  https://SECRET_MARKER_187.dns.controld.com/x quic://SECRET_MARKER_188.d.adguard-dns.com; do
+  out="$WORK_DIR/dns-server.out"
+  "$UCODE_BIN" -L "$FORKOP_LIB" "$STATUS_UC" mask-dns-server "$server" >"$out" 2>&1 || true
+  check_output "mask-dns-server ($server)" "$out"
+done
+for server in 1.1.1.1 dns.adguard-dns.com tls://dns.google 2001:4860:4860::8888; do
+  [ "$("$UCODE_BIN" -L "$FORKOP_LIB" "$STATUS_UC" mask-dns-server "$server")" = "$server" ] ||
+    fail "public DNS server $server must stay visible"
+done
+
 # The frontend copy (admin "mask values" toggle) masks exactly like the
 # backend. Node imports the TypeScript module directly when it can strip
 # types (Node >= 22.18); older Node skips this comparison.
@@ -264,6 +297,28 @@ const { maskGlobalCheckText, formatMaskedSingBoxConfig } = await import(module);
 assert.equal(
   maskGlobalCheckText(readFileSync(`${dir}/etc/forkop`, 'utf8')),
   readFileSync(`${dir}/backend-forkop`, 'utf8'),
+);
+assert.equal(
+  maskGlobalCheckText(readFileSync(`${dir}/hand-edited`, 'utf8')),
+  readFileSync(`${dir}/backend-hand-edited`, 'utf8'),
+);
+// The admin toggle masks the raw global check text: the raw validator
+// message quotes the rejected value, masked mode keeps only the verdict.
+const rawValidation = [
+  '🧪 Forkop configuration validation',
+  "❌ Invalid main DNS server 'SECRET_MARKER_189'",
+  'SECRET_MARKER_190',
+  '━━━━━━━━━━━━━━━━━━━━━━━━━━━',
+  '📄 WAN config',
+].join('\n');
+assert.equal(
+  maskGlobalCheckText(rawValidation),
+  [
+    '🧪 Forkop configuration validation',
+    '❌ Forkop configuration validation failed',
+    '━━━━━━━━━━━━━━━━━━━━━━━━━━━',
+    '📄 WAN config',
+  ].join('\n'),
 );
 assert.deepEqual(
   JSON.parse(formatMaskedSingBoxConfig(readFileSync(`${dir}/sing-box.json`, 'utf8'))),

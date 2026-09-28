@@ -12628,6 +12628,12 @@ function maskUrlValue(value, maskPath = false) {
   const scheme = parts[1] ?? "";
   let authority = parts[2] ?? "";
   let path = parts[3] ?? "";
+  if (
+    scheme === "" &&
+    (`${value}`.startsWith("//") || `${value}`.includes("@"))
+  ) {
+    return MASKED_VALUE;
+  }
   const at = authority.lastIndexOf("@");
   if (at >= 0) {
     authority = `${MASKED_VALUE}@${authority.slice(at + 1)}`;
@@ -12647,6 +12653,7 @@ function maskHttpUrlValue(value) {
 function uciValueScan(text, initialQuote) {
   let quote = initialQuote;
   let value = "";
+  let comment = false;
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
     if (quote === "'") {
@@ -12658,16 +12665,21 @@ function uciValueScan(text, initialQuote) {
       else value += c;
     } else if (c === "'" || c === '"') quote = c;
     else if (c === "\\" && i + 1 < text.length) value += text[++i];
-    else if (c === "#") break;
-    else if (c !== " " && c !== "	" && c !== "\r") value += c;
+    else if (c === "#") {
+      comment = true;
+      break;
+    } else if (c !== " " && c !== "	" && c !== "\r") value += c;
   }
-  return { quote, value };
+  return { quote, value, comment };
 }
 function uciOptionSafe(state, name) {
   return (
     UCI_SAFE_OPTIONS.has(name) ||
     Boolean(UCI_SAFE_SECTION_OPTIONS[state.sectionType]?.has(name))
   );
+}
+function uciQuotedLine(prefix, value) {
+  return `${prefix}'${value.replace(/'/g, "'\\''")}'`;
 }
 function maskUciLine(state, line) {
   const indent = line.match(/^[ \t]*/)?.[0] ?? "";
@@ -12688,10 +12700,10 @@ function maskUciLine(state, line) {
     const name = option[4];
     const scan = uciValueScan(option[5], null);
     if (scan.quote === null && uciOptionSafe(state, name)) {
-      return line;
+      return scan.comment ? uciQuotedLine(option[1], scan.value) : line;
     }
     if (scan.quote === null && UCI_URL_OPTIONS.has(name)) {
-      return `${option[1]}'${maskHttpUrlValue(scan.value).replace(/'/g, "'\\''")}'`;
+      return uciQuotedLine(option[1], maskHttpUrlValue(scan.value));
     }
     state.quote = scan.quote;
     return `${option[1]}'${MASKED_VALUE}${scan.quote === null ? "'" : ""}`;
@@ -12737,12 +12749,31 @@ function formatMaskedSingBoxConfig(value) {
   }
   return JSON.stringify(maskSingBoxConfigValue(value), null, 2);
 }
+var VALIDATION_HEADER = "\u{1F9EA} Forkop configuration validation";
+var VALIDATION_FAILED = "\u274C Forkop configuration validation failed";
+var SECTION_SEPARATOR = /^━+$/;
 function maskGlobalCheckText(text = "") {
   const state = { quote: null, sectionType: "" };
-  return `${text}`
-    .split("\n")
-    .map((line) => maskUciLine(state, line) ?? line)
-    .join("\n");
+  let inValidation = false;
+  const result = [];
+  for (const line of `${text}`.split("\n")) {
+    if (line === VALIDATION_HEADER) {
+      inValidation = true;
+      result.push(line);
+      continue;
+    }
+    if (inValidation && !SECTION_SEPARATOR.test(line)) {
+      if (line.startsWith("\u2705")) {
+        result.push(line);
+      } else if (line.startsWith("\u274C")) {
+        result.push(VALIDATION_FAILED);
+      }
+      continue;
+    }
+    inValidation = false;
+    result.push(maskUciLine(state, line) ?? line);
+  }
+  return result.join("\n");
 }
 
 // src/forkop/tabs/diagnostic/initController.ts

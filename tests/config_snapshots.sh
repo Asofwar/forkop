@@ -29,6 +29,8 @@ assert.equal(created.status, 'created');
 assert.equal(duplicate.status, 'existing');
 assert.equal(list.length, 1);
 assert.equal(JSON.stringify(list).includes('top-secret'), false);
+// UC-150: the read-only list carries no hash of the secret-bearing config.
+assert.equal('config_hash' in list[0], false);
 fs.writeFileSync(`${dir}/id`, created.snapshot.id);
 JS
 id="$(cat "$WORK/id")"

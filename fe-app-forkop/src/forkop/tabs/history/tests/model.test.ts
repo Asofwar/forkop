@@ -41,7 +41,6 @@ const snapshot = (
   created_at: createdAt,
   kind: reason === 'manual' ? 'manual' : 'automatic',
   reason,
-  config_hash: 'x',
   forkop_version: '1.0.0',
   is_lkg: isLkg,
 });

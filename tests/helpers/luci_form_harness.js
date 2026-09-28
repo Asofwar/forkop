@@ -1,0 +1,860 @@
+"use strict";
+
+// Minimal LuCI runtime for driving the real Forkop view modules under node.
+//
+// It loads luci-app-forkop/.../view/forkop/section.js (and the generated
+// main.js) unchanged and replaces luci-base with a small model of the parts a
+// modal save goes through: baseclass, form.Map/JSONMap/NamedSection and the
+// AbstractValue family, a UCI store and just enough DOM for the stacked item
+// settings modal. The form code follows luci-base form.js of OpenWrt 24.10 and
+// 25.12 (AbstractValue.parse, FlagValue.parse, Map.isDependencySatisfied,
+// isEqual, AbstractSection.checkDepends, GridSection.cloneOptions):
+//   - an inactive option is removed on save unless it sets `retain`;
+//   - an active option is written only when its widget value differs from the
+//     loaded cfgvalue; an active empty value is removed (rmempty);
+//   - 25.12 additionally skips writes and dependency updates for fields that
+//     are not rendered (every modal field is rendered here).
+// Widgets are not rendered; each keeps the value its LuCI ui.* counterpart
+// would report (ui.Textfield/Textarea string, ui.Checkbox enabled/disabled,
+// ui.Select selected choice, ui.DynamicList item array).
+
+const fs = require("node:fs");
+const path = require("node:path");
+
+const VIEW_DIR = path.join(
+  __dirname,
+  "../../luci-app-forkop/htdocs/luci-static/resources/view/forkop",
+);
+
+if (typeof String.prototype.format !== "function") {
+  // LuCI extends String with printf-like format(); only %s/%d/%h are used.
+  // eslint-disable-next-line no-extend-native
+  String.prototype.format = function (...args) {
+    let index = 0;
+    return this.replace(/%[sdh]/g, () => `${args[index++]}`);
+  };
+}
+
+function toArray(value) {
+  if (value == null) return [];
+  if (Array.isArray(value)) return value;
+  if (typeof value === "object") return [value];
+  const text = `${value}`.trim();
+  return text === "" ? [] : text.split(/\s+/);
+}
+
+function isEqual(x, y) {
+  if (typeof y === "object" && y instanceof RegExp)
+    return x == null ? false : y.test(x);
+  if (x != null && y != null && typeof x !== typeof y) return false;
+  if ((x == null && y != null) || (x != null && y == null)) return false;
+  if (Array.isArray(x)) {
+    if (x.length !== y.length) return false;
+    for (let i = 0; i < x.length; i++) if (!isEqual(x[i], y[i])) return false;
+  } else if (typeof x === "object" && x !== null) {
+    for (const k in x) {
+      if (Object.hasOwn(x, k) && !Object.hasOwn(y, k)) return false;
+      if (!isEqual(x[k], y[k])) return false;
+    }
+    for (const k in y) if (Object.hasOwn(y, k) && !Object.hasOwn(x, k)) return false;
+  } else if (x != y) {
+    return false;
+  }
+  return true;
+}
+
+// LuCI baseclass: extend(), __init__ and super(key, args).
+function createBaseclass() {
+  function Class() {}
+  Class.prototype.super = function (key, ...rest) {
+    // super(key, [args]) or super(key, arg1, arg2, ...).
+    const args = rest.length === 1 && Array.isArray(rest[0]) ? rest[0] : rest;
+    const chain = [];
+    for (let p = Object.getPrototypeOf(this); p; p = Object.getPrototypeOf(p))
+      if (Object.hasOwn(p, key)) chain.push(p[key]);
+    const depth = (this.__superDepth ??= {})[key] ?? 0;
+    const method = chain[depth + 1];
+    if (typeof method !== "function") return method;
+    this.__superDepth[key] = depth + 1;
+    try {
+      return method.apply(this, args);
+    } finally {
+      this.__superDepth[key] = depth;
+    }
+  };
+  Class.extend = function (properties) {
+    const Parent = this;
+    function ClassConstructor(...args) {
+      if (typeof this.__init__ === "function") this.__init__(...args);
+    }
+    ClassConstructor.prototype = Object.create(Parent.prototype);
+    Object.defineProperties(
+      ClassConstructor.prototype,
+      Object.getOwnPropertyDescriptors(properties || {}),
+    );
+    Object.defineProperty(ClassConstructor.prototype, "constructor", {
+      value: ClassConstructor,
+      writable: true,
+    });
+    ClassConstructor.extend = Class.extend;
+    return ClassConstructor;
+  };
+  return { Class, extend: (properties) => Class.extend(properties) };
+}
+
+function createUciStore(initial) {
+  const data = JSON.parse(JSON.stringify(initial || {}));
+  let counter = 0;
+  const uci = {
+    data,
+    get(_config, sid, option) {
+      const section = data[sid];
+      if (!section) return null;
+      if (option == null) return section;
+      return section[option] ?? null;
+    },
+    set(_config, sid, option, value) {
+      if (!data[sid]) return;
+      if (value == null || (Array.isArray(value) && !value.length)) {
+        delete data[sid][option];
+        return;
+      }
+      data[sid][option] = Array.isArray(value) ? value.map(String) : `${value}`;
+    },
+    unset(_config, sid, option) {
+      if (data[sid]) delete data[sid][option];
+    },
+    sections(_config, type, cb) {
+      const list = Object.values(data).filter(
+        (section) => type == null || section[".type"] === type,
+      );
+      if (typeof cb === "function") list.forEach(cb);
+      return list;
+    },
+    add(_config, type, name) {
+      const sid = name || `cfg${(++counter).toString(16).padStart(6, "0")}`;
+      data[sid] = { ".name": sid, ".type": type, ".anonymous": !name };
+      return sid;
+    },
+    remove(_config, sid) {
+      delete data[sid];
+    },
+    load: () => Promise.resolve(),
+    save: () => Promise.resolve(),
+  };
+  return uci;
+}
+
+function createJsonStore(object) {
+  const data = {};
+  for (const [sid, values] of Object.entries(object || {}))
+    data[sid] = Object.assign({ ".name": sid, ".type": sid }, values);
+  return createUciStore(data);
+}
+
+// Just enough DOM for renderStackedJsonSettingsModal and main.js top level.
+class FakeNode {
+  constructor(tag, attrs, children) {
+    this.nodeName = `${tag || "div"}`.toUpperCase();
+    this.attrs = Object.assign({}, attrs || {});
+    this.childNodes = [];
+    this.parentNode = null;
+    this.style = {};
+    const classes = new Set(`${this.attrs.class || ""}`.split(/\s+/).filter(Boolean));
+    this.classList = {
+      add: (...names) => names.forEach((name) => classes.add(name)),
+      remove: (...names) => names.forEach((name) => classes.delete(name)),
+      contains: (name) => classes.has(name),
+      toggle: (name, force) =>
+        (force ?? !classes.has(name)) ? classes.add(name) : classes.delete(name),
+    };
+    this.append(...[].concat(children ?? []));
+  }
+  get textContent() {
+    return this.childNodes.map((node) => (typeof node === "string" ? node : node.textContent)).join("");
+  }
+  set textContent(value) {
+    this.childNodes = value ? [`${value}`] : [];
+  }
+  get nextElementSibling() {
+    if (!this.parentNode) return null;
+    const siblings = this.parentNode.childNodes;
+    return siblings[siblings.indexOf(this) + 1] || null;
+  }
+  append(...nodes) {
+    nodes.forEach((node) => this.appendChild(node));
+  }
+  appendChild(node) {
+    if (node == null || node === "") return node;
+    if (node instanceof FakeNode) {
+      if (node.parentNode) node.parentNode.removeChild(node);
+      node.parentNode = this;
+    }
+    this.childNodes.push(node);
+    return node;
+  }
+  insertBefore(node, reference) {
+    this.appendChild(node);
+    if (reference) {
+      this.childNodes.pop();
+      this.childNodes.splice(this.childNodes.indexOf(reference), 0, node);
+    }
+    return node;
+  }
+  removeChild(node) {
+    const index = this.childNodes.indexOf(node);
+    if (index >= 0) this.childNodes.splice(index, 1);
+    if (node instanceof FakeNode) node.parentNode = null;
+    return node;
+  }
+  setAttribute(name, value) {
+    this.attrs[name] = `${value}`;
+  }
+  getAttribute(name) {
+    return this.attrs[name] ?? null;
+  }
+  addEventListener() {}
+  removeEventListener() {}
+  dispatchEvent() {
+    return true;
+  }
+  querySelector(selector) {
+    return this.querySelectorAll(selector)[0] || null;
+  }
+  querySelectorAll(selector) {
+    const found = [];
+    const walk = (node) => {
+      for (const child of node.childNodes) {
+        if (!(child instanceof FakeNode)) continue;
+        if (child.matches(selector)) found.push(child);
+        walk(child);
+      }
+    };
+    walk(this);
+    return found;
+  }
+  matches(selector) {
+    // Supports "tag", ".class", "tag.class" and ":not(.hidden)".
+    const notHidden = selector.includes(":not(.hidden)");
+    const [tag, ...classes] = selector.replace(":not(.hidden)", "").split(".");
+    if (tag && tag.toUpperCase() !== this.nodeName) return false;
+    if (!classes.every((name) => this.classList.contains(name))) return false;
+    return !(notHidden && this.classList.contains("hidden"));
+  }
+  closest() {
+    return null;
+  }
+}
+
+function E(tag, attrs, children) {
+  if (Array.isArray(tag)) return new FakeNode("div", {}, tag);
+  if (attrs != null && (typeof attrs !== "object" || Array.isArray(attrs) || attrs instanceof FakeNode)) {
+    children = attrs;
+    attrs = {};
+  }
+  return new FakeNode(tag, attrs, children);
+}
+
+function createDocument() {
+  const body = new FakeNode("body");
+  const document = {
+    body,
+    documentElement: body,
+    head: new FakeNode("head"),
+    modal: null,
+    createElement: (tag) => new FakeNode(tag),
+    createTextNode: (text) => `${text}`,
+    getElementById: () => null,
+    addEventListener() {},
+    removeEventListener() {},
+    querySelectorAll: (selector) => body.querySelectorAll(selector),
+    querySelector(selector) {
+      if (selector === "#modal_overlay > .modal.cbi-modal") return document.modal;
+      return body.querySelector(selector);
+    },
+  };
+  return document;
+}
+
+// The LuCI rule modal: a map with an .cbi-map, an h4 title and a button row.
+function openModalShell(document) {
+  const modal = E("div", { class: "modal cbi-modal" }, [
+    E("h4", {}, "Rule"),
+    E("div", { class: "cbi-map" }),
+    E("div", { class: "button-row" }, [E("button", {}, "Dismiss"), E("button", {}, "Save")]),
+  ]);
+  document.modal = modal;
+  return modal;
+}
+
+function createForm({ version, baseclass, uci, jsonMaps }) {
+  const rendersLazily = version === "25.12";
+  const AbstractElement = baseclass.Class.extend({
+    __init__(title, description) {
+      this.title = title || "";
+      this.description = description || "";
+      this.children = [];
+    },
+    append(child) {
+      this.children.push(child);
+    },
+    stripTags(value) {
+      return `${value || ""}`.replace(/<[^>]*>/g, "");
+    },
+  });
+
+  const Map = AbstractElement.extend({
+    __init__(config, title, description) {
+      this.super("__init__", [title, description]);
+      this.config = config;
+      this.data = uci;
+      this.rendered = false;
+    },
+    section(SectionClass, ...args) {
+      const section = new SectionClass(this, ...args);
+      this.append(section);
+      return section;
+    },
+    lookupOption(name, section_id) {
+      for (const section of this.children)
+        for (const option of section.children)
+          if (option.option === name && option.isRendered(section_id))
+            return [option, section_id];
+      return null;
+    },
+    isDependencySatisfied(depends, _config_name, section_id) {
+      let def = false;
+      if (!Array.isArray(depends) || !depends.length) return true;
+      for (const dependency of depends) {
+        let istat = true;
+        const reverse = dependency["!reverse"];
+        for (const dep in dependency) {
+          if (dep === "!reverse" || dep === "!contains") continue;
+          if (dep === "!default") {
+            def = true;
+            istat = false;
+            continue;
+          }
+          const res = this.lookupOption(dep, section_id);
+          const val = res && res[0].isActive(res[1]) ? res[0].formvalue(res[1]) : null;
+          istat = istat && isEqual(val, dependency[dep]);
+        }
+        if (istat ^ Boolean(reverse)) return true;
+      }
+      return def;
+    },
+    load() {
+      return Promise.all(this.children.map((section) => section.load()));
+    },
+    render() {
+      return this.load().then(() => {
+        this.children.forEach((section) => section.renderWidgets());
+        this.rendered = true;
+        this.checkDepends();
+        return E("div", { class: "cbi-map" });
+      });
+    },
+    checkDepends(n) {
+      let changed = false;
+      for (const section of this.children) if (section.checkDepends()) changed = true;
+      if (changed && (n ?? 0) < 10) this.checkDepends((n ?? 10) + 1);
+    },
+    parse() {
+      return Promise.all(this.children.map((section) => section.parse()));
+    },
+    save() {
+      this.checkDepends();
+      return this.parse();
+    },
+    findElement() {
+      return null;
+    },
+  });
+
+  const JSONMap = Map.extend({
+    __init__(data, ...args) {
+      this.super("__init__", ["json", ...args]);
+      this.data = createJsonStore(data);
+      // Stacked item settings modals: remembered so tests can drive them.
+      jsonMaps.push(this);
+    },
+  });
+
+  const AbstractSection = AbstractElement.extend({
+    __init__(map, sectiontype, title, description) {
+      this.super("__init__", [title, description]);
+      this.map = map;
+      this.sectiontype = sectiontype;
+      this.tabs = {};
+    },
+    tab(name, title) {
+      this.tabs[name] = title;
+    },
+    option(OptionClass, ...args) {
+      const option = new OptionClass(this.map, this, ...args);
+      this.append(option);
+      return option;
+    },
+    taboption(tab, OptionClass, ...args) {
+      const option = this.option(OptionClass, ...args);
+      option.tab = tab;
+      return option;
+    },
+    cfgsections() {
+      return [];
+    },
+    load() {
+      const tasks = [];
+      for (const sid of this.cfgsections())
+        for (const option of this.children)
+          tasks.push(
+            Promise.resolve(option.load(sid)).then((value) => option.cfgvalue(sid, value)),
+          );
+      return Promise.all(tasks);
+    },
+    renderWidgets() {
+      for (const sid of this.cfgsections())
+        for (const option of this.children) option.renderModelWidget(sid);
+    },
+    checkDepends() {
+      let changed = false;
+      for (const sid of this.cfgsections()) {
+        for (const option of this.children) {
+          if (rendersLazily && !option.isRendered(sid)) continue;
+          const isActive = option.isActive(sid);
+          const isSatisfied = option.checkDepends(sid);
+          if (isActive !== isSatisfied) {
+            option.setActive(sid, isSatisfied);
+            changed = true;
+          }
+        }
+      }
+      return changed;
+    },
+    parse() {
+      const tasks = [];
+      for (const sid of this.cfgsections())
+        for (const option of this.children) tasks.push(option.parse(sid));
+      return Promise.all(tasks);
+    },
+  });
+
+  const NamedSection = AbstractSection.extend({
+    __init__(map, section_id, sectiontype, ...args) {
+      this.super("__init__", [map, sectiontype, ...args]);
+      this.section = section_id;
+    },
+    cfgsections() {
+      return [this.section];
+    },
+  });
+  const TypedSection = AbstractSection.extend({});
+  const GridSection = TypedSection.extend({});
+
+  class ModelWidget {
+    constructor(kind, value, option) {
+      this.kind = kind;
+      this.option = option;
+      this.setValue(value);
+    }
+    setValue(value) {
+      const option = this.option;
+      switch (this.kind) {
+        case "list":
+          this.value = toArray(value).map(String);
+          break;
+        case "checkbox":
+          this.value = value == option.enabled ? option.enabled : option.disabled;
+          break;
+        case "select": {
+          const keys = option.keylist || [];
+          const optional = option.optional || option.rmempty;
+          if (keys.some((key) => `${key}` === `${value ?? ""}`)) this.value = `${value}`;
+          else this.value = optional ? "" : keys.length ? `${keys[0]}` : "";
+          break;
+        }
+        default:
+          this.value = value == null ? "" : Array.isArray(value) ? value.join(" ") : `${value}`;
+      }
+    }
+    getValue() {
+      return Array.isArray(this.value) ? this.value.slice() : this.value;
+    }
+    isChecked() {
+      return this.value === this.option.enabled;
+    }
+    isValid() {
+      return true;
+    }
+    getValidationError() {
+      return "";
+    }
+    triggerValidation() {
+      return true;
+    }
+  }
+
+  const AbstractValue = AbstractElement.extend({
+    __init__(map, section, option, ...args) {
+      this.super("__init__", args);
+      this.section = section;
+      this.option = option;
+      this.map = map;
+      this.config = map.config;
+      this.deps = [];
+      this.initial = {};
+      this.rmempty = true;
+      this.default = null;
+      this.size = null;
+      this.optional = false;
+      this.retain = false;
+    },
+    widgetKind: "text",
+    depends(field, value) {
+      this.deps.push(typeof field === "string" ? { [field]: value } : field);
+    },
+    value(key, value) {
+      this.keylist ??= [];
+      this.vallist ??= [];
+      this.keylist.push(`${key}`);
+      this.vallist.push(value ?? key);
+    },
+    transformChoices() {
+      const choices = {};
+      (this.keylist || []).forEach((key, i) => (choices[key] = this.vallist[i]));
+      return choices;
+    },
+    cbid(section_id) {
+      return `cbid.${this.map.config}.${section_id}.${this.option}`;
+    },
+    load(section_id) {
+      return this.map.data.get(this.map.config, section_id, this.option);
+    },
+    cfgvalue(section_id, set_value) {
+      if (arguments.length === 2) {
+        this.data ??= {};
+        this.data[section_id] = set_value;
+      }
+      return this.data?.[section_id];
+    },
+    renderModelWidget(section_id) {
+      const cfgvalue = this.cfgvalue(section_id);
+      this.widgets ??= {};
+      this.widgets[section_id] = new ModelWidget(
+        this.widgetKind,
+        cfgvalue != null ? cfgvalue : this.default,
+        this,
+      );
+      this.fields ??= {};
+      this.fields[section_id] = { active: true };
+    },
+    isRendered(section_id) {
+      return Boolean(this.fields?.[section_id]);
+    },
+    getUIElement(section_id) {
+      return this.widgets?.[section_id] ?? null;
+    },
+    formvalue(section_id) {
+      const elem = this.getUIElement(section_id);
+      return elem ? elem.getValue() : null;
+    },
+    textvalue(section_id) {
+      const value = this.cfgvalue(section_id);
+      return value == null ? this.default : value;
+    },
+    isActive(section_id) {
+      const field = this.fields?.[section_id];
+      return Boolean(field && field.active);
+    },
+    setActive(section_id, active) {
+      if (this.fields?.[section_id]) this.fields[section_id].active = active;
+    },
+    checkDepends(section_id) {
+      return this.map.isDependencySatisfied(this.deps, this.map.config, section_id);
+    },
+    validate() {
+      return true;
+    },
+    isValid(section_id) {
+      const elem = this.getUIElement(section_id);
+      return elem ? elem.isValid() : true;
+    },
+    getValidationError(section_id) {
+      const elem = this.getUIElement(section_id);
+      return elem ? elem.getValidationError() : "";
+    },
+    triggerValidation(section_id) {
+      const elem = this.getUIElement(section_id);
+      return elem ? elem.triggerValidation() : true;
+    },
+    parse(section_id) {
+      const active = this.isActive(section_id);
+      if (active && !this.isValid(section_id))
+        return Promise.reject(new TypeError(`Option "${this.option}" contains an invalid input value.`));
+      if (active) {
+        const cval = this.cfgvalue(section_id);
+        const fval = this.formvalue(section_id);
+        if (fval == null || fval == "") {
+          if (this.rmempty || this.optional) return Promise.resolve(this.remove(section_id));
+          return Promise.reject(new TypeError(`Option "${this.option}" must not be empty.`));
+        } else if (this.forcewrite || !isEqual(cval, fval)) {
+          if (!rendersLazily || this.isRendered(section_id))
+            return Promise.resolve(this.write(section_id, fval));
+        }
+      } else if (!this.retain) {
+        return Promise.resolve(this.remove(section_id));
+      }
+      return Promise.resolve();
+    },
+    write(section_id, formvalue) {
+      return this.map.data.set(this.map.config, section_id, this.option, formvalue);
+    },
+    remove(section_id) {
+      this.map.data.unset(this.map.config, section_id, this.option);
+    },
+  });
+
+  const Value = AbstractValue.extend({});
+  const TextValue = Value.extend({});
+  const ListValue = Value.extend({ widgetKind: "select" });
+  const DynamicList = Value.extend({ widgetKind: "list" });
+  const DummyValue = Value.extend({
+    widgetKind: "hidden",
+    remove() {},
+    write() {},
+  });
+  const Flag = Value.extend({
+    widgetKind: "checkbox",
+    __init__(...args) {
+      this.super("__init__", args);
+      this.enabled = "1";
+      this.disabled = "0";
+      this.default = this.disabled;
+    },
+    formvalue(section_id) {
+      const elem = this.getUIElement(section_id);
+      return elem && elem.isChecked() ? this.enabled : this.disabled;
+    },
+    parse(section_id) {
+      if (this.isActive(section_id)) {
+        const fval = this.formvalue(section_id);
+        if (fval == this.default && (this.optional || this.rmempty))
+          return Promise.resolve(this.remove(section_id));
+        return Promise.resolve(this.write(section_id, fval));
+      } else if (!this.retain) {
+        return Promise.resolve(this.remove(section_id));
+      }
+      return Promise.resolve();
+    },
+  });
+
+  // GridSection.cloneOptions(): the modal gets fresh option instances that
+  // copy every own property of the grid option except the identity fields.
+  function cloneOptions(src, dest) {
+    for (const o1 of src.children) {
+      if (o1.modalonly === false) continue;
+      const o2 = dest.option(o1.constructor, o1.option, o1.title, o1.description);
+      for (const k of Object.keys(o1)) {
+        if (["map", "section", "option", "title", "description", "subsection", "children"].includes(k))
+          continue;
+        o2[k] = o1[k];
+      }
+    }
+  }
+
+  return {
+    Map,
+    JSONMap,
+    NamedSection,
+    TypedSection,
+    GridSection,
+    AbstractValue,
+    Value,
+    TextValue,
+    ListValue,
+    DynamicList,
+    DummyValue,
+    Flag,
+    cloneOptions,
+  };
+}
+
+// LuCI module wrapper: "require x as y" directives, then `return <class>`.
+function loadModule(file, modules, globals) {
+  const source = fs.readFileSync(path.join(VIEW_DIR, file), "utf8");
+  const names = [];
+  const values = [];
+  for (const [, dep, alias] of source.matchAll(/^"require ([\w.]+)(?: as (\w+))?";$/gm)) {
+    const name = alias || dep.split(".").pop();
+    if (!(name in modules)) throw new Error(`${file}: no stub for ${dep}`);
+    names.push(name);
+    values.push(modules[name]);
+  }
+  const globalNames = Object.keys(globals);
+  const exported = new Function(...names, ...globalNames, source)(
+    ...values,
+    ...globalNames.map((name) => globals[name]),
+  );
+  // LuCI instantiates a module that returns a class.
+  return typeof exported === "function" ? new exported() : exported;
+}
+
+// Loads the real section.js for one UCI state. `version` is "24.10" or "25.12".
+function createEnvironment({ version = "24.10", config = {} } = {}) {
+  const baseclass = createBaseclass();
+  const uci = createUciStore(config);
+  const document = createDocument();
+  const window = {
+    document,
+    location: { hostname: "192.168.1.1", protocol: "http:", pathname: "/" },
+    navigator: { language: "en" },
+    addEventListener() {},
+    removeEventListener() {},
+    dispatchEvent() {
+      return true;
+    },
+    setTimeout: () => 0,
+    clearTimeout() {},
+    setInterval: () => 0,
+    clearInterval() {},
+    matchMedia: () => ({ matches: false, addEventListener() {} }),
+    localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+  };
+  const uiAbstract = baseclass.Class.extend({
+    __init__(value, choices, options) {
+      this.value = value;
+      this.choices = choices;
+      this.options = options || {};
+    },
+    render: () => E("div"),
+    addItem() {},
+    handleClick() {},
+    handleKeydown() {},
+  });
+  const ui = {
+    DynamicList: uiAbstract.extend({}),
+    Textarea: uiAbstract.extend({}),
+    Dropdown: uiAbstract.extend({}),
+    Select: uiAbstract.extend({}),
+    Checkbox: uiAbstract.extend({}),
+    showModal() {},
+    hideModal() {},
+    addNotification() {},
+    tabs: { updateTabs() {} },
+  };
+  const jsonMaps = [];
+  const form = createForm({ version, baseclass, uci, jsonMaps });
+  const L = {
+    bind: (fn, self, ...args) => fn.bind(self, ...args),
+    toArray,
+    env: { sessionid: "test" },
+    resource: (...parts) => `/luci-static/resources/${parts.join("/")}`,
+    isObject: (value) => value != null && typeof value === "object",
+  };
+  const fsStub = {
+    exec: () => Promise.resolve({ code: 0, stdout: "{}", stderr: "" }),
+    exec_direct: () => Promise.resolve("{}"),
+    read: () => Promise.reject(new Error("ENOENT")),
+    read_direct: () => Promise.reject(new Error("ENOENT")),
+    stat: () => Promise.reject(new Error("ENOENT")),
+    list: () => Promise.resolve([]),
+  };
+  const globals = {
+    _: (text) => `${text}`,
+    N_: (_count, text) => `${text}`,
+    E,
+    L,
+    window,
+    document,
+    MutationObserver: class {
+      observe() {}
+      disconnect() {}
+    },
+    CustomEvent: class {
+      constructor(type, init) {
+        this.type = type;
+        this.detail = init?.detail;
+      }
+    },
+    requestAnimationFrame: () => 0,
+    setTimeout: () => 0,
+    clearTimeout() {},
+    setInterval: () => 0,
+    clearInterval() {},
+  };
+  const rpc = { declare: () => () => Promise.resolve({}) };
+  const main = loadModule("main.js", { baseclass, fs: fsStub, uci, ui, rpc }, globals);
+  const section = loadModule(
+    "section.js",
+    {
+      form,
+      baseclass,
+      fs: fsStub,
+      network: { getDevices: () => Promise.resolve([]) },
+      ui,
+      uci,
+      localDevices: { createLocalDeviceDynamicListWidget: () => E("div") },
+      main,
+    },
+    globals,
+  );
+  // Providers are installed: every action is a valid choice.
+  section.setActionProvidersAvailabilityLoader(() =>
+    Promise.resolve({ zapretInstalled: true, zapret2Installed: true, byedpiInstalled: true }),
+  );
+
+  // The Settings page declares the rules grid once.
+  const pageMap = new form.Map("forkop");
+  const grid = pageMap.section(form.GridSection, "section");
+  section.createSectionContent(grid);
+
+  return {
+    version,
+    uci,
+    form,
+    main,
+    section,
+    document,
+    // GridSection.renderMoreOptionsModal() for an existing rule.
+    async openRule(section_id) {
+      const map = new form.Map("forkop");
+      const named = map.section(form.NamedSection, section_id, "section");
+      map.parent = pageMap;
+      form.cloneOptions(grid, named);
+      openModalShell(document);
+      await map.render();
+      return {
+        map,
+        option(name) {
+          const found = named.children.find((option) => option.option === name);
+          if (!found) throw new Error(`rule modal has no option ${name}`);
+          return found;
+        },
+        active(name) {
+          return this.option(name).isActive(section_id);
+        },
+        save: () => map.save(),
+        // Clicks the gear of a DynamicList item and returns the stacked modal.
+        async openItemSettings(optionName, itemValue) {
+          const option = this.option(optionName);
+          const widget = option.getUIElement(section_id);
+          await option.renderItemSettingsModal(section_id, itemValue, option, widget);
+          const buttons = document.modal.querySelector("div.button-row").childNodes;
+          const button = (label) => buttons.find((node) => node instanceof FakeNode && node.textContent === label);
+          const stackedMap = jsonMaps.at(-1);
+          return {
+            map: stackedMap,
+            setValue(name, value) {
+              const stackedOption = stackedMap.children[0].children.find((o) => o.option === name);
+              stackedOption.getUIElement(stackedMap.children[0].section).setValue(value);
+            },
+            save: () => button("Save").attrs.click(),
+            close: () => button("Close").attrs.click(),
+          };
+        },
+      };
+    },
+  };
+}
+
+module.exports = { createEnvironment, isEqual, toArray };

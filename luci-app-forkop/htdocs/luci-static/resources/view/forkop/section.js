@@ -158,6 +158,7 @@ function dependsOnRuleConditions(option) {
     "ip_cidr",
     "community_lists",
     "rule_set",
+    "secondary_rule_sets",
     "domain_ip_lists",
     "ports",
   ];
@@ -3624,9 +3625,11 @@ function showRuleSetSettingsModal(section_id, itemValue, option, widget) {
           ? widget.getValue()
           : getCustomRulesetReferences(section_id),
       );
+      // Built-in rule sets #2 share rule_set_with_subnets but are not part
+      // of this widget: keep them.
       const subnets = new Set(
-        getConfigListValues(section_id, "rule_set_with_subnets").filter((ref) =>
-          refs.includes(ref),
+        getConfigListValues(section_id, "rule_set_with_subnets").filter(
+          (ref) => secondaryRulesetId(ref) || refs.includes(ref),
         ),
       );
 
@@ -7786,6 +7789,10 @@ function createSectionContent(section) {
     ),
   });
   dependsOnRuleConditions(sourceIpOption);
+  // The backend also matches legacy remote_domain_lists/remote_subnet_lists,
+  // which have no widget: a hidden device filter must not be erased on save,
+  // or a per-device rule would silently apply to every device.
+  sourceIpOption.retain = true;
 
   const fullyRoutedOption = addLocalDeviceSubnetDynamicField(section, {
     key: "fully_routed_ips",

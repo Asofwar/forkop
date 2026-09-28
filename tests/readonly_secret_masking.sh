@@ -23,7 +23,6 @@ fail() {
 }
 
 UCODE_BIN="$(command -v ucode)" || fail "ucode is required"
-UCI_BIN="$(command -v uci)" || fail "uci CLI is required"
 command -v node >/dev/null || fail "node is required"
 TIMEOUT_BIN="$(command -v timeout)" || fail "timeout is required"
 
@@ -46,11 +45,16 @@ sed "s|@SING_BOX_CONFIG@|$WORK_DIR/sing-box.json|" "$FIXTURES/forkop" >"$WORK_DI
 sed "s|@WAN_PROTO@|pppoe|" "$FIXTURES/network" >"$WORK_DIR/etc/network"
 [ "$(grep -o 'SECRET_MARKER_[0-9]*' "$WORK_DIR/etc/forkop" | sort -u | wc -l)" -ge 49 ] || fail "fixture config lost its markers"
 
-# The backend reads UCI through core/uci.uc; the fixture state file carries
-# the same data (lists joined by spaces, as the fixture reader expects).
-"$UCI_BIN" -c "$WORK_DIR/etc" -X show forkop >"$WORK_DIR/forkop.show" || fail "uci could not parse the fixture config"
-"$UCI_BIN" -c "$WORK_DIR/etc" -X show network >"$WORK_DIR/network.show" || fail "uci could not parse the network fixture"
-node - "$WORK_DIR/forkop.show" "$WORK_DIR/network.show" >"$WORK_DIR/uci-state" <<'NODE'
+# The backend reads UCI through core/uci.uc; the committed fixture state file
+# carries the same data (lists joined by spaces, as the fixture reader
+# expects), so the test does not need the uci CLI (Backend CI has none).
+# Where the CLI exists, the state file must match the UCI fixtures.
+if UCI_BIN="$(command -v uci)"; then
+  mkdir -p "$WORK_DIR/pristine"
+  cp "$FIXTURES/forkop" "$FIXTURES/network" "$WORK_DIR/pristine/"
+  "$UCI_BIN" -c "$WORK_DIR/pristine" -X show forkop >"$WORK_DIR/forkop.show" || fail "uci could not parse the fixture config"
+  "$UCI_BIN" -c "$WORK_DIR/pristine" -X show network >"$WORK_DIR/network.show" || fail "uci could not parse the network fixture"
+  node - "$WORK_DIR/forkop.show" "$WORK_DIR/network.show" >"$WORK_DIR/uci-state.expected" <<'NODE'
 const fs = require('node:fs');
 for (const file of process.argv.slice(2)) {
   const text = fs.readFileSync(file, 'utf8');
@@ -84,6 +88,11 @@ for (const file of process.argv.slice(2)) {
   }
 }
 NODE
+  cmp -s "$WORK_DIR/uci-state.expected" "$FIXTURES/uci-state" ||
+    fail "tests/fixtures/readonly_secrets/uci-state is out of date with the UCI fixtures"
+fi
+sed -e "s|@SING_BOX_CONFIG@|$WORK_DIR/sing-box.json|" -e "s|@WAN_PROTO@|pppoe|" \
+  "$FIXTURES/uci-state" >"$WORK_DIR/uci-state"
 grep -q '^forkop.settings.yacd_secret_key=SECRET_MARKER_02$' "$WORK_DIR/uci-state" ||
   fail "fixture UCI state was not generated"
 

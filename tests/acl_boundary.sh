@@ -33,6 +33,8 @@ for (const command of [
   '/usr/bin/forkop autotune_apply youtube',
   '/usr/bin/forkop autotune_rollback',
   '/usr/bin/forkop autotune_run_async all',
+  '/usr/bin/forkop autotune_run all',
+  '/usr/bin/forkop autotune_if_due',
 ]) {
   if (allowed(command)) throw Error(`read role may execute ${command}`);
 }
@@ -44,6 +46,7 @@ for (const command of [
   '/usr/bin/forkop autotune_status',
   '/usr/bin/forkop autotune_target youtube',
   '/usr/bin/forkop autotune_groups',
+  '/usr/bin/forkop autotune_run_status 1_1',
   '/usr/bin/forkop route_trace example.org 192.168.1.1 TCP 443',
   '/usr/bin/forkop config_snapshot_list',
   '/usr/bin/forkop config_snapshot_diff 123',

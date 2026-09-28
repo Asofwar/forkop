@@ -114,6 +114,10 @@ function show_help() {
     print("    autotune_policy_set     Set an autotune policy option\n");
     print("    autotune_target_set     Add or change an autotune target\n");
     print("    autotune_target_remove  Remove an autotune target\n");
+    print("    autotune_run            Tune the targets of all groups or one group now\n");
+    print("    autotune_run_async      Start an autotune run as a background job\n");
+    print("    autotune_run_status     Get the state and result of an autotune job\n");
+    print("    autotune_if_due         Run the scheduled autotune when it is enabled and due\n");
     print("    service_action_async    Start a service action in the background\n");
     print("    service_action_status   Get background service action status\n");
     print("    latency_test_async      Start a dashboard latency test in the background\n");
@@ -220,7 +224,11 @@ function command_spec(command) {
         autotune_groups: [ "autotune/manager.uc", "groups", 0 ],
         autotune_policy_set: [ "autotune/manager.uc", "policy-set", 2 ],
         autotune_target_set: [ "autotune/manager.uc", "target-set", 4 ],
-        autotune_target_remove: [ "autotune/manager.uc", "target-remove", 1 ]
+        autotune_target_remove: [ "autotune/manager.uc", "target-remove", 1 ],
+        autotune_run: [ "autotune/manager.uc", "run", 1 ],
+        autotune_run_async: [ "autotune/manager.uc", "run-async", 1 ],
+        autotune_run_status: [ "autotune/manager.uc", "run-status", 1 ],
+        autotune_if_due: [ "autotune/manager.uc", "if-due", 0 ]
     };
 
     return commands[as_string(command)];
@@ -247,7 +255,8 @@ function main() {
     if (fs.stat("/tmp/forkop-full-uninstall.lock") != null &&
         index([ "start", "main", "restart", "reload", "enable", "service_action_async",
             "component_action", "component_action_async", "subscription_update",
-            "subscription_update_async", "subscription_update_if_due", "list_update", "list_update_if_due" ], command) >= 0) {
+            "subscription_update_async", "subscription_update_if_due", "list_update", "list_update_if_due",
+            "autotune_run", "autotune_run_async", "autotune_if_due" ], command) >= 0) {
         warn("Forkop full removal is in progress\n");
         return 1;
     }

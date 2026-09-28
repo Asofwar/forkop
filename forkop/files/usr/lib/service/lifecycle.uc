@@ -114,6 +114,7 @@ const DNS_FAILOVER_UC = LIB_DIR + "/singbox/dns_failover.uc";
 const SUBSCRIPTION_CACHE_UC = LIB_DIR + "/subscription/cache.uc";
 const RULESET_CACHE_UC = LIB_DIR + "/singbox/ruleset_cache.uc";
 const UPDATES_UC = LIB_DIR + "/components/updates.uc";
+const AUTOTUNE_MANAGER_UC = LIB_DIR + "/autotune/manager.uc";
 const STATE_UC = LIB_DIR + "/service/state.uc";
 const RELOAD_UC = LIB_DIR + "/service/reload.uc";
 const UI_UC = LIB_DIR + "/service/ui.uc";
@@ -806,22 +807,27 @@ function restore_guarded_singbox_runtime(backup_path, guard_active) {
 }
 
 function refresh_cron() {
-    return module_status(UPDATES_UC, [
+    let status = module_status(UPDATES_UC, [
         "refresh-cron-from-uci",
         BIN_PATH,
         LIST_UPDATE_CRON_MARKER,
         SUBSCRIPTION_UPDATE_CRON_MARKER,
         COMPONENT_UPDATE_CHECK_CRON_MARKER
     ]);
+    // Autotune keeps its own cron line; it never blocks the service.
+    module_success(AUTOTUNE_MANAGER_UC, [ "cron-sync" ]);
+    return status;
 }
 
 function remove_cron_jobs() {
-    return module_status(UPDATES_UC, [
+    let status = module_status(UPDATES_UC, [
         "remove-cron-jobs",
         LIST_UPDATE_CRON_MARKER,
         SUBSCRIPTION_UPDATE_CRON_MARKER,
         COMPONENT_UPDATE_CHECK_CRON_MARKER
     ]);
+    module_success(AUTOTUNE_MANAGER_UC, [ "cron-remove" ]);
+    return status;
 }
 
 function prepare_subscription_caches(mode) {

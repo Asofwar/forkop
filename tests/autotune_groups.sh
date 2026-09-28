@@ -19,7 +19,11 @@ export FORKOP_AUTOTUNE_SINGBOX_CONFIG="$WORK/sing-box.json"
 export FORKOP_AUTOTUNE_DIG="$WORK/dig"
 export FORKOP_AUTOTUNE_UCI_SAVEDIR="$WORK/uci-save" FORKOP_AUTOTUNE_TMPDIR="$WORK/tmp"
 export FORKOP_HISTORY_FILE="$WORK/etc/history.jsonl" FORKOP_RUNTIME_STATE_DIR="$WORK/run/state"
+# A mode change syncs the autotune cron line: never the host's crontab.
+export FORKOP_CRONTAB_FILE="$WORK/crontab" FORKOP_AUTOTUNE_CRONTAB="$WORK/crontab-cmd"
 mkdir -p "$WORK/config" "$WORK/uci-save" "$WORK/tmp"
+printf '#!/bin/sh\ncp "$1" "%s/crontab"\n' "$WORK" >"$WORK/crontab-cmd"
+chmod +x "$WORK/crontab-cmd"
 
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 manager() { ucode -L "$LIB" "$LIB/autotune/manager.uc" "$@"; }

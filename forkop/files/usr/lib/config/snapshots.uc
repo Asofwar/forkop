@@ -148,11 +148,15 @@ function metadata(snapshot) {
 }
 function list_snapshots() {
     let result = [];
+    let working = trim(value(fs.readfile(LKG)));
     for (let file in fs.lsdir(ROOT) || []) {
         let id = replace(file, /\.json$/, "");
         if (file != id + ".json" || !valid_id(id)) continue;
         let item = read_snapshot(id, false);
-        if (item != null) push(result, metadata(item));
+        if (item == null) continue;
+        let entry = metadata(item);
+        entry.is_lkg = id == working;
+        push(result, entry);
     }
     result = sort(result, function(a, b) { return a.created_at - b.created_at; });
     return result;
@@ -409,11 +413,16 @@ if (mode == "create") {
     let kind = value(ARGV[1] || "manual");
     if (index([ "manual", "automatic" ], kind) >= 0)
         answer = create(kind, kind == "manual" ? "manual" : "before-reload", kind == "automatic");
+    // Automatic snapshots are routine; only a manual one is a history event.
+    if (kind == "manual" && answer.status == "created")
+        success([ "ucode", "-L", LIB_DIR, LIB_DIR + "/diagnostics/health.uc", "record", "snapshot_create", "success" ]);
 }
 else if (mode == "delete") {
     let id = value(ARGV[1]);
-    if (valid_id(id) && id != trim(value(fs.readfile(LKG))) && read_snapshot(id, true) != null && fs.unlink(snapshot_path(id)))
+    if (valid_id(id) && id != trim(value(fs.readfile(LKG))) && read_snapshot(id, true) != null && fs.unlink(snapshot_path(id))) {
         answer = { status: "deleted" };
+        success([ "ucode", "-L", LIB_DIR, LIB_DIR + "/diagnostics/health.uc", "record", "snapshot_delete", "success" ]);
+    }
 }
 else if (mode == "restore") {
     answer = do_restore(value(ARGV[1]));
@@ -424,7 +433,7 @@ else if (mode == "apply") {
     answer = do_apply(ARGV[1], ARGV[2], ARGV[3]);
     // Health records a configuration transaction only when one was started.
     if (answer.started)
-        success([ "ucode", "-L", LIB_DIR, LIB_DIR + "/diagnostics/health.uc", "record", "restore",
+        success([ "ucode", "-L", LIB_DIR, LIB_DIR + "/diagnostics/health.uc", "record", "autotune_apply",
             answer.status == "success" ? "success" : answer.status == "recovered" ? "recovered" : "failure" ]);
 }
 else if (mode == "confirm-working") {

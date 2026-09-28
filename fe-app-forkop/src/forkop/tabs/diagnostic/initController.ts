@@ -46,7 +46,6 @@ import { Forkop } from '../../types';
 import { initRouteDebugger } from './routeDebugger';
 import { initConnectivityMatrix } from './connectivityMatrix';
 import { initDpiPlayground } from './dpiPlayground';
-import { initSafetyCenter } from './safetyCenter';
 import {
   getAvailableActionsDisabledState,
   getServiceTransition,
@@ -1379,7 +1378,6 @@ export async function initController(): Promise<void> {
     initRouteDebugger();
     initConnectivityMatrix();
     initDpiPlayground();
-    initSafetyCenter();
     logger.debug('[DIAGNOSTIC]', 'initController', 'onMount');
     registerLifecycleListeners();
     if (

@@ -134,25 +134,6 @@ export function render() {
     E('h3', { class: 'fkp-diag-section-title' }, _('Additional tools')),
     E(
       'details',
-      { class: 'fkp-diag-card fkp-diag-details', id: 'safety-center' },
-      [
-        E('summary', {}, _('Recovery and protection')),
-        E('div', { id: 'safety-center-state', role: 'status' }, _('Loading…')),
-        E('div', { class: 'fkp-diag-actions' }, [
-          E(
-            'button',
-            {
-              id: 'safety-center-refresh',
-              type: 'button',
-              class: 'btn cbi-button',
-            },
-            _('Refresh state'),
-          ),
-        ]),
-      ],
-    ),
-    E(
-      'details',
       { class: 'fkp-diag-card fkp-diag-details', id: 'dpi-playground' },
       [
         E('summary', {}, _('DPI strategy syntax check')),

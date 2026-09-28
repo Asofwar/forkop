@@ -6,6 +6,16 @@ const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
 const RUNTIME_DIR = getenv("FORKOP_RUNTIME_STATE_DIR") || "/var/run/forkop";
 const EVENT_FILE = RUNTIME_DIR + "/health-events.json";
 const PACKAGE_PENDING = getenv("FORKOP_OPKG_RECOVERY_DIR") || "/etc/forkop/opkg-package-set-recovery";
+// Significant events survive reboots in a small journal on flash. Only
+// recorded events land there (starts, reloads, restores, autotune applies,
+// manual snapshot changes), never probes or measurements. When the journal
+// outgrows its cap it is rewritten once to the newest HISTORY_KEEP records.
+const HISTORY_FILE = getenv("FORKOP_HISTORY_FILE") || "/etc/forkop/history.jsonl";
+const HISTORY_MAX = 200;
+const HISTORY_MAX_BYTES = 65536;
+const HISTORY_KEEP = 150;
+const EVENT_KINDS = [ "start", "reload", "restore", "recovery", "autotune_apply", "snapshot_create", "snapshot_delete" ];
+const EVENT_STATUSES = [ "success", "failure", "recovered" ];
 
 function read_object(path) {
     let raw = fs.readfile(path);
@@ -42,27 +52,72 @@ function command_ok(args) {
     return system(command(args) + " >/dev/null 2>&1") == 0;
 }
 
+function valid_event(event) {
+    return type(event) == "object" && index(EVENT_KINDS, event.kind) >= 0 &&
+        index(EVENT_STATUSES, event.status) >= 0 && type(event.timestamp) == "int";
+}
+
+function history_events(all) {
+    let raw = fs.readfile(HISTORY_FILE);
+    if (raw == null)
+        return null;
+    let result = [];
+    for (let line in split(raw, "\n")) {
+        if (line == "") continue;
+        let event;
+        try { event = json(line); } catch (e) { continue; }
+        if (valid_event(event))
+            push(result, { kind: event.kind, status: event.status, timestamp: event.timestamp });
+    }
+    return !all && length(result) > HISTORY_MAX ? slice(result, length(result) - HISTORY_MAX) : result;
+}
+
+function append_history(event) {
+    let dir = replace(HISTORY_FILE, /\/[^\/]*$/, "");
+    if (dir != "" && fs.stat(dir) == null)
+        fs.mkdir(dir, 0755);
+    let file = fs.open(HISTORY_FILE, "a");
+    if (!file)
+        return false;
+    file.write(sprintf("%J\n", event));
+    file.close();
+
+    let stat = fs.stat(HISTORY_FILE);
+    let events = history_events(true) || [];
+    if ((stat != null && stat.size <= HISTORY_MAX_BYTES) && length(events) <= HISTORY_MAX)
+        return true;
+    let lines = "";
+    for (let item in slice(events, max(0, length(events) - HISTORY_KEEP)))
+        lines += sprintf("%J\n", item);
+    let path = sprintf("%s.%d.tmp", HISTORY_FILE, clock()[1]);
+    if (fs.writefile(path, lines) == null || !fs.rename(path, HISTORY_FILE)) {
+        fs.unlink(path);
+        return false;
+    }
+    return true;
+}
+
 function event_state() {
     let value = read_object(EVENT_FILE);
     let result = [];
     if (type(value.events) != "array") return result;
     for (let event in value.events) {
-        if (type(event) != "object" ||
-            index([ "start", "reload", "restore", "recovery" ], event.kind) < 0 ||
-            index([ "success", "failure", "recovered" ], event.status) < 0 ||
-            type(event.timestamp) != "int") continue;
+        if (!valid_event(event)) continue;
         push(result, { kind: event.kind, status: event.status, timestamp: event.timestamp });
     }
     return length(result) > 10 ? slice(result, length(result) - 10) : result;
 }
 
 function record_event(kind, status) {
-    if (index([ "start", "reload", "restore", "recovery" ], kind) < 0 ||
-        index([ "success", "failure", "recovered" ], status) < 0)
+    if (index(EVENT_KINDS, kind) < 0 || index(EVENT_STATUSES, status) < 0)
         return 1;
     fs.mkdir(RUNTIME_DIR, 0700);
+    let event = { kind, status, timestamp: int(clock()[0]) };
+    // The journal is best effort: a full or read-only flash must not stop
+    // health from recording the event.
+    append_history(event);
     let events = event_state();
-    push(events, { kind, status, timestamp: int(clock()[0]) });
+    push(events, event);
     while (length(events) > 10)
         shift(events);
     let path = sprintf("%s.%d.tmp", EVENT_FILE, clock()[1]);
@@ -88,7 +143,7 @@ function health(ui, guard, package_pending, events) {
     let last = length(events) ? events[length(events) - 1] : null;
     let last_reload = null;
     for (let i = length(events) - 1; i >= 0; i--)
-        if (events[i].kind == "reload" || events[i].kind == "restore") {
+        if (index([ "reload", "restore", "autotune_apply" ], events[i].kind) >= 0) {
             last_reload = events[i];
             break;
         }
@@ -118,6 +173,13 @@ function health(ui, guard, package_pending, events) {
 let mode = ARGV[0] || "";
 if (mode == "record")
     exit(record_event(as_string(ARGV[1]), as_string(ARGV[2])));
+if (mode == "history") {
+    let events = history_events();
+    print(sprintf("%J\n", events == null ?
+        { persistent: false, events: event_state() } :
+        { persistent: true, events }));
+    exit(0);
+}
 if (mode == "fixture") {
     let input = read_object(ARGV[1]);
     print(sprintf("%J\n", health(input.ui || {}, input.guard === true,

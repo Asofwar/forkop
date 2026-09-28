@@ -1,6 +1,11 @@
 // Deep links between Forkop pages (admin/services/forkop/<page>). Page
 // parameters travel in the URL hash, so a reload or a shared link keeps them.
-export type ForkopPage = 'overview' | 'monitoring' | 'diagnostics' | 'settings';
+export type ForkopPage =
+  | 'overview'
+  | 'monitoring'
+  | 'diagnostics'
+  | 'history'
+  | 'settings';
 
 const FORKOP_MENU_PATH = 'admin/services/forkop';
 

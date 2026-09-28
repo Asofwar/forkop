@@ -177,6 +177,7 @@ function command_spec(command) {
         get_ui_capabilities: [ "service/ui.uc", "get-ui-capabilities", 0 ],
         get_ui_state: [ "service/ui.uc", "get-ui-state", 0 ],
         get_health_status: [ "diagnostics/health.uc", "get", 0 ],
+        get_history: [ "diagnostics/health.uc", "history", 0 ],
         route_trace: [ "diagnostics/route_trace.uc", "trace", 4 ],
         config_snapshot_create: [ "config/snapshots.uc", "create", 1 ],
         config_snapshot_list: [ "config/snapshots.uc", "list", 0 ],

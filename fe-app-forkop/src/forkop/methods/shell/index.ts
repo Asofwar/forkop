@@ -362,6 +362,8 @@ export const ForkopShellMethods = {
     callBaseMethod<Forkop.HealthStatus>(
       Forkop.AvailableMethods.GET_HEALTH_STATUS,
     ),
+  getHistory: async () =>
+    callBaseMethod<Forkop.HistoryResult>(Forkop.AvailableMethods.GET_HISTORY),
   routeTrace: async (
     target: string,
     source: string,

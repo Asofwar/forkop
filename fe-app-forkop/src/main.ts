@@ -32,6 +32,7 @@ export { DashboardTab } from './forkop/tabs/dashboard';
 export { DiagnosticTab } from './forkop/tabs/diagnostic';
 export { MonitoringTab } from './forkop/tabs/monitoring';
 export { UpdatesTab } from './forkop/tabs/updates';
+export { HistoryTab } from './forkop/tabs/history';
 export {
   BOOTSTRAP_DNS_SERVER_OPTIONS,
   DEFAULT_LATENCY_TEST_URL,

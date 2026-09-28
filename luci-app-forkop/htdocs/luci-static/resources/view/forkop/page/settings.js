@@ -170,7 +170,7 @@ const EntryPoint = {
                 ),
               ].join("\n")
             : _(
-                "Configuration saved. Runtime reload has not been confirmed; check Safety Center.",
+                "Configuration saved. Runtime reload has not been confirmed; check History and recovery.",
               );
           ui.addNotification(
             null,

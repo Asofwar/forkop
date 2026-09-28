@@ -85,6 +85,25 @@ function isOutboundDetourTargetSection(section, currentSectionId) {
   );
 }
 
+// Cascade is only valid on Connection rules (config/validator.uc aborts
+// otherwise). The cascade options are hidden in the modal and kept via
+// `retain`, so they are dropped explicitly once the rule stops being one.
+function parseOutboundDetourOption(parentParse) {
+  return function (section_id) {
+    const action = this.section.formvalue(section_id, "action");
+
+    if (
+      !["connection", "proxy", "outbound", "vpn"].includes(
+        `${action || "connection"}`,
+      )
+    ) {
+      return Promise.resolve(this.remove(section_id));
+    }
+
+    return parentParse.apply(this, arguments);
+  };
+}
+
 function getOutboundDetourTargetSections(currentSectionId) {
   return (uci.sections(UCI_PACKAGE, "section") || []).filter((section) =>
     isOutboundDetourTargetSection(section, currentSectionId),
@@ -7328,6 +7347,7 @@ function createSectionContent(section) {
   // the rule is saved (LuCI removes inactive options without retain).
   o.retain = true;
   o.modalonly = true;
+  o.parse = parseOutboundDetourOption(o.parse);
   o.write = function (section_id, value) {
     if (value === "1") {
       const currentValue =
@@ -7364,6 +7384,7 @@ function createSectionContent(section) {
   o.depends({ action: "__internal_hidden__", outbound_detour_enabled: "1" });
   o.retain = true;
   o.modalonly = true;
+  o.parse = parseOutboundDetourOption(o.parse);
   o.load = function (section_id) {
     refreshOutboundDetourSectionOptionValues(this, section_id);
     return Promise.resolve(

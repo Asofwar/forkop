@@ -27,7 +27,8 @@ interface FakeNode {
 });
 
 import { setReadonlyMode } from '../../../services/accessMode.service';
-import { renderStartServiceAction, startForkopService } from '../startService';
+import { renderStartServiceAction } from '../startService';
+import { runForkopServiceAction } from '../serviceControl';
 
 beforeEach(() => {
   setReadonlyMode(false);
@@ -46,7 +47,7 @@ describe('starting Forkop X from a stopped page', () => {
       data: { success: true },
     });
 
-    await startForkopService();
+    await runForkopServiceAction('start');
 
     expect(shell.serviceActionStart).toHaveBeenCalledWith('start');
     expect(shell.waitServiceActionJob).toHaveBeenCalledWith('job-1');

@@ -413,6 +413,14 @@ function shouldUseProxyGroup(section: Forkop.ConfigSection) {
   );
 }
 
+// Read-only sessions do not receive the link lists (they carry secrets); a
+// runtime selector still shows the group and its nodes.
+function hasRuntimeProxyGroup(sectionName: string, proxies: ClashProxyEntry[]) {
+  const selectorTag = getOutboundTagBySection(sectionName);
+  const selector = proxies.find((proxy) => proxy.code === selectorTag);
+  return Array.isArray(selector?.value?.all) && selector.value.all.length > 0;
+}
+
 function getSectionProxyConfigType(section: Forkop.ConfigSection) {
   if (hasSubscriptionSources(section)) {
     return 'subscription' as const;
@@ -1414,7 +1422,11 @@ export async function getDashboardSections(): Promise<IGetDashboardSectionsRespo
         const sectionAction = section.action;
         const proxyConfigType = getSectionProxyConfigType(section);
 
-        if (isConnectionAction(sectionAction) && shouldUseProxyGroup(section)) {
+        if (
+          isConnectionAction(sectionAction) &&
+          (shouldUseProxyGroup(section) ||
+            hasRuntimeProxyGroup(sectionName, proxies))
+        ) {
           const subscriptionSourceCount = getSubscriptionSourceCount(section);
           const subscriptionEnabled = subscriptionSourceCount > 0;
           const dashboardCache = await readDashboardSectionCache(sectionName);

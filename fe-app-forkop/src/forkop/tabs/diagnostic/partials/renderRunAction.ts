@@ -37,13 +37,18 @@ export function saveLastRun(
   }
 }
 
-export function lastRunText(storage: Pick<Storage, 'getItem'>) {
+export function readLastRun(storage: Pick<Storage, 'getItem'>) {
   let value = 0;
   try {
     value = Number(storage.getItem(LAST_RUN_KEY) || 0);
   } catch (_error) {
     value = 0;
   }
+  return value > 0 ? value : null;
+}
+
+export function lastRunText(storage: Pick<Storage, 'getItem'>) {
+  const value = readLastRun(storage) || 0;
   return value > 0
     ? `${_('Last check')}: ${new Date(value).toLocaleString()}`
     : _('No check has been run yet');

@@ -36,7 +36,15 @@ function assertConfirmedBefore(body, confirmCall, backendCall, label) {
 
 const diagnostics = read('fe-app-forkop/src/forkop/tabs/diagnostic/initController.ts');
 assertConfirmedBefore(functionBody(diagnostics, 'async function handleStop()'),
-  'confirmAction(', 'handleServiceRuntimeAction(', 'stop Forkop X');
+  'confirmStopForkop(', 'handleServiceRuntimeAction(', 'stop Forkop X');
+
+const dashboard = read('fe-app-forkop/src/forkop/tabs/dashboard/initController.ts');
+assert.match(functionBody(dashboard, 'async function handleServiceAction(action: ForkopServiceAction)'),
+  /action === 'stop' && !\(await confirmStopForkop\(\)\)\) return;[\s\S]*runForkopServiceAction\(action\)/,
+  'overview: stop Forkop X must be confirmed before the service job');
+const control = read('fe-app-forkop/src/forkop/tabs/shared/serviceControl.ts');
+assert.match(functionBody(control, 'export function confirmStopForkop()'), /confirmAction\(\{[\s\S]*danger: true/,
+  'the shared stop confirmation must be a destructive confirmAction');
 
 const monitoring = read('fe-app-forkop/src/forkop/tabs/monitoring/initController.ts');
 assertConfirmedBefore(functionBody(monitoring, 'async function closeAllConnections()'),

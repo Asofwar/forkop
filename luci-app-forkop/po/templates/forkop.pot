@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-27 23:54+0000\n"
-"PO-Revision-Date: 2026-09-27 23:54+0000\n"
+"POT-Creation-Date: 2026-09-28 00:38+0000\n"
+"PO-Revision-Date: 2026-09-28 00:38+0000\n"
 "Last-Translator: Claude <noreply@anthropic.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -23,6 +23,30 @@ msgstr ""
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2820
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:118
 msgid "-- Select --"
+msgstr ""
+
+#: src/forkop/tabs/dashboard/overview.ts:202
+msgid "%d connections now"
+msgstr ""
+
+#: src/forkop/ui/time.ts:13
+msgid "%d h ago"
+msgstr ""
+
+#: src/forkop/ui/time.ts:10
+msgid "%d min ago"
+msgstr ""
+
+#: src/forkop/tabs/dashboard/overviewCards.ts:185
+msgid "%d more groups"
+msgstr ""
+
+#: src/forkop/tabs/dashboard/overview.ts:193
+msgid "%d node groups"
+msgstr ""
+
+#: src/forkop/tabs/dashboard/overview.ts:194
+msgid "%d rules · %d node groups"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:7112
@@ -41,18 +65,12 @@ msgstr ""
 msgid "+ Add URLTest"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1908
-#: src/forkop/tabs/dashboard/initController.ts:1919
-msgid "✔ Running"
-msgstr ""
-
-#: src/forkop/tabs/dashboard/initController.ts:1909
-#: src/forkop/tabs/dashboard/initController.ts:1920
-msgid "✘ Stopped"
-msgstr ""
-
 #: src/forkop/tabs/updates/releaseSelector.ts:45
 msgid "A configuration backup will be saved in /etc/forkop-backups. Older versions may not support all current settings."
+msgstr ""
+
+#: src/forkop/tabs/dashboard/overview.ts:92
+msgid "A configuration change was not confirmed. Traffic that needs DPI bypass may be blocked until recovery completes."
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:6753
@@ -61,12 +79,12 @@ msgstr ""
 msgid "Action"
 msgstr ""
 
-#: src/forkop/tabs/monitoring/initController.ts:788
-#: src/forkop/tabs/monitoring/initController.ts:920
+#: src/forkop/tabs/monitoring/initController.ts:789
+#: src/forkop/tabs/monitoring/initController.ts:921
 msgid "Actions"
 msgstr ""
 
-#: src/forkop/tabs/monitoring/initController.ts:614
+#: src/forkop/tabs/monitoring/initController.ts:615
 #: src/forkop/tabs/monitoring/render.ts:22
 msgid "Active"
 msgstr ""
@@ -75,11 +93,7 @@ msgstr ""
 msgid "Active Bootstrap DNS"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1866
-msgid "Active Connections"
-msgstr ""
-
-#: src/forkop/tabs/monitoring/initController.ts:1281
+#: src/forkop/tabs/monitoring/initController.ts:1282
 msgid "Active connections of all devices are interrupted."
 msgstr ""
 
@@ -150,9 +164,13 @@ msgstr ""
 msgid "Advanced settings"
 msgstr ""
 
-#: src/forkop/tabs/monitoring/initController.ts:573
+#: src/forkop/tabs/monitoring/initController.ts:574
 #: src/forkop/tabs/monitoring/render.ts:41
 msgid "All"
+msgstr ""
+
+#: src/forkop/tabs/dashboard/overviewCards.ts:228
+msgid "All events"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:1885
@@ -191,6 +209,10 @@ msgstr ""
 msgid "Allows limiting the list of servers for URLTest"
 msgstr ""
 
+#: src/forkop/tabs/dashboard/overview.ts:101
+msgid "An interrupted package update is being recovered. Avoid changes until it completes."
+msgstr ""
+
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:107
 msgid "Another snapshot operation is already in progress. Changes were not applied; try again in a moment."
 msgstr ""
@@ -207,15 +229,19 @@ msgstr ""
 msgid "Apply section rules only to the specified local IP addresses"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1179
+#: src/forkop/tabs/dashboard/overview.ts:138
+msgid "Applying changes…"
+msgstr ""
+
+#: src/forkop/tabs/dashboard/initController.ts:1311
 msgid "Applying Forkop configuration…"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1169
+#: src/forkop/tabs/dashboard/initController.ts:1301
 msgid "Applying…"
 msgstr ""
 
-#: src/forkop/tabs/monitoring/initController.ts:1283
+#: src/forkop/tabs/monitoring/initController.ts:1284
 msgid "Apps reconnect on their own; downloads and calls may drop"
 msgstr ""
 
@@ -244,8 +270,16 @@ msgid "Automatically check installed components for new versions"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2922
-#: src/forkop/tabs/dashboard/initController.ts:1392
+#: src/forkop/tabs/dashboard/initController.ts:1524
 msgid "Automatically select the fastest node in the current level"
+msgstr ""
+
+#: src/forkop/tabs/dashboard/overview.ts:167
+msgid "Autostart is off"
+msgstr ""
+
+#: src/forkop/tabs/dashboard/overview.ts:167
+msgid "Autostart is on"
 msgstr ""
 
 #: src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:46
@@ -361,17 +395,17 @@ msgstr ""
 msgid "Cache file path cannot be empty"
 msgstr ""
 
-#: src/forkop/ui/status.ts:270
+#: src/forkop/ui/status.ts:286
 msgid "Calculated"
 msgstr ""
 
-#: src/forkop/ui/status.ts:283
+#: src/forkop/ui/status.ts:299
 #: src/forkop/tabs/diagnostic/routeDebugger.ts:20
 msgid "Calculated result"
 msgstr ""
 
 #: src/forkop/ui/confirmAction.ts:28
-#: src/forkop/tabs/dashboard/initController.ts:1252
+#: src/forkop/tabs/dashboard/initController.ts:1384
 #: src/forkop/tabs/updates/fullUninstall.ts:11
 #: src/forkop/tabs/updates/releaseSelector.ts:50
 #: src/forkop/tabs/updates/releaseSelector.ts:111
@@ -416,7 +450,7 @@ msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2410
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2873
-#: src/forkop/tabs/dashboard/initController.ts:1379
+#: src/forkop/tabs/dashboard/initController.ts:1511
 msgid "Check interval"
 msgstr ""
 
@@ -430,11 +464,11 @@ msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2436
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2860
-#: src/forkop/tabs/dashboard/initController.ts:1377
+#: src/forkop/tabs/dashboard/initController.ts:1509
 msgid "Check URL"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/initController.ts:1117
+#: src/forkop/tabs/diagnostic/initController.ts:1108
 #: src/forkop/tabs/diagnostic/checks/runByedpiCheck.ts:14
 #: src/forkop/tabs/diagnostic/checks/runDnsCheck.ts:15
 #: src/forkop/tabs/diagnostic/checks/runFakeIPCheck.ts:15
@@ -447,10 +481,11 @@ msgid "Checking, please wait"
 msgstr ""
 
 #: src/forkop/ui/status.ts:135
+#: src/forkop/tabs/dashboard/overview.ts:132
 #: src/forkop/tabs/diagnostic/connectivityMatrix.ts:104
 #: src/forkop/tabs/diagnostic/dpiPlayground.ts:48
 #: src/forkop/tabs/diagnostic/routeDebugger.ts:125
-#: src/forkop/tabs/diagnostic/statusLabels.ts:27
+#: src/forkop/tabs/diagnostic/statusLabels.ts:28
 msgid "Checking…"
 msgstr ""
 
@@ -496,13 +531,13 @@ msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3202
 #: src/partials/modal/renderModal.ts:263
-#: src/forkop/tabs/dashboard/initController.ts:1133
-#: src/forkop/tabs/dashboard/initController.ts:1511
+#: src/forkop/tabs/dashboard/initController.ts:1265
+#: src/forkop/tabs/dashboard/initController.ts:1643
 #: src/forkop/tabs/updates/releaseSelector.ts:121
 msgid "Close"
 msgstr ""
 
-#: src/forkop/tabs/monitoring/initController.ts:1285
+#: src/forkop/tabs/monitoring/initController.ts:1286
 msgid "Close all"
 msgstr ""
 
@@ -511,7 +546,7 @@ msgstr ""
 msgid "Close all connections"
 msgstr ""
 
-#: src/forkop/tabs/monitoring/initController.ts:1280
+#: src/forkop/tabs/monitoring/initController.ts:1281
 msgid "Close all connections?"
 msgstr ""
 
@@ -519,7 +554,7 @@ msgstr ""
 msgid "Close connection"
 msgstr ""
 
-#: src/forkop/tabs/monitoring/initController.ts:621
+#: src/forkop/tabs/monitoring/initController.ts:622
 #: src/forkop/tabs/monitoring/render.ts:31
 msgid "Closed"
 msgstr ""
@@ -552,7 +587,7 @@ msgstr ""
 msgid "Configuration applied successfully"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/statusLabels.ts:40
+#: src/forkop/ui/status.ts:266
 msgid "Configuration reload"
 msgstr ""
 
@@ -580,7 +615,7 @@ msgstr ""
 msgid "Connect through"
 msgstr ""
 
-#: src/forkop/tabs/monitoring/initController.ts:831
+#: src/forkop/tabs/monitoring/initController.ts:832
 msgid "Connection details"
 msgstr ""
 
@@ -592,7 +627,7 @@ msgstr ""
 msgid "Connection URL"
 msgstr ""
 
-#: src/forkop/tabs/monitoring/initController.ts:985
+#: src/forkop/tabs/monitoring/initController.ts:986
 msgid "Connections are unavailable"
 msgstr ""
 
@@ -617,7 +652,9 @@ msgstr ""
 msgid "Copy details"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/initController.ts:696
+#: src/forkop/tabs/dashboard/initController.ts:157
+#: src/forkop/tabs/dashboard/initController.ts:160
+#: src/forkop/tabs/diagnostic/initController.ts:687
 msgid "Could not change autostart"
 msgstr ""
 
@@ -651,12 +688,12 @@ msgid "Could not load configuration snapshots"
 msgstr ""
 
 #: src/forkop/ui/states.ts:115
-#: src/forkop/tabs/diagnostic/initController.ts:757
-#: src/forkop/tabs/diagnostic/initController.ts:761
-#: src/forkop/tabs/diagnostic/initController.ts:796
-#: src/forkop/tabs/diagnostic/initController.ts:800
-#: src/forkop/tabs/diagnostic/initController.ts:836
-#: src/forkop/tabs/diagnostic/initController.ts:840
+#: src/forkop/tabs/diagnostic/initController.ts:748
+#: src/forkop/tabs/diagnostic/initController.ts:752
+#: src/forkop/tabs/diagnostic/initController.ts:787
+#: src/forkop/tabs/diagnostic/initController.ts:791
+#: src/forkop/tabs/diagnostic/initController.ts:827
+#: src/forkop/tabs/diagnostic/initController.ts:831
 msgid "Could not load data"
 msgstr ""
 
@@ -682,10 +719,6 @@ msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2316
 msgid "Current section cannot download its own subscription"
-msgstr ""
-
-#: src/forkop/tabs/dashboard/partials/renderWidget.ts:22
-msgid "Currently unavailable"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:7107
@@ -725,12 +758,12 @@ msgstr ""
 msgid "Delete this configuration snapshot?"
 msgstr ""
 
-#: src/forkop/ui/status.ts:281
+#: src/forkop/ui/status.ts:297
 #: src/forkop/tabs/diagnostic/routeDebugger.ts:18
 msgid "Derived from configuration"
 msgstr ""
 
-#: src/forkop/tabs/monitoring/initController.ts:805
+#: src/forkop/tabs/monitoring/initController.ts:806
 msgid "Destination"
 msgstr ""
 
@@ -756,7 +789,7 @@ msgstr ""
 msgid "Device or IP"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/initController.ts:675
+#: src/forkop/tabs/shared/serviceControl.ts:36
 msgid "Devices keep using the router without Forkop X"
 msgstr ""
 
@@ -769,7 +802,12 @@ msgid "DHCP is managed manually"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/diagnostics.js:15
+#: src/forkop/tabs/dashboard/overviewCards.ts:145
 msgid "Diagnostics"
+msgstr ""
+
+#: src/forkop/tabs/dashboard/overview.ts:175
+msgid "Diagnostics has not been run yet"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2678
@@ -785,6 +823,7 @@ msgstr ""
 msgid "Disable"
 msgstr ""
 
+#: src/forkop/tabs/dashboard/overviewCards.ts:126
 #: src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:82
 msgid "Disable autostart"
 msgstr ""
@@ -960,13 +999,8 @@ msgstr ""
 msgid "Dont Touch My DHCP!"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1792
-#: src/forkop/tabs/dashboard/initController.ts:1830
-msgid "Downlink"
-msgstr ""
-
 #: src/partials/modal/renderModal.ts:253
-#: src/forkop/tabs/monitoring/initController.ts:817
+#: src/forkop/tabs/monitoring/initController.ts:818
 #: src/forkop/tabs/monitoring/render.ts:66
 msgid "Download"
 msgstr ""
@@ -1011,8 +1045,8 @@ msgstr ""
 msgid "Download through"
 msgstr ""
 
-#: src/forkop/tabs/monitoring/initController.ts:781
-#: src/forkop/tabs/monitoring/initController.ts:917
+#: src/forkop/tabs/monitoring/initController.ts:782
+#: src/forkop/tabs/monitoring/initController.ts:918
 msgid "Downloaded"
 msgstr ""
 
@@ -1020,8 +1054,8 @@ msgstr ""
 msgid "DPI guard"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/health.ts:48
-msgid "DPI protection active. Traffic may be intentionally blocked during recovery."
+#: src/forkop/tabs/dashboard/overview.ts:91
+msgid "DPI protection is holding traffic"
 msgstr ""
 
 #: src/forkop/tabs/diagnostic/routeDebugger.ts:73
@@ -1044,12 +1078,12 @@ msgstr ""
 msgid "Duplicate value"
 msgstr ""
 
-#: src/forkop/tabs/monitoring/initController.ts:815
+#: src/forkop/tabs/monitoring/initController.ts:816
 #: src/forkop/tabs/monitoring/render.ts:65
 msgid "Duration"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1121
+#: src/forkop/tabs/dashboard/initController.ts:1253
 msgid "Edit"
 msgstr ""
 
@@ -1057,7 +1091,7 @@ msgstr ""
 msgid "Edit rule action"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1257
+#: src/forkop/tabs/dashboard/initController.ts:1389
 msgid "Edit URLTest"
 msgstr ""
 
@@ -1071,6 +1105,7 @@ msgstr ""
 msgid "Enable automatic updates for remote lists and rule sets"
 msgstr ""
 
+#: src/forkop/tabs/dashboard/overviewCards.ts:127
 #: src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:92
 msgid "Enable autostart"
 msgstr ""
@@ -1157,9 +1192,8 @@ msgid "Enter the subscription URL"
 msgstr ""
 
 #: src/forkop/ui/status.ts:157
-#: src/forkop/tabs/dashboard/health.ts:18
-#: src/forkop/tabs/diagnostic/statusLabels.ts:25
-#: src/forkop/tabs/diagnostic/statusLabels.ts:72
+#: src/forkop/tabs/diagnostic/statusLabels.ts:26
+#: src/forkop/tabs/diagnostic/statusLabels.ts:58
 msgid "Error"
 msgstr ""
 
@@ -1228,17 +1262,17 @@ msgid "External nfqws2 config files bypass Forkop queue management and explicit 
 msgstr ""
 
 #: src/forkop/ui/status.ts:250
-#: src/forkop/tabs/diagnostic/statusLabels.ts:57
+#: src/forkop/tabs/diagnostic/statusLabels.ts:43
 msgid "Failed"
 msgstr ""
 
-#: src/forkop/tabs/monitoring/initController.ts:1252
-#: src/forkop/tabs/monitoring/initController.ts:1267
+#: src/forkop/tabs/monitoring/initController.ts:1253
+#: src/forkop/tabs/monitoring/initController.ts:1268
 msgid "Failed to close connection"
 msgstr ""
 
-#: src/forkop/tabs/monitoring/initController.ts:1299
-#: src/forkop/tabs/monitoring/initController.ts:1312
+#: src/forkop/tabs/monitoring/initController.ts:1300
+#: src/forkop/tabs/monitoring/initController.ts:1313
 msgid "Failed to close connections"
 msgstr ""
 
@@ -1259,20 +1293,20 @@ msgstr ""
 msgid "Failed to execute"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1227
+#: src/forkop/tabs/dashboard/initController.ts:1359
 msgid "Failed to save URLTest settings"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:781
-#: src/forkop/tabs/dashboard/initController.ts:786
+#: src/forkop/tabs/dashboard/initController.ts:913
+#: src/forkop/tabs/dashboard/initController.ts:918
 msgid "Failed to switch the node"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:227
-#: src/forkop/tabs/dashboard/initController.ts:317
-#: src/forkop/tabs/dashboard/initController.ts:318
-#: src/forkop/tabs/dashboard/initController.ts:383
-#: src/forkop/tabs/dashboard/initController.ts:1566
+#: src/forkop/tabs/dashboard/initController.ts:359
+#: src/forkop/tabs/dashboard/initController.ts:449
+#: src/forkop/tabs/dashboard/initController.ts:450
+#: src/forkop/tabs/dashboard/initController.ts:515
+#: src/forkop/tabs/dashboard/initController.ts:1698
 msgid "Failed to update subscriptions"
 msgstr ""
 
@@ -1289,7 +1323,7 @@ msgid "FakeIP works; public IP comparison is inconclusive"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2933
-#: src/forkop/tabs/dashboard/initController.ts:1398
+#: src/forkop/tabs/dashboard/initController.ts:1530
 msgid "Faster server search interval"
 msgstr ""
 
@@ -1325,12 +1359,8 @@ msgstr ""
 msgid "Forkop manages the nfqws2 process lifecycle itself, so daemon mode is not allowed here."
 msgstr ""
 
-#: src/forkop/tabs/monitoring/initController.ts:963
+#: src/forkop/tabs/monitoring/initController.ts:964
 msgid "Forkop service is stopped. Start the service to display connections."
-msgstr ""
-
-#: src/forkop/tabs/dashboard/render.ts:22
-msgid "Forkop service is stopped. Start the service to display the dashboard."
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:653
@@ -1341,7 +1371,23 @@ msgstr ""
 msgid "Forkop X and sing-box have been removed. Original repositories have been restored."
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/initController.ts:672
+#: src/forkop/tabs/dashboard/overview.ts:144
+msgid "Forkop X is running"
+msgstr ""
+
+#: src/forkop/tabs/dashboard/overview.ts:126
+msgid "Forkop X is stopped"
+msgstr ""
+
+#: src/forkop/tabs/dashboard/overview.ts:110
+msgid "Forkop X kept or restored the previous configuration."
+msgstr ""
+
+#: src/forkop/tabs/dashboard/overview.ts:141
+msgid "Forkop X needs attention"
+msgstr ""
+
+#: src/forkop/tabs/shared/serviceControl.ts:33
 msgid "Forkop X stops handling traffic until it is started again."
 msgstr ""
 
@@ -1385,7 +1431,7 @@ msgstr ""
 msgid "Forkop-managed nfqws2 runtime is ready"
 msgstr ""
 
-#: src/forkop/ui/status.ts:268
+#: src/forkop/ui/status.ts:284
 msgid "From configuration"
 msgstr ""
 
@@ -1406,17 +1452,13 @@ msgstr ""
 msgid "Get global check"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/initController.ts:748
+#: src/forkop/tabs/diagnostic/initController.ts:739
 msgid "Global check"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:61
-msgid "Health status unavailable"
-msgstr ""
-
 #: src/forkop/ui/status.ts:153
-#: src/forkop/tabs/diagnostic/statusLabels.ts:21
-#: src/forkop/tabs/diagnostic/statusLabels.ts:68
+#: src/forkop/tabs/diagnostic/statusLabels.ts:22
+#: src/forkop/tabs/diagnostic/statusLabels.ts:54
 msgid "Healthy"
 msgstr ""
 
@@ -1425,7 +1467,7 @@ msgid "Hide values"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2897
-#: src/forkop/tabs/dashboard/initController.ts:1384
+#: src/forkop/tabs/dashboard/initController.ts:1516
 msgid "Higher-level check interval"
 msgstr ""
 
@@ -1433,9 +1475,9 @@ msgstr ""
 msgid "Higher-priority DNS Check"
 msgstr ""
 
-#: src/forkop/tabs/monitoring/initController.ts:771
-#: src/forkop/tabs/monitoring/initController.ts:808
-#: src/forkop/tabs/monitoring/initController.ts:913
+#: src/forkop/tabs/monitoring/initController.ts:772
+#: src/forkop/tabs/monitoring/initController.ts:809
+#: src/forkop/tabs/monitoring/initController.ts:914
 msgid "Host"
 msgstr ""
 
@@ -1460,8 +1502,8 @@ msgid "HTTP error"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2449
-#: src/forkop/tabs/dashboard/initController.ts:1018
-#: src/forkop/tabs/dashboard/initController.ts:1263
+#: src/forkop/tabs/dashboard/initController.ts:1150
+#: src/forkop/tabs/dashboard/initController.ts:1395
 msgid "Idle timeout"
 msgstr ""
 
@@ -1556,9 +1598,9 @@ msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2463
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2949
-#: src/forkop/tabs/dashboard/initController.ts:1020
-#: src/forkop/tabs/dashboard/initController.ts:1264
-#: src/forkop/tabs/dashboard/initController.ts:1404
+#: src/forkop/tabs/dashboard/initController.ts:1152
+#: src/forkop/tabs/dashboard/initController.ts:1396
+#: src/forkop/tabs/dashboard/initController.ts:1536
 msgid "Interrupt connections"
 msgstr ""
 
@@ -1570,8 +1612,8 @@ msgstr ""
 msgid "Interrupt connections when URLTest switches the selected server"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1016
-#: src/forkop/tabs/dashboard/initController.ts:1261
+#: src/forkop/tabs/dashboard/initController.ts:1148
+#: src/forkop/tabs/dashboard/initController.ts:1393
 msgid "Interval"
 msgstr ""
 
@@ -1845,6 +1887,10 @@ msgstr ""
 msgid "JSON outbound settings"
 msgstr ""
 
+#: src/forkop/ui/time.ts:8
+msgid "just now"
+msgstr ""
+
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2959
 msgid "Keep Priority before latency-sorted servers"
 msgstr ""
@@ -1857,8 +1903,16 @@ msgstr ""
 msgid "Keyword must not contain spaces or commas"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/partials/renderRunAction.ts:48
+#: src/forkop/tabs/diagnostic/partials/renderRunAction.ts:53
 msgid "Last check"
+msgstr ""
+
+#: src/forkop/tabs/dashboard/overview.ts:171
+msgid "Last diagnostics: %s"
+msgstr ""
+
+#: src/forkop/tabs/dashboard/overviewCards.ts:214
+msgid "Last important event"
 msgstr ""
 
 #: src/forkop/tabs/diagnostic/safetyCenter.ts:39
@@ -1869,10 +1923,14 @@ msgstr ""
 msgid "Last reload"
 msgstr ""
 
+#: src/forkop/tabs/dashboard/overview.ts:238
+msgid "Last reload: %s"
+msgstr ""
+
 #: src/forkop/methods/shell/index.ts:553
 #: src/forkop/methods/shell/index.ts:574
-#: src/forkop/tabs/dashboard/initController.ts:861
-#: src/forkop/tabs/dashboard/initController.ts:869
+#: src/forkop/tabs/dashboard/initController.ts:993
+#: src/forkop/tabs/dashboard/initController.ts:1001
 msgid "Latency test failed"
 msgstr ""
 
@@ -1889,7 +1947,7 @@ msgstr ""
 msgid "Latest version:"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1340
+#: src/forkop/tabs/dashboard/initController.ts:1472
 msgid "Level"
 msgstr ""
 
@@ -1909,13 +1967,9 @@ msgstr ""
 msgid "Loading available versions…"
 msgstr ""
 
-#: src/forkop/tabs/monitoring/initController.ts:975
+#: src/forkop/tabs/monitoring/initController.ts:976
 #: src/forkop/tabs/monitoring/render.ts:122
 msgid "Loading connections"
-msgstr ""
-
-#: src/forkop/tabs/dashboard/render.ts:30
-msgid "Loading health status"
 msgstr ""
 
 #: src/forkop/tabs/updates/initController.ts:975
@@ -1927,6 +1981,7 @@ msgid "Loading..."
 msgstr ""
 
 #: src/forkop/ui/states.ts:36
+#: src/forkop/tabs/dashboard/render.ts:14
 #: src/forkop/tabs/diagnostic/renderDiagnostic.ts:140
 msgid "Loading…"
 msgstr ""
@@ -1959,10 +2014,6 @@ msgstr ""
 msgid "Maximum time to wait for example.com to resolve during a DNS health check."
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1870
-msgid "Memory Usage"
-msgstr ""
-
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2423
 msgid "Minimum latency difference in milliseconds that triggers switching to a faster server."
 msgstr ""
@@ -1988,6 +2039,7 @@ msgid "Monitored Interfaces"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/monitoring.js:18
+#: src/forkop/tabs/dashboard/overviewCards.ts:191
 msgid "Monitoring"
 msgstr ""
 
@@ -2015,9 +2067,9 @@ msgstr ""
 
 #: src/forkop/ui/status.ts:159
 #: src/forkop/ui/status.ts:252
-#: src/forkop/tabs/diagnostic/statusLabels.ts:23
-#: src/forkop/tabs/diagnostic/statusLabels.ts:59
-#: src/forkop/tabs/diagnostic/statusLabels.ts:70
+#: src/forkop/tabs/diagnostic/statusLabels.ts:24
+#: src/forkop/tabs/diagnostic/statusLabels.ts:45
+#: src/forkop/tabs/diagnostic/statusLabels.ts:56
 msgid "Needs attention"
 msgstr ""
 
@@ -2060,27 +2112,31 @@ msgstr ""
 msgid "NFQWS2 strategy cannot be empty"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:884
-#: src/forkop/tabs/dashboard/initController.ts:888
-#: src/forkop/tabs/dashboard/initController.ts:964
-#: src/forkop/tabs/dashboard/initController.ts:1295
+#: src/forkop/tabs/dashboard/initController.ts:1016
+#: src/forkop/tabs/dashboard/initController.ts:1020
+#: src/forkop/tabs/dashboard/initController.ts:1096
+#: src/forkop/tabs/dashboard/initController.ts:1427
 msgid "No"
 msgstr ""
 
-#: src/forkop/tabs/monitoring/initController.ts:999
+#: src/forkop/tabs/monitoring/initController.ts:1000
 msgid "No active connections"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/partials/renderRunAction.ts:49
+#: src/forkop/tabs/diagnostic/partials/renderRunAction.ts:54
 msgid "No check has been run yet"
 msgstr ""
 
-#: src/forkop/tabs/monitoring/initController.ts:1000
+#: src/forkop/tabs/monitoring/initController.ts:1001
 msgid "No closed connections"
 msgstr ""
 
 #: src/forkop/tabs/updates/releaseSelector.ts:91
 msgid "No compatible releases available"
+msgstr ""
+
+#: src/forkop/tabs/dashboard/overview.ts:218
+msgid "no data"
 msgstr ""
 
 #: src/forkop/ui/states.ts:102
@@ -2091,6 +2147,7 @@ msgstr ""
 msgid "No DNS records for this name"
 msgstr ""
 
+#: src/forkop/tabs/dashboard/overviewCards.ts:227
 #: src/forkop/tabs/diagnostic/safetyCenter.ts:115
 msgid "No events recorded yet"
 msgstr ""
@@ -2099,6 +2156,11 @@ msgstr ""
 msgid "No other marking rules found"
 msgstr ""
 
+#: src/forkop/tabs/dashboard/overview.ts:255
+msgid "No recovery needed"
+msgstr ""
+
+#: src/forkop/tabs/dashboard/overview.ts:245
 #: src/forkop/tabs/diagnostic/safetyCenter.ts:62
 msgid "No reload recorded yet"
 msgstr ""
@@ -2123,35 +2185,39 @@ msgstr ""
 msgid "No saved changes since this snapshot"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1105
-#: src/forkop/tabs/dashboard/initController.ts:1496
+#: src/forkop/tabs/dashboard/initController.ts:1237
+#: src/forkop/tabs/dashboard/initController.ts:1628
 msgid "Node list is empty"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1044
-#: src/forkop/tabs/dashboard/initController.ts:1428
+#: src/forkop/tabs/dashboard/initController.ts:1176
+#: src/forkop/tabs/dashboard/initController.ts:1560
 #: src/forkop/tabs/dashboard/partials/renderSections.ts:333
 msgid "Nodes"
+msgstr ""
+
+#: src/forkop/tabs/dashboard/render.ts:22
+msgid "Nodes and groups"
 msgstr ""
 
 #: src/forkop/tabs/updates/initController.ts:1046
 msgid "Normal mode"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/statusLabels.ts:29
-#: src/forkop/tabs/diagnostic/statusLabels.ts:61
-#: src/forkop/tabs/diagnostic/statusLabels.ts:76
+#: src/forkop/tabs/diagnostic/statusLabels.ts:30
+#: src/forkop/tabs/diagnostic/statusLabels.ts:47
+#: src/forkop/tabs/diagnostic/statusLabels.ts:62
 msgid "Not available for checking"
 msgstr ""
 
 #: src/forkop/ui/status.ts:163
 #: src/forkop/tabs/diagnostic/connectivityMatrix.ts:102
-#: src/forkop/tabs/diagnostic/statusLabels.ts:31
+#: src/forkop/tabs/diagnostic/statusLabels.ts:32
 msgid "Not checked"
 msgstr ""
 
-#: src/forkop/ui/status.ts:272
-#: src/forkop/ui/status.ts:285
+#: src/forkop/ui/status.ts:288
+#: src/forkop/ui/status.ts:301
 msgid "Not determined"
 msgstr ""
 
@@ -2196,16 +2262,12 @@ msgstr ""
 msgid "not used"
 msgstr ""
 
-#: src/forkop/ui/status.ts:266
+#: src/forkop/ui/status.ts:282
 msgid "Observed"
 msgstr ""
 
-#: src/forkop/tabs/monitoring/initController.ts:831
+#: src/forkop/tabs/monitoring/initController.ts:832
 msgid "Observed from active connection"
-msgstr ""
-
-#: src/forkop/tabs/dashboard/health.ts:16
-msgid "OK"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2754
@@ -2245,10 +2307,6 @@ msgstr ""
 #: src/forkop/tabs/updates/initController.ts:1170
 #: src/forkop/tabs/updates/initController.ts:1192
 msgid "Open"
-msgstr ""
-
-#: src/forkop/tabs/dashboard/health.ts:61
-msgid "Open Diagnostics"
 msgstr ""
 
 #: src/forkop/tabs/updates/fullUninstall.ts:60
@@ -2291,7 +2349,7 @@ msgstr ""
 msgid "Original repositories could not be restored. Removal was cancelled before deleting packages."
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/statusLabels.ts:46
+#: src/forkop/ui/status.ts:272
 msgid "Other event"
 msgstr ""
 
@@ -2300,7 +2358,7 @@ msgstr ""
 msgid "Outbound"
 msgstr ""
 
-#: src/forkop/tabs/monitoring/initController.ts:813
+#: src/forkop/tabs/monitoring/initController.ts:814
 msgid "Outbound chain"
 msgstr ""
 
@@ -2324,6 +2382,10 @@ msgstr ""
 msgid "Package recovery"
 msgstr ""
 
+#: src/forkop/tabs/dashboard/overview.ts:100
+msgid "Package recovery has not finished"
+msgstr ""
+
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:7470
 msgid "Password cannot be empty"
 msgstr ""
@@ -2344,7 +2406,7 @@ msgstr ""
 msgid "Path must end with cache.db"
 msgstr ""
 
-#: src/forkop/tabs/monitoring/initController.ts:638
+#: src/forkop/tabs/monitoring/initController.ts:639
 #: src/forkop/tabs/monitoring/render.ts:104
 #: src/forkop/tabs/monitoring/render.ts:105
 msgid "Pause updates"
@@ -2407,13 +2469,13 @@ msgstr ""
 msgid "Priority"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1523
+#: src/forkop/tabs/dashboard/initController.ts:1655
 #: src/forkop/tabs/dashboard/partials/renderSections.ts:463
 #: src/forkop/tabs/dashboard/partials/renderSections.ts:464
 msgid "Priority details"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1365
+#: src/forkop/tabs/dashboard/initController.ts:1497
 msgid "Priority details are unavailable"
 msgstr ""
 
@@ -2440,8 +2502,12 @@ msgstr ""
 msgid "Profile"
 msgstr ""
 
+#: src/forkop/tabs/dashboard/overview.ts:255
+msgid "Protection is active"
+msgstr ""
+
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:1956
-#: src/forkop/tabs/monitoring/initController.ts:809
+#: src/forkop/tabs/monitoring/initController.ts:810
 #: src/forkop/tabs/monitoring/render.ts:44
 msgid "Protocol"
 msgstr ""
@@ -2458,10 +2524,6 @@ msgstr ""
 msgid "Reachable"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/health.ts:64
-msgid "Recent activity"
-msgstr ""
-
 #: src/forkop/tabs/diagnostic/safetyCenter.ts:102
 msgid "Recent events"
 msgstr ""
@@ -2469,17 +2531,22 @@ msgstr ""
 #: src/forkop/ui/status.ts:132
 #: src/forkop/ui/status.ts:138
 #: src/forkop/ui/status.ts:246
-#: src/forkop/tabs/dashboard/health.ts:20
-#: src/forkop/tabs/diagnostic/statusLabels.ts:55
+#: src/forkop/tabs/diagnostic/statusLabels.ts:41
 msgid "Recovered"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/statusLabels.ts:44
+#: src/forkop/ui/status.ts:270
+#: src/forkop/tabs/dashboard/overviewCards.ts:201
 msgid "Recovery"
 msgstr ""
 
 #: src/forkop/tabs/diagnostic/renderDiagnostic.ts:139
 msgid "Recovery and protection"
+msgstr ""
+
+#: src/forkop/tabs/dashboard/overview.ts:86
+#: src/forkop/tabs/dashboard/overviewCards.ts:208
+msgid "Recovery details"
 msgstr ""
 
 #: src/forkop/tabs/diagnostic/safetyCenter.ts:89
@@ -2495,7 +2562,7 @@ msgstr ""
 msgid "Refresh state"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1187
+#: src/forkop/tabs/dashboard/initController.ts:1319
 msgid "Refreshing Dashboard…"
 msgstr ""
 
@@ -2551,7 +2618,7 @@ msgstr ""
 msgid "Removing Forkop X…"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1208
+#: src/forkop/tabs/dashboard/initController.ts:1340
 msgid "Removing user settings…"
 msgstr ""
 
@@ -2588,6 +2655,7 @@ msgstr ""
 msgid "Resource selection by IP or CIDR inside nfqws2 is not supported here; sing-box selects resources before NFQUEUE."
 msgstr ""
 
+#: src/forkop/tabs/dashboard/overviewCards.ts:113
 #: src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:52
 msgid "Restart Forkop X"
 msgstr ""
@@ -2626,7 +2694,7 @@ msgstr ""
 msgid "Result"
 msgstr ""
 
-#: src/forkop/tabs/monitoring/initController.ts:638
+#: src/forkop/tabs/monitoring/initController.ts:639
 msgid "Resume updates"
 msgstr ""
 
@@ -2648,9 +2716,9 @@ msgstr ""
 msgid "Rolled back"
 msgstr ""
 
-#: src/forkop/tabs/monitoring/initController.ts:775
-#: src/forkop/tabs/monitoring/initController.ts:812
-#: src/forkop/tabs/monitoring/initController.ts:915
+#: src/forkop/tabs/monitoring/initController.ts:776
+#: src/forkop/tabs/monitoring/initController.ts:813
+#: src/forkop/tabs/monitoring/initController.ts:916
 #: src/forkop/tabs/monitoring/render.ts:45
 msgid "Route"
 msgstr ""
@@ -2667,21 +2735,33 @@ msgstr ""
 msgid "Route requests to this DNS server through another section."
 msgstr ""
 
+#: src/forkop/tabs/dashboard/overview.ts:161
+msgid "Router DNS is not pointed to Forkop X"
+msgstr ""
+
 #: src/forkop/tabs/diagnostic/routeDebugger.ts:56
 #: src/forkop/tabs/diagnostic/routeDebugger.ts:63
 msgid "Router kernel route"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/initController.ts:674
+#: src/forkop/tabs/dashboard/overviewCards.ts:153
+msgid "Routing"
+msgstr ""
+
+#: src/forkop/tabs/dashboard/overview.ts:200
+msgid "Routing is paused while Forkop X is stopped."
+msgstr ""
+
+#: src/forkop/tabs/shared/serviceControl.ts:35
 msgid "Routing, DNS and DPI bypass rules stop applying"
 msgstr ""
 
-#: src/forkop/tabs/monitoring/initController.ts:810
+#: src/forkop/tabs/monitoring/initController.ts:811
 #: src/forkop/tabs/monitoring/render.ts:47
 msgid "Rule"
 msgstr ""
 
-#: src/forkop/tabs/monitoring/initController.ts:811
+#: src/forkop/tabs/monitoring/initController.ts:812
 msgid "Rule payload"
 msgstr ""
 
@@ -2696,6 +2776,10 @@ msgstr ""
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:7591
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:7626
 msgid "Rule sets"
+msgstr ""
+
+#: src/forkop/tabs/dashboard/overviewCards.ts:194
+msgid "Rules"
 msgstr ""
 
 #: src/forkop/tabs/diagnostic/checks/runNftCheck.ts:79
@@ -2731,11 +2815,11 @@ msgid "Run full diagnostics"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3211
-#: src/forkop/tabs/dashboard/initController.ts:1247
+#: src/forkop/tabs/dashboard/initController.ts:1379
 msgid "Save"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1191
+#: src/forkop/tabs/dashboard/initController.ts:1323
 msgid "Saving URLTest settings…"
 msgstr ""
 
@@ -2763,7 +2847,7 @@ msgstr ""
 msgid "Security"
 msgstr ""
 
-#: src/forkop/ui/status.ts:279
+#: src/forkop/ui/status.ts:295
 #: src/forkop/tabs/diagnostic/routeDebugger.ts:16
 msgid "Seen in an active connection"
 msgstr ""
@@ -2818,7 +2902,7 @@ msgid "Select path for sing-box config file. Change this ONLY if you know what y
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2911
-#: src/forkop/tabs/dashboard/initController.ts:1388
+#: src/forkop/tabs/dashboard/initController.ts:1520
 msgid "Select the fastest node"
 msgstr ""
 
@@ -2838,8 +2922,8 @@ msgstr ""
 msgid "Select the WAN interfaces to be monitored"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1012
-#: src/forkop/tabs/dashboard/initController.ts:1374
+#: src/forkop/tabs/dashboard/initController.ts:1144
+#: src/forkop/tabs/dashboard/initController.ts:1506
 msgid "Selected"
 msgstr ""
 
@@ -2884,7 +2968,11 @@ msgstr ""
 msgid "Service action failed"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/initController.ts:989
+#: src/forkop/tabs/dashboard/overviewCards.ts:108
+msgid "Service actions"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/initController.ts:980
 msgid "Service control is available to administrators only."
 msgstr ""
 
@@ -2893,17 +2981,13 @@ msgstr ""
 msgid "Service list"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1903
-msgid "Services info"
-msgstr ""
-
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:1124
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:6740
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:90
 msgid "Settings"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/initController.ts:823
+#: src/forkop/tabs/diagnostic/initController.ts:814
 #: src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:119
 msgid "Show sing-box config"
 msgstr ""
@@ -2928,6 +3012,14 @@ msgstr ""
 msgid "Sing-box installed"
 msgstr ""
 
+#: src/forkop/tabs/dashboard/overview.ts:157
+msgid "sing-box is not running"
+msgstr ""
+
+#: src/forkop/tabs/dashboard/overview.ts:156
+msgid "sing-box is running"
+msgstr ""
+
 #: src/forkop/tabs/diagnostic/checks/runSingBoxCheck.ts:87
 msgid "Sing-box listening ports"
 msgstr ""
@@ -2948,12 +3040,16 @@ msgstr ""
 msgid "Snapshot deleted"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/statusLabels.ts:42
+#: src/forkop/ui/status.ts:268
 msgid "Snapshot restore"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:870
 msgid "Snapshot saved"
+msgstr ""
+
+#: src/forkop/tabs/dashboard/overview.ts:249
+msgid "Snapshots: %d"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:7299
@@ -2968,9 +3064,9 @@ msgstr ""
 msgid "Sorts servers in this section by lowest latency in the dashboard."
 msgstr ""
 
-#: src/forkop/tabs/monitoring/initController.ts:787
-#: src/forkop/tabs/monitoring/initController.ts:803
-#: src/forkop/tabs/monitoring/initController.ts:919
+#: src/forkop/tabs/monitoring/initController.ts:788
+#: src/forkop/tabs/monitoring/initController.ts:804
+#: src/forkop/tabs/monitoring/initController.ts:920
 msgid "Source"
 msgstr ""
 
@@ -3022,7 +3118,7 @@ msgstr ""
 msgid "Standalone Zapret2 service is inactive"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/statusLabels.ts:38
+#: src/forkop/ui/status.ts:264
 msgid "Start"
 msgstr ""
 
@@ -3030,8 +3126,9 @@ msgstr ""
 msgid "Start Forkop"
 msgstr ""
 
-#: src/forkop/tabs/shared/startService.ts:58
-#: src/forkop/tabs/shared/startService.ts:62
+#: src/forkop/tabs/dashboard/overviewCards.ts:103
+#: src/forkop/tabs/shared/startService.ts:36
+#: src/forkop/tabs/shared/startService.ts:40
 msgid "Start Forkop X"
 msgstr ""
 
@@ -3039,16 +3136,26 @@ msgstr ""
 msgid "Start time"
 msgstr ""
 
-#: src/forkop/tabs/monitoring/initController.ts:814
+#: src/forkop/tabs/monitoring/initController.ts:815
 msgid "Started"
 msgstr ""
 
-#: src/forkop/tabs/shared/startService.ts:50
-#: src/forkop/tabs/shared/startService.ts:62
+#: src/forkop/tabs/dashboard/overviewCards.ts:103
+#: src/forkop/tabs/shared/startService.ts:28
+#: src/forkop/tabs/shared/startService.ts:40
 msgid "Starting…"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/initController.ts:677
+#: src/forkop/tabs/dashboard/overviewCards.ts:136
+msgid "State"
+msgstr ""
+
+#: src/forkop/tabs/dashboard/overview.ts:135
+#: src/forkop/tabs/dashboard/overview.ts:229
+msgid "State unavailable"
+msgstr ""
+
+#: src/forkop/tabs/shared/serviceControl.ts:38
 msgid "Stop"
 msgstr ""
 
@@ -3060,8 +3167,12 @@ msgstr ""
 msgid "Stop Forkop X"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/initController.ts:671
+#: src/forkop/tabs/shared/serviceControl.ts:32
 msgid "Stop Forkop X?"
+msgstr ""
+
+#: src/forkop/tabs/dashboard/overviewCards.ts:118
+msgid "Stop Forkop X…"
 msgstr ""
 
 #: src/forkop/tabs/diagnostic/renderDiagnostic.ts:40
@@ -3097,12 +3208,12 @@ msgstr ""
 msgid "Subscription URL settings"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:343
+#: src/forkop/tabs/dashboard/initController.ts:475
 msgid "Subscriptions updated"
 msgstr ""
 
 #: src/forkop/ui/status.ts:244
-#: src/forkop/tabs/diagnostic/statusLabels.ts:53
+#: src/forkop/tabs/diagnostic/statusLabels.ts:39
 msgid "Succeeded"
 msgstr ""
 
@@ -3114,7 +3225,7 @@ msgstr ""
 msgid "Support report contains confidential information. Do not share it in public chats."
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/statusLabels.ts:74
+#: src/forkop/tabs/diagnostic/statusLabels.ts:60
 msgid "Switching"
 msgstr ""
 
@@ -3128,10 +3239,6 @@ msgstr ""
 
 #: src/forkop/tabs/diagnostic/renderDiagnostic.ts:66
 msgid "System diagnostics"
-msgstr ""
-
-#: src/forkop/tabs/dashboard/initController.ts:1863
-msgid "System info"
 msgstr ""
 
 #: src/forkop/tabs/diagnostic/partials/renderSystemInfo.ts:21
@@ -3176,8 +3283,8 @@ msgstr ""
 msgid "Test servers whose names match the expression."
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1015
-#: src/forkop/tabs/dashboard/initController.ts:1260
+#: src/forkop/tabs/dashboard/initController.ts:1147
+#: src/forkop/tabs/dashboard/initController.ts:1392
 msgid "Testing URL"
 msgstr ""
 
@@ -3188,6 +3295,14 @@ msgstr ""
 
 #: src/forkop/tabs/diagnostic/routeDebugger.ts:153
 msgid "The Forkop rule and outbound are only known for a real connection. The check runs on the router and does not prove the path of a LAN client."
+msgstr ""
+
+#: src/forkop/tabs/dashboard/overview.ts:147
+msgid "The last change was rolled back automatically."
+msgstr ""
+
+#: src/forkop/tabs/dashboard/overview.ts:109
+msgid "The last configuration change failed"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:5120
@@ -3281,8 +3396,8 @@ msgstr ""
 msgid "This permanently deletes saved sections and subscriptions. Other components remain installed."
 msgstr ""
 
-#: src/forkop/tabs/monitoring/initController.ts:778
-#: src/forkop/tabs/monitoring/initController.ts:916
+#: src/forkop/tabs/monitoring/initController.ts:779
+#: src/forkop/tabs/monitoring/initController.ts:917
 msgid "Time"
 msgstr ""
 
@@ -3303,8 +3418,8 @@ msgid "TLS or certificate error"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2422
-#: src/forkop/tabs/dashboard/initController.ts:1017
-#: src/forkop/tabs/dashboard/initController.ts:1262
+#: src/forkop/tabs/dashboard/initController.ts:1149
+#: src/forkop/tabs/dashboard/initController.ts:1394
 msgid "Tolerance"
 msgstr ""
 
@@ -3332,7 +3447,6 @@ msgstr ""
 msgid "Trace a real connection in Monitoring"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1789
 #: src/forkop/tabs/dashboard/partials/renderSections.ts:121
 msgid "Traffic"
 msgstr ""
@@ -3341,12 +3455,8 @@ msgstr ""
 msgid "Traffic for this level goes directly."
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1823
-msgid "Traffic Total"
-msgstr ""
-
-#: src/forkop/tabs/dashboard/health.ts:19
-msgid "Transitioning"
+#: src/forkop/tabs/dashboard/overview.ts:128
+msgid "Traffic goes through the router without Forkop X."
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:5976
@@ -3371,8 +3481,8 @@ msgstr ""
 
 #: src/forkop/tabs/diagnostic/connectivityMatrix.ts:251
 #: src/forkop/tabs/diagnostic/connectivityMatrix.ts:298
-#: src/forkop/tabs/monitoring/initController.ts:772
-#: src/forkop/tabs/monitoring/initController.ts:914
+#: src/forkop/tabs/monitoring/initController.ts:773
+#: src/forkop/tabs/monitoring/initController.ts:915
 msgid "Type"
 msgstr ""
 
@@ -3396,7 +3506,7 @@ msgid "Unable to validate the NFQWS2 strategy through the backend parser."
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2885
-#: src/forkop/tabs/dashboard/initController.ts:1382
+#: src/forkop/tabs/dashboard/initController.ts:1514
 msgid "Unavailability timeout"
 msgstr ""
 
@@ -3442,7 +3552,6 @@ msgstr ""
 
 #: src/forkop/ui/status.ts:169
 #: src/forkop/ui/status.ts:256
-#: src/forkop/tabs/dashboard/health.ts:21
 msgid "Unknown"
 msgstr ""
 
@@ -3494,18 +3603,13 @@ msgstr ""
 msgid "Update this subscription automatically"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1791
-#: src/forkop/tabs/dashboard/initController.ts:1826
-msgid "Uplink"
-msgstr ""
-
-#: src/forkop/tabs/monitoring/initController.ts:816
+#: src/forkop/tabs/monitoring/initController.ts:817
 #: src/forkop/tabs/monitoring/render.ts:67
 msgid "Upload"
 msgstr ""
 
-#: src/forkop/tabs/monitoring/initController.ts:784
-#: src/forkop/tabs/monitoring/initController.ts:918
+#: src/forkop/tabs/monitoring/initController.ts:785
+#: src/forkop/tabs/monitoring/initController.ts:919
 msgid "Uploaded"
 msgstr ""
 
@@ -3529,13 +3633,13 @@ msgstr ""
 msgid "URLTest"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1282
+#: src/forkop/tabs/dashboard/initController.ts:1414
 #: src/forkop/tabs/dashboard/partials/renderSections.ts:444
 #: src/forkop/tabs/dashboard/partials/renderSections.ts:445
 msgid "URLTest details"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1003
+#: src/forkop/tabs/dashboard/initController.ts:1135
 msgid "URLTest details are unavailable"
 msgstr ""
 
@@ -3544,11 +3648,11 @@ msgstr ""
 msgid "URLTest settings"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1217
+#: src/forkop/tabs/dashboard/initController.ts:1349
 msgid "URLTest settings reset"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1205
+#: src/forkop/tabs/dashboard/initController.ts:1337
 msgid "URLTest settings saved"
 msgstr ""
 
@@ -3574,7 +3678,7 @@ msgstr ""
 msgid "Use sing-box duration format like 1d, 12h or 30m"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1238
+#: src/forkop/tabs/dashboard/initController.ts:1370
 msgid "Use source values"
 msgstr ""
 
@@ -3615,7 +3719,7 @@ msgstr ""
 msgid "Via country.is"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/initController.ts:785
+#: src/forkop/tabs/diagnostic/initController.ts:776
 #: src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:110
 msgid "View logs"
 msgstr ""
@@ -3637,7 +3741,6 @@ msgid "Waiting to finish"
 msgstr ""
 
 #: src/forkop/ui/status.ts:155
-#: src/forkop/tabs/dashboard/health.ts:17
 msgid "Warning"
 msgstr ""
 
@@ -3653,7 +3756,7 @@ msgstr ""
 msgid "YACD Secret Key"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:884
+#: src/forkop/tabs/dashboard/initController.ts:1016
 msgid "Yes"
 msgstr ""
 

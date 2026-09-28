@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-27 23:54+0000\n"
-"PO-Revision-Date: 2026-09-27 23:54+0000\n"
+"POT-Creation-Date: 2026-09-28 00:39+0000\n"
+"PO-Revision-Date: 2026-09-28 00:39+0000\n"
 "Last-Translator: Claude\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -19,6 +19,24 @@ msgstr ""
 
 msgid "-- Select --"
 msgstr "-- Выберите --"
+
+msgid "%d connections now"
+msgstr "Соединений сейчас: %d"
+
+msgid "%d h ago"
+msgstr "%d ч назад"
+
+msgid "%d min ago"
+msgstr "%d мин назад"
+
+msgid "%d more groups"
+msgstr "Ещё групп: %d"
+
+msgid "%d node groups"
+msgstr "Групп узлов: %d"
+
+msgid "%d rules · %d node groups"
+msgstr "Правил: %d · групп узлов: %d"
 
 msgid "+ Add JSON outbound"
 msgstr "+ Добавить JSON outbound"
@@ -32,14 +50,11 @@ msgstr "+ Добавить приоритет"
 msgid "+ Add URLTest"
 msgstr "+ Добавить URLTest"
 
-msgid "✔ Running"
-msgstr "✔ Работает"
-
-msgid "✘ Stopped"
-msgstr "✘ Остановлен"
-
 msgid "A configuration backup will be saved in /etc/forkop-backups. Older versions may not support all current settings."
 msgstr "Резервная копия настроек будет сохранена в /etc/forkop-backups. Старые версии могут поддерживать не все текущие настройки."
+
+msgid "A configuration change was not confirmed. Traffic that needs DPI bypass may be blocked until recovery completes."
+msgstr "Изменение конфигурации не подтвердилось. Трафик, которому нужен обход DPI, может блокироваться, пока не завершится восстановление."
 
 msgid "Action"
 msgstr "Действие"
@@ -52,9 +67,6 @@ msgstr "Активные"
 
 msgid "Active Bootstrap DNS"
 msgstr "Активный Bootstrap DNS"
-
-msgid "Active Connections"
-msgstr "Активные соединения"
 
 msgid "Active connections of all devices are interrupted."
 msgstr "Активные соединения всех устройств будут прерваны."
@@ -110,6 +122,9 @@ msgstr "Дополнительные настройки"
 msgid "All"
 msgstr "Все"
 
+msgid "All events"
+msgstr "Все события"
+
 msgid "All except selected"
 msgstr "Все, кроме выбранных"
 
@@ -137,6 +152,9 @@ msgstr "Обеспечивает доступ к YACD из WAN. Убедитес
 msgid "Allows limiting the list of servers for URLTest"
 msgstr "Позволяет ограничить список серверов для URLTest"
 
+msgid "An interrupted package update is being recovered. Avoid changes until it completes."
+msgstr "Восстанавливается прерванное обновление пакетов. Не вносите изменений, пока оно не завершится."
+
 msgid "Another snapshot operation is already in progress. Changes were not applied; try again in a moment."
 msgstr "Уже выполняется другая операция со снимками. Изменения не применены, повторите через минуту."
 
@@ -148,6 +166,9 @@ msgstr "Ответ DNS роутера"
 
 msgid "Apply section rules only to the specified local IP addresses"
 msgstr "Применять правила секции только к указанным локальным IP-адресам"
+
+msgid "Applying changes…"
+msgstr "Применяются изменения…"
 
 msgid "Applying Forkop configuration…"
 msgstr "Применение конфигурации Forkop…"
@@ -178,6 +199,12 @@ msgstr "Автоматически проверять наличие новых 
 
 msgid "Automatically select the fastest node in the current level"
 msgstr "Автовыбор самого быстрого узла уровня"
+
+msgid "Autostart is off"
+msgstr "Автозапуск выключен"
+
+msgid "Autostart is on"
+msgstr "Автозапуск включён"
 
 msgid "Available actions"
 msgstr "Доступные действия"
@@ -464,9 +491,6 @@ msgstr "Текущую секцию нельзя использовать как
 msgid "Current section cannot download its own subscription"
 msgstr "Текущую секцию нельзя выбрать для скачивания её же подписки"
 
-msgid "Currently unavailable"
-msgstr "Временно недоступно"
-
 msgid "Custom outbound configurations in JSON format"
 msgstr "Пользовательские конфигурации outbound в формате JSON"
 
@@ -526,6 +550,9 @@ msgstr "DHCP управляется вручную"
 
 msgid "Diagnostics"
 msgstr "Диагностика"
+
+msgid "Diagnostics has not been run yet"
+msgstr "Диагностика ещё не запускалась"
 
 msgid "Direct connection"
 msgstr "Прямое подключение"
@@ -659,9 +686,6 @@ msgstr "Домены"
 msgid "Dont Touch My DHCP!"
 msgstr "Отключить управление DHCP"
 
-msgid "Downlink"
-msgstr "Входящий"
-
 msgid "Download"
 msgstr "Скачать"
 
@@ -701,8 +725,8 @@ msgstr "Загружено"
 msgid "DPI guard"
 msgstr "Защита DPI"
 
-msgid "DPI protection active. Traffic may be intentionally blocked during recovery."
-msgstr "Защита DPI активна. Во время восстановления трафик может намеренно блокироваться."
+msgid "DPI protection is holding traffic"
+msgstr "DPI-защита удерживает трафик"
 
 msgid "DPI provider"
 msgstr "Провайдер DPI"
@@ -911,14 +935,23 @@ msgstr "Forkop сам управляет жизненным циклом nfqws2,
 msgid "Forkop service is stopped. Start the service to display connections."
 msgstr "Служба Forkop остановлена. Запустите сервис для отображения подключений."
 
-msgid "Forkop service is stopped. Start the service to display the dashboard."
-msgstr "Служба Forkop остановлена. Запустите сервис для отображения дашборда."
-
 msgid "Forkop will not modify your DHCP configuration"
 msgstr "Forkop не будет изменять вашу конфигурацию DHCP"
 
 msgid "Forkop X and sing-box have been removed. Original repositories have been restored."
 msgstr "Forkop X и sing-box удалены. Исходные репозитории восстановлены."
+
+msgid "Forkop X is running"
+msgstr "Forkop X работает"
+
+msgid "Forkop X is stopped"
+msgstr "Forkop X остановлен"
+
+msgid "Forkop X kept or restored the previous configuration."
+msgstr "Forkop X сохранил или восстановил прежнюю конфигурацию."
+
+msgid "Forkop X needs attention"
+msgstr "Forkop X требует внимания"
 
 msgid "Forkop X stops handling traffic until it is started again."
 msgstr "Forkop X перестанет обрабатывать трафик, пока его снова не запустят."
@@ -970,9 +1003,6 @@ msgstr "Получить глобальную проверку"
 
 msgid "Global check"
 msgstr "Глобальная проверка"
-
-msgid "Health status unavailable"
-msgstr "Состояние недоступно"
 
 msgid "Healthy"
 msgstr "Норма"
@@ -1274,6 +1304,9 @@ msgstr "JSON outbound должен содержать непустое поле 
 msgid "JSON outbound settings"
 msgstr "Настройки JSON outbound"
 
+msgid "just now"
+msgstr "только что"
+
 msgid "Keep Priority before latency-sorted servers"
 msgstr "Показывать Priority перед серверами, отсортированными по задержке"
 
@@ -1286,11 +1319,20 @@ msgstr "Ключевое слово не должно содержать про�
 msgid "Last check"
 msgstr "Последняя проверка"
 
+msgid "Last diagnostics: %s"
+msgstr "Последняя диагностика: %s"
+
+msgid "Last important event"
+msgstr "Последнее важное событие"
+
 msgid "Last recovery"
 msgstr "Последнее восстановление"
 
 msgid "Last reload"
 msgstr "Последняя перезагрузка"
+
+msgid "Last reload: %s"
+msgstr "Последняя перезагрузка: %s"
 
 msgid "Latency test failed"
 msgstr "Проверка задержки не удалась"
@@ -1322,9 +1364,6 @@ msgstr "Загрузка доступных версий…"
 msgid "Loading connections"
 msgstr "Загрузка подключений"
 
-msgid "Loading health status"
-msgstr "Загрузка состояния"
-
 msgid "Loading..."
 msgstr "Загрузка..."
 
@@ -1351,9 +1390,6 @@ msgstr "Совпавшее правило"
 
 msgid "Maximum time to wait for example.com to resolve during a DNS health check."
 msgstr "Максимальное время ожидания разрешения example.com при проверке доступности DNS."
-
-msgid "Memory Usage"
-msgstr "Использование памяти"
 
 msgid "Minimum latency difference in milliseconds that triggers switching to a faster server."
 msgstr "Минимальная разница задержки в миллисекундах, при которой произойдет переключение на более быстрый сервер."
@@ -1436,6 +1472,9 @@ msgstr "Нет закрытых подключений"
 msgid "No compatible releases available"
 msgstr "Нет доступных совместимых версий"
 
+msgid "no data"
+msgstr "нет данных"
+
 msgid "No data"
 msgstr "Нет данных"
 
@@ -1447,6 +1486,9 @@ msgstr "Событий пока нет"
 
 msgid "No other marking rules found"
 msgstr "Другие правила маркировки не найдены"
+
+msgid "No recovery needed"
+msgstr "Восстановление не требуется"
 
 msgid "No reload recorded yet"
 msgstr "Перезагрузок пока не было"
@@ -1471,6 +1513,9 @@ msgstr "Список узлов пуст"
 
 msgid "Nodes"
 msgstr "Узлы"
+
+msgid "Nodes and groups"
+msgstr "Узлы и группы"
 
 msgid "Normal mode"
 msgstr "Обычный режим"
@@ -1511,9 +1556,6 @@ msgstr "Наблюдается"
 msgid "Observed from active connection"
 msgstr "Наблюдается в активном соединении"
 
-msgid "OK"
-msgstr "Норма"
-
 msgid "Only from the specified countries."
 msgstr "Только из указанных стран."
 
@@ -1540,9 +1582,6 @@ msgstr "Только указанные серверы."
 
 msgid "Open"
 msgstr "Открыть"
-
-msgid "Open Diagnostics"
-msgstr "Открыть диагностику"
 
 msgid "Open LuCI"
 msgstr "Открыть LuCI"
@@ -1594,6 +1633,9 @@ msgstr "Обзор"
 
 msgid "Package recovery"
 msgstr "Восстановление пакетов"
+
+msgid "Package recovery has not finished"
+msgstr "Восстановление пакетов не завершено"
 
 msgid "Password cannot be empty"
 msgstr "Пароль не может быть пустым"
@@ -1673,6 +1715,9 @@ msgstr "На роутере нет инструмента для проверк�
 msgid "Profile"
 msgstr "Профиль"
 
+msgid "Protection is active"
+msgstr "Защита активна"
+
 msgid "Protocol"
 msgstr "Протокол"
 
@@ -1685,9 +1730,6 @@ msgstr "Проверка доступности"
 msgid "Reachable"
 msgstr "Доступно"
 
-msgid "Recent activity"
-msgstr "Недавние события"
-
 msgid "Recent events"
 msgstr "Последние события"
 
@@ -1699,6 +1741,9 @@ msgstr "Восстановление"
 
 msgid "Recovery and protection"
 msgstr "Восстановление и защита"
+
+msgid "Recovery details"
+msgstr "Подробнее о восстановлении"
 
 msgid "Recovery state is unavailable"
 msgstr "Состояние восстановления недоступно"
@@ -1829,8 +1874,17 @@ msgstr "Маршрутизировать основные DNS-запросы ч�
 msgid "Route requests to this DNS server through another section."
 msgstr "Направлять запросы к этому DNS-серверу через другую секцию."
 
+msgid "Router DNS is not pointed to Forkop X"
+msgstr "DNS роутера не направлен в Forkop X"
+
 msgid "Router kernel route"
 msgstr "Маршрут ядра роутера"
+
+msgid "Routing"
+msgstr "Маршрутизация"
+
+msgid "Routing is paused while Forkop X is stopped."
+msgstr "Маршрутизация приостановлена, пока Forkop X остановлен."
 
 msgid "Routing, DNS and DPI bypass rules stop applying"
 msgstr "Правила маршрутизации, DNS и обхода DPI перестанут действовать"
@@ -1849,6 +1903,9 @@ msgstr "Настройки набора правил"
 
 msgid "Rule sets"
 msgstr "Наборы правил"
+
+msgid "Rules"
+msgstr "Правила"
 
 msgid "Rules mangle counters"
 msgstr "Счётчики правил mangle"
@@ -1982,14 +2039,14 @@ msgstr "server_port должен быть числом от 1 до 65535"
 msgid "Service action failed"
 msgstr "Действие сервиса не выполнено"
 
+msgid "Service actions"
+msgstr "Действия со службой"
+
 msgid "Service control is available to administrators only."
 msgstr "Управление сервисом доступно только администратору."
 
 msgid "Service list"
 msgstr "Список сервисов"
-
-msgid "Services info"
-msgstr "Информация о сервисах"
 
 msgid "Settings"
 msgstr "Настройки"
@@ -2012,6 +2069,12 @@ msgstr "FakeIP DNS sing-box работает"
 msgid "Sing-box installed"
 msgstr "Sing-box установлен"
 
+msgid "sing-box is not running"
+msgstr "sing-box не работает"
+
+msgid "sing-box is running"
+msgstr "sing-box работает"
+
 msgid "Sing-box listening ports"
 msgstr "Sing-box слушает порты"
 
@@ -2032,6 +2095,9 @@ msgstr "Восстановление снимка"
 
 msgid "Snapshot saved"
 msgstr "Снимок сохранён"
+
+msgid "Snapshots: %d"
+msgstr "Снимков: %d"
 
 msgid "Sort by latency"
 msgstr "Сортировать по задержке"
@@ -2099,6 +2165,12 @@ msgstr "Начало"
 msgid "Starting…"
 msgstr "Запуск…"
 
+msgid "State"
+msgstr "Состояние"
+
+msgid "State unavailable"
+msgstr "Состояние недоступно"
+
 msgid "Stop"
 msgstr "Остановить"
 
@@ -2110,6 +2182,9 @@ msgstr "Остановить Forkop X"
 
 msgid "Stop Forkop X?"
 msgstr "Остановить Forkop X?"
+
+msgid "Stop Forkop X…"
+msgstr "Остановить Forkop X…"
 
 msgid "Strategy"
 msgstr "Стратегия"
@@ -2159,9 +2234,6 @@ msgstr "Синтаксис корректен"
 msgid "System diagnostics"
 msgstr "Диагностика системы"
 
-msgid "System info"
-msgstr "Системная информация"
-
 msgid "System information"
 msgstr "Системная информация"
 
@@ -2200,6 +2272,12 @@ msgstr "Desync fwmark управляется Forkop для защиты от ц�
 
 msgid "The Forkop rule and outbound are only known for a real connection. The check runs on the router and does not prove the path of a LAN client."
 msgstr "Правило и outbound Forkop известны только для реального соединения. Проверка выполняется на роутере и не подтверждает маршрут клиента LAN."
+
+msgid "The last change was rolled back automatically."
+msgstr "Последнее изменение было автоматически откачено."
+
+msgid "The last configuration change failed"
+msgstr "Последнее изменение конфигурации не удалось"
 
 msgid "The NFQUEUE number is assigned by Forkop for each rule and must not be overridden here."
 msgstr "Номер NFQUEUE назначается Forkop для каждого правила и не должен переопределяться здесь."
@@ -2309,11 +2387,8 @@ msgstr "Трафик"
 msgid "Traffic for this level goes directly."
 msgstr "Трафик этого уровня пойдёт напрямую."
 
-msgid "Traffic Total"
-msgstr "Всего трафика"
-
-msgid "Transitioning"
-msgstr "Переход"
+msgid "Traffic goes through the router without Forkop X."
+msgstr "Трафик идёт через роутер без Forkop X."
 
 msgid "Transparent proxy mode is incompatible with action=byedpi because Forkop connects to ciadpi through SOCKS."
 msgstr "Режим прозрачного прокси несовместим с action=byedpi, потому что Forkop подключается к ciadpi через SOCKS."
@@ -2404,9 +2479,6 @@ msgstr "Обновить подписки"
 
 msgid "Update this subscription automatically"
 msgstr "Автоматически обновлять эту подписку"
-
-msgid "Uplink"
-msgstr "Исходящий"
 
 msgid "Upload"
 msgstr "Отправлено"

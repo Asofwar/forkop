@@ -1,3 +1,4 @@
+export { eventKindLabel } from '../../ui/status';
 import type { IDiagnosticsChecksStoreItem } from '../../services';
 import type { Forkop } from '../../types';
 
@@ -29,21 +30,6 @@ export function checkStatus(
       return { text: _('Not available for checking'), tone: 'neutral' };
     default:
       return { text: _('Not checked'), tone: 'neutral' };
-  }
-}
-
-export function eventKindLabel(kind: string) {
-  switch (kind) {
-    case 'start':
-      return _('Start');
-    case 'reload':
-      return _('Configuration reload');
-    case 'restore':
-      return _('Snapshot restore');
-    case 'recovery':
-      return _('Recovery');
-    default:
-      return _('Other event');
   }
 }
 

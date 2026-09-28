@@ -8191,13 +8191,79 @@ function refuseInvalidModalSave(modalMap) {
   };
 }
 
+// The item settings modals stacked on the rule modal (subscription source,
+// interface, URLTest, priority and its levels, rule set) write their Save
+// into uci at once, and the rule modal map shares the page's uci state.
+// LuCI's Dismiss only removes a rule that Add created, so these edits stayed
+// staged for the next Save & Apply although the rule was never saved. The
+// rule modal keeps the staged state it was opened on, and Dismiss puts it
+// back (UC-045). uci.js stages edits in creates/changes/deletes and merges
+// them into values in place on a whole-section uci.get(), so all are kept.
+const STAGED_UCI_STATE_KEYS = [
+  "values",
+  "creates",
+  "changes",
+  "deletes",
+  "reorder",
+];
+
+function captureStagedUciState() {
+  const state = uci.state;
+
+  if (
+    !state ||
+    STAGED_UCI_STATE_KEYS.some(
+      (key) => !state[key] || typeof state[key] !== "object",
+    ) ||
+    !state.values[UCI_PACKAGE]
+  ) {
+    return null;
+  }
+
+  const snapshot = {};
+  STAGED_UCI_STATE_KEYS.forEach((key) => {
+    const value = state[key][UCI_PACKAGE];
+    snapshot[key] =
+      value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+  });
+  return snapshot;
+}
+
+function restoreStagedUciState(snapshot) {
+  if (!snapshot) {
+    return;
+  }
+
+  STAGED_UCI_STATE_KEYS.forEach((key) => {
+    if (snapshot[key] === undefined) {
+      delete uci.state[key][UCI_PACKAGE];
+    } else {
+      uci.state[key][UCI_PACKAGE] = snapshot[key];
+    }
+  });
+}
+
 function configureSectionSection(sectionRef, options = {}) {
   setActionProvidersAvailabilityLoader(options.loadActionProvidersAvailability);
 
   const addModalOptions = sectionRef.addModalOptions;
   sectionRef.addModalOptions = function (modalSection) {
+    modalSection.map.forkopStagedUciState = captureStagedUciState();
     refuseInvalidModalSave(modalSection.map);
     return addModalOptions.apply(this, arguments);
+  };
+
+  // handleModalSave() closes the modal through handleModalCancel(..., true)
+  // after uci.save() sent the edits; only Dismiss restores.
+  const handleModalCancel = sectionRef.handleModalCancel;
+  sectionRef.handleModalCancel = function (modalMap, _ev, isSaving) {
+    if (modalMap) {
+      if (!isSaving) {
+        restoreStagedUciState(modalMap.forkopStagedUciState);
+      }
+      delete modalMap.forkopStagedUciState;
+    }
+    return handleModalCancel.apply(this, arguments);
   };
 
   const handleRemove = sectionRef.handleRemove;

@@ -5,10 +5,11 @@
 // It loads luci-app-forkop/.../view/forkop/section.js (and the generated
 // main.js) unchanged and replaces luci-base with a small model of the parts a
 // modal save goes through: baseclass, form.Map/JSONMap/NamedSection and the
-// AbstractValue family, a UCI store and just enough DOM for the stacked item
-// settings modal. The form code follows luci-base form.js of OpenWrt 24.10 and
-// 25.12 (AbstractValue.parse, FlagValue.parse, Map.isDependencySatisfied,
-// isEqual, AbstractSection.checkDepends, GridSection.cloneOptions):
+// AbstractValue family, the grid's modal Save/Dismiss, uci.js with its staged
+// edits and just enough DOM for the stacked item settings modal. The form code
+// follows luci-base form.js of OpenWrt 24.10 and 25.12 (AbstractValue.parse,
+// FlagValue.parse, Map.isDependencySatisfied, isEqual,
+// AbstractSection.checkDepends, GridSection.cloneOptions):
 //   - an inactive option is removed on save unless it sets `retain`;
 //   - an active option is written only when its widget value differs from the
 //     loaded cfgvalue; an active empty value is removed (rmempty);
@@ -154,6 +155,178 @@ function createJsonStore(object) {
   for (const [sid, values] of Object.entries(object || {}))
     data[sid] = Object.assign({ ".name": sid, ".type": sid }, values);
   return createUciStore(data);
+}
+
+const clone = (value) => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)));
+
+// luci-base uci.js (OpenWrt 24.10 and 25.12): state.values is the config as
+// loaded; add/set/unset/remove stage edits in state.creates, state.changes and
+// state.deletes until uci.save() sends them (Map.save), and the page keeps
+// them until then. A form map, the rule modal included, writes here. `data`
+// is the config as the next save leaves it, which the tests compare.
+function createStagedUciStore(config, initial) {
+  const state = {
+    newidx: 0,
+    values: { [config]: clone(initial || {}) },
+    creates: {},
+    changes: {},
+    deletes: {},
+    reorder: {},
+  };
+  const stored = (value) => (Array.isArray(value) ? value.map(String) : `${value}`);
+  const uci = {
+    state,
+    get data() {
+      const result = {};
+      for (const section of uci.sections(config)) {
+        const view = {};
+        for (const [key, value] of Object.entries(section)) {
+          // rpcd drops an empty list; .create and .index are uci.js bookkeeping.
+          if (key === ".create" || key === ".index") continue;
+          if (Array.isArray(value) && !value.length) continue;
+          view[key] = value;
+        }
+        result[section[".name"]] = view;
+      }
+      return result;
+    },
+    createSID(conf) {
+      const v = state.values;
+      const n = state.creates;
+      let sid;
+      do {
+        sid = `new${Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, "0")}`;
+      } while (n[conf]?.[sid] || v[conf]?.[sid]);
+      return sid;
+    },
+    add(conf, type, name) {
+      const n = state.creates;
+      const sid = name || uci.createSID(conf);
+      n[conf] ??= {};
+      n[conf][sid] = {
+        ".type": type,
+        ".name": sid,
+        ".create": name,
+        ".anonymous": !name,
+        ".index": 1000 + state.newidx++,
+      };
+      return sid;
+    },
+    remove(conf, sid) {
+      const v = state.values;
+      const n = state.creates;
+      const c = state.changes;
+      const d = state.deletes;
+      if (n[conf]?.[sid]) {
+        delete n[conf][sid];
+      } else if (v[conf]?.[sid]) {
+        delete c[conf]?.[sid];
+        d[conf] ??= {};
+        d[conf][sid] = true;
+      }
+    },
+    sections(conf, type, cb) {
+      const v = state.values[conf];
+      const n = state.creates[conf];
+      const c = state.changes[conf];
+      const d = state.deletes[conf];
+      const list = [];
+      if (!v) return list;
+      // rpcd reports .index; the fixtures keep their file order instead.
+      Object.keys(v).forEach((s, position) => {
+        if (d && d[s] === true) return;
+        if (type && v[s][".type"] !== type) return;
+        const section = Object.assign({}, v[s], c ? c[s] : null);
+        if (d && d[s]) for (const opt in d[s]) delete section[opt];
+        list.push([v[s][".index"] ?? position, section]);
+      });
+      if (n)
+        for (const s in n)
+          if (!type || n[s][".type"] === type) list.push([n[s][".index"], Object.assign({}, n[s])]);
+      const sa = list.sort((a, b) => a[0] - b[0]).map(([, section]) => section);
+      sa.forEach((section, i) => (section[".index"] = i));
+      if (typeof cb === "function") sa.forEach((section) => cb.call(uci, section, section[".name"]));
+      return sa;
+    },
+    get(conf, sid, opt) {
+      const v = state.values;
+      const n = state.creates;
+      const c = state.changes;
+      const d = state.deletes;
+      if (sid == null) return null;
+      if (n[conf]?.[sid]) {
+        if (opt == null) return n[conf][sid];
+        return n[conf][sid][opt] ?? null;
+      }
+      if (opt != null) {
+        if (d[conf]?.[sid] && (d[conf][sid] === true || d[conf][sid][opt])) return null;
+        if (c[conf]?.[sid]?.[opt] != null) return c[conf][sid][opt];
+        return v[conf]?.[sid]?.[opt] ?? null;
+      }
+      if (!v[conf] || d[conf]?.[sid] === true) return null;
+      // As uci.js does, a whole-section read merges the staged edits into the
+      // loaded values in place.
+      const s = v[conf][sid] || null;
+      if (s) {
+        if (c[conf]?.[sid])
+          for (const o in c[conf][sid]) if (c[conf][sid][o] != null) s[o] = c[conf][sid][o];
+        if (d[conf]?.[sid]) for (const o in d[conf][sid]) delete s[o];
+      }
+      return s;
+    },
+    set(conf, sid, opt, val) {
+      const v = state.values;
+      const n = state.creates;
+      const c = state.changes;
+      const d = state.deletes;
+      if (sid == null || opt == null || opt.charAt(0) === ".") return;
+      if (n[conf]?.[sid]) {
+        if (val != null) n[conf][sid][opt] = stored(val);
+        else delete n[conf][sid][opt];
+      } else if (val != null && val !== "") {
+        if (d[conf] && d[conf][sid] === true) return;
+        if (!v[conf]?.[sid]) return;
+        c[conf] ??= {};
+        c[conf][sid] ??= {};
+        if (d[conf]?.[sid]) {
+          delete d[conf][sid][opt];
+          if (!Object.keys(d[conf][sid]).length) delete d[conf][sid];
+        }
+        c[conf][sid][opt] = stored(val);
+      } else {
+        if (c[conf]?.[sid]) {
+          delete c[conf][sid][opt];
+          if (!Object.keys(c[conf][sid]).length) delete c[conf][sid];
+        }
+        if (Object.hasOwn(v[conf]?.[sid] ?? {}, opt)) {
+          d[conf] ??= {};
+          d[conf][sid] ??= {};
+          if (d[conf][sid] !== true) d[conf][sid][opt] = true;
+        }
+      }
+    },
+    unset(conf, sid, opt) {
+      return uci.set(conf, sid, opt, null);
+    },
+    load: () => Promise.resolve(),
+    // What rpcd applies, reloaded: the staged edits become the loaded config.
+    save() {
+      for (const conf of Object.keys(state.values)) {
+        const next = {};
+        for (const section of uci.sections(conf)) {
+          const { ".create": _create, ".index": _index, ...rest } = section;
+          next[rest[".name"]] = rest;
+        }
+        state.values[conf] = next;
+        delete state.creates[conf];
+        delete state.changes[conf];
+        delete state.deletes[conf];
+        delete state.reorder[conf];
+      }
+      return Promise.resolve();
+    },
+  };
+  return uci;
 }
 
 // Just enough DOM for renderStackedJsonSettingsModal and main.js top level.
@@ -368,9 +541,10 @@ function createForm({ version, baseclass, uci, jsonMaps }) {
     parse() {
       return Promise.all(this.children.map((section) => section.parse()));
     },
+    // Map.save(): a parse that passes sends the staged edits (uci.save).
     save() {
       this.checkDepends();
-      return this.parse();
+      return this.parse().then(() => this.data.save());
     },
     findElement() {
       return null;
@@ -461,6 +635,8 @@ function createForm({ version, baseclass, uci, jsonMaps }) {
       return this.map.save(null, true);
     },
   });
+  // TableSection.handleModalCancel() of a modal opened from the page: hide it.
+  const hideModal = () => Promise.resolve();
   // A grid row shows a widget only for editable options (the Enable
   // checkbox); the other columns are text and the Add/Edit modal edits them.
   const isGridWidget = (option) => option.editable && !option.modalonly && !option.disable;
@@ -482,6 +658,21 @@ function createForm({ version, baseclass, uci, jsonMaps }) {
       for (const sid of this.cfgsections())
         for (const option of this.children) if (isGridWidget(option)) tasks.push(option.parse(sid));
       return Promise.all(tasks);
+    },
+    // TableSection.handleModalSave(): a refused save keeps the modal open.
+    handleModalSave(modalMap, ev) {
+      return modalMap
+        .save(null, true)
+        .then(() => this.handleModalCancel(modalMap, ev, true))
+        .catch(() => {});
+    },
+    // GridSection.handleModalCancel(): Dismiss drops a rule that Add created;
+    // every other edit staged while the modal was open stays in uci.
+    handleModalCancel(_modalMap, _ev, isSaving) {
+      if (this.map.addedSection != null && !isSaving)
+        this.map.data.remove(this.uciconfig ?? this.map.config, this.map.addedSection);
+      delete this.map.addedSection;
+      return hideModal();
     },
   });
 
@@ -753,7 +944,7 @@ function createEnvironment({
   fs: fsOverrides = {},
 } = {}) {
   const baseclass = createBaseclass();
-  const uci = createUciStore(config);
+  const uci = createStagedUciStore("forkop", config);
   const document = createDocument();
   const listeners = new Map();
   const window = {
@@ -955,11 +1146,15 @@ function createEnvironment({
           return this.option(name).isActive(section_id);
         },
         save: () => map.save(),
-        // Clicks the gear of a DynamicList item and returns the stacked modal.
-        async openItemSettings(optionName, itemValue) {
+        // The Save and Dismiss buttons of the modal (GridSection handlers).
+        saveButton: () => grid.handleModalSave(map),
+        dismiss: () => grid.handleModalCancel(map),
+        // Clicks the gear of a DynamicList item (or its add button, with
+        // context { adding: true }) and returns the stacked modal.
+        async openItemSettings(optionName, itemValue, context) {
           const option = this.option(optionName);
           const widget = option.getUIElement(section_id);
-          await option.renderItemSettingsModal(section_id, itemValue, option, widget);
+          await option.renderItemSettingsModal(section_id, itemValue, option, widget, null, context);
           const buttons = document.modal.querySelector("div.button-row").childNodes;
           const button = (label) => buttons.find((node) => node instanceof FakeNode && node.textContent === label);
           const stackedMap = jsonMaps.at(-1);

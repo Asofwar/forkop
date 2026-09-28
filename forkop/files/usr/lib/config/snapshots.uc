@@ -389,7 +389,14 @@ function do_apply(candidate_file, expected_hash, keep_id) {
     return result;
 }
 let mode = value(ARGV[0]);
-if (mode == "list") { print(sprintf("%J\n", fs.stat(ROOT) == null ? [] : list_snapshots())); exit(0); }
+// The list is read-only output: the hash of the whole config (secrets
+// included) stays internal (UC-150).
+if (mode == "list") {
+    let result = fs.stat(ROOT) == null ? [] : list_snapshots();
+    for (let item in result) delete item.config_hash;
+    print(sprintf("%J\n", result));
+    exit(0);
+}
 if (mode == "diff") {
     let item = read_snapshot(value(ARGV[1]), true);
     let current = read_config();

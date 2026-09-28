@@ -76,7 +76,6 @@ export namespace Forkop {
     created_at: number;
     kind: 'manual' | 'automatic';
     reason: string;
-    config_hash: string;
     forkop_version: string;
     is_lkg?: boolean;
   }

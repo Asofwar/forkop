@@ -4416,6 +4416,18 @@ function textModeSwitchAgrees(section_id, key) {
   return backendFlag(section_id, key) === (Number.parseInt(text, 10) === 1);
 }
 
+// config/connections.uc bool_value(): ucode compares null, "", false and 0
+// equal to "", so they read as unset; a list or an object is never true.
+function connectionsBoolValue(value, fallback) {
+  if ([null, undefined, "", false, 0].includes(value)) {
+    return Boolean(fallback);
+  }
+
+  return (
+    typeof value !== "object" && ["1", "true", "yes", "on"].includes(`${value}`)
+  );
+}
+
 // config/connections.uc interface_domain_resolver_*() for an interface of the
 // legacy list: its interface_settings entry, else the rule options. Null when
 // an interface item cannot hold the same values.
@@ -4439,10 +4451,12 @@ function legacyInterfaceSettings(section_id, name) {
   };
   const enabled = value("domain_resolver_enabled", "");
   const result = {
-    domain_resolver_enabled: (
-      enabled === ""
-        ? backendFlag(section_id, "domain_resolver_enabled")
-        : ["1", "true", "yes", "on"].includes(`${enabled}`)
+    domain_resolver_enabled: connectionsBoolValue(
+      enabled,
+      connectionsBoolValue(
+        uci.get(UCI_PACKAGE, section_id, "domain_resolver_enabled"),
+        false,
+      ),
     )
       ? "1"
       : "0",

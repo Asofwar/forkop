@@ -82,6 +82,17 @@ const convertible = {
       domain_resolver_dns_server: '1.1.1.1' } }) }) },
   legacy_interface_option: { rule: rule({ action: 'connection', ...routed, domain: 'example.com',
     interface: 'awg0' }) },
+  // config/connections.uc bool_value(): a JSON false or 0 in interface_settings
+  // reads as unset (ucode compares both equal to ""), so the rule option
+  // applies; a list as the rule option is never true.
+  interface_settings_false: { rule: rule({ action: 'connection', ...routed, domain: 'example.com',
+    interfaces: ['awg0', 'wg1'], domain_resolver_enabled: '1', domain_resolver_dns_server: '9.9.9.9',
+    interface_settings: '{"awg0":{"domain_resolver_enabled":false},"wg1":{"domain_resolver_enabled":0}}' }) },
+  interface_settings_true: { rule: rule({ action: 'connection', ...routed, domain: 'example.com',
+    interfaces: ['awg0', 'wg1'], domain_resolver_dns_server: '9.9.9.9',
+    interface_settings: '{"awg0":{"domain_resolver_enabled":true},"wg1":{"domain_resolver_enabled":1}}' }) },
+  resolver_flag_list: { rule: rule({ action: 'connection', ...routed, domain: 'example.com',
+    interfaces: ['awg0'], domain_resolver_enabled: ['1'], domain_resolver_dns_server: '9.9.9.9' }) },
   legacy_interfaces_shadowed: {
     rule: rule({ action: 'connection', ...routed, domain: 'example.com', interfaces: ['awg0'], interface: 'wg9' }),
     if1: iface('if1', { name: 'wg0' }),

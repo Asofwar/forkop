@@ -146,6 +146,17 @@ function clash_api_secret(section) {
     return trim(option(section, "yacd_secret_key", ""));
 }
 
+// A strong Clash API secret (D-1 (b)): 256 random bits as hex, or null when
+// the random source is unavailable. The source is only overridden by tests.
+function random_hex_secret() {
+    let fh = fs.open(getenv("FORKOP_SECRET_RANDOM_SOURCE") || "/dev/urandom", "r");
+    if (fh == null)
+        return null;
+    let bytes = fh.read(32);
+    fh.close();
+    return type(bytes) == "string" && length(bytes) == 32 ? hexenc(bytes) : null;
+}
+
 function int_option(section, key, fallback) {
     let value = option(section, key, fallback);
     if (match(value, /[^0-9]/))
@@ -171,5 +182,6 @@ return {
     list_option,
     bool_option,
     int_option,
-    clash_api_secret
+    clash_api_secret,
+    random_hex_secret
 };

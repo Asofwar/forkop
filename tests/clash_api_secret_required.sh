@@ -73,6 +73,20 @@ node -e '
 migrate applied ', "applied_migrations": [ "clash_api_secret_v1" ]'
 [ "$(field applied yacd_secret_key)" = "<none>" ] || fail "an applied migration must not run again"
 
+# Without a random source nothing is generated and the migration is not
+# recorded, so the next run retries it.
+cat >"$WORK_DIR/no-random.json" <<'JSON'
+{ "settings": { ".name": "settings", ".type": "settings", "config_version": "1.0.5" } }
+JSON
+FORKOP_SECRET_RANDOM_SOURCE="$WORK_DIR/missing-random" \
+  "$UCODE_BIN" -L "$FORKOP_LIB" "$MIGRATION" migrate-fixture "$WORK_DIR/no-random.json" >"$WORK_DIR/no-random.out" ||
+  fail "migration failed without a random source"
+[ "$(field no-random yacd_secret_key)" = "<none>" ] || fail "no secret can be generated without a random source"
+field no-random applied_migrations | grep -qw clash_api_secret_v1 &&
+  fail "a secret migration that generated nothing must not be recorded"
+field no-random applied_migrations | grep -qw own_dependency_mirror_v1 ||
+  fail "the other migrations must still be recorded"
+
 # Podkop configurations go through the same migrations.
 cat >"$WORK_DIR/podkop.json" <<'JSON'
 { "settings": { ".name": "settings", ".type": "settings", "yacd_secret_key": "podkop-secret" } }

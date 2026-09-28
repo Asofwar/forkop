@@ -1,0 +1,1039 @@
+import { onMount, preserveScrollForPage } from '../../../helpers';
+import { showToast } from '../../../helpers/showToast';
+import { openForkopPage } from '../../helpers/navigation';
+import { isActiveLuciTab } from '../../helpers/isActiveLuciTab';
+import { ForkopShellMethods } from '../../methods';
+import { logger, store, StoreType } from '../../services';
+import { isReadonlyMode } from '../../services/accessMode.service';
+import { Forkop } from '../../types';
+import { confirmAction } from '../../ui/confirmAction';
+import { renderOverflowMenu } from '../../ui/overflowMenu';
+import { renderStatus } from '../../ui/status';
+import {
+  renderEmptyState,
+  renderErrorState,
+  renderLoadingState,
+} from '../../ui/states';
+import { formatRelativeTime } from '../../ui/time';
+import { historyItems } from '../history/model';
+import {
+  candidateRows,
+  confidenceLabel,
+  COOLDOWN_CHOICES,
+  durationChoices,
+  durationLabel,
+  groupCards,
+  INTERVAL_CHOICES,
+  modeDescription,
+  modeLabel,
+  MODES,
+  mutationErrorText,
+  outsideReasonText,
+  strategyLabel,
+  targetIdFor,
+  targetRows,
+  workerView,
+  type GroupCard,
+} from './model';
+
+const REFRESH_INTERVAL_MS = 15000;
+// Group membership needs a DNS lookup per target on the router: refreshed
+// less often, and after every change.
+const GROUPS_REFRESH_INTERVAL_MS = 120000;
+const JOB_POLL_INTERVAL_MS = 2000;
+// A run measures every candidate of every target of the chosen groups.
+const JOB_TIMEOUT_MS = 20 * 60 * 1000;
+const HISTORY_LIMIT = 5;
+
+let mounted = false;
+let mountId = 0;
+let refreshTimer: ReturnType<typeof setInterval> | null = null;
+let status: Forkop.AutotuneStatus | null = null;
+let statusFailed = false;
+let live: Forkop.AutotuneGroups | null = null;
+let liveFailed = false;
+let liveLoadedAt = 0;
+let liveLoading = false;
+let history: Forkop.HistoryResult | null = null;
+let historyFailed = false;
+let busy = false;
+// Scope of the check started from this page ("all" or a group), if any.
+let runningScope: string | null = null;
+
+function replace(id: string, ...nodes: Node[]) {
+  const container = document.getElementById(id);
+  if (container)
+    preserveScrollForPage(() => container.replaceChildren(...nodes));
+}
+
+function formatTime(timestamp: number) {
+  return new Date(timestamp * 1000).toLocaleString();
+}
+
+function timeNode(timestamp: number) {
+  return E(
+    'span',
+    { class: 'fkp-autotune__time', title: formatTime(timestamp) },
+    formatRelativeTime(timestamp),
+  );
+}
+
+async function loadStatus() {
+  const id = mountId;
+  const [statusResponse, historyResponse] = await Promise.allSettled([
+    ForkopShellMethods.autotuneStatus(),
+    ForkopShellMethods.getHistory(),
+  ]);
+  if (!mounted || id !== mountId) return;
+
+  const next =
+    statusResponse.status === 'fulfilled' && statusResponse.value.success
+      ? statusResponse.value.data
+      : null;
+  status = next && next.status === 'ok' && next.policy ? next : null;
+  statusFailed = !status;
+  const events =
+    historyResponse.status === 'fulfilled' && historyResponse.value.success
+      ? historyResponse.value.data
+      : null;
+  history = events && Array.isArray(events.events) ? events : null;
+  historyFailed = !history;
+  renderAll();
+}
+
+async function loadGroups() {
+  if (liveLoading) return;
+  const id = mountId;
+  liveLoading = true;
+  try {
+    const response = await ForkopShellMethods.autotuneGroups();
+    if (!mounted || id !== mountId) return;
+    const data = response.success ? response.data : null;
+    live = data && data.status === 'ok' && data.groups ? data : null;
+    liveFailed = !live;
+    liveLoadedAt = Date.now();
+  } finally {
+    liveLoading = false;
+  }
+  if (mounted && id === mountId) renderAll();
+}
+
+async function loadAll() {
+  await Promise.all([loadStatus(), loadGroups()]);
+}
+
+// ---- actions -----------------------------------------------------------
+
+async function mutate(
+  action: () => Promise<Forkop.MethodResponse<Forkop.AutotuneMutationResult>>,
+  success: string,
+) {
+  if (busy) return false;
+  busy = true;
+  renderAll();
+  let ok = false;
+  try {
+    const result = await action();
+    const data = result.success ? result.data : null;
+    ok = data?.status === 'ok';
+    if (ok) showToast(success, 'success');
+    else showToast(mutationErrorText(data?.reason), 'error', 8000);
+  } catch (error) {
+    logger.error('[AUTOTUNE]', 'action failed', error);
+    showToast(mutationErrorText(undefined), 'error');
+  } finally {
+    busy = false;
+  }
+  await loadAll();
+  return ok;
+}
+
+async function setMode(mode: Forkop.AutotuneMode) {
+  if (!status || status.policy.mode === mode) return;
+  if (mode === 'auto') {
+    const confirmed = await confirmAction({
+      title: _('Turn on automatic mode?'),
+      message: _(
+        'Forkop X will change the strategy of existing DPI rules by itself, only after several confirmations in a row, with a production check and automatic rollback.',
+      ),
+      consequences: [
+        _(
+          'It never creates or deletes rules, never turns DPI bypass off and never moves targets between rules.',
+        ),
+        _('At most %d change(s) per day; a rolled back strategy waits %s.')
+          .replace('%d', String(status.policy.max_applies_per_day))
+          .replace('%s', durationLabel(status.policy.cooldown)),
+        _('Changes are made only by scheduled checks, one group at a time.'),
+      ],
+      confirmLabel: _('Turn on'),
+    });
+    if (!confirmed) return;
+  }
+  await mutate(
+    () => ForkopShellMethods.autotunePolicySet('mode', mode),
+    _('Autotune mode changed'),
+  );
+}
+
+async function pollJob(jobId: string) {
+  const started = Date.now();
+  while (mounted && Date.now() - started < JOB_TIMEOUT_MS) {
+    await new Promise((resolve) => setTimeout(resolve, JOB_POLL_INTERVAL_MS));
+    const response = await ForkopShellMethods.autotuneRunStatus(jobId);
+    const job = response.success ? response.data.job : undefined;
+    if (!job) continue;
+    if (job.state === 'finished') {
+      const result = job.result;
+      if (result?.status === 'ok' && result.result === 'completed')
+        showToast(_('Check completed'), 'success');
+      else if (result?.status === 'busy')
+        showToast(_('A check is already running.'), 'warning', 6000);
+      else if (result?.result === 'skipped')
+        showToast(
+          _('The check was postponed. See the state above.'),
+          'warning',
+          8000,
+        );
+      else showToast(_('The check did not complete'), 'error', 8000);
+      return;
+    }
+    if (job.state === 'lost') {
+      showToast(_('The check stopped unexpectedly'), 'error', 8000);
+      return;
+    }
+    if (mounted) void loadStatus();
+  }
+}
+
+async function runCheck(scope: string) {
+  if (busy || runningScope) return;
+  runningScope = scope;
+  renderAll();
+  try {
+    const response = await ForkopShellMethods.autotuneRunAsync(scope);
+    const data = response.success ? response.data : null;
+    if (data?.status === 'ok' && data.job) {
+      showToast(
+        _(
+          'Check started. Targets are measured in isolation; production traffic is not changed.',
+        ),
+        'info',
+        6000,
+      );
+      await pollJob(data.job);
+    } else if (data?.status === 'busy') {
+      showToast(_('A check is already running.'), 'warning', 6000);
+    } else {
+      showToast(_('Could not start the check'), 'error', 8000);
+    }
+  } catch (error) {
+    logger.error('[AUTOTUNE]', 'run failed', error);
+    showToast(_('Could not start the check'), 'error', 8000);
+  } finally {
+    runningScope = null;
+  }
+  if (mounted) await loadAll();
+}
+
+function field(label: string, control: HTMLElement, hint?: string) {
+  return [
+    E('label', {}, label),
+    control,
+    ...(hint ? [E('div', { class: 'fkp-autotune__field-hint' }, hint)] : []),
+  ];
+}
+
+function select(name: string, choices: [string, string][], value: string) {
+  return E(
+    'select',
+    { class: 'cbi-input-select', name },
+    choices.map(([key, label]) =>
+      E(
+        'option',
+        { value: key, selected: key === value ? true : undefined },
+        label,
+      ),
+    ),
+  ) as HTMLSelectElement;
+}
+
+function numberInput(name: string, value: number, min: number, max: number) {
+  return E('input', {
+    class: 'cbi-input-text',
+    type: 'number',
+    name,
+    min: String(min),
+    max: String(max),
+    step: '1',
+    value: String(value),
+  }) as HTMLInputElement;
+}
+
+function modalActions(onSave: () => void, saveLabel: string) {
+  return E('div', { class: 'fkp-confirm__actions' }, [
+    E(
+      'button',
+      { type: 'button', class: 'btn cbi-button', click: () => ui.hideModal() },
+      _('Cancel'),
+    ),
+    E(
+      'button',
+      { type: 'button', class: 'btn cbi-button-action', click: onSave },
+      saveLabel,
+    ),
+  ]);
+}
+
+function showPolicyEditor() {
+  if (!status) return;
+  const policy = status.policy;
+  const controls = {
+    interval: select(
+      'interval',
+      durationChoices(INTERVAL_CHOICES, policy.interval).map((v) => [
+        v,
+        durationLabel(v),
+      ]),
+      policy.interval,
+    ),
+    confirmations: numberInput('confirmations', policy.confirmations, 2, 10),
+    min_confidence: select(
+      'min_confidence',
+      [
+        ['high', confidenceLabel('high')],
+        ['medium', confidenceLabel('medium')],
+      ],
+      policy.min_confidence,
+    ),
+    max_applies_per_day: numberInput(
+      'max_applies_per_day',
+      policy.max_applies_per_day,
+      0,
+      5,
+    ),
+    cooldown: select(
+      'cooldown',
+      durationChoices(COOLDOWN_CHOICES, policy.cooldown).map((v) => [
+        v,
+        durationLabel(v),
+      ]),
+      policy.cooldown,
+    ),
+    probes: numberInput('probes', policy.probes, 3, 7),
+  };
+
+  const save = async () => {
+    const changes: [string, string][] = [];
+    for (const [key, control] of Object.entries(controls)) {
+      const current = String(policy[key as keyof Forkop.AutotunePolicy]);
+      if (control.value !== current) changes.push([key, control.value]);
+    }
+    ui.hideModal();
+    if (!changes.length) return;
+    // One option per call: each is validated and committed on its own.
+    for (const [key, value] of changes) {
+      const ok = await mutate(
+        () => ForkopShellMethods.autotunePolicySet(key, value),
+        _('Policy saved'),
+      );
+      if (!ok) break;
+    }
+  };
+
+  ui.showModal(_('Autotune policy'), [
+    E('div', { class: 'fkp-autotune__form' }, [
+      ...field(_('Check every'), controls.interval),
+      ...field(
+        _('Confirmations'),
+        controls.confirmations,
+        _('The same result this many checks in a row (2–10).'),
+      ),
+      ...field(
+        _('Minimum confidence'),
+        controls.min_confidence,
+        _(
+          'For recommendations. Automatic apply always requires high confidence.',
+        ),
+      ),
+      ...field(
+        _('Automatic changes per day'),
+        controls.max_applies_per_day,
+        _('0–5; 0 turns automatic changes off.'),
+      ),
+      ...field(
+        _('Pause after a rollback'),
+        controls.cooldown,
+        _(
+          'A rolled back strategy is not applied again before this time passes.',
+        ),
+      ),
+      ...field(
+        _('Probes per strategy'),
+        controls.probes,
+        _('3–7 attempts per strategy and target in each check.'),
+      ),
+    ]),
+    modalActions(() => void save(), _('Save')),
+  ] as unknown as HTMLElement);
+}
+
+function showTargetEditor(target?: Forkop.AutotuneTarget) {
+  if (!status) return;
+  const host = E('input', {
+    class: 'cbi-input-text',
+    type: 'text',
+    name: 'host',
+    value: target?.host ?? '',
+    placeholder: 'youtube.com',
+    autocomplete: 'off',
+  }) as HTMLInputElement;
+  const resolver = E('input', {
+    class: 'cbi-input-text',
+    type: 'text',
+    name: 'resolver',
+    value: target?.resolver ?? '',
+    placeholder: _('Router DNS'),
+    autocomplete: 'off',
+  }) as HTMLInputElement;
+  const enabled = E('input', {
+    type: 'checkbox',
+    name: 'enabled',
+    checked: target ? (target.enabled ? true : undefined) : true,
+  }) as HTMLInputElement;
+
+  const save = async () => {
+    const value = host.value.trim().toLowerCase();
+    if (!value) {
+      showToast(mutationErrorText('invalid_host'), 'error');
+      return;
+    }
+    ui.hideModal();
+    const taken = status?.targets.map((t) => t.id) ?? [];
+    const id = target?.id ?? targetIdFor(value, taken);
+    await mutate(
+      () =>
+        ForkopShellMethods.autotuneTargetSet(
+          id,
+          value,
+          enabled.checked,
+          resolver.value.trim(),
+        ),
+      _('Target saved'),
+    );
+  };
+
+  ui.showModal(target ? _('Edit target') : _('Add target'), [
+    E('div', { class: 'fkp-autotune__form' }, [
+      ...field(
+        _('Domain'),
+        host,
+        _('A site or service checked through the DPI rule that routes it.'),
+      ),
+      ...field(
+        _('DNS server for checks'),
+        resolver,
+        _(
+          'Optional IPv4 address. By default the first IPv4 DNS server of Forkop X is used.',
+        ),
+      ),
+      ...field(_('Enabled'), enabled),
+    ]),
+    modalActions(() => void save(), _('Save')),
+  ] as unknown as HTMLElement);
+}
+
+async function removeTarget(target: Forkop.AutotuneTarget) {
+  const confirmed = await confirmAction({
+    title: _('Remove target?'),
+    message: `${target.host}. ${_('Its measurements are deleted as well. Routing rules are not changed.')}`,
+    confirmLabel: _('Remove'),
+    danger: true,
+  });
+  if (!confirmed) return;
+  await mutate(
+    () => ForkopShellMethods.autotuneTargetRemove(target.id),
+    _('Target removed'),
+  );
+}
+
+function showCandidates(target: Forkop.AutotuneTarget) {
+  const last = target.last;
+  if (!last) return;
+  const rows = candidateRows(last);
+  ui.showModal(`${target.host}: ${_('last check')}`, [
+    E(
+      'p',
+      { class: 'fkp-autotune__muted' },
+      `${formatTime(last.at)} · ${_('measured in isolation from production traffic')}`,
+    ),
+    rows.length
+      ? E('div', { class: 'fkp-autotune__table-wrap' }, [
+          E('table', { class: 'table fkp-autotune__table' }, [
+            E('tr', { class: 'tr table-titles' }, [
+              E('th', { class: 'th' }, _('Strategy')),
+              E('th', { class: 'th' }, _('Successful')),
+              E('th', { class: 'th' }, _('Stability')),
+              E('th', { class: 'th' }, _('TLS, median')),
+            ]),
+            ...rows.map((row) =>
+              E('tr', { class: 'tr' }, [
+                E(
+                  'td',
+                  { class: 'td' },
+                  row.selected ? `${row.name} ★` : row.name,
+                ),
+                E('td', { class: 'td' }, row.result),
+                E('td', { class: 'td' }, renderStatus(row.stability)),
+                E('td', { class: 'td' }, row.latency),
+              ]),
+            ),
+          ]),
+        ])
+      : E('p', {}, _('No strategies were measured')),
+    E('div', { class: 'fkp-confirm__actions' }, [
+      E(
+        'button',
+        {
+          type: 'button',
+          class: 'btn cbi-button',
+          click: () => ui.hideModal(),
+        },
+        _('Close'),
+      ),
+    ]),
+  ] as unknown as HTMLElement);
+}
+
+// ---- rendering ---------------------------------------------------------
+
+function policySummary(policy: Forkop.AutotunePolicy) {
+  return [
+    _('every %s').replace('%s', durationLabel(policy.interval)),
+    _('%d confirmations').replace('%d', String(policy.confirmations)),
+    _('up to %d automatic change(s) per day').replace(
+      '%d',
+      String(policy.max_applies_per_day),
+    ),
+    _('pause after a rollback %s').replace(
+      '%s',
+      durationLabel(policy.cooldown),
+    ),
+  ].join(' · ');
+}
+
+function renderState() {
+  const readonly = isReadonlyMode();
+  if (!status) {
+    replace(
+      'autotune-state',
+      statusFailed
+        ? renderErrorState(
+            _('Autotune state is unavailable'),
+            () => void loadAll(),
+          )
+        : renderLoadingState(),
+    );
+    replace('autotune-state-actions');
+    return;
+  }
+
+  const policy = status.policy;
+  const worker = workerView(status.worker);
+  const facts: [string, Node | string][] = [
+    [
+      _('Mode'),
+      readonly
+        ? modeLabel(policy.mode)
+        : E(
+            'div',
+            {
+              class: 'fkp-autotune__modes',
+              role: 'group',
+              'aria-label': _('Mode'),
+            },
+            MODES.map((mode) =>
+              E(
+                'button',
+                {
+                  type: 'button',
+                  class: 'btn cbi-button',
+                  'aria-pressed': mode === policy.mode ? 'true' : 'false',
+                  disabled: busy ? true : undefined,
+                  click: () => void setMode(mode),
+                },
+                modeLabel(mode),
+              ),
+            ),
+          ),
+    ],
+    [
+      '',
+      E('p', { class: 'fkp-autotune__muted' }, modeDescription(policy.mode)),
+    ],
+    [_('Policy'), policySummary(policy)],
+  ];
+  if (runningScope || status.worker?.state === 'running')
+    facts.push([
+      _('State'),
+      renderStatus(worker ?? { label: _('Checking targets'), tone: 'loading' }),
+    ]);
+  else if (worker && status.worker?.finished_at)
+    facts.push([
+      _('Last check'),
+      E('span', { class: 'fkp-autotune__row' }, [
+        renderStatus(worker),
+        timeNode(status.worker.finished_at),
+      ]),
+    ]);
+  else if (worker) facts.push([_('Last check'), renderStatus(worker)]);
+  else facts.push([_('Last check'), _('Not checked yet')]);
+  if (policy.mode !== 'off' && status.next_run_at)
+    facts.push([_('Next scheduled check'), formatTime(status.next_run_at)]);
+  if (status.recovered_at)
+    facts.push([
+      _('Warning'),
+      renderStatus({
+        label: _(
+          'The autotune state was damaged and has been reset; automatic changes wait for the pause after a rollback.',
+        ),
+        tone: 'warning',
+      }),
+    ]);
+  if (status.errors.length)
+    facts.push([
+      _('Warning'),
+      renderStatus({
+        label: _(
+          'Some autotune settings are invalid; safe defaults are used for them.',
+        ),
+        tone: 'warning',
+      }),
+    ]);
+
+  replace(
+    'autotune-state',
+    E(
+      'dl',
+      { class: 'fkp-autotune__facts' },
+      facts.flatMap(([label, value]) => [
+        E('dt', {}, label),
+        E('dd', {}, value),
+      ]),
+    ),
+  );
+
+  replace(
+    'autotune-state-actions',
+    ...(readonly
+      ? []
+      : [
+          E(
+            'button',
+            {
+              type: 'button',
+              class: 'btn cbi-button',
+              disabled: busy ? true : undefined,
+              click: () => showPolicyEditor(),
+            },
+            _('Policy…'),
+          ),
+          E(
+            'button',
+            {
+              type: 'button',
+              class: 'btn cbi-button-action',
+              disabled:
+                busy || runningScope || !status.targets.length
+                  ? true
+                  : undefined,
+              title: !status.targets.length
+                ? _('Add a target first')
+                : undefined,
+              click: () => void runCheck('all'),
+            },
+            runningScope === 'all' ? _('Checking…') : _('Check all now'),
+          ),
+        ]),
+  );
+}
+
+function renderProgress(progress: NonNullable<GroupCard['progress']>) {
+  return E('span', { class: 'fkp-autotune__row' }, [
+    E(
+      'span',
+      { class: 'fkp-autotune__progress' },
+      Array.from({ length: progress.required }, (_unused, index) =>
+        E('span', {
+          class: `fkp-autotune__dot${index < progress.count ? ' fkp-autotune__dot--on' : ''}`,
+        }),
+      ),
+    ),
+    _('Confirmation %d / %d')
+      .replace('%d', String(progress.count))
+      .replace('%d', String(progress.required)),
+  ]);
+}
+
+function renderGroup(card: GroupCard) {
+  const readonly = isReadonlyMode();
+  const facts: [string, Node | string][] = [[_('Now'), card.current]];
+  if (card.recommended)
+    facts.push([_('Recommended'), strategyLabel(card.recommended)]);
+  if (card.confidence)
+    facts.push([_('Confidence'), confidenceLabel(card.confidence)]);
+  if (card.progress)
+    facts.push([_('Confirmation'), renderProgress(card.progress)]);
+  if (card.checkedAt) facts.push([_('Checked'), timeNode(card.checkedAt)]);
+  if (card.lastApply)
+    facts.push([
+      _('Last change'),
+      E('span', { class: 'fkp-autotune__row' }, [
+        `${card.lastApply.candidate}:`,
+        renderStatus(card.lastApply.outcome),
+        timeNode(card.lastApply.at),
+      ]),
+    ]);
+  for (const cooldown of card.cooldowns)
+    facts.push([
+      _('Pause'),
+      _('%s is not applied again before %t')
+        .replace('%s', cooldown.candidate)
+        .replace('%t', formatTime(cooldown.until)),
+    ]);
+  facts.push([_('Targets'), card.targets.join(', ') || '—']);
+
+  return E('li', { class: 'fkp-autotune__group' }, [
+    E('div', { class: 'fkp-autotune__row' }, [
+      E(
+        'span',
+        { class: 'fkp-autotune__name' },
+        `${card.title} · ${_('Zapret rule')}`,
+      ),
+      renderStatus(card.badge),
+    ]),
+    E(
+      'dl',
+      { class: 'fkp-autotune__facts' },
+      facts.flatMap(([label, value]) => [
+        E('dt', {}, label),
+        E('dd', {}, value),
+      ]),
+    ),
+    ...card.explanation.map((text) =>
+      E('p', { class: 'fkp-autotune__text' }, text),
+    ),
+    ...(card.manualHint
+      ? [
+          E(
+            'p',
+            { class: 'fkp-autotune__muted' },
+            _(
+              'In "Recommendations only" mode Forkop X does not change the rule. To let it apply the strategy with a production check and automatic rollback, switch to "Automatic".',
+            ),
+          ),
+        ]
+      : []),
+    ...(readonly
+      ? []
+      : [
+          E('div', { class: 'fkp-actions' }, [
+            E(
+              'button',
+              {
+                type: 'button',
+                class: 'btn cbi-button',
+                disabled: busy || runningScope ? true : undefined,
+                click: () => void runCheck(card.id),
+              },
+              runningScope === card.id ? _('Checking…') : _('Check now'),
+            ),
+            E(
+              'button',
+              {
+                type: 'button',
+                class: 'btn cbi-button',
+                click: () => openForkopPage('settings'),
+              },
+              _('Open rules'),
+            ),
+          ]),
+        ]),
+  ]);
+}
+
+function renderGroups() {
+  if (!status) {
+    replace(
+      'autotune-groups',
+      statusFailed ? renderEmptyState(_('No data')) : renderLoadingState(),
+    );
+    return;
+  }
+
+  const cards = groupCards(status, live);
+  const notes: Node[] = [];
+  if (!live && liveLoading)
+    notes.push(
+      E(
+        'p',
+        { class: 'fkp-autotune__muted' },
+        _('Determining which rule routes each target…'),
+      ),
+    );
+  if (liveFailed)
+    notes.push(
+      E(
+        'p',
+        { class: 'fkp-autotune__muted' },
+        _(
+          'Could not determine the current rule of each target; results of the last check are shown.',
+        ),
+      ),
+    );
+
+  const outside = live?.outside ?? [];
+  replace(
+    'autotune-groups',
+    ...notes,
+    cards.length
+      ? E('ul', { class: 'fkp-autotune__list' }, cards.map(renderGroup))
+      : renderEmptyState(
+          status.targets.length
+            ? live || liveFailed
+              ? _('No target is routed through a Zapret DPI rule')
+              : _('Loading…')
+            : _('No targets yet'),
+          status.targets.length
+            ? undefined
+            : _(
+                'Add the sites that go through your DPI rules, for example youtube.com.',
+              ),
+        ),
+    ...(outside.length
+      ? [
+          E('details', {}, [
+            E(
+              'summary',
+              {},
+              _('Targets outside DPI rules (%d)').replace(
+                '%d',
+                String(outside.length),
+              ),
+            ),
+            E(
+              'ul',
+              { class: 'fkp-autotune__list' },
+              outside.map((item) =>
+                E('li', { class: 'fkp-autotune__item' }, [
+                  E('span', { class: 'fkp-autotune__what' }, [
+                    E('strong', {}, item.host),
+                    ' — ',
+                    outsideReasonText(item.reason),
+                  ]),
+                ]),
+              ),
+            ),
+          ]),
+        ]
+      : []),
+  );
+}
+
+function renderTargets() {
+  const readonly = isReadonlyMode();
+  replace(
+    'autotune-target-actions',
+    ...(readonly || !status
+      ? []
+      : [
+          E(
+            'button',
+            {
+              type: 'button',
+              class: 'btn cbi-button',
+              disabled: busy ? true : undefined,
+              click: () => showTargetEditor(),
+            },
+            _('Add target'),
+          ),
+        ]),
+  );
+  if (!status) {
+    replace(
+      'autotune-targets',
+      statusFailed ? renderEmptyState(_('No data')) : renderLoadingState(),
+    );
+    return;
+  }
+
+  const byId = new Map(status.targets.map((t) => [t.id, t]));
+  const rows = targetRows(status.targets);
+  replace(
+    'autotune-targets',
+    rows.length
+      ? E(
+          'ul',
+          { class: 'fkp-autotune__list' },
+          rows.map((row) => {
+            const target = byId.get(row.id)!;
+            return E('li', { class: 'fkp-autotune__item' }, [
+              E('span', { class: 'fkp-autotune__what' }, [
+                E('strong', {}, row.host),
+                ...(row.resolver
+                  ? [
+                      ' ',
+                      E(
+                        'span',
+                        { class: 'fkp-autotune__muted' },
+                        `DNS ${row.resolver}`,
+                      ),
+                    ]
+                  : []),
+              ]),
+              renderStatus({ label: row.result, tone: row.tone }),
+              ...(row.checkedAt ? [timeNode(row.checkedAt)] : []),
+              E('span', { class: 'fkp-actions' }, [
+                ...(target.last && target.last.candidates.length
+                  ? [
+                      E(
+                        'button',
+                        {
+                          type: 'button',
+                          class: 'btn cbi-button',
+                          click: () => showCandidates(target),
+                        },
+                        _('Details'),
+                      ),
+                    ]
+                  : []),
+                ...(readonly
+                  ? []
+                  : [
+                      renderOverflowMenu(_('Target actions'), [
+                        {
+                          label: _('Edit…'),
+                          onClick: () => showTargetEditor(target),
+                          disabled: busy,
+                        },
+                        {
+                          label: _('Remove…'),
+                          onClick: () => void removeTarget(target),
+                          disabled: busy,
+                          danger: true,
+                        },
+                      ]),
+                    ]),
+              ]),
+            ]);
+          }),
+        )
+      : renderEmptyState(
+          _('No targets yet'),
+          readonly
+            ? undefined
+            : _('Autotune checks only the sites listed here.'),
+        ),
+  );
+}
+
+function renderHistory() {
+  if (!history) {
+    replace(
+      'autotune-history',
+      historyFailed
+        ? renderErrorState(_('History is unavailable'), () => void loadAll())
+        : renderLoadingState(),
+    );
+    return;
+  }
+  const items = historyItems(history.events, 'autotune').slice(
+    0,
+    HISTORY_LIMIT,
+  );
+  replace(
+    'autotune-history',
+    items.length
+      ? E(
+          'ul',
+          { class: 'fkp-autotune__list' },
+          items.map((item) =>
+            E('li', { class: 'fkp-autotune__item' }, [
+              E(
+                'span',
+                { class: 'fkp-autotune__time', title: item.time },
+                item.relative,
+              ),
+              E('span', { class: 'fkp-autotune__what' }, item.title),
+              renderStatus(item.outcome),
+            ]),
+          ),
+        )
+      : renderEmptyState(_('No autotune events yet')),
+    E('div', { class: 'fkp-actions' }, [
+      E(
+        'button',
+        {
+          type: 'button',
+          class: 'btn cbi-button',
+          click: () => openForkopPage('history'),
+        },
+        _('All events'),
+      ),
+    ]),
+  );
+}
+
+function renderAll() {
+  renderState();
+  renderGroups();
+  renderTargets();
+  renderHistory();
+}
+
+function onPageMount() {
+  onPageUnmount();
+  mounted = true;
+  mountId += 1;
+  renderAll();
+  void loadAll();
+  refreshTimer = setInterval(() => {
+    if (busy) return;
+    void loadStatus();
+    if (Date.now() - liveLoadedAt > GROUPS_REFRESH_INTERVAL_MS)
+      void loadGroups();
+  }, REFRESH_INTERVAL_MS);
+}
+
+function onPageUnmount() {
+  mounted = false;
+  mountId += 1;
+  if (refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = null;
+}
+
+let initialized = false;
+
+export async function initController(): Promise<void> {
+  if (initialized) return;
+  initialized = true;
+
+  onMount('autotune-status').then(() => {
+    store.subscribe(
+      (next: StoreType, prev: StoreType, diff: Partial<StoreType>) => {
+        if (
+          diff.tabService &&
+          next.tabService.current !== prev.tabService.current
+        ) {
+          if (next.tabService.current === 'autotune') onPageMount();
+          else onPageUnmount();
+        }
+      },
+    );
+    if (
+      store.get().tabService.current === 'autotune' ||
+      isActiveLuciTab('autotune')
+    ) {
+      onPageMount();
+    }
+  });
+}

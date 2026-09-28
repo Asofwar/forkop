@@ -4,6 +4,7 @@ export type ForkopPage =
   | 'overview'
   | 'monitoring'
   | 'diagnostics'
+  | 'autotune'
   | 'history'
   | 'settings';
 

@@ -4,6 +4,7 @@ import { DiagnosticTab } from './forkop/tabs/diagnostic';
 import { MonitoringTab } from './forkop/tabs/monitoring';
 import { UpdatesTab } from './forkop/tabs/updates';
 import { HistoryTab } from './forkop/tabs/history';
+import { AutotuneTab } from './forkop/tabs/autotune';
 import { PartialStyles } from './partials';
 import { FoundationStyles } from './forkop/ui';
 import { FORKOP_UCI_PACKAGE as FORKOP_CBI_PREFIX } from './constants';
@@ -15,6 +16,7 @@ ${DiagnosticTab.styles}
 ${MonitoringTab.styles}
 ${UpdatesTab.styles}
 ${HistoryTab.styles}
+${AutotuneTab.styles}
 ${PartialStyles}
 
 

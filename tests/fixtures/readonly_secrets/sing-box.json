@@ -1,0 +1,51 @@
+{
+  "log": { "level": "warn" },
+  "dns": {
+    "servers": [
+      { "type": "https", "tag": "dns-doh", "server": "SECRET_MARKER_50.example", "server_port": 443, "path": "/SECRET_MARKER_51", "headers": { "Authorization": "Bearer SECRET_MARKER_52" } },
+      { "tag": "dns-legacy", "address": "https://legacy-doh.example/SECRET_MARKER_53" }
+    ]
+  },
+  "inbounds": [
+    { "type": "tproxy", "tag": "tproxy-in", "listen": "SECRET_MARKER_54", "listen_port": 1602 },
+    { "type": "mixed", "tag": "mixed-in", "listen": "0.0.0.0", "listen_port": 2080, "users": [ { "username": "SECRET_MARKER_55", "password": "SECRET_MARKER_56" } ] }
+  ],
+  "outbounds": [
+    { "type": "direct", "tag": "direct-out" },
+    { "type": "vless", "tag": "main-out", "server": "SECRET_MARKER_57.example", "server_port": 443, "uuid": "SECRET_MARKER_58", "flow": "xtls-rprx-vision",
+      "tls": { "enabled": true, "server_name": "SECRET_MARKER_59.example", "utls": { "enabled": true, "fingerprint": "chrome" },
+        "reality": { "enabled": true, "public_key": "SECRET_MARKER_60", "short_id": "SECRET_MARKER_61" } },
+      "transport": { "type": "ws", "path": "/SECRET_MARKER_62", "headers": { "Host": "SECRET_MARKER_63.example" } } },
+    { "type": "vmess", "tag": "vmess-out", "server": "vmess.example", "server_port": 443, "uuid": "SECRET_MARKER_64", "transport": { "type": "http", "host": [ "SECRET_MARKER_65.example" ], "path": "/SECRET_MARKER_66" } },
+    { "type": "trojan", "tag": "trojan-out", "server": "trojan.example", "server_port": 443, "password": "SECRET_MARKER_67" },
+    { "type": "shadowsocks", "tag": "ss-out", "server": "ss.example", "server_port": 8388, "method": "2022-blake3-aes-128-gcm", "password": "SECRET_MARKER_68",
+      "plugin": "v2ray-plugin", "plugin_opts": "mode=websocket;host=SECRET_MARKER_69.example;path=/SECRET_MARKER_70" },
+    { "type": "hysteria2", "tag": "hy2-out", "server": "hy2.example", "server_port": 443, "password": "SECRET_MARKER_71", "obfs": { "type": "salamander", "password": "SECRET_MARKER_72" } },
+    { "type": "hysteria", "tag": "hy1-out", "server": "hy1.example", "server_port": 443, "auth_str": "SECRET_MARKER_73", "auth": "SECRET_MARKER_74", "obfs": "SECRET_MARKER_75" },
+    { "type": "tuic", "tag": "tuic-out", "server": "tuic.example", "server_port": 443, "uuid": "SECRET_MARKER_76", "password": "SECRET_MARKER_77" },
+    { "type": "wireguard", "tag": "wg-legacy-out", "server": "wg.example", "server_port": 51820, "local_address": [ "SECRET_MARKER_78/32" ],
+      "private_key": "SECRET_MARKER_79", "peer_public_key": "SECRET_MARKER_80", "pre_shared_key": "SECRET_MARKER_81" },
+    { "type": "ssh", "tag": "ssh-out", "server": "ssh.example", "server_port": 22, "user": "SECRET_MARKER_82", "private_key": "SECRET_MARKER_83", "private_key_passphrase": "SECRET_MARKER_84" },
+    { "type": "http", "tag": "http-out", "server": "http.example", "server_port": 8080, "username": "SECRET_MARKER_85", "password": "SECRET_MARKER_86",
+      "headers": { "Authorization": "Basic SECRET_MARKER_87" }, "path": "/SECRET_MARKER_88" },
+    { "type": "socks", "tag": "socks-out", "server": "socks.example", "server_port": 1080, "username": "SECRET_MARKER_89", "password": "SECRET_MARKER_90" },
+    { "type": "urltest", "tag": "urltest-out", "outbounds": [ "main-out", "trojan-out" ], "url": "https://urltest.example/generate_204?token=SECRET_MARKER_91", "interval": "3m" }
+  ],
+  "endpoints": [
+    { "type": "wireguard", "tag": "wg-ep", "address": [ "SECRET_MARKER_92/32" ], "private_key": "SECRET_MARKER_93",
+      "peers": [ { "address": "SECRET_MARKER_94", "port": 51820, "public_key": "SECRET_MARKER_95", "pre_shared_key": "SECRET_MARKER_96", "allowed_ips": [ "0.0.0.0/0" ] } ] },
+    { "type": "tailscale", "tag": "ts-ep", "auth_key": "SECRET_MARKER_97", "control_url": "https://SECRET_MARKER_98.example", "hostname": "SECRET_MARKER_99" }
+  ],
+  "route": {
+    "rules": [ { "action": "sniff" }, { "protocol": "dns", "action": "hijack-dns" }, { "domain_suffix": [ "SECRET_MARKER_100.example" ], "outbound": "main-out" } ],
+    "rule_set": [
+      { "type": "remote", "tag": "remote-rules", "format": "binary", "url": "https://SECRET_MARKER_101:SECRET_MARKER_102@rules.example/r.srs?token=SECRET_MARKER_103", "download_detour": "direct-out" },
+      { "type": "local", "tag": "local-rules", "format": "binary", "path": "/tmp/sing-box/rulesets/local.srs" }
+    ],
+    "final": "direct-out"
+  },
+  "experimental": {
+    "clash_api": { "external_controller": "192.168.1.1:9090", "secret": "SECRET_MARKER_104" },
+    "cache_file": { "enabled": true, "path": "/tmp/sing-box/cache.db" }
+  }
+}

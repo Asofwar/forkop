@@ -813,10 +813,19 @@ function get_readonly_config_sections() {
     // subscription URLs through a read-only rpcd capability.
     let safe_keys = [ "action", "enabled", "interface", "interfaces", "label",
         "section", "sort_by_latency", "urltest_enabled", "urltests", "priority_groups" ];
+    // Display names of child items (interface names, URLTest and priority
+    // group/level labels) and the owner links of priority levels. Never for
+    // subscription_url or other types (UC-039).
+    let safe_child_keys = {
+        section_interface: [ "name", "display_name" ],
+        urltest: [ "name", "display_name" ],
+        priority_group: [ "name", "display_name" ],
+        priority_level: [ "name", "display_name", "group", "order" ]
+    };
     for (let type_name in config_section_types(FORKOP_CONFIG)) {
         for (let source in uci_core.section_objects(CONFIG_NAME, type_name)) {
             let item = { ".name": source[".name"], ".type": source[".type"] || type_name };
-            for (let key in safe_keys)
+            for (let key in [ ...safe_keys, ...(safe_child_keys[item[".type"]] || []) ])
                 if (source[key] != null)
                     item[key] = source[key];
             // DPI rules: provider and strategy name, never the raw options.
@@ -1380,6 +1389,7 @@ function check_dns_available() {
         dhcp_config_status = 0;
 
     let display_dns_server = replace(status_output([ "mask-dns-server", dns_server ], null), /[\r\n]+$/g, "");
+    let display_bootstrap_dns_server = replace(status_output([ "mask-dns-server", bootstrap_dns_server ], null), /[\r\n]+$/g, "");
     write_json({
         dns_type,
         dns_server: display_dns_server,
@@ -1387,7 +1397,7 @@ function check_dns_available() {
         dns_server_count: length(active.state.main_servers),
         dns_status,
         dns_on_router,
-        bootstrap_dns_server,
+        bootstrap_dns_server: display_bootstrap_dns_server,
         bootstrap_dns_server_index: active.state.bootstrap_index,
         bootstrap_dns_server_count: length(active.state.bootstrap_servers),
         bootstrap_dns_status,
@@ -2096,7 +2106,9 @@ function global_check(arg1, arg2) {
     if (validation.status == 0)
         print_global("✅ Forkop configuration is valid");
     else {
-        let message = trim(as_string(validation.output));
+        // Validator messages quote the offending value (a DNS server, URL
+        // or proxy parameter), so the masked view keeps only the verdict.
+        let message = visibility == "raw" ? trim(as_string(validation.output)) : "";
         print_global(message == "" ? "❌ Forkop configuration validation failed" : "❌ " + message);
     }
 

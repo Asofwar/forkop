@@ -46,7 +46,8 @@ const LEGACY = ['domain_suffix', 'domain_suffix_text', 'domain_suffix_text_mode'
   'fully_routed_ips_text', 'interfaces', 'interface', 'interface_settings', 'domain_resolver_enabled',
   'domain_resolver_dns_type', 'domain_resolver_dns_server'];
 const legacyOptions = (section) => Object.keys(section).filter((key) => LEGACY.includes(key) ||
-  (['domain', 'ip_cidr'].includes(key) && Array.isArray(section[key])));
+  (['domain', 'ip_cidr'].includes(key) && Array.isArray(section[key])) ||
+  (section.action === 'dns' && ['ip_cidr', 'ports'].includes(key)));
 
 const convertible = {
   exact_domain_list: { rule: rule({ action: 'block', domain: ['exact.example', 'Second.Example'] }) },
@@ -76,6 +77,9 @@ const convertible = {
     fully_routed_ips_text: '192.168.1.7' }) },
   dns_legacy: { rule: rule({ ...DNS, domain_keyword_text: 'video', source_ip_cidr_text: '192.168.1.3',
     ip_cidr_text: '8.8.8.8', ports_text: '53' }) },
+  // DNS rules match domains and devices only.
+  dns_ip_ports: { rule: rule({ ...DNS, domain: 'example.com', ip_cidr: '10.0.0.0/8', ports: ['443'] }) },
+  dns_ip_list: { rule: rule({ ...DNS, domain: 'example.com', ip_cidr: ['1.1.1.1'], ports_text: '53' }) },
   legacy_interfaces: { rule: rule({ action: 'connection', ...routed, domain: 'example.com',
     interfaces: ['awg0', 'wg1'], domain_resolver_enabled: '1', domain_resolver_dns_server: '9.9.9.9',
     interface_settings: JSON.stringify({ wg1: { domain_resolver_enabled: '1', domain_resolver_dns_type: 'dot',

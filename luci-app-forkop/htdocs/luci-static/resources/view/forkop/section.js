@@ -125,6 +125,28 @@ function parseOutboundDetourOption(parentParse) {
   };
 }
 
+// DNS rules do not match destination IPs and ports, so these fields are
+// hidden for them. A DNS rule saved as it is keeps what it stores (the Legacy
+// settings notice names it and removes it on request); a rule switched to
+// DNS in the modal drops it.
+function keepHiddenForDnsRule(option) {
+  const remove = option.remove;
+
+  option.load = loadOutboundDetourOption(option.load);
+  option.remove = function (section_id) {
+    if (
+      !this.isActive(section_id) &&
+      this.loadedRuleActions?.[section_id] === "dns" &&
+      this.section.formvalue(section_id, "action") === "dns"
+    ) {
+      return;
+    }
+
+    return remove.apply(this, arguments);
+  };
+  return option;
+}
+
 function getOutboundDetourTargetSections(currentSectionId) {
   return (uci.sections(UCI_PACKAGE, "section") || []).filter((section) =>
     isOutboundDetourTargetSection(section, currentSectionId),
@@ -4584,19 +4606,16 @@ function legacyRuleConditions(section_id, devicesUnused) {
     const valueIgnored =
       textMode && (key === "domain" ? legacyValue : has(key));
 
-    if (!legacyValue && !valueIgnored && !has(textKey) && !has(modeKey)) {
-      return;
-    }
-
+    // A DNS rule keeps destination IPs in any form, unused.
     if (dns && key === "ip_cidr") {
-      if (legacyValue) {
-        found(key, domainsAndDevicesOnly);
-        drop(key);
-      }
-      [textKey, modeKey].forEach((item) => {
+      [key, textKey, modeKey].forEach((item) => {
         found(item, domainsAndDevicesOnly);
         drop(item);
       });
+      return;
+    }
+
+    if (!legacyValue && !valueIgnored && !has(textKey) && !has(modeKey)) {
       return;
     }
 
@@ -4731,41 +4750,37 @@ function legacyRuleConditions(section_id, devicesUnused) {
     );
   }
 
-  if (has("ports_text")) {
-    if (dns) {
-      found("ports_text", domainsAndDevicesOnly);
-    } else {
-      found(
-        "ports_text",
-        _("used by the rule together with %s").format("ports"),
-      );
-      // singbox/generator.uc add_port_matchers(): the ports items, then the
-      // ports of ports_text, each value once.
-      const portsValue = raw("ports");
-      const listItems = Array.isArray(portsValue)
-        ? portsValue.map((item) => `${item}`)
-        : `${portsValue ?? ""}`.trim().split(" ");
-      const seen = new Set();
-      const ports = [];
-      listItems
-        .concat(
-          backendTextListValues(raw("ports_text")).filter(backendPortValue),
-        )
-        .forEach((item) => {
-          const trimmed = item.trim();
-          if (trimmed && !seen.has(trimmed)) {
-            seen.add(trimmed);
-            ports.push(trimmed);
-          }
-        });
-      if (!ports.length) {
-        drop("ports");
-      } else if (
-        !Array.isArray(portsValue) ||
-        !stringArraysEqual(portsValue, ports)
-      ) {
-        changes.ports = ports;
-      }
+  if (dns) {
+    ["ports", "ports_text"].forEach((key) => {
+      found(key, domainsAndDevicesOnly);
+      drop(key);
+    });
+  } else if (has("ports_text")) {
+    found("ports_text", _("used by the rule together with %s").format("ports"));
+    // singbox/generator.uc add_port_matchers(): the ports items, then the
+    // ports of ports_text, each value once.
+    const portsValue = raw("ports");
+    const listItems = Array.isArray(portsValue)
+      ? portsValue.map((item) => `${item}`)
+      : `${portsValue ?? ""}`.trim().split(" ");
+    const seen = new Set();
+    const ports = [];
+    listItems
+      .concat(backendTextListValues(raw("ports_text")).filter(backendPortValue))
+      .forEach((item) => {
+        const trimmed = item.trim();
+        if (trimmed && !seen.has(trimmed)) {
+          seen.add(trimmed);
+          ports.push(trimmed);
+        }
+      });
+    if (!ports.length) {
+      drop("ports");
+    } else if (
+      !Array.isArray(portsValue) ||
+      !stringArraysEqual(portsValue, ports)
+    ) {
+      changes.ports = ports;
     }
     drop("ports_text");
   }
@@ -9209,6 +9224,7 @@ function createSectionContent(section) {
     textAnalyze: analyzeIpCidrText,
   });
   dependsOnRoutingAction(ipConditionOption);
+  keepHiddenForDnsRule(ipConditionOption);
 
   const builtInRulesetOption = section.taboption(
     "match",
@@ -9433,6 +9449,7 @@ function createSectionContent(section) {
     load: backendPortValues,
   });
   dependsOnRoutingAction(portsOption);
+  keepHiddenForDnsRule(portsOption);
 
   // Legacy forms of the rule's settings, what they do, and their explicit
   // conversion or removal (D-6 a). Last of the Basics step.

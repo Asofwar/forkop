@@ -76,6 +76,12 @@ const fixtures = {
     interface_settings: '{"awg0":{"domain_resolver_enabled":"1"}}' }),
   legacy_unsupported: rule({ action: 'block', domain: 'example.com', local_domain_lists: ['/etc/list.lst'],
     fully_routed_ips_text: '192.168.1.7' }),
+  // DNS rules do not use destination IPs and ports; the fields are hidden
+  // and what the rule stores stays until it is removed there.
+  legacy_dns_ip_list_ports: rule({ action: 'dns', dns_type: 'udp', dns_server: '1.1.1.1', dns_detour_enabled: '0',
+    domain: 'example.net', ip_cidr: ['1.1.1.1'], ports: ['443', '8000-8080'] }),
+  legacy_dns_ip_option: rule({ action: 'dns', dns_type: 'udp', dns_server: '1.1.1.1', dns_detour_enabled: '0',
+    domain: 'example.net', ip_cidr: '10.0.0.0/8' }),
 };
 
 // UC-046: DNS rules with Built-in rule sets #2 (only the CLI or an older
@@ -272,6 +278,19 @@ async function check(label, fn) {
       assert.equal(freshModal.active('secondary_rule_sets'), false);
       assert.equal(fresh.uci.data.rule.action, 'dns');
       assert.equal(fresh.uci.data.rule.rule_set_with_subnets, undefined);
+    });
+
+    // A rule switched to DNS drops the destination IPs and ports it no
+    // longer uses (only a DNS rule saved as it is keeps them).
+    await check(`${version} routing rule with IPs and ports switched to DNS`, async () => {
+      const env = createEnvironment({ version, config: { rule: rule({ action: 'block', domain: 'example.net',
+        ip_cidr: '10.0.0.0/8', ports: ['443'] }) } });
+      const modal = await env.openRule('rule');
+      modal.option('action').getUIElement('rule').setValue('dns');
+      modal.option('dns_server').getUIElement('rule').setValue('1.1.1.1');
+      await modal.save();
+      assert.deepEqual(env.uci.data.rule, rule({ action: 'dns', domain: 'example.net', dns_type: 'udp',
+        dns_server: '1.1.1.1', dns_detour_enabled: '0' }));
     });
 
     // A refused save writes nothing. LuCI parses every option even when one

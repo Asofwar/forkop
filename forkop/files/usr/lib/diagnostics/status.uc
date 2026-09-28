@@ -255,186 +255,216 @@ function network_wireguard_route_allowed_peers() {
     }
 }
 
-function wan_config_masked(path) {
-    let data = fs.readfile(path);
-    let in_wan = false;
-    let proto = "";
+// Masked UCI views (global_check masked, read-only role). Allowlist: only
+// the options below keep their value, every other option or list value is
+// replaced by MASKED, so a new secret-bearing option fails closed. Keep these
+// tables and the functions below identical to the frontend copy in
+// fe-app-forkop/src/forkop/tabs/diagnostic/helpers/maskDiagnostics.ts.
+const UCI_MASKED_VALUE = "MASKED";
 
+// Flags, enums, intervals, section references, display names and paths of
+// Forkop's own files. Links, credentials, DNS servers, user domains/IPs and
+// raw DPI strategies are deliberately absent.
+let uci_safe_options = {
+    action: true, active_check_interval: true, applied_migrations: true, auto_hwid: true,
+    auto_user_agent: true, badwan_monitored_interfaces: true, badwan_reload_delay: true,
+    cache_path: true, check_interval: true, check_timeout: true, community_lists: true,
+    component_update_check_enabled: true, component_update_check_interval: true,
+    conditions_text_mode: true, config_path: true, config_version: true, connection_type: true,
+    detect_server_country: true, direct_proxy_enabled: true, direct_proxy_port: true,
+    disable_quic: true, dns_check_interval: true, dns_check_timeout: true,
+    dns_detour_enabled: true, dns_detour_section: true, dns_failover_failure_threshold: true,
+    dns_recovery_check_interval: true, dns_rewrite_ttl: true, dns_strategy: true, dns_type: true,
+    domain_resolver_dns_type: true, domain_resolver_enabled: true, dont_touch_dhcp: true,
+    download_components_via_proxy: true, download_components_via_proxy_section: true,
+    download_lists_via_proxy: true, download_lists_via_proxy_section: true,
+    download_subscriptions_via_proxy: true, download_via_proxy_enabled: true,
+    download_via_proxy_section: true, enable_badwan_interface_monitoring: true,
+    enable_output_network_interface: true, enable_yacd: true, enable_yacd_wan_access: true,
+    enabled: true, exclude_countries: true, exclude_ntp: true, exclude_outbounds: true,
+    exclude_regex: true, fastest_check_interval: true, filter_mode: true, group: true,
+    hide_detour_outbounds: true, hide_urltest_group_outbounds: true, idle_timeout: true,
+    include_countries: true, include_outbounds: true, include_regex: true,
+    include_subnets: true, include_urltest_groups: true, interface: true, interfaces: true,
+    interrupt_exist_connections: true, label: true, list_update_enabled: true, log_level: true,
+    mixed_proxy_auth_enabled: true, mixed_proxy_enabled: true, mixed_proxy_port: true,
+    name: true, node_prefix: true, order: true, outbound_detour_enabled: true,
+    outbound_detour_section: true, output_network_interface: true, pick_fastest: true,
+    pin_dashboard: true, ports: true, prefix_nodes: true, priority_groups: true,
+    proxy_config_type: true, recovery_check_interval: true, resolve_real_ip_for_routing: true,
+    rule: true, secondary_rule_sets: true, section: true, show_dashboard_metadata: true,
+    shutdown_correctly: true, sort_by_latency: true, source_network_interfaces: true,
+    subscription_update_enabled: true, subscription_update_interval: true,
+    switch_to_faster_same_priority: true, tag: true, tolerance: true,
+    torrserver_direct_enabled: true, update_interval: true, urltest_check_interval: true,
+    urltest_enabled: true, urltest_exclude_countries: true, urltest_filter_mode: true,
+    urltest_include_countries: true, urltest_tolerance: true, urltests: true,
+    user_domain_list_type: true
+};
+
+// Options that are safe only in one section type: the WAN interface of
+// /etc/config/network and dnsmasq of /etc/config/dhcp.
+let uci_safe_section_options = {
+    interface: {
+        auto: true, defaultroute: true, delegate: true, demand: true, device: true,
+        disabled: true, force_link: true, ifname: true, ip6assign: true, ipv6: true,
+        keepalive: true, metric: true, mtu: true, multipath: true, norelease: true,
+        peerdns: true, proto: true, reqaddress: true, reqprefix: true, type: true
+    },
+    dnsmasq: {
+        allservers: true, authoritative: true, boguspriv: true, cachesize: true, confdir: true,
+        dnsforwardmax: true, domain: true, domainneeded: true, ednspacket_max: true,
+        expandhosts: true, filter_a: true, filter_aaaa: true, filterwin2k: true, leasefile: true,
+        local: true, localise_queries: true, localservice: true, localuse: true, logqueries: true,
+        nonegcache: true, nonwildcard: true, noresolv: true, port: true, readethers: true,
+        rebind_localhost: true, rebind_protection: true, resolvfile: true, sequential_ip: true,
+        server: true, strictorder: true
+    }
+};
+
+// URL-valued options: the scheme, host and path stay visible, userinfo,
+// query and fragment are masked.
+let uci_url_options = {
+    domain_ip_lists: true, health_url: true, latency_test_url: true, local_domain_lists: true,
+    local_subnet_lists: true, mirror_base_url: true, remote_domain_lists: true,
+    remote_subnet_lists: true, rule_set: true, rule_set_with_subnets: true, testing_url: true,
+    urltest_testing_url: true
+};
+
+// scheme://userinfo@host/path?query#fragment -> userinfo, query and
+// fragment masked; with mask_path the path too. A value that is not an
+// http(s) URL or a plain local path is masked completely.
+function mask_url_value(value, mask_path) {
+    value = as_string(value);
+    let parts = match(value, /^([A-Za-z][A-Za-z0-9+.-]*:\/\/)?([^\/?#]*)([^?#]*)(\?[^#]*)?(#.*)?$/);
+    if (parts == null)
+        return UCI_MASKED_VALUE;
+
+    let scheme = as_string(parts[1]);
+    let authority = as_string(parts[2]);
+    let path = as_string(parts[3]);
+    let at = rindex(authority, "@");
+    if (at >= 0)
+        authority = UCI_MASKED_VALUE + "@" + substr(authority, at + 1);
+    if (mask_path && path != "" && path != "/")
+        path = "/" + UCI_MASKED_VALUE;
+    return scheme + authority + path + (parts[4] != null ? "?" + UCI_MASKED_VALUE : "") +
+        (parts[5] != null ? "#" + UCI_MASKED_VALUE : "");
+}
+
+function mask_http_url_value(value) {
+    let scheme = match(as_string(value), /^([A-Za-z][A-Za-z0-9+.-]*):\/\//);
+    if (scheme != null && index([ "http", "https" ], lc(scheme[1])) < 0)
+        return UCI_MASKED_VALUE;
+    return mask_url_value(value, false);
+}
+
+// Scans UCI value text from the given quote state; returns the quote that is
+// still open at the end (null when closed) and the unquoted value.
+function uci_value_scan(text, quote) {
+    let result = "";
+    for (let i = 0; i < length(text); i++) {
+        let c = substr(text, i, 1);
+        if (quote == "'") {
+            if (c == "'") quote = null; else result += c;
+        }
+        else if (quote == "\"") {
+            if (c == "\\" && i + 1 < length(text)) result += substr(text, ++i, 1);
+            else if (c == "\"") quote = null;
+            else result += c;
+        }
+        else if (c == "'" || c == "\"") quote = c;
+        else if (c == "\\" && i + 1 < length(text)) result += substr(text, ++i, 1);
+        else if (c == "#") break;
+        else if (c != " " && c != "\t" && c != "\r") result += c;
+    }
+    return { quote, value: result };
+}
+
+function uci_mask_state() {
+    return { quote: null, section_type: "" };
+}
+
+function uci_option_safe(state, name) {
+    let extra = uci_safe_section_options[state.section_type];
+    return uci_safe_options[name] || (extra != null && extra[name]);
+}
+
+// Masks one UCI line. Lines that are not UCI (and are not the continuation
+// of a masked multi-line value) are returned as null, the caller decides.
+function mask_uci_line(state, line) {
+    line = as_string(line);
+    let indent = match(line, /^[ \t]*/)[0];
+
+    if (state.quote != null) {
+        let closing = state.quote;
+        state.quote = uci_value_scan(line, state.quote).quote;
+        return indent + UCI_MASKED_VALUE + (state.quote == null ? closing : "");
+    }
+
+    let header = match(line, /^[ \t]*(#[ \t#]*)?config[ \t]+([A-Za-z0-9_-]+)([ \t]+['"]?[A-Za-z0-9_-]+['"]?)?[ \t]*$/);
+    if (header != null) {
+        if (header[1] == null)
+            state.section_type = header[2];
+        return line;
+    }
+
+    let option = match(line, /^([ \t]*(#[ \t#]*)?(option|list)[ \t]+([A-Za-z0-9_-]+)[ \t]*)(.*)$/);
+    if (option != null) {
+        let name = option[4];
+        let scan = uci_value_scan(option[5], null);
+        if (scan.quote == null && uci_option_safe(state, name))
+            return line;
+        if (scan.quote == null && uci_url_options[name])
+            return option[1] + "'" + replace(mask_http_url_value(scan.value), /'/g, "'\\''") + "'";
+        state.quote = scan.quote;
+        return option[1] + "'" + UCI_MASKED_VALUE + (scan.quote == null ? "'" : "");
+    }
+
+    if (match(line, /^[ \t]*$/) != null)
+        return line;
+    if (match(line, /^[ \t]*#/) != null)
+        return indent + "# " + UCI_MASKED_VALUE;
+    return null;
+}
+
+// Whole UCI file: anything that is not UCI syntax is masked too.
+function mask_uci_text_line(state, line) {
+    let masked = mask_uci_line(state, line);
+    return masked != null ? masked : match(as_string(line), /^[ \t]*/)[0] + UCI_MASKED_VALUE;
+}
+
+function file_lines(path) {
+    let data = fs.readfile(path);
     if (data == null)
         exit(1);
 
-    let lines = split(as_string(data), "\n");
-    for (let i = 0; i < length(lines); i++) {
-        let line = lines[i];
-        if (i == length(lines) - 1 && line == "" && substr(as_string(data), length(data) - 1) == "\n")
-            continue;
+    data = as_string(data);
+    let lines = split(data, "\n");
+    if (length(lines) > 0 && lines[length(lines) - 1] == "")
+        pop(lines);
+    return lines;
+}
 
+function wan_config_masked(path) {
+    let in_wan = false;
+    let state = uci_mask_state();
+
+    for (let line in file_lines(path)) {
         let fields = split(trim(as_string(line)), /[ \t\r\n]+/);
-        if (length(fields) > 0 && fields[0] == "config") {
+        if (state.quote == null && length(fields) > 0 && fields[0] == "config")
             in_wan = length(fields) >= 3 && fields[1] == "interface" && fields[2] == "'wan'";
-            proto = "";
-        }
 
-        if (!in_wan)
-            continue;
-
-        if (length(fields) >= 3 && fields[0] == "option" && fields[1] == "proto") {
-            proto = fields[2];
-            print(line, "\n");
-        }
-        else if (proto == "'static'" && length(fields) >= 2 && fields[0] == "option" &&
-            (fields[1] == "ipaddr" || fields[1] == "netmask" || fields[1] == "gateway")) {
-            print("        option ", fields[1], " '******'\n");
-        }
-        else if (proto == "'pppoe'" && length(fields) >= 2 && fields[0] == "option" &&
-            (fields[1] == "username" || fields[1] == "password")) {
-            print("        option ", fields[1], " '******'\n");
-        }
-        else if (proto == "'wireguard'" && length(fields) >= 2 && fields[0] == "option" &&
-            fields[1] == "private_key") {
-            print("        option private_key '******'\n");
-        }
-        else {
-            print(line, "\n");
-        }
+        let masked = mask_uci_text_line(state, line);
+        if (in_wan)
+            print(masked, "\n");
     }
-}
-
-function is_space_char(value) {
-    return value == " " || value == "\t" || value == "\r" || value == "\n";
-}
-
-function mask_after_token(line, token) {
-    let pos = index(line, token);
-    return pos < 0 ? line : substr(line, 0, pos) + token + " 'MASKED'";
-}
-
-function mask_after_token_space(line, token) {
-    let pos = index(line, token);
-    if (pos < 0)
-        return line;
-
-    let space_pos = pos + length(token);
-    if (space_pos >= length(line) || !is_space_char(substr(line, space_pos, 1)))
-        return line;
-
-    return substr(line, 0, space_pos + 1) + "'MASKED'";
-}
-
-function delete_token_space(line, token) {
-    let pos = index(line, token);
-    if (pos < 0)
-        return false;
-
-    let space_pos = pos + length(token);
-    return space_pos < length(line) && is_space_char(substr(line, space_pos, 1));
-}
-
-function mask_option_path(line, token) {
-    let pos = index(line, token);
-    if (pos < 0)
-        return line;
-
-    let slash = index(substr(line, pos + length(token)), "/");
-    if (slash < 0)
-        return line;
-    slash += pos + length(token);
-
-    let quote = index(substr(line, slash + 1), "'");
-    if (quote < 0)
-        return line;
-    quote += slash + 1;
-
-    return substr(line, 0, slash) + "/MASKED'" + substr(line, quote + 1);
-}
-
-function forkop_config_masked_line(line) {
-    line = mask_after_token(line, "option proxy_string");
-    line = mask_after_token(line, "option hwid");
-    line = mask_after_token(line, "option subscription_url");
-    line = mask_after_token(line, "list subscription_urls");
-    line = mask_after_token(line, "list urltest_proxy_links");
-    line = mask_after_token(line, "list selector_proxy_links");
-    line = mask_after_token_space(line, "option outbound_json");
-    line = mask_after_token_space(line, "list domain");
-    line = mask_after_token_space(line, "list domain_suffix");
-    line = mask_after_token_space(line, "list domain_keyword");
-    line = mask_after_token_space(line, "list domain_regex");
-    line = mask_after_token_space(line, "list ip_cidr");
-    line = mask_after_token_space(line, "list source_ip_cidr");
-    line = mask_after_token_space(line, "list excluded_source_ip_cidr");
-    line = mask_after_token_space(line, "list fully_routed_ips");
-    line = mask_after_token(line, "list server_users");
-    line = mask_after_token_space(line, "option dns_server");
-    line = mask_after_token_space(line, "option bootstrap_dns_server");
-    line = mask_after_token_space(line, "list dns_server");
-    line = mask_after_token_space(line, "list bootstrap_dns_server");
-    line = mask_after_token_space(line, "option listen");
-    line = mask_after_token_space(line, "option listen_port");
-    line = mask_after_token_space(line, "option public_host");
-    line = mask_after_token(line, "option server_uuid");
-    line = mask_after_token(line, "option server_username");
-    line = mask_after_token(line, "option server_password");
-    line = mask_after_token(line, "option mtproto_secret");
-    line = mask_after_token_space(line, "option mtproto_faketls");
-    line = mask_after_token_space(line, "option mtproto_domain_fronting_ip");
-    line = mask_after_token_space(line, "option tls_server_name");
-    line = mask_after_token_space(line, "option reality_handshake_server");
-    line = mask_after_token_space(line, "option reality_handshake_server_port");
-    line = mask_after_token_space(line, "option transport_host");
-    line = mask_after_token_space(line, "list transport_hosts");
-    line = mask_after_token_space(line, "option tailscale_auth_key");
-    line = mask_after_token_space(line, "option tailscale_control_url");
-    line = mask_after_token_space(line, "option tailscale_hostname");
-    line = mask_after_token_space(line, "list tailscale_advertise_routes");
-    line = mask_after_token(line, "option hysteria2_obfs_password");
-    line = mask_after_token(line, "option reality_private_key");
-    line = mask_after_token(line, "option reality_public_key");
-    line = mask_after_token(line, "option reality_short_id");
-    line = mask_after_token(line, "list reality_short_id");
-    line = mask_after_token_space(line, "option mixed_proxy_username");
-    line = mask_after_token_space(line, "option mixed_proxy_password");
-    line = mask_after_token_space(line, "option private_key");
-    line = mask_after_token_space(line, "option url");
-    line = mask_option_path(line, "option dns_server '");
-    line = mask_option_path(line, "list dns_server '");
-    line = mask_after_token(line, "option yacd_secret_key");
-
-    return line;
 }
 
 function forkop_config_masked(path) {
-    let data = fs.readfile(path);
-    if (data == null)
-        exit(1);
-
-    let lines = split(as_string(data), "\n");
-    let in_masked_multiline = false;
-
-    for (let i = 0; i < length(lines); i++) {
-        let line = as_string(lines[i]);
-        if (i == length(lines) - 1 && line == "" && substr(as_string(data), length(data) - 1) == "\n")
-            continue;
-
-        if (in_masked_multiline) {
-            if (index(line, "'") >= 0)
-                in_masked_multiline = false;
-            continue;
-        }
-
-        if (delete_token_space(line, "option tailscale_ephemeral") ||
-            delete_token_space(line, "option tailscale_exit_node") ||
-            delete_token_space(line, "option tailscale_exit_node_allow_lan_access"))
-            continue;
-
-        let masked = forkop_config_masked_line(line);
-        print(masked, "\n");
-        if (index(line, "option outbound_json") >= 0) {
-            let first_quote = index(line, "'");
-            if (first_quote >= 0 && index(substr(line, first_quote + 1), "'") < 0)
-                in_masked_multiline = true;
-        }
-    }
+    let state = uci_mask_state();
+    for (let line in file_lines(path))
+        print(mask_uci_text_line(state, line), "\n");
 }
 
 function dhcp_dnsmasq_config(path) {
@@ -1121,7 +1151,8 @@ function mask_dns_server(value) {
         return;
     }
 
-    print_line(value);
+    // A DoH path or URL userinfo/query can identify the account (UC-002).
+    print_line(mask_url_value(value, true));
 }
 
 function render_flag_line(value, key, ok_message, fail_message) {
@@ -1499,35 +1530,52 @@ function nfqws_strategy_validation(valid, message, needle, needles) {
     });
 }
 
+// Keys whose values are masked in the masked sing-box config (read-only
+// role). Keep identical to SING_BOX_MASKED_KEYS in maskDiagnostics.ts.
 let masked_sing_box_keys = {
-    auth_key: true,
-    control_url: true,
-    exit_node: true,
-    hostname: true,
-    listen: true,
-    listen_port: true,
-    username: true,
-    uuid: true,
-    server: true,
-    server_name: true,
-    secret: true,
-    password: true,
-    private_key: true,
-    public_key: true,
-    short_id: true,
-    fingerprint: true,
-    server_port: true,
-    server_ports: true,
+    address: true,
     advertise_routes: true,
+    auth: true,
+    auth_key: true,
+    auth_str: true,
+    control_url: true,
     domain: true,
-    domain_suffix: true,
     domain_keyword: true,
     domain_regex: true,
+    domain_suffix: true,
+    excluded_source_ip_cidr: true,
+    exit_node: true,
+    fingerprint: true,
+    headers: true,
+    host: true,
+    hostname: true,
     ip_cidr: true,
+    listen: true,
+    listen_port: true,
+    local_address: true,
+    obfs: true,
+    password: true,
+    path: true,
+    peer_public_key: true,
+    plugin_opts: true,
+    pre_shared_key: true,
+    private_key: true,
+    private_key_passphrase: true,
+    public_key: true,
+    secret: true,
+    server: true,
+    server_name: true,
+    server_port: true,
+    server_ports: true,
+    short_id: true,
     source_ip_cidr: true,
-    excluded_source_ip_cidr: true
+    user: true,
+    username: true,
+    uuid: true
 };
 
+// An object with an address (a WireGuard peer) also hides its port; any
+// URL string keeps only scheme, host and path (links are masked whole).
 function mask_sing_box_value(value) {
     if (type(value) == "array") {
         let result = [];
@@ -1539,9 +1587,13 @@ function mask_sing_box_value(value) {
     if (type(value) == "object") {
         let result = {};
         for (let key, item in value)
-            result[key] = masked_sing_box_keys[key] ? "MASKED" : mask_sing_box_value(item);
+            result[key] = masked_sing_box_keys[key] || (key == "port" && value.address != null) ?
+                "MASKED" : mask_sing_box_value(item);
         return result;
     }
+
+    if (type(value) == "string" && match(value, /^[A-Za-z][A-Za-z0-9+.-]*:\/\//) != null)
+        return mask_http_url_value(value);
 
     return value;
 }

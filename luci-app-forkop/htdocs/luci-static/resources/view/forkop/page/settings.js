@@ -190,31 +190,36 @@ const EntryPoint = {
     const rulesSection = forkopMap.section(
       form.GridSection,
       "section",
-      _("Sections"),
-      _("Drag rows to change priority. The rule at the top is checked first."),
+      _("Rules"),
+      _("Rules are checked from top to bottom. Drag rows to change priority."),
     );
-    configureGridSection(
-      rulesSection,
-      "section",
-      _("Section"),
-      _("Add a section"),
-    );
+    configureGridSection(rulesSection, "section", _("Rule"), _("Add a rule"));
     section.configureSectionSection(rulesSection, {
       loadActionProvidersAvailability: loadUiCapabilities,
     });
     section.createSectionContent(rulesSection);
 
-    const settingsSection = forkopMap.section(
-      form.TypedSection,
-      "settings",
-      _("General settings"),
-    );
-    settingsSection.anonymous = true;
-    settingsSection.addremove = false;
-    settingsSection.cfgsections = function () {
-      return ["settings"];
+    // The single "settings" UCI section is shown as four tabs; each tab
+    // writes only its own options. LuCI keys map tabs by section type, so
+    // each tab gets its own type while editing the same "settings" section.
+    const settingsTab = (type, title) => {
+      const tab = forkopMap.section(form.TypedSection, type, title);
+      tab.anonymous = true;
+      tab.addremove = false;
+      tab.cfgsections = function () {
+        return ["settings"];
+      };
+      return tab;
     };
-    settings.createSettingsContent(settingsSection, uiCapabilities);
+    settings.createSettingsContent(
+      {
+        dns: settingsTab("settings_dns", _("DNS")),
+        network: settingsTab("settings_network", _("Network")),
+        lists: settingsTab("settings_lists", _("Lists and updates")),
+        service: settingsTab("settings_service", _("Service settings")),
+      },
+      uiCapabilities,
+    );
 
     const updatesSection = forkopMap.section(
       form.TypedSection,

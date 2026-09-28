@@ -159,9 +159,12 @@ function configureDnsDuration(
   configureDnsFailoverVisibility(option, dnsOption, bootstrapOption);
 }
 
-function createSettingsContent(section, capabilities) {
-  const renderSettings = section.render;
-  section.render = function () {
+// One tab per group of the "settings" UCI section: DNS, Network, Lists and
+// updates, Service. sections: { dns, network, lists, service }.
+function createSettingsContent(sections, capabilities) {
+  const renderSettings = sections.dns.render;
+  // Rarely changed DNS options fold under "Advanced settings".
+  sections.dns.render = function () {
     return Promise.resolve(renderSettings.apply(this, arguments)).then(
       (node) => {
         const first = node.querySelector('[id$="-dns_rewrite_ttl"]');
@@ -203,7 +206,7 @@ function createSettingsContent(section, capabilities) {
       },
     );
   };
-  let o = section.option(
+  let o = sections.dns.option(
     form.ListValue,
     "dns_type",
     _("DNS Protocol Type"),
@@ -215,7 +218,7 @@ function createSettingsContent(section, capabilities) {
   o.default = "udp";
   o.rmempty = false;
 
-  const dnsOption = section.option(
+  const dnsOption = sections.dns.option(
     form.DynamicList,
     "dns_server",
     _("DNS Servers"),
@@ -225,7 +228,7 @@ function createSettingsContent(section, capabilities) {
   );
   configureDnsList(dnsOption, main.DNS_SERVER_OPTIONS, "77.88.8.8");
 
-  const bootstrapOption = section.option(
+  const bootstrapOption = sections.dns.option(
     form.DynamicList,
     "bootstrap_dns_server",
     _("Bootstrap DNS Servers"),
@@ -240,7 +243,7 @@ function createSettingsContent(section, capabilities) {
     main.validateBootstrapDNS,
   );
 
-  o = section.option(
+  o = sections.dns.option(
     form.Value,
     "dns_check_interval",
     _("DNS Check Interval"),
@@ -248,7 +251,7 @@ function createSettingsContent(section, capabilities) {
   );
   configureDnsDuration(o, "10s", dnsOption, bootstrapOption);
 
-  o = section.option(
+  o = sections.dns.option(
     form.Value,
     "dns_recovery_check_interval",
     _("Higher-priority DNS Check"),
@@ -256,7 +259,7 @@ function createSettingsContent(section, capabilities) {
   );
   configureDnsDuration(o, "60s", dnsOption, bootstrapOption);
 
-  o = section.option(
+  o = sections.dns.option(
     form.Value,
     "dns_check_timeout",
     _("DNS Unavailability Timeout"),
@@ -266,7 +269,7 @@ function createSettingsContent(section, capabilities) {
   );
   configureDnsDuration(o, "2s", dnsOption, bootstrapOption);
 
-  o = section.option(
+  o = sections.dns.option(
     form.Value,
     "dns_rewrite_ttl",
     _("DNS Rewrite TTL"),
@@ -287,7 +290,7 @@ function createSettingsContent(section, capabilities) {
     return true;
   };
 
-  o = section.option(form.ListValue, "dns_strategy", _("DNS Strategy"));
+  o = sections.dns.option(form.ListValue, "dns_strategy", _("DNS Strategy"));
   o.value("prefer_ipv4", _("Prefer IPv4"));
   o.value("ipv4_only", _("IPv4 only"));
   o.value("prefer_ipv6", _("Prefer IPv6"));
@@ -295,7 +298,7 @@ function createSettingsContent(section, capabilities) {
   o.default = "prefer_ipv4";
   o.rmempty = false;
 
-  o = section.option(
+  o = sections.dns.option(
     form.Flag,
     "dns_detour_enabled",
     _("DNS through proxy"),
@@ -303,7 +306,7 @@ function createSettingsContent(section, capabilities) {
   );
   configureDownloadViaProxyFlag(o, "dns_detour_section");
 
-  o = section.option(
+  o = sections.dns.option(
     form.ListValue,
     "dns_detour_section",
     _("DNS requests through section"),
@@ -311,7 +314,7 @@ function createSettingsContent(section, capabilities) {
   o.depends("dns_detour_enabled", "1");
   configureDownloadSectionOption(o, "dns_detour_section", capabilities);
 
-  o = section.option(
+  o = sections.network.option(
     widgets.DeviceSelect,
     "source_network_interfaces",
     _("Source Network Interface"),
@@ -348,7 +351,7 @@ function createSettingsContent(section, capabilities) {
     return !isWireless;
   };
 
-  o = section.option(
+  o = sections.network.option(
     form.Flag,
     "enable_output_network_interface",
     _("Enable Output Network Interface"),
@@ -357,7 +360,7 @@ function createSettingsContent(section, capabilities) {
   o.default = "0";
   o.rmempty = false;
 
-  o = section.option(
+  o = sections.network.option(
     widgets.DeviceSelect,
     "output_network_interface",
     _("Output Network Interface"),
@@ -409,7 +412,7 @@ function createSettingsContent(section, capabilities) {
     return !isWireless;
   };
 
-  o = section.option(
+  o = sections.network.option(
     form.Flag,
     "enable_badwan_interface_monitoring",
     _("Interface Monitoring"),
@@ -418,7 +421,7 @@ function createSettingsContent(section, capabilities) {
   o.default = "0";
   o.rmempty = false;
 
-  o = section.option(
+  o = sections.network.option(
     widgets.NetworkSelect,
     "badwan_monitored_interfaces",
     _("Monitored Interfaces"),
@@ -441,7 +444,7 @@ function createSettingsContent(section, capabilities) {
     return true;
   };
 
-  o = section.option(
+  o = sections.network.option(
     form.Value,
     "badwan_reload_delay",
     _("Interface Monitoring Delay"),
@@ -457,7 +460,7 @@ function createSettingsContent(section, capabilities) {
     return true;
   };
 
-  o = section.option(
+  o = sections.service.option(
     form.Flag,
     "enable_yacd",
     _("Enable YACD"),
@@ -466,7 +469,7 @@ function createSettingsContent(section, capabilities) {
   o.default = "0";
   o.rmempty = false;
 
-  o = section.option(
+  o = sections.service.option(
     form.Flag,
     "enable_yacd_wan_access",
     _("Enable YACD WAN Access"),
@@ -478,7 +481,7 @@ function createSettingsContent(section, capabilities) {
   o.default = "0";
   o.rmempty = false;
 
-  o = section.option(
+  o = sections.service.option(
     form.Value,
     "yacd_secret_key",
     _("YACD Secret Key"),
@@ -487,9 +490,10 @@ function createSettingsContent(section, capabilities) {
     ),
   );
   o.depends("enable_yacd_wan_access", "1");
+  o.password = true;
   o.rmempty = false;
 
-  o = section.option(
+  o = sections.network.option(
     form.Flag,
     "disable_quic",
     _("Disable QUIC"),
@@ -500,7 +504,7 @@ function createSettingsContent(section, capabilities) {
   o.default = "1";
   o.rmempty = false;
 
-  o = section.option(
+  o = sections.lists.option(
     form.Flag,
     "list_update_enabled",
     _("Enable list updates"),
@@ -509,7 +513,7 @@ function createSettingsContent(section, capabilities) {
   o.default = "1";
   o.rmempty = false;
 
-  o = section.option(
+  o = sections.lists.option(
     form.Value,
     "update_interval",
     _("List Update Frequency"),
@@ -545,7 +549,7 @@ function createSettingsContent(section, capabilities) {
     return _("Use sing-box duration format like 1d, 12h or 30m");
   };
 
-  o = section.option(
+  o = sections.lists.option(
     form.Flag,
     "component_update_check_enabled",
     _("Automatic component update checks"),
@@ -554,7 +558,7 @@ function createSettingsContent(section, capabilities) {
   o.default = "0";
   o.rmempty = false;
 
-  o = section.option(
+  o = sections.lists.option(
     form.Value,
     "component_update_check_interval",
     _("Component update check interval"),
@@ -589,7 +593,7 @@ function createSettingsContent(section, capabilities) {
     return _("Use sing-box duration format like 1d, 12h or 30m");
   };
 
-  o = section.option(
+  o = sections.lists.option(
     form.Value,
     "latency_test_url",
     _("Latency test URL"),
@@ -605,7 +609,7 @@ function createSettingsContent(section, capabilities) {
     return validateLatencyTestUrl(value);
   };
 
-  o = section.option(
+  o = sections.lists.option(
     form.Flag,
     "download_lists_via_proxy",
     _("Download lists through a section"),
@@ -613,7 +617,7 @@ function createSettingsContent(section, capabilities) {
   );
   configureDownloadViaProxyFlag(o, "download_lists_via_proxy_section");
 
-  o = section.option(
+  o = sections.lists.option(
     form.ListValue,
     "download_lists_via_proxy_section",
     _("Download lists through"),
@@ -625,7 +629,7 @@ function createSettingsContent(section, capabilities) {
     capabilities,
   );
 
-  o = section.option(
+  o = sections.lists.option(
     form.Flag,
     "download_components_via_proxy",
     _("Download components through a section"),
@@ -633,7 +637,7 @@ function createSettingsContent(section, capabilities) {
   );
   configureDownloadViaProxyFlag(o, "download_components_via_proxy_section");
 
-  o = section.option(
+  o = sections.lists.option(
     form.ListValue,
     "download_components_via_proxy_section",
     _("Download components through"),
@@ -645,7 +649,7 @@ function createSettingsContent(section, capabilities) {
     capabilities,
   );
 
-  o = section.option(
+  o = sections.network.option(
     form.Flag,
     "dont_touch_dhcp",
     _("Dont Touch My DHCP!"),
@@ -654,7 +658,7 @@ function createSettingsContent(section, capabilities) {
   o.default = "0";
   o.rmempty = false;
 
-  o = section.option(
+  o = sections.service.option(
     form.ListValue,
     "config_path",
     _("Config File Path"),
@@ -667,7 +671,7 @@ function createSettingsContent(section, capabilities) {
   o.default = "/etc/sing-box/config.json";
   o.rmempty = false;
 
-  o = section.option(
+  o = sections.service.option(
     form.Value,
     "cache_path",
     _("Cache File Path"),
@@ -703,7 +707,7 @@ function createSettingsContent(section, capabilities) {
     return true;
   };
 
-  o = section.option(
+  o = sections.service.option(
     form.ListValue,
     "log_level",
     _("Log Level"),
@@ -719,7 +723,7 @@ function createSettingsContent(section, capabilities) {
   o.default = "warn";
   o.rmempty = false;
 
-  o = section.option(
+  o = sections.network.option(
     form.Flag,
     "exclude_ntp",
     _("Exclude NTP"),

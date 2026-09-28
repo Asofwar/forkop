@@ -63,3 +63,30 @@ grep -Fxq 'forkop.ut_main.interrupt_exist_connections=0' "$WORK_DIR/source.state
 if grep -Fq 'urltest_override' "$WORK_DIR/source.state"; then
   fail "saving a configured group must remove its obsolete runtime override"
 fi
+
+# The dashboard save accepts what the validator accepts at start: a URL with
+# a host and a tolerance from 0 to 10000, the range of the URLTest group of
+# a rule. A value outside it would be committed and the reload refused, for
+# an override and for the group section the save writes to alike.
+: >"$WORK_DIR/range.state"
+for args in 'http:///generate_204 70s 175' 'https://example.com/generate_204 70s 10001'; do
+  # shellcheck disable=SC2086 # the URL, interval and tolerance are words
+  if FORKOP_UCI_STATE_FILE="$WORK_DIR/range.state" \
+    ucode -L "$FORKOP_LIB" "$OVERRIDE_UC" save main group $args 30m 1; then
+    fail "save must reject what the validator refuses: $args"
+  fi
+done
+[ ! -s "$WORK_DIR/range.state" ] || fail "a refused save must not write UCI"
+FORKOP_UCI_STATE_FILE="$WORK_DIR/range.state" \
+  ucode -L "$FORKOP_LIB" "$OVERRIDE_UC" save main group https://example.com:8443/generate_204 70s 10000 30m 1 ||
+  fail "save must accept a tolerance of 10000"
+grep -Fxq 'forkop.cfg000001.tolerance=10000' "$WORK_DIR/range.state" ||
+  fail "save must persist a tolerance of 10000"
+cp "$WORK_DIR/source.state" "$WORK_DIR/source-range.state"
+if FORKOP_UCI_STATE_FILE="$WORK_DIR/source-range.state" \
+  ucode -L "$FORKOP_LIB" "$OVERRIDE_UC" save main main-urltest-ut_main-out \
+  https://example.com/check 90s 20000 15m 0; then
+  fail "save must not write a tolerance the URLTest group check refuses"
+fi
+cmp -s "$WORK_DIR/source.state" "$WORK_DIR/source-range.state" ||
+  fail "a refused save must leave the URLTest group section unchanged"

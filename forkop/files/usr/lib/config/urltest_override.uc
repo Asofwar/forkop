@@ -1,5 +1,6 @@
 #!/usr/bin/env ucode
 let uci_core = require("core.uci");
+let core_url = require("core.url");
 let singbox_constants = require("singbox.constants");
 const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || "forkop";
 function str(v) {
@@ -51,12 +52,19 @@ function apply(outbound, rule, tag) {
     outbound.idle_timeout = o.idle_timeout; outbound.interrupt_exist_connections = o.interrupt_exist_connections == "1"; return outbound;
 }
 function valid_duration(v) { return match(str(v), /^[1-9][0-9]*(ms|s|m|h|d)$/) != null; }
+// What config/validator.uc accepts at start: otherwise the save commits a
+// value and the reload after it is refused. The tolerance range is the one
+// of the URLTest group of a rule, which save_source() writes to.
+function valid_url(v) {
+    let scheme = core_url.scheme(v);
+    return match(str(v), /[ \t\r\n]/) == null && (scheme == "http" || scheme == "https") && core_url.host(v) != "";
+}
 function save(rule, tag, url, interval, tolerance, idle, interrupt) {
     let tolerance_value = str(tolerance);
     tolerance = int(tolerance, 10);
-    if (rule == "" || tag == "" || match(str(url), /^https?:\/\/[^[:space:]]+$/) == null ||
+    if (rule == "" || tag == "" || !valid_url(url) ||
         !valid_duration(interval) || !valid_duration(idle) || match(tolerance_value, /^[0-9]+$/) == null ||
-        tolerance < 0 || tolerance > 65535 || (interrupt != "0" && interrupt != "1")) return false;
+        tolerance < 0 || tolerance > 10000 || (interrupt != "0" && interrupt != "1")) return false;
     let source_section = source(rule, tag);
     if (type(source_section) == "object")
         return save_source(source_section, tag, url, interval, tolerance, idle, interrupt);

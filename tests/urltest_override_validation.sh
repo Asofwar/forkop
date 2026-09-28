@@ -63,7 +63,7 @@ rejects() {
 
 fixture valid '{"rule":"main","tag":"Flint Auto"}' \
   '{"rule":"main","tag":"main-urltest-ut_1a2b3c4d-out","interrupt_exist_connections":"0","tolerance":"0"}' \
-  '{"rule":"main","tag":"Flint Fallback","interrupt_exist_connections":""}'
+  '{"rule":"main","tag":"Flint Fallback","interrupt_exist_connections":"","tolerance":"10000"}'
 accepts valid
 
 # Nothing applies these: they never refuse the configuration.
@@ -79,12 +79,17 @@ fixture bad_url '{"rule":"main","tag":"Flint Auto","testing_url":"ftp://example.
 rejects bad_url "Invalid URL value for URLTest override 'Flint Auto' of rule 'main' (testing_url)"
 fixture no_url '{"rule":"main","tag":"Flint Auto","testing_url":""}'
 rejects no_url "URLTest override 'Flint Auto' of rule 'main' (testing_url)"
+fixture no_host '{"rule":"main","tag":"Flint Auto","testing_url":"http:///generate_204"}'
+rejects no_host "Invalid URL value for URLTest override 'Flint Auto' of rule 'main' (testing_url)"
 fixture bad_interval '{"rule":"main","tag":"Flint Auto","check_interval":"soon"}'
 rejects bad_interval "Invalid duration value for URLTest override 'Flint Auto' of rule 'main' (check_interval)"
 fixture no_idle '{"rule":"main","tag":"Flint Auto","idle_timeout":""}'
 rejects no_idle "Missing duration value for URLTest override 'Flint Auto' of rule 'main' (idle_timeout)"
 fixture bad_tolerance '{"rule":"main","tag":"Flint Auto","tolerance":"70000"}'
 rejects bad_tolerance "Invalid tolerance '70000' for URLTest override 'Flint Auto' of rule 'main'"
+# The range of the URLTest group of a rule, which an override replaces.
+fixture group_tolerance '{"rule":"main","tag":"Flint Auto","tolerance":"10001"}'
+rejects group_tolerance "Invalid tolerance '10001' for URLTest override 'Flint Auto' of rule 'main'. Use a number from 0 to 10000."
 fixture text_tolerance '{"rule":"main","tag":"Flint Auto","tolerance":"fast"}'
 rejects text_tolerance "Invalid tolerance 'fast' for URLTest override 'Flint Auto' of rule 'main'"
 fixture bad_interrupt '{"rule":"main","tag":"Flint Auto","interrupt_exist_connections":"yes"}'

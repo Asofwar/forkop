@@ -1123,13 +1123,16 @@ function validate_priority_identifier_value(value, section) {
     fail_validation("Invalid priority identifier '" + value + "' in rule '" + section + "'. Use latin letters, digits and underscores. Aborted.");
 }
 
+// For a URLTest group of a rule and a dashboard override of one alike.
+function urltest_tolerance_valid(value) {
+    value = trim(as_string(value));
+    return match(value, /^[0-9]+$/) != null && int(value, 10) <= 10000;
+}
+
 function validate_urltest_tolerance_value(value, section, urltest_id) {
     value = trim(as_string(value));
-    if (match(value, /^[0-9]+$/) != null) {
-        let parsed = int(value, 10);
-        if (parsed >= 0 && parsed <= 10000)
-            return;
-    }
+    if (urltest_tolerance_valid(value))
+        return;
 
     fail_validation("Invalid URLTest tolerance '" + value + "' in rule '" + section + "', URLTest '" + urltest_id + "'. Use a number from 0 to 10000. Aborted.");
 }
@@ -1673,8 +1676,8 @@ function validate_urltest_overrides(sections) {
         validate_required_duration_option(option(override, "idle_timeout", ""), label + " (idle_timeout)");
 
         let tolerance = option(override, "tolerance", "");
-        if (match(tolerance, /^[0-9]+$/) == null || int(tolerance, 10) > 65535)
-            fail_validation("Invalid tolerance '" + tolerance + "' for " + label + ". Use a number from 0 to 65535. Aborted.");
+        if (!urltest_tolerance_valid(tolerance))
+            fail_validation("Invalid tolerance '" + tolerance + "' for " + label + ". Use a number from 0 to 10000. Aborted.");
 
         // Unset means "1" (urltest_override.get).
         let interrupt = option(override, "interrupt_exist_connections", "");

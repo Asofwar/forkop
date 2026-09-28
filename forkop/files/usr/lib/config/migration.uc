@@ -143,6 +143,15 @@ function model_from_fixture(path) {
         for (let section in fixture_section_list(data, type_name))
             push(model[type_name], clone_section(section));
 
+    // Sections of every type, those the migrations do not read included.
+    model.names = [];
+    for (let type_name in keys(data)) {
+        let value = data[type_name];
+        for (let section in (type(value) == "array" ? value : [ value ]))
+            if (type(section) == "object" && section[".name"] != null)
+                push(model.names, as_string(section[".name"]));
+    }
+
     return model;
 }
 
@@ -166,6 +175,8 @@ function model_from_uci(cursor) {
             push(model[type_name], clone_section(section));
         });
     }
+    // Sections of every type, those the migrations do not read included.
+    model.names = cursor.all_sections(CONFIG_NAME);
 
     return model;
 }
@@ -1457,7 +1468,11 @@ function urltest_group_tag(rule, name) {
 }
 
 function migrate_urltest_section_names(ctx) {
+    // A section of any type may hold the name: the rename would fail while
+    // the overrides already point at the new tag.
     let taken = { [section_name(ctx.model.settings)]: true };
+    for (let name in ctx.model.names || [])
+        taken[as_string(name)] = true;
     for (let type_name in [ "rules", "sections", ...MODEL_SECTION_TYPES ])
         for (let section in ctx.model[type_name] || [])
             taken[section_name(section)] = true;
@@ -1669,6 +1684,9 @@ function runtime_cursor() {
         foreach: function(package_name, type_name, callback) {
             for (let section in uci_core.section_objects(package_name, type_name))
                 callback(section);
+        },
+        all_sections: function(package_name) {
+            return uci_core.all_sections(package_name);
         },
         add: function(package_name, type_name) {
             return uci_core.add(package_name, type_name);

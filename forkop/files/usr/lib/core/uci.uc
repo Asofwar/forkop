@@ -229,6 +229,7 @@ function state_add_section(package_name, type_name) {
     return state_set(package_name + "." + section, type_name) ? section : "";
 }
 
+// type_name null: sections of every type.
 function state_sections(package_name, type_name) {
     let result = [];
     let prefix = as_string(package_name) + ".";
@@ -241,7 +242,7 @@ function state_sections(package_name, type_name) {
 
         let key = substr(line, 0, equals);
         let value = substr(line, equals + 1);
-        if (value != type_name || substr(key, 0, length(prefix)) != prefix)
+        if ((type_name != null && value != type_name) || substr(key, 0, length(prefix)) != prefix)
             continue;
 
         let section = substr(key, length(prefix));
@@ -605,7 +606,8 @@ function section_name(section) {
     return as_string(section);
 }
 
-function sections(package_name, type_name) {
+// Section names in file order; type_name null: sections of every type.
+function section_names(package_name, type_name) {
     if (fixture_enabled())
         return state_sections(package_name, type_name);
 
@@ -616,7 +618,7 @@ function sections(package_name, type_name) {
     let result = [];
     try {
         load(package_name);
-        c.foreach(package_name, as_string(type_name), function(section) {
+        c.foreach(package_name, type_name, function(section) {
             let name = section_name(section);
             if (name != "")
                 push(result, name);
@@ -628,10 +630,19 @@ function sections(package_name, type_name) {
     return result;
 }
 
+function sections(package_name, type_name) {
+    return section_names(package_name, as_string(type_name));
+}
+
+// The names of all sections of the package, whatever their type.
+function all_sections(package_name) {
+    return section_names(package_name, null);
+}
+
 function section_objects(package_name, type_name) {
     if (fixture_enabled()) {
         let result = [];
-        for (let name in state_sections(package_name, type_name)) {
+        for (let name in state_sections(package_name, as_string(type_name))) {
             let section = state_get_all(package_name, name);
             if (type(section) == "object")
                 push(result, section);
@@ -672,5 +683,6 @@ return {
     del_list,
     commit,
     sections,
+    all_sections,
     section_objects
 };

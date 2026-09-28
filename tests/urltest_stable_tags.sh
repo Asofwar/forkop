@@ -92,6 +92,24 @@ const renamed = out.operations.filter((op) => op.op === "rename" && op.section =
 if (renamed.length !== 1 || renamed[0].name !== "ut_022898_2") { console.error(JSON.stringify(out.operations)); process.exit(1); }
 ' "$WORK_DIR/taken.out" || fail "a taken URLTest name must get a suffix"
 
+# So does a name that a section of another type holds: the rename would
+# fail, and the override would already point at a tag that no group has.
+node -e '
+const fs = require("fs");
+const data = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+data.priority_group = [{ ".name": "ut_022898", ".type": "priority_group", section: "main", name: "Taken" }];
+fs.writeFileSync(process.argv[2], JSON.stringify(data));
+' "$WORK_DIR/groups.json" "$WORK_DIR/taken-other.json"
+migrate_fixture "$WORK_DIR/taken-other.json" "$WORK_DIR/taken-other.out"
+node -e '
+const out = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+const renamed = out.operations.filter((op) => op.op === "rename" && op.section === "cfg022898");
+if (renamed.length !== 1 || renamed[0].name !== "ut_022898_2" ||
+    out.config.urltest_override[0].tag !== "main-urltest-ut_022898_2-out") {
+  console.error(JSON.stringify(out.operations)); process.exit(1);
+}
+' "$WORK_DIR/taken-other.out" || fail "a URLTest name taken by a section of another type must get a suffix"
+
 # 2. The runtime migration renames the sections in place through core.uci.
 cat >"$WORK_DIR/runtime.state" <<'EOF_UCI'
 forkop.settings=settings
@@ -129,6 +147,34 @@ printf '%s\n' 'forkop.ut_022898=urltest' 'forkop.ut_022898.section=main' 'forkop
 grep -Fxq 'forkop.cfg032898.tag=main-urltest-ut_022898-out' "$WORK_DIR/runtime.state" ||
   fail "the runtime migration must move the override to the new tag"
 grep -Fxq 'commit forkop' "$WORK_DIR/runtime.log" || fail "the runtime migration must commit"
+
+# A section of a type the migrations do not read may hold the name.
+cat >"$WORK_DIR/taken.state" <<'EOF_UCI'
+forkop.settings=settings
+forkop.settings.yacd_secret_key=secret
+forkop.main=section
+forkop.main.action=connection
+forkop.ut_022898=priority_group
+forkop.ut_022898.section=main
+forkop.cfg022898=urltest
+forkop.cfg022898.section=main
+forkop.cfg032898=urltest_override
+forkop.cfg032898.rule=main
+forkop.cfg032898.tag=main-urltest-cfg022898-out
+EOF_UCI
+FORKOP_UCI_STATE_FILE="$WORK_DIR/taken.state" \
+FORKOP_CONFIG_NAME=forkop \
+TMP_SUBSCRIPTION_FOLDER="$WORK_DIR/tmp-subscriptions" \
+FORKOP_RUNTIME_STATE_DIR="$WORK_DIR/runtime" \
+FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR="$WORK_DIR/persistent-cache" \
+FORKOP_INTERNAL_CONFIG_TRIGGER_GUARD="$WORK_DIR/internal-config-change" \
+  ucode -L "$FORKOP_LIB" "$MIGRATION" migrate
+if ! grep -Fxq 'forkop.ut_022898_2=urltest' "$WORK_DIR/taken.state" ||
+  ! grep -Fxq 'forkop.ut_022898=priority_group' "$WORK_DIR/taken.state" ||
+  ! grep -Fxq 'forkop.cfg032898.tag=main-urltest-ut_022898_2-out' "$WORK_DIR/taken.state"; then
+  cat "$WORK_DIR/taken.state" >&2
+  fail "a URLTest name taken by a section of another type must get a suffix at runtime"
+fi
 
 # Groups that the Podkop migration creates from urltest_enabled are named too.
 cat >"$WORK_DIR/podkop.state" <<'EOF_UCI'

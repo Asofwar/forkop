@@ -87,4 +87,15 @@ PATH="$WORK_DIR/bin:$PATH" \
 [ "$(mode_of "$WORK_DIR/etc-config.json")" = 600 ] || fail "the live config must be narrowed to 0600"
 [ "$(mode_of "$WORK_DIR/backup.json")" = 600 ] || fail "the config backup must be 0600"
 
+# The mode is narrowed before any content is written, not after: a reader
+# must never see the new secrets in a file that is still world-readable.
+awk '/^function write_private_json_file\(/ { copy=1 } copy { print } copy && /^}/ { exit }' \
+  "$FORKOP_LIB/core/common.uc" >"$WORK_DIR/write_private.uc"
+chmod_line="$(grep -n 'fs.chmod(path, 0600)' "$WORK_DIR/write_private.uc" | head -n1 | cut -d: -f1)"
+write_line="$(grep -n 'fh.write(' "$WORK_DIR/write_private.uc" | head -n1 | cut -d: -f1)"
+[ -n "$chmod_line" ] && [ -n "$write_line" ] && [ "$chmod_line" -lt "$write_line" ] ||
+  fail "write_private_json_file must narrow the mode before writing the content"
+grep -Fq 'fs.open(path, "w", 0600)' "$WORK_DIR/write_private.uc" ||
+  fail "write_private_json_file must create the file 0600"
+
 printf 'Generated sing-box configs and their copies are private\n'

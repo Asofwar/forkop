@@ -4,6 +4,12 @@ import { logger } from './logger.service';
 type Listener = (data: any) => void;
 type ErrorListener = (error: Event | string) => void;
 
+// Socket URLs of the Clash controller carry the secret as the token query
+// parameter (UC-036): logs show the URL without its query string.
+function loggableUrl(url: string): string {
+  return url.split('?')[0];
+}
+
 class SocketManager {
   private static instance: SocketManager;
   private sockets = new Map<string, WebSocket>();
@@ -32,7 +38,7 @@ class SocketManager {
       } catch (err) {
         logger.error(
           '[SOCKET]',
-          `resetAll: failed to close socket ${url}`,
+          `resetAll: failed to close socket ${loggableUrl(url)}`,
           err,
         );
       }
@@ -55,7 +61,7 @@ class SocketManager {
     } catch (err) {
       logger.error(
         '[SOCKET]',
-        `failed to construct WebSocket for ${url}:`,
+        `failed to construct WebSocket for ${loggableUrl(url)}:`,
         err,
       );
       this.triggerError(url, err instanceof Event ? err : String(err));
@@ -69,7 +75,7 @@ class SocketManager {
 
     ws.addEventListener('open', () => {
       this.connected.set(url, true);
-      logger.info('[SOCKET]', 'Connected to', url);
+      logger.info('[SOCKET]', 'Connected to', loggableUrl(url));
     });
 
     ws.addEventListener('message', (event) => {
@@ -79,7 +85,11 @@ class SocketManager {
           try {
             handler(event.data);
           } catch (err) {
-            logger.error('[SOCKET]', `Handler error for ${url}:`, err);
+            logger.error(
+              '[SOCKET]',
+              `Handler error for ${loggableUrl(url)}:`,
+              err,
+            );
           }
         }
       }
@@ -87,12 +97,12 @@ class SocketManager {
 
     ws.addEventListener('close', () => {
       this.connected.set(url, false);
-      logger.warn('[SOCKET]', `Disconnected: ${url}`);
+      logger.warn('[SOCKET]', `Disconnected: ${loggableUrl(url)}`);
       this.triggerError(url, 'Connection closed');
     });
 
     ws.addEventListener('error', (err) => {
-      logger.error('[SOCKET]', `Socket error for ${url}:`, err);
+      logger.error('[SOCKET]', `Socket error for ${loggableUrl(url)}:`, err);
       this.triggerError(url, err);
     });
   }
@@ -128,7 +138,10 @@ class SocketManager {
     if (ws && this.connected.get(url)) {
       ws.send(typeof data === 'string' ? data : JSON.stringify(data));
     } else {
-      logger.warn('[SOCKET]', `Cannot send: not connected to ${url}`);
+      logger.warn(
+        '[SOCKET]',
+        `Cannot send: not connected to ${loggableUrl(url)}`,
+      );
       this.triggerError(url, 'Not connected');
     }
   }
@@ -157,7 +170,11 @@ class SocketManager {
         try {
           cb(err);
         } catch (e) {
-          logger.error('[SOCKET]', `Error handler threw for ${url}:`, e);
+          logger.error(
+            '[SOCKET]',
+            `Error handler threw for ${loggableUrl(url)}:`,
+            e,
+          );
         }
       }
     }

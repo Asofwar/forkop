@@ -1,3 +1,5 @@
+import { getForkopPage, setStandalonePage } from './forkopPage';
+
 type TabInfo = {
   el: HTMLElement;
   id: string;
@@ -5,6 +7,11 @@ type TabInfo = {
 };
 
 type TabChangeCallback = (activeId: string | null, allTabs: TabInfo[]) => void;
+
+export function setForkopPage(pageId: string | null) {
+  setStandalonePage(pageId);
+  TabService.getInstance().refresh();
+}
 
 class TabService {
   private static instance: TabService;
@@ -57,7 +64,7 @@ class TabService {
     const active = document.querySelector<HTMLElement>(
       '.cbi-tab:not(.cbi-tab-disabled)',
     );
-    return active?.dataset.tab || null;
+    return active?.dataset.tab || getForkopPage();
   }
 
   private notify() {
@@ -70,9 +77,16 @@ class TabService {
     }
   }
 
+  public refresh() {
+    this.notify();
+  }
+
+  // A new subscriber always gets the current tab, even when it was already
+  // known before (a page registered before the subscription).
   public onChange(callback: TabChangeCallback) {
     this.callback = callback;
-    this.notify();
+    this.lastActiveId = this.getActiveTabId();
+    callback(this.lastActiveId, this.getTabsInfo());
   }
 }
 

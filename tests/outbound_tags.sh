@@ -223,6 +223,7 @@ const fs = require('fs');
 const input = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 input.settings.dns_server = ['77.88.8.8'];
 input.settings.bootstrap_dns_server = ['77.88.8.8'];
+input.settings.yacd_secret_key ??= 'test-clash-secret';
 fs.writeFileSync(process.argv[3], JSON.stringify(input));
 JS
   if output="$(FORKOP_LIB="$FORKOP_LIB" ucode -L "$FORKOP_LIB" "$VALIDATOR_UC" \

@@ -1404,6 +1404,21 @@ function migrate_own_dependency_mirror(ctx) {
     }
 }
 
+// D-1 (b): the Clash API controller listens on the LAN and always requires a
+// secret. A configuration without one (a new install: the shipped config has
+// none, or an upgrade) gets 256 random bits as hex; an existing secret is
+// never replaced. Without a random source nothing is recorded, so the next
+// run retries, and the validator refuses to start without a secret.
+function migrate_clash_api_secret(ctx) {
+    if (common.clash_api_secret(ctx.model.settings) != "")
+        return true;
+    let secret = common.random_hex_secret();
+    if (secret == null)
+        return false;
+    set_option(ctx, ctx.model.settings, "yacd_secret_key", secret);
+    return true;
+}
+
 const MIGRATIONS = [
     { id: "interface_sections", run: migrate_interface_sections },
     { id: "enable_component_checks", run: migrate_enable_component_checks },
@@ -1412,7 +1427,8 @@ const MIGRATIONS = [
     { id: "retired_secondary_rulesets", run: migrate_retired_secondary_rulesets },
     { id: "retired_secondary_rulesets_v2", run: migrate_retired_secondary_rulesets },
     { id: "secondary_rulesets_mirror_v1", run: migrate_secondary_rulesets_to_mirror },
-    { id: "own_dependency_mirror_v1", run: migrate_own_dependency_mirror }
+    { id: "own_dependency_mirror_v1", run: migrate_own_dependency_mirror },
+    { id: "clash_api_secret_v1", run: migrate_clash_api_secret }
 ];
 
 function apply_migrations(ctx) {
@@ -1433,7 +1449,8 @@ function apply_migrations(ctx) {
         if (seen[migration.id])
             continue;
 
-        migration.run(ctx);
+        if (migration.run(ctx) === false)
+            continue;
         seen[migration.id] = true;
         push(applied, migration.id);
         added = true;

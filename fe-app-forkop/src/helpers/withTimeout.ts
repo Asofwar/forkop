@@ -18,6 +18,6 @@ export async function withTimeout<T>(
   } finally {
     clearTimeout(timeoutId);
     const elapsed = performance.now() - start;
-    logger.info('[SHELL]', `[${operationName}] took ${elapsed.toFixed(2)} ms`);
+    logger.debug('[SHELL]', `[${operationName}] took ${elapsed.toFixed(2)} ms`);
   }
 }

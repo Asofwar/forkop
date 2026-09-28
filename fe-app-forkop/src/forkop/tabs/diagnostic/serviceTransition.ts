@@ -16,14 +16,6 @@ export function isServiceTransitionStatus(status: string) {
   return ['starting', 'stopping', 'restarting', 'reloading'].includes(status);
 }
 
-export function getServiceTransition(status: string) {
-  return {
-    starting: status === 'starting',
-    stopping: status === 'stopping',
-    restarting: status === 'restarting' || status === 'reloading',
-  };
-}
-
 export function hasLocalMutatingServiceActionLoading(
   actions: DiagnosticServiceActions,
 ) {
@@ -99,44 +91,9 @@ export function getAvailableActionsDisabledState({
   };
 }
 
-export function shouldShowRestartAction({
-  forkopRunning,
-  restartLoading,
-  startLoading,
-  stopLoading,
-}: {
-  forkopRunning: boolean;
-  restartLoading: boolean;
-  startLoading: boolean;
-  stopLoading: boolean;
-}) {
-  return restartLoading || (forkopRunning && !startLoading && !stopLoading);
-}
-
-export function shouldShowStartAction({
-  forkopRunning,
-  restartLoading,
-  startLoading,
-  stopLoading,
-}: {
-  forkopRunning: boolean;
-  restartLoading: boolean;
-  startLoading: boolean;
-  stopLoading: boolean;
-}) {
-  return startLoading || (!restartLoading && !forkopRunning && !stopLoading);
-}
-
-export function shouldShowStopAction({
-  forkopRunning,
-  restartLoading,
-  startLoading,
-  stopLoading,
-}: {
-  forkopRunning: boolean;
-  restartLoading: boolean;
-  startLoading: boolean;
-  stopLoading: boolean;
-}) {
-  return stopLoading || restartLoading || (forkopRunning && !startLoading);
+export function serviceActionErrorText(error: unknown) {
+  const detail = error instanceof Error ? error.message.trim() : '';
+  return detail
+    ? `${_('Service action failed')}: ${detail}`
+    : _('Service action failed');
 }

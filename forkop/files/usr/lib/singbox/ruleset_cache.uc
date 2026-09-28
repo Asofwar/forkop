@@ -617,7 +617,7 @@ function materialize_config(config_path, allow_download) {
             values[i] = local_rule_set(values[i], manifest, previous_manifest, runtime_manifest, allow_download);
     route.rule_set = values;
     config.route = route;
-    if (!common.write_json_file(config_path, config))
+    if (!common.write_private_json_file(config_path, config))
         return false;
     let persistent_manifest_written = write_manifest(manifest);
     for (let key, entry in runtime_manifest)

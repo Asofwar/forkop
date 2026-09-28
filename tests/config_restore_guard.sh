@@ -1,0 +1,132 @@
+#!/bin/sh
+set -eu
+
+# Config restore and the DPI transition guard: a restore started while the
+# restore guard from a failed attempt (needs_attention) is still active must be
+# able to reuse that guard, and the guard may only disappear after a reload
+# proved a coherent runtime.
+ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+LIB="$ROOT/forkop/files/usr/lib"
+SCRIPT="$LIB/config/snapshots.uc"
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT HUP INT TERM
+REAL_UCODE="$(command -v ucode)"
+export FORKOP_CONFIG_FILE="$WORK/forkop"
+export FORKOP_SNAPSHOT_DIR="$WORK/snapshots"
+export FORKOP_SNAPSHOT_HASH_DIR="$WORK/hash"
+export FORKOP_SNAPSHOT_LOCK_DIR="$WORK/run/config-snapshot.lock"
+export FORKOP_LIB="$LIB"
+export FORKOP_RELOAD_COMMAND="$WORK/reload"
+export STATE="$WORK/state"
+mkdir -p "$WORK/bin" "$WORK/run" "$STATE"
+
+# Guard model: absent | valid | invalid, with the real contracts of
+# ensure (reuse valid, create absent, refuse invalid) and the legacy
+# create-only install (refuse anything present).
+cat > "$WORK/bin/ucode" <<'STUB'
+#!/bin/sh
+case "${3:-}" in
+  */nft/apply.uc)
+    guard="$(cat "$STATE/guard")"
+    echo "$4:$guard" >> "$STATE/events"
+    case "$4" in
+      ensure-dpi-transition-guard)
+        [ "$guard" = absent ] && { echo valid > "$STATE/guard"; exit 0; }
+        [ "$guard" = valid ] && exit 0
+        exit 1 ;;
+      install-dpi-transition-guard)
+        [ "$guard" = absent ] && { echo valid > "$STATE/guard"; exit 0; }
+        exit 1 ;;
+      remove-dpi-transition-guard)
+        echo absent > "$STATE/guard"; exit 0 ;;
+    esac ;;
+  */config/validator.uc) echo validate >> "$STATE/events"; exit 0 ;;
+  */diagnostics/health.uc) echo "health:$5:$6" >> "$STATE/events"; exit 0 ;;
+esac
+exit 0
+STUB
+# Reload outcomes are consumed one per call from $STATE/plan.
+cat > "$WORK/reload" <<'STUB'
+#!/bin/sh
+set -- $(cat "$STATE/plan")
+rc="${1:-0}"; shift || true
+echo "$*" > "$STATE/plan"
+echo "reload:$rc:$(grep -o "marker '[a-z]*'" "$FORKOP_CONFIG_FILE")" >> "$STATE/events"
+exit "$rc"
+STUB
+chmod +x "$WORK/bin/ucode" "$WORK/reload"
+
+config() { printf "config settings 'settings'\n option dns_server '1.1.1.1'\n option marker '%s'\n" "$1" > "$FORKOP_CONFIG_FILE"; }
+config good
+good_id="$("$REAL_UCODE" -L "$LIB" "$SCRIPT" create manual | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).snapshot.id))')"
+
+# restore <lib dir> <initial guard> <reload plan> -> $WORK/result.json, $STATE/events
+# The snapshot lock identifies its owner by argv, so each variant runs from its
+# own library directory.
+restore() {
+  echo "$2" > "$STATE/guard"; echo "$3" > "$STATE/plan"; : > "$STATE/events"
+  FORKOP_LIB="$1" PATH="$WORK/bin:$PATH" "$REAL_UCODE" -L "$1" "$1/config/snapshots.uc" restore "$good_id" > "$WORK/result.json" || true
+}
+check() {
+  node - "$WORK/result.json" "$STATE/events" "$(cat "$STATE/guard")" "$(cat "$FORKOP_SNAPSHOT_DIR/last-known-working" 2>/dev/null)" "$good_id" "$(grep -o "marker '[a-z]*'" "$FORKOP_CONFIG_FILE")" "$1" <<'JS'
+const fs = require('node:fs');
+const assert = require('node:assert/strict');
+const [resultFile, eventsFile, guard, lkg, goodId, marker, expectJson] = process.argv.slice(2);
+const result = JSON.parse(fs.readFileSync(resultFile, 'utf8'));
+const events = fs.readFileSync(eventsFile, 'utf8').trim().split('\n').filter(Boolean);
+const expect = JSON.parse(expectJson);
+assert.equal(result.status, expect.status, JSON.stringify(result));
+if (expect.reason) assert.equal(result.reason, expect.reason);
+if (expect.guardField) assert.equal(result.guard, expect.guardField);
+assert.equal(guard, expect.guard, `guard state, events: ${events}`);
+assert.equal(marker, `marker '${expect.config}'`);
+if (expect.lkgGood !== undefined) assert.equal(lkg === goodId, expect.lkgGood);
+if (expect.health) assert.ok(events.includes(`health:restore:${expect.health}`), events.join(' '));
+// Invariant: a guard is only removed right after a reload that succeeded.
+events.forEach((event, i) => {
+  if (event.startsWith('remove-dpi-transition-guard'))
+    assert.match(events[i - 1] || '', /^reload:0:/, `remove without proven reload: ${events}`);
+});
+if (expect.noReload) assert.ok(!events.some((e) => e.startsWith('reload:')), events.join(' '));
+if (expect.noRemove) assert.ok(!events.some((e) => e.startsWith('remove')), events.join(' '));
+JS
+}
+
+# Old behaviour: create-only install refuses the still-active guard.
+cp -R "$LIB" "$WORK/oldlib"
+sed 's/"ensure-dpi-transition-guard"/"install-dpi-transition-guard"/' "$SCRIPT" > "$WORK/oldlib/config/snapshots.uc"
+grep -q '"install-dpi-transition-guard"' "$WORK/oldlib/config/snapshots.uc"
+config bad; restore "$WORK/oldlib" valid "0"
+check '{"status":"failed","reason":"guard_unavailable","guard":"valid","config":"bad","noReload":true,"noRemove":true}'
+
+# 1. Guard absent: restore creates it, reloads and removes it.
+config bad; restore "$LIB" absent "0"
+check '{"status":"success","guard":"absent","config":"good","lkgGood":true,"health":"success"}'
+grep -q '^ensure-dpi-transition-guard:absent$' "$STATE/events"
+
+# 2./3. Valid guard already active: restore proceeds, succeeds, removes it, updates LKG.
+echo "stale" > "$FORKOP_SNAPSHOT_DIR/last-known-working"
+config bad; restore "$LIB" valid "0"
+check '{"status":"success","guard":"absent","config":"good","lkgGood":true,"health":"success"}'
+grep -q '^ensure-dpi-transition-guard:valid$' "$STATE/events"
+
+# 4. Valid guard + target reload fails + rollback reload succeeds: recovered, guard removed.
+config bad; restore "$LIB" valid "1 0"
+check '{"status":"recovered","reason":"target_reload_failed","guardField":"inactive","guard":"absent","config":"bad","health":"recovered"}'
+
+# 5. Valid guard + both reloads fail: needs_attention and the guard stays.
+config bad; restore "$LIB" valid "1 1"
+check '{"status":"needs_attention","reason":"runtime_rollback_failed","guardField":"active","guard":"valid","config":"bad","noRemove":true,"health":"failure"}'
+
+# 6. needs_attention -> second restore of the known-good snapshot is allowed and recovers.
+restore "$LIB" "$(cat "$STATE/guard")" "0"
+check '{"status":"success","guard":"absent","config":"good","lkgGood":true}'
+
+# 7. Unexpected guard state: fail closed, config not replaced, guard not removed.
+config bad; restore "$LIB" invalid "0"
+check '{"status":"failed","reason":"guard_unavailable","guard":"invalid","config":"bad","noReload":true,"noRemove":true}'
+
+# Phase 22 shape without any pre-existing guard.
+config bad; restore "$LIB" absent "1 0"
+check '{"status":"recovered","reason":"target_reload_failed","guardField":"inactive","guard":"absent","config":"bad"}'
+printf 'config_restore_guard: PASS\n'

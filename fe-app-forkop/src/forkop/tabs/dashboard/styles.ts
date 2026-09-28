@@ -34,41 +34,61 @@ export const styles = `
     --dashboard-grid-min-width: 180px;
 }
 
-.fkp_dashboard-page__service-stopped {
-    display: none;
-    width: 100%;
-    min-height: 180px;
-    margin-top: 10px;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-    box-sizing: border-box;
-    border: 1px dashed var(--border-color-high, #555);
-    border-radius: 6px;
-    color: var(--text-color-medium, #888);
-    background: transparent;
-    font-family: inherit;
-    font-size: inherit;
-    font-weight: inherit;
-    line-height: inherit;
-    font-style: italic;
-    text-align: center;
-}
-
-.fkp_dashboard-page--service-stopped {
-    display: grid;
-    grid-template-columns: repeat(var(--dashboard-grid-columns), minmax(var(--dashboard-grid-min-width), 1fr));
-    gap: 10px;
-}
-
-.fkp_dashboard-page--service-stopped .fkp_dashboard-page__service-stopped {
-    display: flex;
-    grid-column: 1 / -1;
-}
-
+/* Overview: summary cards; the nodes section hides while Forkop X is stopped. */
 .fkp_dashboard-page--service-stopped .fkp_dashboard-page__content {
     display: none;
 }
+
+.fkp-overview__warning {
+    margin: 0 0 var(--fkp-space-3);
+    padding: var(--fkp-space-3) var(--fkp-space-4);
+    border: 1px solid var(--fkp-tone-error);
+    border-left-width: 4px;
+    border-radius: 6px;
+}
+.fkp-overview__warning p { margin: var(--fkp-space-1) 0 var(--fkp-space-2); }
+
+.fkp-overview__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+    gap: var(--fkp-space-3);
+}
+
+.fkp-overview__card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--fkp-space-2);
+    min-width: 0;
+    padding: var(--fkp-space-3) var(--fkp-space-4);
+    border: 1px solid var(--fkp-border);
+    border-radius: 6px;
+}
+.fkp-overview__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--fkp-space-2);
+}
+.fkp-overview__title { margin: 0; font-size: 1.05em; overflow-wrap: anywhere; }
+.fkp-overview__summary { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.fkp-overview__hint { margin: 0; color: var(--fkp-tone-neutral); overflow-wrap: anywhere; }
+.fkp-overview__lines { margin: 0; padding: 0; list-style: none; }
+.fkp-overview__lines li { overflow-wrap: anywhere; }
+.fkp-overview__line--success { color: var(--fkp-tone-success); }
+.fkp-overview__line--warning { color: var(--fkp-tone-warning); }
+.fkp-overview__line--error { color: var(--fkp-tone-error); }
+.fkp-overview__groups { margin: 0; padding: 0; list-style: none; }
+.fkp-overview__groups li {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0 var(--fkp-space-2);
+    padding: 2px 0;
+}
+.fkp-overview__group-name { font-weight: 600; overflow-wrap: anywhere; }
+.fkp-overview__group-node { overflow-wrap: anywhere; }
+.fkp-overview__footer { margin-top: auto; padding-top: var(--fkp-space-1); }
+.fkp-overview__section-title { margin: var(--fkp-space-5) 0 0; }
 
 @media (max-width: 900px) {
     .fkp_dashboard-page {
@@ -82,36 +102,6 @@ export const styles = `
         --dashboard-grid-min-width: 0;
     }
 }
-
-.fkp_dashboard-page__widgets-section {
-    margin-top: 10px;
-    display: grid;
-    grid-template-columns: repeat(var(--dashboard-grid-columns), minmax(var(--dashboard-grid-min-width), 1fr));
-    grid-gap: 10px;
-}
-
-.fkp_dashboard-page__widgets-section__item {
-    border: 2px var(--background-color-low, lightgray) solid;
-    border-radius: 4px;
-    padding: 10px;
-    min-width: 0;
-}
-
-.fkp_dashboard-page__widgets-section__item__title {}
-
-.fkp_dashboard-page__widgets-section__item__row {}
-
-.fkp_dashboard-page__widgets-section__item__row--success .fkp_dashboard-page__widgets-section__item__row__value {
-    color: var(--success-color-medium, green);
-}
-
-.fkp_dashboard-page__widgets-section__item__row--error .fkp_dashboard-page__widgets-section__item__row__value {
-    color: var(--error-color-medium, red);
-}
-
-.fkp_dashboard-page__widgets-section__item__row__key {}
-
-.fkp_dashboard-page__widgets-section__item__row__value {}
 
 .fkp_dashboard-page__outbound-section {
     margin-top: 10px;

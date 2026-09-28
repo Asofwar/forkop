@@ -21,6 +21,299 @@ export namespace ClashAPI {
 
 // eslint-disable-next-line @typescript-eslint/no-namespace
 export namespace Forkop {
+  export type HealthLevel =
+    | 'ok'
+    | 'warning'
+    | 'error'
+    | 'transitioning'
+    | 'recovered'
+    | 'unknown';
+
+  export interface HealthStatus {
+    overall: HealthLevel;
+    service: { forkop: HealthLevel; sing_box: HealthLevel };
+    dns: { status: HealthLevel; configured?: boolean };
+    dpi: { status: HealthLevel };
+    lists: { status: HealthLevel };
+    guard: { active: boolean };
+    recovery: {
+      pending: boolean;
+      last_event: { kind: string; status: string; timestamp: number } | null;
+    };
+    package_recovery: { pending: boolean };
+    last_reload: { kind?: string; status: string; timestamp: number } | null;
+    recent_activity: Array<{ kind: string; status: string; timestamp: number }>;
+  }
+
+  export interface RouteTraceStage {
+    value?: string | null;
+    address?: string | null;
+    provenance: 'observed' | 'configured' | 'simulated' | 'unknown';
+    context?: string;
+    // Why a stage is not determined, or what decided it (route_trace).
+    reason?: string | null;
+    section?: string;
+    strategy?: string;
+    strategy_custom?: boolean;
+  }
+  export interface RouteTrace {
+    target: RouteTraceStage & {
+      source: string;
+      source_applied: boolean;
+      protocol: string;
+      port: string;
+    };
+    dns: RouteTraceStage;
+    rule: RouteTraceStage;
+    action: RouteTraceStage;
+    outbound: RouteTraceStage;
+    dpi: RouteTraceStage;
+    interface: RouteTraceStage;
+    runtime: RouteTraceStage;
+  }
+  export interface SnapshotMetadata {
+    id: string;
+    created_at: number;
+    kind: 'manual' | 'automatic';
+    reason: string;
+    forkop_version: string;
+    is_lkg?: boolean;
+  }
+
+  export interface HistoryEvent {
+    kind: string;
+    status: string;
+    timestamp: number;
+    // autotune_apply only: who started it and the catalog candidate id.
+    trigger?: 'manual' | 'automatic';
+    candidate?: string;
+  }
+
+  export interface HistoryResult {
+    // false: no journal on flash yet, events come from runtime memory.
+    persistent: boolean;
+    events: HistoryEvent[];
+  }
+  // autotune/manager.uc: policy, targets and cached results. Strategy
+  // identities are catalog candidate ids, never raw strategies.
+  export type AutotuneMode = 'off' | 'recommend' | 'auto';
+
+  export interface AutotunePolicy {
+    mode: AutotuneMode;
+    interval: string;
+    confirmations: number;
+    min_confidence: 'medium' | 'high';
+    max_applies_per_day: number;
+    cooldown: string;
+    probes: number;
+    interval_seconds?: number | null;
+    cooldown_seconds?: number | null;
+  }
+
+  export interface AutotuneCandidateSummary {
+    id: string;
+    stability?: string;
+    success?: number;
+    attempted?: number;
+    success_ratio?: number | null;
+    median_tls_ms?: number | null;
+    failure_classes?: string[];
+  }
+
+  export interface AutotuneTargetSummary {
+    at: number;
+    status: string;
+    reason: string | null;
+    selected: string | null;
+    confidence: string | null;
+    leading?: string | null;
+    host?: string | null;
+    group?: string | null;
+    candidates: AutotuneCandidateSummary[];
+  }
+
+  export interface AutotuneTarget {
+    id: string;
+    host: string;
+    enabled: boolean;
+    resolver: string | null;
+    last: AutotuneTargetSummary | null;
+  }
+
+  export interface AutotuneGroupResult {
+    status: string;
+    candidate: string | null;
+    confidence: string | null;
+    representative?: string | null;
+    reason: string | null;
+    conflict?: { target: string; selected: string }[];
+  }
+
+  export interface AutotuneApplyRecord {
+    at: number;
+    group: string;
+    candidate: string | null;
+    status: string;
+    reason: string | null;
+    // Counted against the daily limit of automatic applies.
+    counted?: boolean;
+    trigger?: 'manual' | 'automatic';
+  }
+
+  // Hysteresis state of a group, written by the worker.
+  export interface AutotuneGroupState {
+    pending: {
+      candidate: string;
+      count: number;
+      confidence?: string | null;
+      first_seen?: number;
+      last_seen?: number;
+      inconclusive_streak?: number;
+    } | null;
+    last?: {
+      status: string;
+      candidate: string | null;
+      confidence: string | null;
+      reason: string | null;
+      at: number;
+    } | null;
+    cooldowns?: Record<string, number>;
+    last_apply?: AutotuneApplyRecord | null;
+    label?: string | null;
+    targets?: string[];
+    current?: string | null;
+    ready?: boolean;
+    required?: number;
+    result?: AutotuneGroupResult | null;
+    decision?: { reason: string | null; at: number } | null;
+  }
+
+  export interface AutotuneWorker {
+    state: 'running' | 'finished' | 'crashed' | string;
+    trigger?: string;
+    scope?: string;
+    started_at?: number;
+    finished_at?: number;
+    phase?: string;
+    result?: string;
+    reason?: string | null;
+    applied?: string | null;
+    // A manual apply: kind "apply", its background job, group and candidate.
+    kind?: string;
+    job?: string | null;
+    group?: string;
+    candidate?: string;
+  }
+
+  export interface AutotuneStatus {
+    status: 'ok' | 'failed';
+    reason?: string;
+    policy: AutotunePolicy;
+    errors: { option?: string; target?: string; error: string }[];
+    targets: AutotuneTarget[];
+    groups: Record<string, AutotuneGroupState>;
+    next_run_at: number | null;
+    worker: AutotuneWorker | null;
+    recovered_at: number | null;
+    state_recovered: string | null;
+  }
+
+  // Membership calculated from the routing now (DNS lookups on the router).
+  export interface AutotuneLiveGroup {
+    label: string | null;
+    targets: string[];
+    current: string | null;
+    custom: boolean | null;
+    result: AutotuneGroupResult | null;
+  }
+
+  export interface AutotuneGroups {
+    status: 'ok' | 'failed';
+    reason?: string;
+    groups: Record<string, AutotuneLiveGroup>;
+    outside: {
+      id: string;
+      host: string;
+      reason: string;
+      detail: string | null;
+    }[];
+  }
+
+  export interface AutotuneMutationResult {
+    status: 'ok' | 'failed' | 'refused' | 'busy';
+    reason?: string;
+    job?: string;
+  }
+
+  export interface AutotuneJob {
+    id: string;
+    kind?: 'run' | 'apply';
+    scope: string;
+    state: 'starting' | 'running' | 'finished' | 'lost';
+    result: {
+      status: string;
+      result?: string;
+      reason?: string | null;
+      group?: string;
+      candidate?: string;
+    } | null;
+    // Manual apply: the worker phase and the Stage 5 transaction phase.
+    progress?: { phase: string; apply_phase: string | null };
+  }
+
+  export interface AutotuneJobStatus {
+    status: 'ok' | 'failed';
+    reason?: string;
+    job?: AutotuneJob;
+  }
+
+  export interface SnapshotChange {
+    section: string;
+    option: string;
+    kind?: 'list';
+    before: string | string[];
+    after: string | string[];
+  }
+  export interface SnapshotResult {
+    status:
+      | 'created'
+      | 'existing'
+      | 'success'
+      | 'recovered'
+      | 'needs_attention'
+      | 'failed'
+      | 'deleted'
+      | 'busy'
+      // config/snapshots.uc: a concurrent change, nothing to restore, and
+      // the last-known-good confirmation.
+      | 'stale'
+      | 'no_change'
+      | 'confirmed';
+    snapshot?: SnapshotMetadata;
+    changes?: SnapshotChange[];
+    reason?: string;
+  }
+  export interface ConnectivityResult {
+    host: string;
+    type: 'DNS' | 'TCP' | 'HTTP' | 'HTTPS';
+    port: number | null;
+    status: 'ok' | 'timeout' | 'error';
+    error:
+      | 'timeout'
+      | 'nxdomain'
+      | 'no_answer'
+      | 'dns_failed'
+      | 'connect_failed'
+      | 'tls_failed'
+      | 'no_response'
+      | 'tool_missing'
+      | 'failed'
+      | null;
+    latency_ms: number;
+    origin: 'router';
+    http_code?: number;
+    address?: string;
+  }
   // Available commands:
   // start                   Start forkop service
   // stop                    Stop forkop service
@@ -57,7 +350,6 @@ export namespace Forkop {
     CHECK_ZAPRET2_RUNTIME = 'check_zapret2_runtime',
     CHECK_BYEDPI_RUNTIME = 'check_byedpi_runtime',
     GET_STATUS = 'get_status',
-    GET_OUTBOUND_METADATA = 'get_outbound_metadata',
     GET_SUBSCRIPTION_METADATA = 'get_subscription_metadata',
     CHECK_SING_BOX = 'check_sing_box',
     GET_SING_BOX_STATUS = 'get_sing_box_status',
@@ -71,10 +363,21 @@ export namespace Forkop {
     SUPPORT_REPORT = 'support_report',
     SHOW_SING_BOX_CONFIG = 'show_sing_box_config',
     CHECK_LOGS = 'check_logs',
-    CHECK_SING_BOX_LOGS = 'check_sing_box_logs',
     GET_SYSTEM_INFO = 'get_system_info',
     GET_UI_CAPABILITIES = 'get_ui_capabilities',
     GET_UI_STATE = 'get_ui_state',
+    GET_HEALTH_STATUS = 'get_health_status',
+    GET_HISTORY = 'get_history',
+    ROUTE_TRACE = 'route_trace',
+    CONFIG_SNAPSHOT_CREATE = 'config_snapshot_create',
+    CONFIG_SNAPSHOT_LIST = 'config_snapshot_list',
+    CONFIG_SNAPSHOT_DIFF = 'config_snapshot_diff',
+    CONFIG_SNAPSHOT_RESTORE = 'config_snapshot_restore',
+    CONFIG_SNAPSHOT_DELETE = 'config_snapshot_delete',
+    CONNECTIVITY_TEST = 'connectivity_test',
+    VALIDATE_NFQWS_STRATEGY_JSON = 'validate_nfqws_strategy_json',
+    VALIDATE_NFQWS2_STRATEGY_JSON = 'validate_nfqws2_strategy_json',
+    VALIDATE_BYEDPI_STRATEGY_JSON = 'validate_byedpi_strategy_json',
     GET_READONLY_CONFIG_SECTIONS = 'get_readonly_config_sections',
     GET_DASHBOARD_RUNTIME_METADATA = 'get_dashboard_runtime_metadata',
     SERVICE_ACTION_ASYNC = 'service_action_async',
@@ -87,6 +390,14 @@ export namespace Forkop {
     COMPONENT_UPDATE_CHECK_CACHE = 'component_update_check_cache',
     SUBSCRIPTION_UPDATE_ASYNC = 'subscription_update_async',
     SUBSCRIPTION_UPDATE_STATUS = 'subscription_update_status',
+    AUTOTUNE_STATUS = 'autotune_status',
+    AUTOTUNE_GROUPS = 'autotune_groups',
+    AUTOTUNE_POLICY_SET = 'autotune_policy_set',
+    AUTOTUNE_TARGET_SET = 'autotune_target_set',
+    AUTOTUNE_TARGET_REMOVE = 'autotune_target_remove',
+    AUTOTUNE_RUN_ASYNC = 'autotune_run_async',
+    AUTOTUNE_APPLY_ASYNC = 'autotune_apply_async',
+    AUTOTUNE_RUN_STATUS = 'autotune_run_status',
   }
 
   export enum AvailableClashAPIMethods {
@@ -252,6 +563,10 @@ export namespace Forkop {
     nfqws_opt?: string;
     nfqws2_opt?: string;
     byedpi_cmd_opts?: string;
+    // Derived read-only strategy view (get_readonly_config_sections).
+    dpi_provider?: string;
+    dpi_strategy?: string;
+    dpi_strategy_custom?: boolean;
     cmd_opts?: string;
     selector_proxy_links?: string[];
     subscription_urls?: string[];

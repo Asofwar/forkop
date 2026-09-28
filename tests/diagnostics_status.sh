@@ -96,7 +96,7 @@ case "$wan_output" in
   *wireguard-private-secret*) fail "masked WAN config leaked the WireGuard private key" ;;
 esac
 case "$wan_output" in
-  *"option private_key '******'"*) ;;
+  *"option private_key 'MASKED'"*) ;;
   *) fail "masked WAN config must preserve a masked WireGuard private key option" ;;
 esac
 

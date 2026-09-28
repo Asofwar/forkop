@@ -23,6 +23,7 @@ vi.mock('../updateCheckStore', () => ({
 }));
 
 import { runSectionsCheck } from '../runSectionsCheck';
+import { setReadonlyMode } from '../../../../services/accessMode.service';
 
 describe('runSectionsCheck', () => {
   beforeEach(() => {
@@ -197,5 +198,21 @@ describe('runSectionsCheck', () => {
         ],
       }),
     );
+  });
+
+  it('reports read-only sessions as not available for checking instead of failing', async () => {
+    setReadonlyMode(true);
+    try {
+      await runSectionsCheck();
+    } finally {
+      setReadonlyMode(false);
+    }
+    expect(mocks.getDashboardSections).not.toHaveBeenCalled();
+    expect(mocks.getClashApiProxyLatency).not.toHaveBeenCalled();
+    expect(mocks.getClashApiGroupLatency).not.toHaveBeenCalled();
+    const calls = mocks.updateCheckStore.mock.calls;
+    const last = calls[calls.length - 1][0];
+    expect(last.state).toBe('unsupported');
+    expect(last.items).toEqual([]);
   });
 });

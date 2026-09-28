@@ -190,7 +190,10 @@ function renderRoutingCard(routing: OverviewRouting, readonly: boolean) {
         : []),
     ],
     [
-      linkButton(_('Monitoring'), () => openForkopPage('monitoring')),
+      linkButton(_('Nodes and groups'), () =>
+        openForkopPage('monitoring', { view: 'nodes' }),
+      ),
+      linkButton(_('Connections'), () => openForkopPage('monitoring')),
       ...(readonly
         ? []
         : [linkButton(_('Rules'), () => openForkopPage('settings'))]),

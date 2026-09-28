@@ -2321,50 +2321,45 @@ function render() {
         "div",
         { id: "dashboard-overview", role: "status" },
         E("p", { class: "fkp-overview__hint" }, _("Loading\u2026"))
-      ),
-      // Until Monitoring gets its Nodes view (Stage 6.5) node selection
-      // stays here, below the summary.
-      E("section", { class: "fkp_dashboard-page__content" }, [
-        E(
-          "h3",
-          { class: "fkp-overview__section-title" },
-          _("Nodes and groups")
-        ),
-        E(
-          "div",
-          { id: "dashboard-sections-grid" },
-          renderSections({
-            loading: true,
-            failed: false,
-            section: {
-              code: "",
-              sectionName: "",
-              displayName: "",
-              outbounds: [],
-              withTagSelect: false
-            },
-            onTestLatency: () => {
-            },
-            onChooseOutbound: () => {
-            },
-            onShowUrlTestInfo: () => {
-            },
-            onShowPriorityInfo: () => {
-            },
-            onUpdateSubscription: () => {
-            },
-            latencyFetching: false,
-            latencyProgress: void 0,
-            subscriptionUpdating: false,
-            selectorSwitchingTag: void 0,
-            isPriorityMembersExpanded: () => false,
-            onPriorityMembersToggle: () => {
-            }
-          })
-        )
-      ])
+      )
     ]
   );
+}
+function renderNodes() {
+  return E("div", { id: "dashboard-status", class: "fkp_dashboard-page" }, [
+    E(
+      "div",
+      { id: "dashboard-sections-grid" },
+      renderSections({
+        loading: true,
+        failed: false,
+        section: {
+          code: "",
+          sectionName: "",
+          displayName: "",
+          outbounds: [],
+          withTagSelect: false
+        },
+        onTestLatency: () => {
+        },
+        onChooseOutbound: () => {
+        },
+        onShowUrlTestInfo: () => {
+        },
+        onShowPriorityInfo: () => {
+        },
+        onUpdateSubscription: () => {
+        },
+        latencyFetching: false,
+        latencyProgress: void 0,
+        subscriptionUpdating: false,
+        selectorSwitchingTag: void 0,
+        isPriorityMembersExpanded: () => false,
+        onPriorityMembersToggle: () => {
+        }
+      })
+    )
+  ]);
 }
 
 // src/helpers/showToast.ts
@@ -5750,11 +5745,45 @@ function eventKindLabel(kind) {
       return _("Other event");
   }
 }
+function provenanceLabel(provenance) {
+  switch (provenance) {
+    case "observed":
+      return _("Observed");
+    case "configured":
+      return _("From configuration");
+    case "simulated":
+      return _("Calculated");
+    default:
+      return _("Not determined");
+  }
+}
+function provenanceDescription(provenance) {
+  switch (provenance) {
+    case "observed":
+      return _("Seen in an active connection");
+    case "configured":
+      return _("Derived from configuration");
+    case "simulated":
+      return _("Calculated result");
+    default:
+      return _("Not determined");
+  }
+}
 function renderStatus(view) {
   return E(
     "span",
     { class: `fkp-status fkp-status--${view.tone}` },
     view.label
+  );
+}
+function renderProvenance(provenance) {
+  return E(
+    "span",
+    {
+      class: `fkp-provenance fkp-provenance--${provenance}`,
+      title: provenanceDescription(provenance)
+    },
+    provenanceLabel(provenance)
   );
 }
 
@@ -6002,12 +6031,19 @@ function renderOverflowMenu(label, items) {
       )
     )
   );
-  if (typeof document !== "undefined" && document.addEventListener) {
-    document.addEventListener("click", (event) => {
-      if (menu.open && !menu.contains(event.target)) close();
-    });
-  }
+  registerOutsideClose();
   return menu;
+}
+var outsideCloseRegistered = false;
+function registerOutsideClose() {
+  if (outsideCloseRegistered || typeof document === "undefined") return;
+  if (!document.addEventListener) return;
+  outsideCloseRegistered = true;
+  document.addEventListener("click", (event) => {
+    document.querySelectorAll("details.fkp-menu[open]").forEach((menu) => {
+      if (!menu.contains(event.target)) menu.open = false;
+    });
+  });
 }
 
 // src/forkop/tabs/dashboard/overviewCards.ts
@@ -6145,7 +6181,11 @@ function renderRoutingCard(routing, readonly) {
       ] : []
     ],
     [
-      linkButton(_("Monitoring"), () => openForkopPage("monitoring")),
+      linkButton(
+        _("Nodes and groups"),
+        () => openForkopPage("monitoring", { view: "nodes" })
+      ),
+      linkButton(_("Connections"), () => openForkopPage("monitoring")),
       ...readonly ? [] : [linkButton(_("Rules"), () => openForkopPage("settings"))]
     ]
   );
@@ -6844,6 +6884,8 @@ var overviewHealth = null;
 var overviewRuleCount = null;
 var overviewSnapshotCount = null;
 var overviewServiceBusy = false;
+var overviewHost = false;
+var clashUpdatesStarted = false;
 async function refreshHealth(mountId2) {
   const response = await ForkopShellMethods.getHealthStatus();
   if (!dashboardMounted || mountId2 !== dashboardMountId) return;
@@ -7420,7 +7462,8 @@ function stopDashboardDataUpdates() {
   }
   sectionsRefreshQueued = false;
   stopClashRpcPolling();
-  socket.resetAll();
+  if (clashUpdatesStarted) socket.resetAll();
+  clashUpdatesStarted = false;
 }
 function startDashboardDataUpdates() {
   if (dashboardDataUpdatesStarted || !dashboardMounted || getDashboardServiceAvailability() === "stopped") {
@@ -7429,10 +7472,13 @@ function startDashboardDataUpdates() {
   dashboardDataUpdatesStarted = true;
   const dataUpdatesId = ++dashboardDataUpdatesId;
   void fetchDashboardSections({ force: true });
-  if (canUseDirectClashApi()) {
-    void connectToClashSockets(dataUpdatesId);
-  } else {
-    startClashRpcPolling(dataUpdatesId);
+  if (overviewHost) {
+    clashUpdatesStarted = true;
+    if (canUseDirectClashApi()) {
+      void connectToClashSockets(dataUpdatesId);
+    } else {
+      startClashRpcPolling(dataUpdatesId);
+    }
   }
   sectionsRefreshTimer = setInterval(() => {
     void fetchDashboardSections();
@@ -8314,8 +8360,11 @@ async function onPageMount() {
   dashboardMounted = true;
   dashboardMountId += 1;
   const mountId2 = dashboardMountId;
-  void refreshHealth(mountId2);
-  healthRefreshTimer = setInterval(() => void refreshHealth(mountId2), 1e4);
+  overviewHost = Boolean(document.getElementById("dashboard-overview"));
+  if (overviewHost) {
+    void refreshHealth(mountId2);
+    healthRefreshTimer = setInterval(() => void refreshHealth(mountId2), 1e4);
+  }
   const hasRuntimeSnapshot = Boolean(getCachedRuntimeUiState());
   if (!hasRuntimeSnapshot) {
     const uiState = await refreshRuntimeUiState({ force: true });
@@ -8329,7 +8378,7 @@ async function onPageMount() {
   store.subscribe(onStoreUpdate);
   startActionStateWatcher();
   void renderSectionsWidget();
-  void loadOverviewCounts(mountId2);
+  if (overviewHost) void loadOverviewCounts(mountId2);
   syncDashboardServiceAvailability();
   renderOverviewCards();
   if (hasRuntimeSnapshot) {
@@ -9125,6 +9174,7 @@ var styles3 = `
 // src/forkop/tabs/dashboard/index.ts
 var DashboardTab = {
   render,
+  renderNodes,
   initController,
   styles: styles3
 };
@@ -12630,8 +12680,199 @@ var DiagnosticTab = {
   styles: styles4
 };
 
+// src/forkop/tabs/monitoring/views.ts
+function readMonitoringView(hash) {
+  return readPageParams(hash).view === "nodes" ? "nodes" : "connections";
+}
+function controllerForView(view) {
+  return view === "nodes" ? "dashboard" : "monitoring";
+}
+function showMonitoringView(view, updateUrl = true) {
+  const connections = document.getElementById("monitoring-view-connections");
+  const nodes = document.getElementById("monitoring-view-nodes");
+  if (connections) connections.hidden = view !== "connections";
+  if (nodes) nodes.hidden = view !== "nodes";
+  document.querySelectorAll(".fkp_monitoring-page__view").forEach((button) => {
+    const selected = button.dataset.view === view;
+    button.setAttribute("aria-pressed", selected ? "true" : "false");
+    button.classList.toggle("fkp_monitoring-page__tab--active", selected);
+  });
+  if (updateUrl && typeof history !== "undefined" && history.replaceState) {
+    const url = `${window.location.pathname}${window.location.search}`;
+    history.replaceState(
+      null,
+      "",
+      view === "nodes" ? `${url}#view=nodes` : url
+    );
+  }
+  setForkopPage(controllerForView(view));
+}
+
 // src/forkop/tabs/monitoring/render.ts
+function renderViewSwitch(current) {
+  return E(
+    "div",
+    {
+      class: "fkp_monitoring-page__views",
+      role: "group",
+      "aria-label": _("Monitoring view")
+    },
+    [
+      ["connections", _("Connections")],
+      ["nodes", _("Nodes and groups")]
+    ].map(
+      ([view, label]) => E(
+        "button",
+        {
+          type: "button",
+          class: `btn cbi-button fkp_monitoring-page__tab fkp_monitoring-page__view${current === view ? " fkp_monitoring-page__tab--active" : ""}`,
+          "data-view": view,
+          "aria-pressed": current === view ? "true" : "false",
+          click: () => showMonitoringView(view)
+        },
+        label
+      )
+    )
+  );
+}
+function renderConnectionsView(hidden) {
+  return E(
+    "div",
+    {
+      id: "monitoring-view-connections",
+      class: "fkp_monitoring-page__panel",
+      ...hidden ? { hidden: true } : {}
+    },
+    [
+      E("div", { class: "fkp_monitoring-page__controls" }, [
+        E("div", { class: "fkp_monitoring-page__tabs" }, [
+          E(
+            "button",
+            {
+              id: "monitoring-tab-active",
+              class: "btn cbi-button fkp_monitoring-page__tab fkp_monitoring-page__tab--active",
+              type: "button"
+            },
+            `${_("Active")} 0`
+          ),
+          E(
+            "button",
+            {
+              id: "monitoring-tab-closed",
+              class: "btn cbi-button fkp_monitoring-page__tab",
+              type: "button"
+            },
+            `${_("Closed")} 0`
+          ),
+          E(
+            "button",
+            {
+              id: "monitoring-follow-toggle",
+              class: "btn cbi-button fkp_monitoring-page__tab",
+              type: "button",
+              "aria-pressed": "false",
+              title: _(
+                "Show only connections that start from now on, active and closed"
+              )
+            },
+            _("Follow new")
+          )
+        ]),
+        E("div", { class: "fkp_monitoring-page__filters" }, [
+          E(
+            "select",
+            {
+              id: "monitoring-device-filter",
+              class: "cbi-input-select fkp_monitoring-page__device-filter",
+              "aria-label": _("Device")
+            },
+            [E("option", { value: "all" }, _("All devices"))]
+          ),
+          E("select", {
+            id: "monitoring-path-filter",
+            class: "cbi-input-select",
+            "aria-label": _("Path")
+          }),
+          E(
+            "select",
+            {
+              id: "monitoring-sort",
+              class: "cbi-input-select",
+              "aria-label": _("Sort connections")
+            },
+            [
+              E("option", { value: "start" }, _("Start time")),
+              E("option", { value: "duration" }, _("Duration")),
+              E("option", { value: "download" }, _("Download")),
+              E("option", { value: "upload" }, _("Upload")),
+              E("option", { value: "total" }, _("Total traffic"))
+            ]
+          ),
+          E("label", { class: "fkp_monitoring-page__search" }, [
+            E("span", { class: "fkp_monitoring-page__search-icon" }, []),
+            E("input", {
+              id: "monitoring-search",
+              class: "cbi-input-text fkp_monitoring-page__search-input",
+              type: "search",
+              placeholder: _("Site, IP, device or rule"),
+              "aria-label": _("Search"),
+              autocomplete: "off"
+            })
+          ])
+        ]),
+        E("div", { class: "fkp_monitoring-page__actions" }, [
+          ...isReadonlyMode() ? [] : [
+            E(
+              "button",
+              {
+                id: "monitoring-close-all",
+                class: "btn cbi-button fkp_monitoring-page__icon-button",
+                title: _("Close all connections"),
+                "aria-label": _("Close all connections"),
+                type: "button",
+                disabled: true
+              },
+              []
+            )
+          ],
+          E(
+            "button",
+            {
+              id: "monitoring-pause-toggle",
+              class: "btn cbi-button fkp_monitoring-page__icon-button",
+              title: _("Pause updates"),
+              "aria-label": _("Pause updates"),
+              type: "button"
+            },
+            []
+          )
+        ])
+      ]),
+      E("div", {
+        id: "monitoring-filter-bar",
+        class: "fkp_monitoring-page__filter-bar",
+        role: "status",
+        hidden: true
+      }),
+      E(
+        "div",
+        { id: "monitoring-connections", class: "fkp_monitoring-page__body" },
+        [
+          E(
+            "div",
+            {
+              class: "fkp_monitoring-page__state fkp_monitoring-page__state--loading"
+            },
+            _("Loading connections")
+          )
+        ]
+      ),
+      E("div", { id: "monitoring-connection-details", role: "region" })
+    ]
+  );
+}
 function render3() {
+  const view = readMonitoringView();
   return E(
     "div",
     {
@@ -12639,119 +12880,17 @@ function render3() {
       class: "fkp_monitoring-page"
     },
     [
-      E("div", { class: "fkp_monitoring-page__panel" }, [
-        E("div", { class: "fkp_monitoring-page__controls" }, [
-          E("div", { class: "fkp_monitoring-page__tabs" }, [
-            E(
-              "button",
-              {
-                id: "monitoring-tab-active",
-                class: "btn cbi-button fkp_monitoring-page__tab fkp_monitoring-page__tab--active",
-                type: "button"
-              },
-              `${_("Active")} 0`
-            ),
-            E(
-              "button",
-              {
-                id: "monitoring-tab-closed",
-                class: "btn cbi-button fkp_monitoring-page__tab",
-                type: "button"
-              },
-              `${_("Closed")} 0`
-            )
-          ]),
-          E("div", { class: "fkp_monitoring-page__filters" }, [
-            E(
-              "select",
-              {
-                id: "monitoring-device-filter",
-                class: "cbi-input-select fkp_monitoring-page__device-filter"
-              },
-              [E("option", { value: "all" }, _("All"))]
-            ),
-            ...[
-              ["protocol", _("Protocol")],
-              ["route", _("Route")],
-              ["outbound", _("Outbound")],
-              ["rule", _("Rule")]
-            ].map(
-              ([id, label]) => E("input", {
-                id: `monitoring-${id}-filter`,
-                class: "cbi-input-text",
-                placeholder: label,
-                "aria-label": label
-              })
-            ),
-            E(
-              "select",
-              {
-                id: "monitoring-sort",
-                class: "cbi-input-select",
-                "aria-label": _("Sort connections")
-              },
-              [
-                E("option", { value: "start" }, _("Start time")),
-                E("option", { value: "duration" }, _("Duration")),
-                E("option", { value: "download" }, _("Download")),
-                E("option", { value: "upload" }, _("Upload")),
-                E("option", { value: "total" }, _("Total traffic"))
-              ]
-            ),
-            E("label", { class: "fkp_monitoring-page__search" }, [
-              E("span", { class: "fkp_monitoring-page__search-icon" }, []),
-              E("input", {
-                id: "monitoring-search",
-                class: "cbi-input-text fkp_monitoring-page__search-input",
-                type: "search",
-                placeholder: _("Search"),
-                autocomplete: "off"
-              })
-            ])
-          ]),
-          E("div", { class: "fkp_monitoring-page__actions" }, [
-            ...isReadonlyMode() ? [] : [
-              E(
-                "button",
-                {
-                  id: "monitoring-close-all",
-                  class: "btn cbi-button fkp_monitoring-page__icon-button",
-                  title: _("Close all connections"),
-                  "aria-label": _("Close all connections"),
-                  type: "button",
-                  disabled: true
-                },
-                []
-              )
-            ],
-            E(
-              "button",
-              {
-                id: "monitoring-pause-toggle",
-                class: "btn cbi-button fkp_monitoring-page__icon-button",
-                title: _("Pause updates"),
-                "aria-label": _("Pause updates"),
-                type: "button"
-              },
-              []
-            )
-          ])
-        ]),
-        E(
-          "div",
-          { id: "monitoring-connections", class: "fkp_monitoring-page__body" },
-          [
-            E(
-              "div",
-              {
-                class: "fkp_monitoring-page__state fkp_monitoring-page__state--loading"
-              },
-              _("Loading connections")
-            )
-          ]
-        ),
-        E("div", { id: "monitoring-connection-details", role: "region" })
-      ])
+      renderViewSwitch(view),
+      renderConnectionsView(view !== "connections"),
+      E(
+        "div",
+        {
+          id: "monitoring-view-nodes",
+          class: "fkp_monitoring-page__nodes",
+          ...view !== "nodes" ? { hidden: true } : {}
+        },
+        [renderNodes()]
+      )
     ]
   );
 }
@@ -12792,11 +12931,6 @@ function renderStartServiceAction() {
 }
 
 // src/forkop/tabs/monitoring/connectionView.ts
-function matchesConnectionFilters(values, filters) {
-  return Object.keys(filters).every(
-    (key) => !filters[key] || values[key]?.toLowerCase().includes(filters[key].toLowerCase())
-  );
-}
 function trafficSortValue(connection, mode) {
   if (mode === "download") return connection.download || 0;
   if (mode === "upload") return connection.upload || 0;
@@ -12804,18 +12938,122 @@ function trafficSortValue(connection, mode) {
     return (connection.download || 0) + (connection.upload || 0);
   return null;
 }
+var BYPASS_TAG = "bypass-out";
+var DIRECT_TAG = "direct-out";
+function routeTagFromRule(rule) {
+  const match = String(rule || "").match(/=>\s*route\(([^)]+)\)/);
+  return String(match?.[1] || "").trim().replace(/^['"]|['"]$/g, "");
+}
+function kindForAction(action) {
+  switch (action) {
+    case "zapret":
+    case "zapret2":
+    case "byedpi":
+      return "dpi";
+    case "connection":
+    case "proxy":
+    case "outbound":
+    case "vpn":
+      return "connection";
+    case "bypass":
+      return "bypass";
+    case "block":
+      return "block";
+    default:
+      return "unknown";
+  }
+}
+function connectionPath(chains, rule, ruleByTag) {
+  const list = (Array.isArray(chains) ? chains : []).filter(Boolean);
+  const routeTag = routeTagFromRule(rule);
+  for (let index = list.length - 1; index >= 0; index--) {
+    const owner2 = ruleByTag(list[index]);
+    if (owner2)
+      return {
+        kind: kindForAction(owner2.action),
+        rule: owner2,
+        node: index > 0 ? list[0] : "",
+        tag: ""
+      };
+  }
+  const owner = routeTag ? ruleByTag(routeTag) : null;
+  if (owner)
+    return {
+      kind: kindForAction(owner.action),
+      rule: owner,
+      node: list[0] && list[0] !== routeTag ? list[0] : "",
+      tag: ""
+    };
+  const tag = list[list.length - 1] || routeTag;
+  if (list.includes(BYPASS_TAG) || routeTag === BYPASS_TAG)
+    return { kind: "bypass", rule: null, node: "", tag: "" };
+  if (/\breject\b/.test(String(rule || "")))
+    return { kind: "block", rule: null, node: "", tag: "" };
+  if (!tag || tag === DIRECT_TAG)
+    return { kind: "direct", rule: null, node: "", tag: "" };
+  return { kind: "unknown", rule: null, node: "", tag };
+}
+function pathKindLabel(kind) {
+  switch (kind) {
+    case "dpi":
+      return _("DPI");
+    case "connection":
+      return _("Connection");
+    case "bypass":
+      return _("Bypass");
+    case "direct":
+      return _("Direct");
+    case "block":
+      return _("Block");
+    default:
+      return _("Other");
+  }
+}
+function dpiProviderLabel(provider) {
+  switch (provider) {
+    case "zapret":
+      return "Zapret";
+    case "zapret2":
+      return "Zapret2";
+    case "byedpi":
+      return "ByeDPI";
+    default:
+      return _("DPI");
+  }
+}
+function dpiStrategyLabel(rule) {
+  if (rule.dpiCustom) return _("custom strategy");
+  if (rule.dpiStrategy === "default") return _("default strategy");
+  return rule.dpiStrategy || "";
+}
+function pathSummary(path) {
+  const base = { kind: path.kind, kindLabel: pathKindLabel(path.kind) };
+  if (path.rule && path.kind === "dpi") {
+    const strategy = dpiStrategyLabel(path.rule);
+    return {
+      ...base,
+      primary: path.rule.label,
+      secondary: [dpiProviderLabel(path.rule.dpiProvider), strategy].filter(Boolean).join(" \xB7 ")
+    };
+  }
+  if (path.rule)
+    return { ...base, primary: path.rule.label, secondary: path.node };
+  if (path.kind === "direct")
+    return { ...base, primary: "", secondary: _("No rule matched") };
+  return { ...base, primary: path.tag, secondary: "" };
+}
+function matchesPathFilter(path, filter2) {
+  if (!filter2 || filter2 === "all") return true;
+  if (filter2.startsWith("kind:")) return path.kind === filter2.slice(5);
+  if (filter2.startsWith("rule:")) return path.rule?.name === filter2.slice(5);
+  return true;
+}
 function connectionActions(active, readonly = false) {
   const actions = [
     {
       kind: "details",
       label: _("Details"),
       className: "fkp-monitoring-details"
-    },
-    { kind: "trace", label: _("Trace"), className: "fkp-monitoring-trace" },
-    {
-      kind: "copy",
-      label: _("Copy details"),
-      className: "fkp-monitoring-copy"
     }
   ];
   if (active && !readonly)
@@ -12854,17 +13092,17 @@ var pollingConnections = false;
 var activeTab = "active";
 var selectedDeviceFilter = ALL_FILTER_VALUE;
 var searchQuery = "";
-var extraFilters = {
-  protocol: "",
-  route: "",
-  outbound: "",
-  rule: ""
-};
+var pathFilter = ALL_FILTER_VALUE;
+var followBaseline = null;
+var selectedConnectionId = null;
 var sortMode = "start";
 var MONITORING_PREFS_KEY = "forkop.monitoring.preferences";
 var localDeviceChoices = {};
 var routeDisplayNames = {};
 var routeSections = [];
+var routeRulesByTag = {};
+var nodeDisplayNames = {};
+var routeRules = [];
 var lastDeviceFilterSignature = "";
 var loading = true;
 var failed = false;
@@ -12922,6 +13160,8 @@ function buildRouteDisplayNames(sections) {
     "direct-out": "direct"
   };
   const routeSectionItems = [];
+  const rulesByTag = {};
+  const rules = [];
   const urltestsBySection = /* @__PURE__ */ new Map();
   sections.filter((section) => section[".type"] === "urltest").forEach((section) => {
     const owner = normalizeString(section.section);
@@ -12940,14 +13180,27 @@ function buildRouteDisplayNames(sections) {
     if (!sectionName || !displayName) {
       return;
     }
+    const rule = {
+      name: sectionName,
+      label: displayName,
+      action: normalizeString(section.action),
+      dpiProvider: section.dpi_provider,
+      dpiStrategy: section.dpi_strategy,
+      dpiCustom: section.dpi_strategy_custom
+    };
+    rules.push(rule);
     routeSectionItems.push({ sectionName, displayName });
     map[getOutboundTagBySection(sectionName)] = displayName;
+    rulesByTag[getOutboundTagBySection(sectionName)] = rule;
     const urltestIds = urltestsBySection.get(sectionName) || getUrlTestIds2(section);
     urltestIds.forEach((id) => {
       map[getUrlTestTag2(sectionName, id)] = displayName;
+      rulesByTag[getUrlTestTag2(sectionName, id)] = rule;
     });
   });
   routeDisplayNames = map;
+  routeRulesByTag = rulesByTag;
+  routeRules = rules;
   routeSections = routeSectionItems.sort(
     (a, b) => b.sectionName.length - a.sectionName.length
   );
@@ -12968,9 +13221,10 @@ function getRouteDisplayNameByTag(tag) {
   });
   return manualSection?.displayName || "";
 }
-function getRouteTagFromRule(rule) {
-  const match = normalizeString(rule).match(/=>\s*route\(([^)]+)\)/);
-  return normalizeString(match?.[1]).replace(/^['"]|['"]$/g, "");
+function getRuleByTag(tag) {
+  if (routeRulesByTag[tag]) return routeRulesByTag[tag];
+  const name = getRouteDisplayNameByTag(tag) ? routeSections.find(({ sectionName }) => tag.startsWith(`${sectionName}-`))?.sectionName : "";
+  return routeRules.find((rule) => rule.name === name) || null;
 }
 function parseStartedAt(connection) {
   const startedAt = Date.parse(connection.start || "");
@@ -13011,8 +13265,8 @@ function getSourceCellParts(connection) {
   if (deviceName) {
     return {
       primary: deviceName,
-      ip: "",
-      copyValue: deviceName,
+      ip,
+      copyValue: ip ? `${deviceName} (${ip})` : deviceName,
       searchValue: `${deviceName} ${ip}`
     };
   }
@@ -13035,12 +13289,9 @@ function getTargetCellParts(connection) {
     searchValue: [primary, host, destinationIp].filter(Boolean).join(" ")
   };
 }
-function getRoute(connection) {
-  const chains = Array.isArray(connection.chains) ? connection.chains : [];
-  const routeTag = [...chains].reverse().find(getRouteDisplayNameByTag);
-  const fallbackRouteTag = getRouteTagFromRule(connection.rule);
-  const route = getRouteDisplayNameByTag(routeTag || "") || getRouteDisplayNameByTag(fallbackRouteTag) || normalizeString(routeTag) || normalizeString(fallbackRouteTag);
-  return route || "-";
+function getPath(connection) {
+  const path = connectionPath(connection.chains, connection.rule, getRuleByTag);
+  return path.node ? { ...path, node: nodeDisplayNames[path.node] || path.node } : path;
 }
 function getNetwork(connection) {
   return normalizeString(connection.metadata?.network).toLowerCase() || "-";
@@ -13058,6 +13309,10 @@ function sortConnections(connections, tab) {
   });
 }
 function getConnectionsForActiveTab() {
+  if (followBaseline) {
+    const baseline = followBaseline;
+    return [...activeConnections.values(), ...closedConnections.values()].filter((connection) => !baseline.has(connection.id)).sort((a, b) => parseStartedAt(b) - parseStartedAt(a));
+  }
   const source = activeTab === "active" ? Array.from(activeConnections.values()) : Array.from(closedConnections.values());
   return sortConnections(source, activeTab);
 }
@@ -13067,16 +13322,16 @@ function normalizeSearchValue(value) {
 function getSearchValues(connection) {
   const target = getTargetCellParts(connection);
   const source = getSourceCellParts(connection);
+  const path = pathSummary(getPath(connection));
   return [
     connection.id,
-    target.primary,
+    target.searchValue,
     getNetwork(connection),
-    getRoute(connection),
-    formatConnectionDuration(connection),
-    formatBytes2(connection.download),
-    formatBytes2(connection.upload),
-    source.primary,
-    source.copyValue,
+    path.kindLabel,
+    path.primary,
+    path.secondary,
+    normalizeString(connection.rule),
+    ...connection.chains || [],
     source.searchValue
   ].filter(Boolean);
 }
@@ -13087,13 +13342,7 @@ function getVisibleConnections() {
     if (selectedDeviceFilter !== ALL_FILTER_VALUE && sourceIp !== selectedDeviceFilter) {
       return false;
     }
-    const values = {
-      protocol: getNetwork(connection),
-      route: getRoute(connection),
-      outbound: (connection.chains || []).join(" "),
-      rule: normalizeString(connection.rule)
-    };
-    if (!matchesConnectionFilters(values, extraFilters)) return false;
+    if (!matchesPathFilter(getPath(connection), pathFilter)) return false;
     if (!normalizedSearch) {
       return true;
     }
@@ -13101,6 +13350,21 @@ function getVisibleConnections() {
       (value) => normalizeSearchValue(value).includes(normalizedSearch)
     );
   });
+}
+function filtersActive() {
+  return selectedDeviceFilter !== ALL_FILTER_VALUE || pathFilter !== ALL_FILTER_VALUE || normalizeSearchValue(searchQuery) !== "";
+}
+function resetFilters() {
+  selectedDeviceFilter = ALL_FILTER_VALUE;
+  pathFilter = ALL_FILTER_VALUE;
+  searchQuery = "";
+  const search = document.getElementById(
+    "monitoring-search"
+  );
+  if (search) search.value = "";
+  saveMonitoringPreferences();
+  renderControls();
+  renderConnections({ force: true });
 }
 function moveConnectionToClosed(connection, now) {
   closedConnections.set(connection.id, {
@@ -13204,13 +13468,93 @@ function renderDeviceFilterOptions() {
   }
   lastDeviceFilterSignature = signature;
   const options = [
-    E("option", { value: ALL_FILTER_VALUE }, _("All")),
+    E("option", { value: ALL_FILTER_VALUE }, _("All devices")),
     ...sourceIps.map(
       (ip) => E("option", { value: ip }, getDeviceFilterLabel(ip))
     )
   ];
   select.replaceChildren(...options);
   select.value = selectedDeviceFilter;
+}
+var PATH_KINDS = [
+  "dpi",
+  "connection",
+  "bypass",
+  "direct",
+  "block"
+];
+var lastPathFilterSignature = "";
+function renderPathFilterOptions() {
+  const select = document.getElementById(
+    "monitoring-path-filter"
+  );
+  if (!select) return;
+  const rules = [...routeRules].sort((a, b) => a.label.localeCompare(b.label));
+  const known = [
+    ALL_FILTER_VALUE,
+    ...PATH_KINDS.map((kind) => `kind:${kind}`),
+    ...rules.map((rule) => `rule:${rule.name}`)
+  ];
+  if (!known.includes(pathFilter)) pathFilter = ALL_FILTER_VALUE;
+  const signature = rules.map((rule) => `${rule.name}:${rule.label}`).join("|");
+  if (signature !== lastPathFilterSignature || !select.options.length) {
+    lastPathFilterSignature = signature;
+    select.replaceChildren(
+      E("option", { value: ALL_FILTER_VALUE }, _("All paths")),
+      E(
+        "optgroup",
+        { label: _("Path type") },
+        PATH_KINDS.map(
+          (kind) => E("option", { value: `kind:${kind}` }, pathKindLabel(kind))
+        )
+      ),
+      ...rules.length ? [
+        E(
+          "optgroup",
+          { label: _("Rule") },
+          rules.map(
+            (rule) => E("option", { value: `rule:${rule.name}` }, rule.label)
+          )
+        )
+      ] : []
+    );
+  }
+  select.value = pathFilter;
+}
+function renderFilterBar() {
+  const bar = document.getElementById("monitoring-filter-bar");
+  if (!bar) return;
+  const active = filtersActive();
+  const following = followBaseline !== null;
+  if (!active && !following) {
+    bar.replaceChildren();
+    bar.hidden = true;
+    return;
+  }
+  const total = getConnectionsForActiveTab().length;
+  const shown = active ? getVisibleConnections().length : total;
+  bar.hidden = false;
+  bar.replaceChildren(
+    E(
+      "span",
+      {},
+      [
+        following ? _("Following new connections") : "",
+        active ? _("Shown %d of %d").replace("%d", String(shown)).replace("%d", String(total)) : ""
+      ].filter(Boolean).join(" \xB7 ")
+    ),
+    ...active ? [
+      E(
+        "button",
+        {
+          type: "button",
+          class: "btn cbi-button fkp_monitoring-page__reset",
+          click: () => resetFilters()
+        },
+        _("Reset filters")
+      )
+    ] : []
+  );
 }
 function setButtonActive(button, active) {
   if (!button) {
@@ -13237,20 +13581,32 @@ function renderControls() {
   const pauseToggleButton = document.getElementById(
     "monitoring-pause-toggle"
   );
+  const following = followBaseline !== null;
   if (activeButton) {
     activeButton.replaceChildren(
       ...renderTabButtonContent(_("Active"), activeConnections.size)
     );
-    activeButton.disabled = serviceAvailability === "stopped";
+    activeButton.disabled = serviceAvailability === "stopped" || following;
   }
   if (closedButton) {
     closedButton.replaceChildren(
       ...renderTabButtonContent(_("Closed"), closedConnections.size)
     );
-    closedButton.disabled = serviceAvailability === "stopped";
+    closedButton.disabled = serviceAvailability === "stopped" || following;
   }
-  setButtonActive(activeButton, activeTab === "active");
-  setButtonActive(closedButton, activeTab === "closed");
+  setButtonActive(activeButton, !following && activeTab === "active");
+  setButtonActive(closedButton, !following && activeTab === "closed");
+  const followButton = document.getElementById(
+    "monitoring-follow-toggle"
+  );
+  if (followButton) {
+    followButton.disabled = serviceAvailability === "stopped";
+    followButton.setAttribute("aria-pressed", following ? "true" : "false");
+    followButton.classList.toggle(
+      "fkp_monitoring-page__tab--active",
+      following
+    );
+  }
   if (closeAllButton) {
     closeAllButton.replaceChildren(renderXIcon24());
     closeAllButton.disabled = serviceAvailability === "stopped" || activeConnections.size === 0 || closingAll;
@@ -13275,6 +13631,12 @@ function renderControls() {
     searchIcon.replaceChildren(renderSearchIcon24());
   }
   renderDeviceFilterOptions();
+  renderPathFilterOptions();
+  renderFilterBar();
+  const pathSelect = document.getElementById(
+    "monitoring-path-filter"
+  );
+  if (pathSelect) pathSelect.disabled = serviceAvailability === "stopped";
   const select = document.getElementById(
     "monitoring-device-filter"
   );
@@ -13330,24 +13692,39 @@ function renderSourceValue(source) {
   return element;
 }
 function renderTableCell(label, children) {
-  const cell = E("td", {}, children);
+  const cell = E("td", {}, [
+    E("div", { class: "fkp_monitoring-page__cell" }, children)
+  ]);
   cell.setAttribute("data-label", label);
   return cell;
+}
+function renderSecondary(text) {
+  return E("span", { class: "fkp_monitoring-page__secondary" }, text);
+}
+function renderPathCell(path) {
+  const summary = pathSummary(path);
+  return [
+    E(
+      "span",
+      {
+        class: `fkp_monitoring-page__path-kind fkp_monitoring-page__path-kind--${summary.kind}`
+      },
+      summary.kindLabel
+    ),
+    ...summary.primary ? [renderValue(summary.primary, "fkp_monitoring-page__route")] : [],
+    ...summary.secondary ? [renderSecondary(summary.secondary)] : []
+  ];
 }
 function renderConnectionRow(connection) {
   const target = getTargetCellParts(connection);
   const source = getSourceCellParts(connection);
+  const isActive = activeConnections.has(connection.id);
   const isClosing = closingConnectionIds.has(connection.id);
-  const icons = {
-    details: renderInfoIcon24,
-    trace: renderSearchIcon24,
-    copy: renderCopyIcon24,
-    close: renderXIcon24
-  };
+  const icons = { details: renderInfoIcon24, close: renderXIcon24 };
   const actions = E(
     "div",
     { class: "fkp_monitoring-page__actions" },
-    connectionActions(activeTab === "active", isReadonlyMode()).map(
+    connectionActions(isActive, isReadonlyMode()).map(
       (action) => E(
         "button",
         {
@@ -13362,78 +13739,219 @@ function renderConnectionRow(connection) {
       )
     )
   );
+  const destinationMeta = [
+    getNetwork(connection).toUpperCase(),
+    formatConnectionDuration(connection),
+    ...isActive ? [] : [_("closed")]
+  ].join(" \xB7 ");
   return E(
     "tr",
     {
-      class: isClosing ? "fkp_monitoring-page__row--closing" : ""
+      class: [
+        isClosing ? "fkp_monitoring-page__row--closing" : "",
+        !isActive ? "fkp_monitoring-page__row--closed" : "",
+        selectedConnectionId === connection.id ? "fkp_monitoring-page__row--selected" : ""
+      ].filter(Boolean).join(" ")
     },
     [
-      renderTableCell(_("Host"), [renderValue(target.primary)]),
-      renderTableCell(_("Type"), [
-        renderValue(getNetwork(connection), "fkp_monitoring-page__network")
+      renderTableCell(_("Device"), [renderSourceValue(source)]),
+      renderTableCell(_("Destination"), [
+        renderValue(target.primary),
+        renderSecondary(destinationMeta)
       ]),
-      renderTableCell(_("Route"), [
-        renderValue(getRoute(connection), "fkp_monitoring-page__route")
+      renderTableCell(_("Path"), renderPathCell(getPath(connection))),
+      renderTableCell(_("Traffic"), [
+        renderValue(`\u2193 ${formatBytes2(connection.download)}`),
+        renderSecondary(`\u2191 ${formatBytes2(connection.upload)}`)
       ]),
-      renderTableCell(_("Time"), [
-        renderValue(formatConnectionDuration(connection))
-      ]),
-      renderTableCell(_("Downloaded"), [
-        renderValue(formatBytes2(connection.download))
-      ]),
-      renderTableCell(_("Uploaded"), [
-        renderValue(formatBytes2(connection.upload))
-      ]),
-      renderTableCell(_("Source"), [renderSourceValue(source)]),
       renderTableCell(_("Actions"), [actions])
     ]
   );
 }
-function connectionDetails(connection) {
-  const metadata = connection.metadata || {};
-  const safe = (value) => normalizeString(value == null ? "" : String(value)).replace(/\b(?:https?:\/\/)?[^\s@]+@/g, "***@").replace(
+function safeText(value) {
+  return normalizeString(value == null ? "" : String(value)).replace(/\b(?:https?:\/\/)?[^\s@]+@/g, "***@").replace(
     /(?:token|secret|password|uuid|authorization)=([^&\s]+)/gi,
     "$1=***"
   );
+}
+function connectionTechnicalDetails(connection) {
+  const metadata = connection.metadata || {};
   return [
     [_("Source"), formatEndpoint(metadata.sourceIP, metadata.sourcePort)],
     [
       _("Destination"),
       formatEndpoint(metadata.destinationIP, metadata.destinationPort)
     ],
-    [_("Host"), safe(metadata.host)],
+    [_("Host"), safeText(metadata.host)],
     [_("Protocol"), getNetwork(connection)],
-    [_("Rule"), safe(connection.rule)],
-    [_("Rule payload"), safe(connection.rulePayload)],
-    [_("Route"), getRoute(connection)],
-    [_("Outbound chain"), safe((connection.chains || []).join(" \u2192 "))],
-    [_("Started"), safe(connection.start)],
-    [_("Duration"), formatConnectionDuration(connection)],
-    [_("Upload"), formatBytes2(connection.upload)],
-    [_("Download"), formatBytes2(connection.download)]
+    [_("Rule"), safeText(connection.rule)],
+    [_("Rule payload"), safeText(connection.rulePayload)],
+    [_("Outbound chain"), safeText((connection.chains || []).join(" \u2192 "))],
+    [_("Started"), safeText(connection.start)],
+    [_("Connection ID"), connection.id]
   ];
 }
-function showConnectionDetails(connection, trace) {
+function connectionDetails(connection) {
+  const target = getTargetCellParts(connection);
+  const source = getSourceCellParts(connection);
+  const path = pathSummary(getPath(connection));
+  return [
+    [_("Device"), source.copyValue],
+    [_("Destination"), target.primary],
+    [
+      _("Path"),
+      [path.kindLabel, path.primary, path.secondary].filter(Boolean).join(" \xB7 ")
+    ],
+    [_("Duration"), formatConnectionDuration(connection)],
+    [_("Download"), formatBytes2(connection.download)],
+    [_("Upload"), formatBytes2(connection.upload)],
+    ...connectionTechnicalDetails(connection)
+  ];
+}
+function detailRow(label, value) {
+  return E("div", { class: "fkp_monitoring-page__detail-row" }, [
+    E("dt", {}, label),
+    E("dd", {}, value)
+  ]);
+}
+function closeConnectionDetails() {
+  selectedConnectionId = null;
+  document.getElementById("monitoring-connection-details")?.replaceChildren();
+  renderConnections({ force: true });
+}
+function renderConnectionDetailsPanel() {
   const container = document.getElementById("monitoring-connection-details");
   if (!container) return;
-  container.replaceChildren(
-    E(
-      "h3",
-      {},
-      trace ? _("Observed from active connection") : _("Connection details")
-    ),
-    ...connectionDetails(connection).map(
-      ([label, value]) => E("div", {}, [E("strong", {}, `${label}: `), E("span", {}, value)])
-    )
+  const connection = selectedConnectionId ? activeConnections.get(selectedConnectionId) || closedConnections.get(selectedConnectionId) : void 0;
+  if (!connection) {
+    container.replaceChildren();
+    return;
+  }
+  const technicalOpen = Boolean(
+    container.querySelector("details")?.open
   );
+  const isActive = activeConnections.has(connection.id);
+  const target = getTargetCellParts(connection);
+  const host = normalizeString(connection.metadata?.host) || normalizeString(connection.metadata?.destinationIP);
+  const rawPath = getPath(connection);
+  const path = pathSummary(rawPath);
+  const source = getSourceCellParts(connection);
+  container.replaceChildren(
+    E("div", { class: "fkp_monitoring-page__details" }, [
+      E("div", { class: "fkp_monitoring-page__details-head" }, [
+        E("h3", {}, target.primary),
+        E(
+          "button",
+          {
+            type: "button",
+            class: "btn cbi-button fkp_monitoring-page__details-close",
+            "aria-label": _("Close details"),
+            title: _("Close details"),
+            click: () => closeConnectionDetails()
+          },
+          "\xD7"
+        )
+      ]),
+      E("dl", { class: "fkp_monitoring-page__detail-list" }, [
+        detailRow(_("Device"), source.copyValue),
+        detailRow(
+          _("Status"),
+          isActive ? `${_("Active")} \xB7 ${formatConnectionDuration(connection)}` : `${_("Closed")} \xB7 ${formatConnectionDuration(connection)}`
+        ),
+        detailRow(
+          _("Route"),
+          E("span", {}, [
+            [path.kindLabel, path.primary, rawPath.node].filter(Boolean).join(" \xB7 "),
+            " ",
+            renderProvenance("observed")
+          ])
+        ),
+        ...rawPath.kind === "dpi" && path.secondary ? [
+          detailRow(
+            _("DPI strategy"),
+            E("span", {}, [
+              path.secondary,
+              " ",
+              renderProvenance("configured")
+            ])
+          )
+        ] : [],
+        detailRow(
+          _("Traffic"),
+          `\u2193 ${formatBytes2(connection.download)} \xB7 \u2191 ${formatBytes2(connection.upload)}`
+        )
+      ]),
+      E("div", { class: "fkp_monitoring-page__details-actions" }, [
+        ...host ? [
+          E(
+            "a",
+            {
+              class: "btn cbi-button",
+              href: forkopPageUrl("diagnostics", { host })
+            },
+            _("Check address in Diagnostics")
+          )
+        ] : [],
+        E(
+          "button",
+          {
+            type: "button",
+            class: "btn cbi-button",
+            click: () => (
+              // navigator.clipboard needs a secure context; LuCI is usually plain HTTP.
+              copyToClipboard(
+                connectionDetails(connection).map(([key, value]) => `${key}: ${value}`).join("\n")
+              )
+            )
+          },
+          _("Copy details")
+        ),
+        ...isActive && !isReadonlyMode() ? [
+          E(
+            "button",
+            {
+              type: "button",
+              class: "btn cbi-button cbi-button-negative",
+              disabled: closingConnectionIds.has(connection.id) ? true : void 0,
+              click: () => void closeConnection(connection.id)
+            },
+            _("Close connection")
+          )
+        ] : []
+      ]),
+      E(
+        "details",
+        {
+          class: "fkp_monitoring-page__technical",
+          ...technicalOpen ? { open: true } : {}
+        },
+        [
+          E("summary", {}, _("Technical details")),
+          E(
+            "dl",
+            { class: "fkp_monitoring-page__detail-list" },
+            connectionTechnicalDetails(connection).map(
+              ([label, value]) => detailRow(label, value || "\u2014")
+            )
+          )
+        ]
+      )
+    ])
+  );
+}
+function showConnectionDetails(connection) {
+  selectedConnectionId = connection.id;
+  renderConnectionDetailsPanel();
+  renderConnections({ force: true });
+  document.getElementById("monitoring-connection-details")?.scrollIntoView?.({ block: "nearest" });
 }
 function saveMonitoringPreferences() {
   localStorage.setItem(
     MONITORING_PREFS_KEY,
     JSON.stringify({
       selectedDeviceFilter,
-      sortMode,
-      extraFilters
+      pathFilter,
+      sortMode
     })
   );
 }
@@ -13448,9 +13966,8 @@ function loadMonitoringPreferences() {
       value.sortMode
     ))
       sortMode = value.sortMode;
-    for (const key of Object.keys(extraFilters))
-      if (typeof value.extraFilters?.[key] === "string")
-        extraFilters[key] = value.extraFilters[key].slice(0, 100);
+    if (typeof value.pathFilter === "string")
+      pathFilter = value.pathFilter.slice(0, 100);
   } catch (_error) {
   }
 }
@@ -13460,7 +13977,7 @@ function renderStateRow(text, className = "", actions = []) {
       "td",
       {
         class: "fkp_monitoring-page__state-cell",
-        colSpan: 8
+        colSpan: 5
       },
       [
         E(
@@ -13483,14 +14000,13 @@ function renderConnectionsTable(connections, state) {
       [
         E("thead", {}, [
           E("tr", {}, [
-            E("th", {}, _("Host")),
-            E("th", {}, _("Type")),
-            E("th", {}, _("Route")),
-            E("th", {}, _("Time")),
-            E("th", {}, `\u2193 ${_("Downloaded")}`),
-            E("th", {}, `\u2191 ${_("Uploaded")}`),
-            E("th", {}, _("Source")),
-            E("th", {}, _("Actions"))
+            E("th", {}, _("Device")),
+            E("th", {}, _("Destination")),
+            E("th", {}, _("Path")),
+            E("th", {}, _("Traffic")),
+            E("th", { class: "fkp_monitoring-page__actions-head" }, [
+              E("span", { class: "fkp-visually-hidden" }, _("Actions"))
+            ])
           ])
         ]),
         E("tbody", {}, rows)
@@ -13550,11 +14066,32 @@ function renderConnections(options = {}) {
     return;
   }
   const visibleConnections = getVisibleConnections();
+  renderFilterBar();
+  renderConnectionDetailsPanel();
   if (visibleConnections.length === 0) {
+    const anyConnections = getConnectionsForActiveTab().length > 0;
     container.replaceChildren(
-      renderConnectionsTable([], {
-        text: activeTab === "active" ? _("No active connections") : _("No closed connections")
-      })
+      renderConnectionsTable(
+        [],
+        anyConnections && filtersActive() ? {
+          text: _("No connections match the filters"),
+          actions: [
+            E(
+              "button",
+              {
+                type: "button",
+                class: "btn cbi-button",
+                click: () => resetFilters()
+              },
+              _("Reset filters")
+            )
+          ]
+        } : {
+          text: followBaseline ? _(
+            "No new connections yet. Open the site or app you want to check."
+          ) : activeTab === "active" ? _("No active connections") : _("No closed connections")
+        }
+      )
     );
     return;
   }
@@ -13827,16 +14364,22 @@ function bindControls() {
       renderConnections();
     };
   }
-  for (const key of Object.keys(extraFilters)) {
-    const input = document.getElementById(
-      `monitoring-${key}-filter`
-    );
-    if (!input) continue;
-    input.value = extraFilters[key];
-    input.oninput = () => {
-      extraFilters[key] = input.value.trim();
+  const pathSelect = document.getElementById(
+    "monitoring-path-filter"
+  );
+  if (pathSelect) {
+    pathSelect.onchange = () => {
+      pathFilter = pathSelect.value || ALL_FILTER_VALUE;
       saveMonitoringPreferences();
-      renderConnections();
+      renderConnections({ force: true });
+    };
+  }
+  const followButton = document.getElementById("monitoring-follow-toggle");
+  if (followButton) {
+    followButton.onclick = () => {
+      followBaseline = followBaseline ? null : /* @__PURE__ */ new Set([...activeConnections.keys(), ...closedConnections.keys()]);
+      renderControls();
+      renderConnections({ force: true });
     };
   }
   const sort = document.getElementById(
@@ -13860,20 +14403,11 @@ function bindControls() {
     connectionsContainer.onclick = (event) => {
       const target = event.target;
       const action = target?.closest(
-        ".fkp-monitoring-details, .fkp-monitoring-trace, .fkp-monitoring-copy"
+        ".fkp-monitoring-details"
       );
       if (action?.value) {
         const connection = activeConnections.get(action.value) || closedConnections.get(action.value);
-        if (!connection) return;
-        if (action.classList.contains("fkp-monitoring-copy")) {
-          copyToClipboard(
-            connectionDetails(connection).map(([key, value]) => `${key}: ${value}`).join("\n")
-          );
-        } else
-          showConnectionDetails(
-            connection,
-            action.classList.contains("fkp-monitoring-trace")
-          );
+        if (connection) showConnectionDetails(connection);
         return;
       }
       const button = target?.closest(
@@ -13883,6 +14417,21 @@ function bindControls() {
         void closeConnection(button.value);
       }
     };
+  }
+}
+async function loadNodeDisplayNames() {
+  try {
+    const response = await CustomForkopMethods.getDashboardSections();
+    const names = {};
+    for (const group of response.success ? response.data : [])
+      for (const outbound of group.outbounds)
+        if (outbound.displayName && outbound.displayName !== outbound.code)
+          names[outbound.code] = outbound.displayName;
+    nodeDisplayNames = names;
+  } catch (error) {
+    logger.warn("[MONITORING]", "loadNodeDisplayNames: failed", error);
+  } finally {
+    renderConnections();
   }
 }
 async function loadLocalDevices() {
@@ -13898,7 +14447,8 @@ async function loadLocalDevices() {
 }
 async function loadRouteDisplayNames() {
   try {
-    buildRouteDisplayNames(await CustomForkopMethods.getConfigSections());
+    const response = await ForkopShellMethods.getReadonlyConfigSections();
+    buildRouteDisplayNames(response.success ? response.data : []);
   } catch (error) {
     logger.warn("[MONITORING]", "loadRouteDisplayNames: failed", error);
     buildRouteDisplayNames([]);
@@ -14045,6 +14595,10 @@ function resetMonitoringState() {
   activeTab = "active";
   selectedDeviceFilter = ALL_FILTER_VALUE;
   searchQuery = readPageParams().search || "";
+  pathFilter = ALL_FILTER_VALUE;
+  followBaseline = null;
+  selectedConnectionId = null;
+  lastPathFilterSignature = "";
   lastDeviceFilterSignature = "";
   loading = true;
   failed = false;
@@ -14076,6 +14630,7 @@ async function onPageMount3() {
   watchServiceState();
   void loadLocalDevices();
   void loadRouteDisplayNames();
+  void loadNodeDisplayNames();
   if (getCachedRuntimeUiState()) {
     void refreshRuntimeUiState({ force: true });
   } else {
@@ -14137,6 +14692,8 @@ async function initController3(controllerDependencies = {}) {
     return;
   }
   monitoringControllerInitialized = true;
+  if (getForkopPage() === "monitoring")
+    setForkopPage(controllerForView(readMonitoringView()));
   onMount("monitoring-status").then(() => {
     registerLifecycleListeners3();
     if (store.get().tabService.current === "monitoring" || isActiveLuciTab("monitoring")) {
@@ -14319,7 +14876,8 @@ var styles5 = `
     color: var(--text-color-high) !important;
 }
 
-.fkp_monitoring-page .btn.fkp_monitoring-page__tab--active {
+.fkp_monitoring-page .btn.fkp_monitoring-page__tab--active,
+.fkp_monitoring-page .btn.fkp_monitoring-page__tab--active:hover {
     background: rgba(25, 118, 210, 0.16) !important;
     color: var(--primary-color-high, #1976d2) !important;
     font-weight: 700;
@@ -14415,7 +14973,7 @@ var styles5 = `
     min-width: 0;
 }
 
-/* width: 0 + min-width: 100% keeps the 840px table from widening the page
+/* width: 0 + min-width: 100% keeps the wide table from widening the page
    (flex layouts such as OpenWrt2020 size the content to its min-content);
    the wrapper still fills its parent and scrolls the table inside. */
 .fkp_monitoring-page__table-wrap {
@@ -14427,7 +14985,7 @@ var styles5 = `
 
 .fkp_monitoring-page__table {
     width: 100%;
-    min-width: 840px;
+    min-width: 680px;
     table-layout: fixed;
     border-collapse: collapse;
     border-spacing: 0;
@@ -14455,36 +15013,24 @@ var styles5 = `
 }
 
 .fkp_monitoring-page__table th:nth-child(1) {
-    width: 28%;
+    width: 20%;
 }
 
 .fkp_monitoring-page__table th:nth-child(2) {
-    width: 6%;
+    width: 32%;
 }
 
 .fkp_monitoring-page__table th:nth-child(3) {
-    width: 16%;
+    width: 30%;
 }
 
 .fkp_monitoring-page__table th:nth-child(4) {
-    width: 8%;
+    width: 14%;
 }
 
 .fkp_monitoring-page__table th:nth-child(5) {
-    width: 9.5%;
-}
-
-.fkp_monitoring-page__table th:nth-child(6) {
-    width: 8.5%;
-}
-
-.fkp_monitoring-page__table th:nth-child(7) {
-    width: 16%;
-}
-
-.fkp_monitoring-page__table th:nth-child(8) {
-    /* Four 28px icon actions plus gaps; px so it never shrinks below them. */
-    width: 136px;
+    /* Two 28px icon actions plus gaps; px so it never shrinks below them. */
+    width: 72px;
 }
 
 .fkp_monitoring-page__table tbody tr:last-child td {
@@ -14522,20 +15068,6 @@ var styles5 = `
     width: 16px;
     height: 16px;
     display: block;
-}
-
-.fkp_monitoring-page__table th:nth-child(4),
-.fkp_monitoring-page__table td:nth-child(4),
-.fkp_monitoring-page__table th:nth-child(5),
-.fkp_monitoring-page__table td:nth-child(5),
-.fkp_monitoring-page__table th:nth-child(6),
-.fkp_monitoring-page__table td:nth-child(6) {
-    text-align: right;
-}
-
-.fkp_monitoring-page__table th:nth-child(7),
-.fkp_monitoring-page__table td:nth-child(7) {
-    text-align: left;
 }
 
 .fkp_monitoring-page__table th:last-child,
@@ -14619,14 +15151,6 @@ var styles5 = `
     text-transform: lowercase;
 }
 
-.fkp_monitoring-page__table td:nth-child(4) .fkp_monitoring-page__value,
-.fkp_monitoring-page__table td:nth-child(5) .fkp_monitoring-page__value,
-.fkp_monitoring-page__table td:nth-child(6) .fkp_monitoring-page__value {
-    color: var(--text-color-medium, #bbb);
-    font-family: inherit;
-    text-align: right;
-}
-
 .fkp_monitoring-page .btn.fkp_monitoring-page__row-action {
     width: var(--fkp-monitoring-row-action-size);
     height: var(--fkp-monitoring-row-action-size);
@@ -14685,6 +15209,167 @@ var styles5 = `
 
 .fkp_monitoring-page__state--error {
     color: var(--error-color-medium, #d32f2f);
+}
+
+/* Views: Connections | Nodes and groups */
+.fkp_monitoring-page__views {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+
+.fkp_monitoring-page__nodes .fkp_dashboard-page {
+    margin-top: 0;
+}
+
+.fkp_monitoring-page__secondary {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-top: 2px;
+    color: var(--text-color-medium);
+    font-size: 12px;
+    line-height: 1.25;
+}
+
+.fkp_monitoring-page__path-kind {
+    display: inline-block;
+    margin-right: 6px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.5;
+    vertical-align: middle;
+    background: rgba(128, 128, 128, 0.15);
+    color: var(--text-color-high);
+}
+
+.fkp_monitoring-page__path-kind--dpi {
+    background: rgba(156, 39, 176, 0.16);
+}
+
+.fkp_monitoring-page__path-kind--connection {
+    background: rgba(33, 150, 243, 0.16);
+}
+
+.fkp_monitoring-page__path-kind--bypass,
+.fkp_monitoring-page__path-kind--direct {
+    background: rgba(76, 175, 80, 0.16);
+}
+
+.fkp_monitoring-page__path-kind--block {
+    background: rgba(244, 67, 54, 0.16);
+}
+
+.fkp_monitoring-page__table td .fkp_monitoring-page__route {
+    display: inline;
+    padding: 0;
+    background: transparent;
+    font-size: 13px;
+    vertical-align: middle;
+}
+
+.fkp_monitoring-page__row--closed td {
+    opacity: 0.65;
+}
+
+.fkp_monitoring-page__row--selected td {
+    background: rgba(33, 150, 243, 0.08);
+}
+
+.fkp_monitoring-page__filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    margin: 0 0 8px;
+    padding: 6px 10px;
+    border-radius: 4px;
+    background: rgba(33, 150, 243, 0.08);
+    font-size: 13px;
+}
+
+.fkp_monitoring-page__filter-bar[hidden] {
+    display: none;
+}
+
+.fkp_monitoring-page__details {
+    margin-top: 12px;
+    padding: 12px;
+    border: 1px solid var(--fkp-monitoring-divider-color);
+    border-radius: 6px;
+}
+
+.fkp_monitoring-page__details-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.fkp_monitoring-page__details-head h3 {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.fkp_monitoring-page .btn.fkp_monitoring-page__details-close {
+    min-width: 32px;
+    padding: 0 8px;
+    font-size: 18px;
+    line-height: 1;
+}
+
+.fkp_monitoring-page__detail-list {
+    margin: 10px 0 0;
+}
+
+.fkp_monitoring-page__detail-row {
+    display: grid;
+    grid-template-columns: minmax(120px, 28%) minmax(0, 1fr);
+    gap: 8px;
+    padding: 3px 0;
+}
+
+.fkp_monitoring-page__detail-row dt {
+    color: var(--text-color-medium);
+    font-weight: 600;
+}
+
+.fkp_monitoring-page__detail-row dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.fkp_monitoring-page__details-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.fkp_monitoring-page__technical {
+    margin-top: 12px;
+}
+
+.fkp_monitoring-page__technical summary {
+    cursor: pointer;
+    color: var(--text-color-medium);
+}
+
+.fkp_monitoring-page__cell {
+    min-width: 0;
+}
+
+.fkp-visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
 }
 
 @media (max-width: 900px) {
@@ -14749,16 +15434,22 @@ var styles5 = `
         white-space: nowrap;
     }
 
+    /* Row actions sit at the end of the card without a label line. */
     .fkp_monitoring-page__table td:last-child {
-        grid-template-columns: minmax(92px, 34%) minmax(0, 1fr);
-        align-items: center;
+        display: flex;
+        justify-content: flex-end;
         border-bottom: 0;
         min-height: var(--fkp-monitoring-row-action-size);
-        padding: 0;
+        padding: 4px 0 0;
     }
 
-    .fkp_monitoring-page__value {
-        text-align: right;
+    .fkp_monitoring-page__table td:last-child::before {
+        display: none;
+    }
+
+    .fkp_monitoring-page__value,
+    .fkp_monitoring-page__secondary {
+        text-align: left;
     }
 
     .fkp_monitoring-page__source-value {
@@ -16591,7 +17282,7 @@ var refreshTimer = null;
 var filter = "all";
 var health = null;
 var healthFailed = false;
-var history = null;
+var history2 = null;
 var historyFailed = false;
 var snapshots = null;
 var snapshotsFailed = false;
@@ -16607,8 +17298,8 @@ async function loadAll() {
   const value = (result) => result.status === "fulfilled" && result.value.success ? result.value.data : null;
   health = value(healthResponse);
   healthFailed = !health;
-  history = value(historyResponse);
-  historyFailed = !history || !Array.isArray(history.events);
+  history2 = value(historyResponse);
+  historyFailed = !history2 || !Array.isArray(history2.events);
   const list = value(snapshotResponse);
   snapshots = Array.isArray(list) ? list : null;
   snapshotsFailed = !snapshots;
@@ -16661,15 +17352,15 @@ function renderHistory() {
       )
     )
   );
-  if (historyFailed || !history) {
+  if (historyFailed || !history2) {
     replace(
       "history-events",
       historyFailed ? renderErrorState(_("History is unavailable"), () => void loadAll()) : renderLoadingState2()
     );
     return;
   }
-  const items = historyItems(history.events, filter);
-  const notes = history.persistent ? [] : [
+  const items = historyItems(history2.events, filter);
+  const notes = history2.persistent ? [] : [
     E(
       "p",
       { class: "fkp-history__hint" },

@@ -47,11 +47,23 @@ export function renderOverflowMenu(label: string, items: OverflowMenuItem[]) {
     ),
   );
 
-  if (typeof document !== 'undefined' && document.addEventListener) {
-    document.addEventListener('click', (event) => {
-      if (menu.open && !menu.contains(event.target as Node)) close();
-    });
-  }
-
+  registerOutsideClose();
   return menu;
+}
+
+// One document listener for every menu: menus are re-rendered with the data
+// they belong to, so a listener per menu would pile up.
+let outsideCloseRegistered = false;
+
+function registerOutsideClose() {
+  if (outsideCloseRegistered || typeof document === 'undefined') return;
+  if (!document.addEventListener) return;
+  outsideCloseRegistered = true;
+  document.addEventListener('click', (event) => {
+    document
+      .querySelectorAll<HTMLDetailsElement>('details.fkp-menu[open]')
+      .forEach((menu) => {
+        if (!menu.contains(event.target as Node)) menu.open = false;
+      });
+  });
 }

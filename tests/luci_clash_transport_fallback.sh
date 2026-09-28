@@ -38,6 +38,15 @@ assert.doesNotMatch(sockets, /failed: true/,
 assert.match(functionBody(dashboard, 'function stopDashboardDataUpdates()'), /stopClashRpcPolling\(\)/,
   'dashboard polling must stop with the data updates');
 
+// On Monitoring → Nodes the dashboard controller shares the page with the
+// monitoring connections stream: it opens no Clash stream there and never
+// closes sockets it did not open.
+assert.match(start, /if \(overviewHost\) \{\s*clashUpdatesStarted = true;/,
+  'the Clash traffic stream is only for the Overview page');
+assert.match(functionBody(dashboard, 'function stopDashboardDataUpdates()'),
+  /if \(clashUpdatesStarted\) socket\.resetAll\(\);/,
+  'the dashboard must not close the monitoring socket');
+
 const monitoring = read('fe-app-forkop/src/forkop/tabs/monitoring/initController.ts');
 const monitoringSocket = functionBody(monitoring, 'async function connectToConnectionsSocket(updatesId: number)');
 assert.match(monitoringSocket, /socket\.disconnect\(connectionsSocketUrl\);[\s\S]*startConnectionsPolling\(\);/,

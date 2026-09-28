@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-28 00:58+0000\n"
-"PO-Revision-Date: 2026-09-28 00:58+0000\n"
+"POT-Creation-Date: 2026-09-28 01:21+0000\n"
+"PO-Revision-Date: 2026-09-28 01:21+0000\n"
 "Last-Translator: Claude\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -125,11 +125,17 @@ msgstr "Дополнительные настройки"
 msgid "All"
 msgstr "Все"
 
+msgid "All devices"
+msgstr "Все устройства"
+
 msgid "All events"
 msgstr "Все события"
 
 msgid "All except selected"
 msgstr "Все, кроме выбранных"
+
+msgid "All paths"
+msgstr "Все пути"
 
 msgid "All remaining except selected"
 msgstr "Все оставшиеся, кроме выбранных"
@@ -236,6 +242,9 @@ msgstr "Перед автоподбором"
 msgid "Before restore"
 msgstr "Перед восстановлением"
 
+msgid "Block"
+msgstr "Блокировка"
+
 msgid "Bootstrap DNS"
 msgstr "Bootstrap DNS"
 
@@ -299,6 +308,9 @@ msgstr "Стратегия ByeDPI"
 msgid "ByeDPI strategy cannot be empty"
 msgstr "Стратегия ByeDPI не может быть пустой"
 
+msgid "Bypass"
+msgstr "Обход"
+
 msgid "Cache File Path"
 msgstr "Путь к файлу кэша"
 
@@ -337,6 +349,9 @@ msgstr "Изменения после этого снимка"
 
 msgid "Check"
 msgstr "Проверить"
+
+msgid "Check address in Diagnostics"
+msgstr "Проверить адрес в Диагностике"
 
 msgid "Check all"
 msgstr "Проверить всё"
@@ -396,13 +411,19 @@ msgid "Close all"
 msgstr "Закрыть все"
 
 msgid "Close all connections"
-msgstr "Закрыть все подключения"
+msgstr "Закрыть все соединения"
 
 msgid "Close all connections?"
 msgstr "Закрыть все соединения?"
 
 msgid "Close connection"
-msgstr "Закрыть подключение"
+msgstr "Закрыть соединение"
+
+msgid "Close details"
+msgstr "Закрыть подробности"
+
+msgid "closed"
+msgstr "закрыто"
 
 msgid "Closed"
 msgstr "Закрытые"
@@ -452,14 +473,20 @@ msgstr "Подтвердите смену версии"
 msgid "Connect through"
 msgstr "Подключаться через"
 
-msgid "Connection details"
-msgstr "Сведения о соединении"
+msgid "Connection"
+msgstr "Подключение"
+
+msgid "Connection ID"
+msgstr "ID соединения"
 
 msgid "Connection refused or host unreachable"
 msgstr "Соединение отклонено или узел недоступен"
 
 msgid "Connection URL"
 msgstr "URL подключения"
+
+msgid "Connections"
+msgstr "Соединения"
 
 msgid "Connections are unavailable"
 msgstr "Подключения недоступны"
@@ -527,6 +554,9 @@ msgstr "Текущую секцию нельзя выбрать для скач�
 msgid "Custom outbound configurations in JSON format"
 msgstr "Пользовательские конфигурации outbound в формате JSON"
 
+msgid "custom strategy"
+msgstr "своя стратегия"
+
 msgid "Dashboard currently unavailable"
 msgstr "Дашборд сейчас недоступен"
 
@@ -535,6 +565,9 @@ msgstr "Отдельная cgroup недоступна"
 
 msgid "Default address for checking server availability and latency. URLTest uses its own address."
 msgstr "Адрес по умолчанию для проверки доступности и задержки серверов. Для URLTest используется собственный адрес."
+
+msgid "default strategy"
+msgstr "стандартная стратегия"
 
 msgid "Delay in milliseconds before reloading Forkop after interface UP"
 msgstr "Задержка в миллисекундах перед перезапуском Forkop после поднятия интерфейса"
@@ -569,6 +602,9 @@ msgstr "Определять страну сервера"
 msgid "detour must be a non-empty string"
 msgstr "detour должен быть непустой строкой"
 
+msgid "Device"
+msgstr "Устройство"
+
 msgid "Device filter"
 msgstr "Фильтр по устройствам"
 
@@ -589,6 +625,9 @@ msgstr "Диагностика"
 
 msgid "Diagnostics has not been run yet"
 msgstr "Диагностика ещё не запускалась"
+
+msgid "Direct"
+msgstr "Напрямую"
 
 msgid "Direct connection"
 msgstr "Прямое подключение"
@@ -755,8 +794,8 @@ msgstr "Скачать отчёт для поддержки"
 msgid "Download through"
 msgstr "Скачивать через"
 
-msgid "Downloaded"
-msgstr "Загружено"
+msgid "DPI"
+msgstr "DPI"
 
 msgid "DPI guard"
 msgstr "Защита DPI"
@@ -766,6 +805,9 @@ msgstr "DPI-защита удерживает трафик"
 
 msgid "DPI provider"
 msgstr "Провайдер DPI"
+
+msgid "DPI strategy"
+msgstr "Стратегия DPI"
 
 msgid "DPI strategy syntax check"
 msgstr "Проверка синтаксиса DPI-стратегии"
@@ -909,10 +951,10 @@ msgid "Failed"
 msgstr "Ошибка"
 
 msgid "Failed to close connection"
-msgstr "Не удалось закрыть подключение"
+msgstr "Не удалось закрыть соединение"
 
 msgid "Failed to close connections"
-msgstr "Не удалось закрыть подключения"
+msgstr "Не удалось закрыть соединения"
 
 msgid "Failed to copy!"
 msgstr "Не удалось скопировать!"
@@ -950,6 +992,12 @@ msgstr "Самый быстрый"
 msgid "Fix the highlighted fields and save again."
 msgstr "Исправьте подсвеченные поля и сохраните снова."
 
+msgid "Follow new"
+msgstr "Следить за новыми"
+
+msgid "Following new connections"
+msgstr "Показаны только новые соединения"
+
 msgid "Forced device routing"
 msgstr "Принудительная маршрутизация устройств"
 
@@ -969,7 +1017,7 @@ msgid "Forkop manages the nfqws2 process lifecycle itself, so daemon mode is not
 msgstr "Forkop сам управляет жизненным циклом nfqws2, поэтому режим daemon здесь запрещён."
 
 msgid "Forkop service is stopped. Start the service to display connections."
-msgstr "Служба Forkop остановлена. Запустите сервис для отображения подключений."
+msgstr "Служба Forkop остановлена. Запустите сервис для отображения соединений."
 
 msgid "Forkop will not modify your DHCP configuration"
 msgstr "Forkop не будет изменять вашу конфигурацию DHCP"
@@ -1419,7 +1467,7 @@ msgid "Loading available versions…"
 msgstr "Загрузка доступных версий…"
 
 msgid "Loading connections"
-msgstr "Загрузка подключений"
+msgstr "Загрузка соединений"
 
 msgid "Loading..."
 msgstr "Загрузка..."
@@ -1472,6 +1520,9 @@ msgstr "Наблюдаемые интерфейсы"
 msgid "Monitoring"
 msgstr "Мониторинг"
 
+msgid "Monitoring view"
+msgstr "Раздел мониторинга"
+
 msgid "More details"
 msgstr "Подробнее"
 
@@ -1521,16 +1572,19 @@ msgid "No"
 msgstr "Нет"
 
 msgid "No active connections"
-msgstr "Нет активных подключений"
+msgstr "Нет активных соединений"
 
 msgid "No check has been run yet"
 msgstr "Проверка ещё не запускалась"
 
 msgid "No closed connections"
-msgstr "Нет закрытых подключений"
+msgstr "Нет закрытых соединений"
 
 msgid "No compatible releases available"
 msgstr "Нет доступных совместимых версий"
+
+msgid "No connections match the filters"
+msgstr "Нет соединений, подходящих под фильтры"
 
 msgid "no data"
 msgstr "нет данных"
@@ -1547,6 +1601,9 @@ msgstr "Событий этого типа нет"
 msgid "No events recorded yet"
 msgstr "Событий пока нет"
 
+msgid "No new connections yet. Open the site or app you want to check."
+msgstr "Новых соединений пока нет. Откройте сайт или приложение, которое хотите проверить."
+
 msgid "No other marking rules found"
 msgstr "Другие правила маркировки не найдены"
 
@@ -1558,6 +1615,9 @@ msgstr "Перезагрузок пока не было"
 
 msgid "No route"
 msgstr "Нет маршрута"
+
+msgid "No rule matched"
+msgstr "Ни одно правило не сработало"
 
 msgid "No rules use ByeDPI"
 msgstr "Нет правил, использующих ByeDPI"
@@ -1624,9 +1684,6 @@ msgstr "Сейчас"
 
 msgid "Observed"
 msgstr "Наблюдается"
-
-msgid "Observed from active connection"
-msgstr "Наблюдается в активном соединении"
 
 msgid "Only from the specified countries."
 msgstr "Только из указанных стран."
@@ -1715,6 +1772,9 @@ msgstr "Восстановление пакетов не завершено"
 msgid "Password cannot be empty"
 msgstr "Пароль не может быть пустым"
 
+msgid "Path"
+msgstr "Путь"
+
 msgid "Path cannot be empty"
 msgstr "Путь не может быть пустым"
 
@@ -1726,6 +1786,9 @@ msgstr "Путь должен содержать хотя бы одну дире
 
 msgid "Path must end with cache.db"
 msgstr "Путь должен заканчиваться на cache.db"
+
+msgid "Path type"
+msgstr "Тип пути"
 
 msgid "Pause updates"
 msgstr "Приостановить обновление"
@@ -1867,6 +1930,9 @@ msgstr "Удаление пользовательских настроек…"
 
 msgid "Require a username and password for the local mixed proxy"
 msgstr "Требовать логин и пароль для локального смешанного прокси"
+
+msgid "Reset filters"
+msgstr "Сбросить фильтры"
 
 msgid "Resolve domain names before routing so sing-box can use real destination IPs."
 msgstr "Разрешать доменные имена перед маршрутизацией, чтобы sing-box использовал реальные IP-адреса назначения."
@@ -2120,8 +2186,14 @@ msgstr "Параметр"
 msgid "Settings"
 msgstr "Настройки"
 
+msgid "Show only connections that start from now on, active and closed"
+msgstr "Показывать только соединения, начатые с этого момента, — активные и закрытые"
+
 msgid "Show sing-box config"
 msgstr "Показать sing-box конфигурацию"
+
+msgid "Shown %d of %d"
+msgstr "Показано %d из %d"
 
 msgid "Shows the address the router DNS returns and the interface of the router kernel route."
 msgstr "Показывает адрес, который возвращает DNS роутера, и интерфейс маршрута ядра роутера."
@@ -2155,6 +2227,9 @@ msgstr "Сервис sing-box существует"
 
 msgid "Sing-box version is compatible (newer than 1.12.4)"
 msgstr "Версия Sing-box совместима (новее 1.12.4)"
+
+msgid "Site, IP, device or rule"
+msgstr "Сайт, IP, устройство или правило"
 
 msgid "Snapshot actions"
 msgstr "Действия со снимком"
@@ -2242,6 +2317,9 @@ msgstr "Состояние"
 
 msgid "State unavailable"
 msgstr "Состояние недоступно"
+
+msgid "Status"
+msgstr "Состояние"
 
 msgid "Stop"
 msgstr "Остановить"
@@ -2420,9 +2498,6 @@ msgstr "Этой опции требуется значение."
 msgid "This permanently deletes saved sections and subscriptions. Other components remain installed."
 msgstr "Сохранённые секции и подписки будут удалены безвозвратно. Остальные компоненты останутся установленными."
 
-msgid "Time"
-msgstr "Время"
-
 msgid "Time in seconds for DNS record caching (default: 60)"
 msgstr "Время в секундах для кэширования DNS записей (по умолчанию: 60)"
 
@@ -2449,9 +2524,6 @@ msgstr "TorrServer не найден"
 
 msgid "Total traffic"
 msgstr "Общий трафик"
-
-msgid "Trace"
-msgstr "Трассировка"
 
 msgid "Trace a real connection in Monitoring"
 msgstr "Проверить по реальному соединению в «Мониторинге»"
@@ -2557,9 +2629,6 @@ msgstr "Автоматически обновлять эту подписку"
 
 msgid "Upload"
 msgstr "Отправлено"
-
-msgid "Uploaded"
-msgstr "Отдано"
 
 msgid "URL must start with vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, hysteria2://, or hy2://"
 msgstr "URL должен начинаться с vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, hysteria2:// или hy2://"

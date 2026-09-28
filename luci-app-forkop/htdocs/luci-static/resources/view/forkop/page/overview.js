@@ -3,7 +3,7 @@
 "require view.forkop.main as main";
 "require view.forkop.shell as shell";
 
-// Until the Stage 6.3 redesign the overview hosts the current dashboard.
+// The overview is a summary; the dashboard controller renders its cards.
 const EntryPoint = {
   load() {
     return shell

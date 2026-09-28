@@ -4,11 +4,10 @@ import { showToast } from '../../../helpers/showToast';
 import { confirmAction } from '../../ui/confirmAction';
 import { renderStartServiceAction } from '../shared/startService';
 import { isReadonlyMode } from '../../services/accessMode.service';
-import { readPageParams } from '../../helpers/navigation';
+import { forkopPageUrl, readPageParams } from '../../helpers/navigation';
 import { isActiveLuciTab } from '../../helpers/isActiveLuciTab';
 import { copyToClipboard } from '../../../helpers/copyToClipboard';
 import {
-  renderCopyIcon24,
   renderInfoIcon24,
   renderPauseIcon24,
   renderPlayIcon24,
@@ -22,9 +21,19 @@ import { logger, socket, store, StoreType } from '../../services';
 import { Forkop } from '../../types';
 import {
   connectionActions,
-  matchesConnectionFilters,
+  connectionPath,
+  matchesPathFilter,
+  pathKindLabel,
+  pathSummary,
   trafficSortValue,
+  type ConnectionPath,
+  type PathKind,
+  type RouteRule,
 } from './connectionView';
+import { renderProvenance } from '../../ui/status';
+import { getForkopPage } from '../../services/forkopPage';
+import { setForkopPage } from '../../services/tab.service';
+import { controllerForView, readMonitoringView } from './views';
 import {
   getCachedRuntimeUiState,
   refreshRuntimeUiState,
@@ -105,17 +114,20 @@ let pollingConnections = false;
 let activeTab: MonitoringTabId = 'active';
 let selectedDeviceFilter = ALL_FILTER_VALUE;
 let searchQuery = '';
-const extraFilters: Record<string, string> = {
-  protocol: '',
-  route: '',
-  outbound: '',
-  rule: '',
-};
+let pathFilter = ALL_FILTER_VALUE;
+// Follow mode: only connections first seen after it was switched on (ids,
+// not timestamps, so a router clock offset does not matter).
+let followBaseline: Set<string> | null = null;
+let selectedConnectionId: string | null = null;
 let sortMode = 'start';
 const MONITORING_PREFS_KEY = 'forkop.monitoring.preferences';
 let localDeviceChoices: LocalDeviceChoices = {};
 let routeDisplayNames: Record<string, string> = {};
 let routeSections: Array<{ sectionName: string; displayName: string }> = [];
+let routeRulesByTag: Record<string, RouteRule> = {};
+// Node tag -> the name shown in Nodes and groups (e.g. main-2-out -> NL-2).
+let nodeDisplayNames: Record<string, string> = {};
+let routeRules: RouteRule[] = [];
 let lastDeviceFilterSignature = '';
 let loading = true;
 let failed = false;
@@ -198,6 +210,8 @@ function buildRouteDisplayNames(sections: Forkop.ConfigSection[]) {
   };
   const routeSectionItems: Array<{ sectionName: string; displayName: string }> =
     [];
+  const rulesByTag: Record<string, RouteRule> = {};
+  const rules: RouteRule[] = [];
   const urltestsBySection = new Map<string, string[]>();
 
   sections
@@ -226,16 +240,29 @@ function buildRouteDisplayNames(sections: Forkop.ConfigSection[]) {
         return;
       }
 
+      const rule: RouteRule = {
+        name: sectionName,
+        label: displayName,
+        action: normalizeString(section.action),
+        dpiProvider: section.dpi_provider,
+        dpiStrategy: section.dpi_strategy,
+        dpiCustom: section.dpi_strategy_custom,
+      };
+      rules.push(rule);
       routeSectionItems.push({ sectionName, displayName });
       map[getOutboundTagBySection(sectionName)] = displayName;
+      rulesByTag[getOutboundTagBySection(sectionName)] = rule;
       const urltestIds =
         urltestsBySection.get(sectionName) || getUrlTestIds(section);
       urltestIds.forEach((id) => {
         map[getUrlTestTag(sectionName, id)] = displayName;
+        rulesByTag[getUrlTestTag(sectionName, id)] = rule;
       });
     });
 
   routeDisplayNames = map;
+  routeRulesByTag = rulesByTag;
+  routeRules = rules;
   routeSections = routeSectionItems.sort(
     (a, b) => b.sectionName.length - a.sectionName.length,
   );
@@ -262,9 +289,14 @@ function getRouteDisplayNameByTag(tag: string): string {
   return manualSection?.displayName || '';
 }
 
-function getRouteTagFromRule(rule?: string): string {
-  const match = normalizeString(rule).match(/=>\s*route\(([^)]+)\)/);
-  return normalizeString(match?.[1]).replace(/^['"]|['"]$/g, '');
+function getRuleByTag(tag: string): RouteRule | null {
+  if (routeRulesByTag[tag]) return routeRulesByTag[tag];
+  // Manually numbered outbounds (<section>-<n>-out) belong to their section.
+  const name = getRouteDisplayNameByTag(tag)
+    ? routeSections.find(({ sectionName }) => tag.startsWith(`${sectionName}-`))
+        ?.sectionName
+    : '';
+  return routeRules.find((rule) => rule.name === name) || null;
 }
 
 function parseStartedAt(connection: MonitoredConnection): number {
@@ -317,8 +349,8 @@ function getSourceCellParts(connection: MonitoredConnection) {
   if (deviceName) {
     return {
       primary: deviceName,
-      ip: '',
-      copyValue: deviceName,
+      ip,
+      copyValue: ip ? `${deviceName} (${ip})` : deviceName,
       searchValue: `${deviceName} ${ip}`,
     };
   }
@@ -348,17 +380,11 @@ function getTargetCellParts(connection: MonitoredConnection): {
   };
 }
 
-function getRoute(connection: MonitoredConnection): string {
-  const chains = Array.isArray(connection.chains) ? connection.chains : [];
-  const routeTag = [...chains].reverse().find(getRouteDisplayNameByTag);
-  const fallbackRouteTag = getRouteTagFromRule(connection.rule);
-  const route =
-    getRouteDisplayNameByTag(routeTag || '') ||
-    getRouteDisplayNameByTag(fallbackRouteTag) ||
-    normalizeString(routeTag) ||
-    normalizeString(fallbackRouteTag);
-
-  return route || '-';
+function getPath(connection: MonitoredConnection): ConnectionPath {
+  const path = connectionPath(connection.chains, connection.rule, getRuleByTag);
+  return path.node
+    ? { ...path, node: nodeDisplayNames[path.node] || path.node }
+    : path;
 }
 
 function getNetwork(connection: MonitoredConnection): string {
@@ -383,6 +409,13 @@ function sortConnections(
 }
 
 function getConnectionsForActiveTab(): MonitoredConnection[] {
+  if (followBaseline) {
+    const baseline = followBaseline;
+    return [...activeConnections.values(), ...closedConnections.values()]
+      .filter((connection) => !baseline.has(connection.id))
+      .sort((a, b) => parseStartedAt(b) - parseStartedAt(a));
+  }
+
   const source =
     activeTab === 'active'
       ? Array.from(activeConnections.values())
@@ -398,17 +431,17 @@ function normalizeSearchValue(value: string): string {
 function getSearchValues(connection: MonitoredConnection): string[] {
   const target = getTargetCellParts(connection);
   const source = getSourceCellParts(connection);
+  const path = pathSummary(getPath(connection));
 
   return [
     connection.id,
-    target.primary,
+    target.searchValue,
     getNetwork(connection),
-    getRoute(connection),
-    formatConnectionDuration(connection),
-    formatBytes(connection.download),
-    formatBytes(connection.upload),
-    source.primary,
-    source.copyValue,
+    path.kindLabel,
+    path.primary,
+    path.secondary,
+    normalizeString(connection.rule),
+    ...(connection.chains || []),
     source.searchValue,
   ].filter(Boolean);
 }
@@ -425,13 +458,7 @@ function getVisibleConnections(): MonitoredConnection[] {
       return false;
     }
 
-    const values: Record<string, string> = {
-      protocol: getNetwork(connection),
-      route: getRoute(connection),
-      outbound: (connection.chains || []).join(' '),
-      rule: normalizeString(connection.rule),
-    };
-    if (!matchesConnectionFilters(values, extraFilters)) return false;
+    if (!matchesPathFilter(getPath(connection), pathFilter)) return false;
 
     if (!normalizedSearch) {
       return true;
@@ -441,6 +468,27 @@ function getVisibleConnections(): MonitoredConnection[] {
       normalizeSearchValue(value).includes(normalizedSearch),
     );
   });
+}
+
+function filtersActive() {
+  return (
+    selectedDeviceFilter !== ALL_FILTER_VALUE ||
+    pathFilter !== ALL_FILTER_VALUE ||
+    normalizeSearchValue(searchQuery) !== ''
+  );
+}
+
+function resetFilters() {
+  selectedDeviceFilter = ALL_FILTER_VALUE;
+  pathFilter = ALL_FILTER_VALUE;
+  searchQuery = '';
+  const search = document.getElementById(
+    'monitoring-search',
+  ) as HTMLInputElement | null;
+  if (search) search.value = '';
+  saveMonitoringPreferences();
+  renderControls();
+  renderConnections({ force: true });
 }
 
 function moveConnectionToClosed(connection: MonitoredConnection, now: number) {
@@ -571,7 +619,7 @@ function renderDeviceFilterOptions() {
   lastDeviceFilterSignature = signature;
 
   const options = [
-    E('option', { value: ALL_FILTER_VALUE }, _('All')),
+    E('option', { value: ALL_FILTER_VALUE }, _('All devices')),
     ...sourceIps.map((ip) =>
       E('option', { value: ip }, getDeviceFilterLabel(ip)),
     ),
@@ -579,6 +627,102 @@ function renderDeviceFilterOptions() {
 
   select.replaceChildren(...options);
   select.value = selectedDeviceFilter;
+}
+
+const PATH_KINDS: PathKind[] = [
+  'dpi',
+  'connection',
+  'bypass',
+  'direct',
+  'block',
+];
+let lastPathFilterSignature = '';
+
+function renderPathFilterOptions() {
+  const select = document.getElementById(
+    'monitoring-path-filter',
+  ) as HTMLSelectElement | null;
+  if (!select) return;
+
+  const rules = [...routeRules].sort((a, b) => a.label.localeCompare(b.label));
+  const known = [
+    ALL_FILTER_VALUE,
+    ...PATH_KINDS.map((kind) => `kind:${kind}`),
+    ...rules.map((rule) => `rule:${rule.name}`),
+  ];
+  if (!known.includes(pathFilter)) pathFilter = ALL_FILTER_VALUE;
+
+  const signature = rules.map((rule) => `${rule.name}:${rule.label}`).join('|');
+  if (signature !== lastPathFilterSignature || !select.options.length) {
+    lastPathFilterSignature = signature;
+    select.replaceChildren(
+      E('option', { value: ALL_FILTER_VALUE }, _('All paths')),
+      E(
+        'optgroup',
+        { label: _('Path type') },
+        PATH_KINDS.map((kind) =>
+          E('option', { value: `kind:${kind}` }, pathKindLabel(kind)),
+        ),
+      ),
+      ...(rules.length
+        ? [
+            E(
+              'optgroup',
+              { label: _('Rule') },
+              rules.map((rule) =>
+                E('option', { value: `rule:${rule.name}` }, rule.label),
+              ),
+            ),
+          ]
+        : []),
+    );
+  }
+  select.value = pathFilter;
+}
+
+function renderFilterBar() {
+  const bar = document.getElementById('monitoring-filter-bar');
+  if (!bar) return;
+  const active = filtersActive();
+  const following = followBaseline !== null;
+  if (!active && !following) {
+    bar.replaceChildren();
+    bar.hidden = true;
+    return;
+  }
+
+  const total = getConnectionsForActiveTab().length;
+  const shown = active ? getVisibleConnections().length : total;
+  bar.hidden = false;
+  bar.replaceChildren(
+    E(
+      'span',
+      {},
+      [
+        following ? _('Following new connections') : '',
+        active
+          ? _('Shown %d of %d')
+              .replace('%d', String(shown))
+              .replace('%d', String(total))
+          : '',
+      ]
+        .filter(Boolean)
+        .join(' · '),
+    ),
+    ...(active
+      ? [
+          E(
+            'button',
+            {
+              type: 'button',
+              class: 'btn cbi-button fkp_monitoring-page__reset',
+              click: () => resetFilters(),
+            },
+            _('Reset filters'),
+          ),
+        ]
+      : []),
+  );
 }
 
 function setButtonActive(button: HTMLElement | null, active: boolean) {
@@ -610,22 +754,36 @@ function renderControls() {
     'monitoring-pause-toggle',
   ) as HTMLButtonElement | null;
 
+  const following = followBaseline !== null;
+  // Follow mode lists active and closed connections together.
   if (activeButton) {
     activeButton.replaceChildren(
       ...renderTabButtonContent(_('Active'), activeConnections.size),
     );
-    activeButton.disabled = serviceAvailability === 'stopped';
+    activeButton.disabled = serviceAvailability === 'stopped' || following;
   }
 
   if (closedButton) {
     closedButton.replaceChildren(
       ...renderTabButtonContent(_('Closed'), closedConnections.size),
     );
-    closedButton.disabled = serviceAvailability === 'stopped';
+    closedButton.disabled = serviceAvailability === 'stopped' || following;
   }
 
-  setButtonActive(activeButton, activeTab === 'active');
-  setButtonActive(closedButton, activeTab === 'closed');
+  setButtonActive(activeButton, !following && activeTab === 'active');
+  setButtonActive(closedButton, !following && activeTab === 'closed');
+
+  const followButton = document.getElementById(
+    'monitoring-follow-toggle',
+  ) as HTMLButtonElement | null;
+  if (followButton) {
+    followButton.disabled = serviceAvailability === 'stopped';
+    followButton.setAttribute('aria-pressed', following ? 'true' : 'false');
+    followButton.classList.toggle(
+      'fkp_monitoring-page__tab--active',
+      following,
+    );
+  }
 
   if (closeAllButton) {
     closeAllButton.replaceChildren(renderXIcon24());
@@ -657,6 +815,13 @@ function renderControls() {
   }
 
   renderDeviceFilterOptions();
+  renderPathFilterOptions();
+  renderFilterBar();
+
+  const pathSelect = document.getElementById(
+    'monitoring-path-filter',
+  ) as HTMLSelectElement | null;
+  if (pathSelect) pathSelect.disabled = serviceAvailability === 'stopped';
 
   const select = document.getElementById(
     'monitoring-device-filter',
@@ -729,25 +894,45 @@ function renderSourceValue(source: ReturnType<typeof getSourceCellParts>) {
 }
 
 function renderTableCell(label: string, children: (Node | string)[]) {
-  const cell = E('td', {}, children);
+  // One wrapper keeps multi-line cells in one grid column on narrow screens.
+  const cell = E('td', {}, [
+    E('div', { class: 'fkp_monitoring-page__cell' }, children),
+  ]);
   cell.setAttribute('data-label', label);
   return cell;
+}
+
+function renderSecondary(text: string) {
+  return E('span', { class: 'fkp_monitoring-page__secondary' }, text);
+}
+
+function renderPathCell(path: ConnectionPath) {
+  const summary = pathSummary(path);
+  return [
+    E(
+      'span',
+      {
+        class: `fkp_monitoring-page__path-kind fkp_monitoring-page__path-kind--${summary.kind}`,
+      },
+      summary.kindLabel,
+    ),
+    ...(summary.primary
+      ? [renderValue(summary.primary, 'fkp_monitoring-page__route')]
+      : []),
+    ...(summary.secondary ? [renderSecondary(summary.secondary)] : []),
+  ];
 }
 
 function renderConnectionRow(connection: MonitoredConnection) {
   const target = getTargetCellParts(connection);
   const source = getSourceCellParts(connection);
+  const isActive = activeConnections.has(connection.id);
   const isClosing = closingConnectionIds.has(connection.id);
-  const icons = {
-    details: renderInfoIcon24,
-    trace: renderSearchIcon24,
-    copy: renderCopyIcon24,
-    close: renderXIcon24,
-  };
+  const icons = { details: renderInfoIcon24, close: renderXIcon24 };
   const actions = E(
     'div',
     { class: 'fkp_monitoring-page__actions' },
-    connectionActions(activeTab === 'active', isReadonlyMode()).map((action) =>
+    connectionActions(isActive, isReadonlyMode()).map((action) =>
       E(
         'button',
         {
@@ -762,79 +947,250 @@ function renderConnectionRow(connection: MonitoredConnection) {
       ),
     ),
   );
+  const destinationMeta = [
+    getNetwork(connection).toUpperCase(),
+    formatConnectionDuration(connection),
+    ...(isActive ? [] : [_('closed')]),
+  ].join(' · ');
 
   return E(
     'tr',
     {
-      class: isClosing ? 'fkp_monitoring-page__row--closing' : '',
+      class: [
+        isClosing ? 'fkp_monitoring-page__row--closing' : '',
+        !isActive ? 'fkp_monitoring-page__row--closed' : '',
+        selectedConnectionId === connection.id
+          ? 'fkp_monitoring-page__row--selected'
+          : '',
+      ]
+        .filter(Boolean)
+        .join(' '),
     },
     [
-      renderTableCell(_('Host'), [renderValue(target.primary)]),
-      renderTableCell(_('Type'), [
-        renderValue(getNetwork(connection), 'fkp_monitoring-page__network'),
+      renderTableCell(_('Device'), [renderSourceValue(source)]),
+      renderTableCell(_('Destination'), [
+        renderValue(target.primary),
+        renderSecondary(destinationMeta),
       ]),
-      renderTableCell(_('Route'), [
-        renderValue(getRoute(connection), 'fkp_monitoring-page__route'),
+      renderTableCell(_('Path'), renderPathCell(getPath(connection))),
+      renderTableCell(_('Traffic'), [
+        renderValue(`\u2193 ${formatBytes(connection.download)}`),
+        renderSecondary(`\u2191 ${formatBytes(connection.upload)}`),
       ]),
-      renderTableCell(_('Time'), [
-        renderValue(formatConnectionDuration(connection)),
-      ]),
-      renderTableCell(_('Downloaded'), [
-        renderValue(formatBytes(connection.download)),
-      ]),
-      renderTableCell(_('Uploaded'), [
-        renderValue(formatBytes(connection.upload)),
-      ]),
-      renderTableCell(_('Source'), [renderSourceValue(source)]),
       renderTableCell(_('Actions'), [actions]),
     ],
   );
 }
 
-function connectionDetails(connection: MonitoredConnection) {
+function safeText(value: unknown) {
+  return normalizeString(value == null ? '' : String(value))
+    .replace(/\b(?:https?:\/\/)?[^\s@]+@/g, '***@')
+    .replace(
+      /(?:token|secret|password|uuid|authorization)=([^&\s]+)/gi,
+      '$1=***',
+    );
+}
+
+function connectionTechnicalDetails(connection: MonitoredConnection) {
   const metadata = connection.metadata || {};
-  const safe = (value: unknown) =>
-    normalizeString(value == null ? '' : String(value))
-      .replace(/\b(?:https?:\/\/)?[^\s@]+@/g, '***@')
-      .replace(
-        /(?:token|secret|password|uuid|authorization)=([^&\s]+)/gi,
-        '$1=***',
-      );
   return [
     [_('Source'), formatEndpoint(metadata.sourceIP, metadata.sourcePort)],
     [
       _('Destination'),
       formatEndpoint(metadata.destinationIP, metadata.destinationPort),
     ],
-    [_('Host'), safe(metadata.host)],
+    [_('Host'), safeText(metadata.host)],
     [_('Protocol'), getNetwork(connection)],
-    [_('Rule'), safe(connection.rule)],
-    [_('Rule payload'), safe(connection.rulePayload)],
-    [_('Route'), getRoute(connection)],
-    [_('Outbound chain'), safe((connection.chains || []).join(' → '))],
-    [_('Started'), safe(connection.start)],
-    [_('Duration'), formatConnectionDuration(connection)],
-    [_('Upload'), formatBytes(connection.upload)],
-    [_('Download'), formatBytes(connection.download)],
+    [_('Rule'), safeText(connection.rule)],
+    [_('Rule payload'), safeText(connection.rulePayload)],
+    [_('Outbound chain'), safeText((connection.chains || []).join(' → '))],
+    [_('Started'), safeText(connection.start)],
+    [_('Connection ID'), connection.id],
   ];
 }
 
-function showConnectionDetails(
-  connection: MonitoredConnection,
-  trace: boolean,
-) {
+function connectionDetails(connection: MonitoredConnection) {
+  const target = getTargetCellParts(connection);
+  const source = getSourceCellParts(connection);
+  const path = pathSummary(getPath(connection));
+  return [
+    [_('Device'), source.copyValue],
+    [_('Destination'), target.primary],
+    [
+      _('Path'),
+      [path.kindLabel, path.primary, path.secondary]
+        .filter(Boolean)
+        .join(' · '),
+    ],
+    [_('Duration'), formatConnectionDuration(connection)],
+    [_('Download'), formatBytes(connection.download)],
+    [_('Upload'), formatBytes(connection.upload)],
+    ...connectionTechnicalDetails(connection),
+  ];
+}
+
+function detailRow(label: string, value: Node | string) {
+  return E('div', { class: 'fkp_monitoring-page__detail-row' }, [
+    E('dt', {}, label),
+    E('dd', {}, value),
+  ]);
+}
+
+function closeConnectionDetails() {
+  selectedConnectionId = null;
+  document.getElementById('monitoring-connection-details')?.replaceChildren();
+  renderConnections({ force: true });
+}
+
+function renderConnectionDetailsPanel() {
   const container = document.getElementById('monitoring-connection-details');
   if (!container) return;
-  container.replaceChildren(
-    E(
-      'h3',
-      {},
-      trace ? _('Observed from active connection') : _('Connection details'),
-    ),
-    ...connectionDetails(connection).map(([label, value]) =>
-      E('div', {}, [E('strong', {}, `${label}: `), E('span', {}, value)]),
-    ),
+  const connection = selectedConnectionId
+    ? activeConnections.get(selectedConnectionId) ||
+      closedConnections.get(selectedConnectionId)
+    : undefined;
+  if (!connection) {
+    container.replaceChildren();
+    return;
+  }
+  // Live refreshes keep the technical details expanded if they were.
+  const technicalOpen = Boolean(
+    container.querySelector<HTMLDetailsElement>('details')?.open,
   );
+
+  const isActive = activeConnections.has(connection.id);
+  const target = getTargetCellParts(connection);
+  const host =
+    normalizeString(connection.metadata?.host) ||
+    normalizeString(connection.metadata?.destinationIP);
+  const rawPath = getPath(connection);
+  const path = pathSummary(rawPath);
+  const source = getSourceCellParts(connection);
+
+  container.replaceChildren(
+    E('div', { class: 'fkp_monitoring-page__details' }, [
+      E('div', { class: 'fkp_monitoring-page__details-head' }, [
+        E('h3', {}, target.primary),
+        E(
+          'button',
+          {
+            type: 'button',
+            class: 'btn cbi-button fkp_monitoring-page__details-close',
+            'aria-label': _('Close details'),
+            title: _('Close details'),
+            click: () => closeConnectionDetails(),
+          },
+          '×',
+        ),
+      ]),
+      E('dl', { class: 'fkp_monitoring-page__detail-list' }, [
+        detailRow(_('Device'), source.copyValue),
+        detailRow(
+          _('Status'),
+          isActive
+            ? `${_('Active')} · ${formatConnectionDuration(connection)}`
+            : `${_('Closed')} · ${formatConnectionDuration(connection)}`,
+        ),
+        detailRow(
+          _('Route'),
+          E('span', {}, [
+            [path.kindLabel, path.primary, rawPath.node]
+              .filter(Boolean)
+              .join(' · '),
+            ' ',
+            renderProvenance('observed'),
+          ]),
+        ),
+        ...(rawPath.kind === 'dpi' && path.secondary
+          ? [
+              detailRow(
+                _('DPI strategy'),
+                E('span', {}, [
+                  path.secondary,
+                  ' ',
+                  renderProvenance('configured'),
+                ]),
+              ),
+            ]
+          : []),
+        detailRow(
+          _('Traffic'),
+          `\u2193 ${formatBytes(connection.download)} · \u2191 ${formatBytes(connection.upload)}`,
+        ),
+      ]),
+      E('div', { class: 'fkp_monitoring-page__details-actions' }, [
+        ...(host
+          ? [
+              E(
+                'a',
+                {
+                  class: 'btn cbi-button',
+                  href: forkopPageUrl('diagnostics', { host }),
+                },
+                _('Check address in Diagnostics'),
+              ),
+            ]
+          : []),
+        E(
+          'button',
+          {
+            type: 'button',
+            class: 'btn cbi-button',
+            click: () =>
+              // navigator.clipboard needs a secure context; LuCI is usually plain HTTP.
+              copyToClipboard(
+                connectionDetails(connection)
+                  .map(([key, value]) => `${key}: ${value}`)
+                  .join('\n'),
+              ),
+          },
+          _('Copy details'),
+        ),
+        ...(isActive && !isReadonlyMode()
+          ? [
+              E(
+                'button',
+                {
+                  type: 'button',
+                  class: 'btn cbi-button cbi-button-negative',
+                  disabled: closingConnectionIds.has(connection.id)
+                    ? true
+                    : undefined,
+                  click: () => void closeConnection(connection.id),
+                },
+                _('Close connection'),
+              ),
+            ]
+          : []),
+      ]),
+      E(
+        'details',
+        {
+          class: 'fkp_monitoring-page__technical',
+          ...(technicalOpen ? { open: true } : {}),
+        },
+        [
+          E('summary', {}, _('Technical details')),
+          E(
+            'dl',
+            { class: 'fkp_monitoring-page__detail-list' },
+            connectionTechnicalDetails(connection).map(([label, value]) =>
+              detailRow(label, value || '—'),
+            ),
+          ),
+        ],
+      ),
+    ]),
+  );
+}
+
+function showConnectionDetails(connection: MonitoredConnection) {
+  selectedConnectionId = connection.id;
+  renderConnectionDetailsPanel();
+  renderConnections({ force: true });
+  document
+    .getElementById('monitoring-connection-details')
+    ?.scrollIntoView?.({ block: 'nearest' });
 }
 
 function saveMonitoringPreferences() {
@@ -842,8 +1198,8 @@ function saveMonitoringPreferences() {
     MONITORING_PREFS_KEY,
     JSON.stringify({
       selectedDeviceFilter,
+      pathFilter,
       sortMode,
-      extraFilters,
     }),
   );
 }
@@ -861,9 +1217,8 @@ function loadMonitoringPreferences() {
       )
     )
       sortMode = value.sortMode;
-    for (const key of Object.keys(extraFilters))
-      if (typeof value.extraFilters?.[key] === 'string')
-        extraFilters[key] = value.extraFilters[key].slice(0, 100);
+    if (typeof value.pathFilter === 'string')
+      pathFilter = value.pathFilter.slice(0, 100);
   } catch (_error) {
     /* ignore invalid browser state */
   }
@@ -879,7 +1234,7 @@ function renderStateRow(
       'td',
       {
         class: 'fkp_monitoring-page__state-cell',
-        colSpan: 8,
+        colSpan: 5,
       },
       [
         E(
@@ -911,14 +1266,13 @@ function renderConnectionsTable(
       [
         E('thead', {}, [
           E('tr', {}, [
-            E('th', {}, _('Host')),
-            E('th', {}, _('Type')),
-            E('th', {}, _('Route')),
-            E('th', {}, _('Time')),
-            E('th', {}, `\u2193 ${_('Downloaded')}`),
-            E('th', {}, `\u2191 ${_('Uploaded')}`),
-            E('th', {}, _('Source')),
-            E('th', {}, _('Actions')),
+            E('th', {}, _('Device')),
+            E('th', {}, _('Destination')),
+            E('th', {}, _('Path')),
+            E('th', {}, _('Traffic')),
+            E('th', { class: 'fkp_monitoring-page__actions-head' }, [
+              E('span', { class: 'fkp-visually-hidden' }, _('Actions')),
+            ]),
           ]),
         ]),
         E('tbody', {}, rows),
@@ -991,15 +1345,39 @@ function renderConnections(options: { force?: boolean } = {}) {
   }
 
   const visibleConnections = getVisibleConnections();
+  renderFilterBar();
+  renderConnectionDetailsPanel();
 
   if (visibleConnections.length === 0) {
+    const anyConnections = getConnectionsForActiveTab().length > 0;
     container.replaceChildren(
-      renderConnectionsTable([], {
-        text:
-          activeTab === 'active'
-            ? _('No active connections')
-            : _('No closed connections'),
-      }),
+      renderConnectionsTable(
+        [],
+        anyConnections && filtersActive()
+          ? {
+              text: _('No connections match the filters'),
+              actions: [
+                E(
+                  'button',
+                  {
+                    type: 'button',
+                    class: 'btn cbi-button',
+                    click: () => resetFilters(),
+                  },
+                  _('Reset filters'),
+                ),
+              ],
+            }
+          : {
+              text: followBaseline
+                ? _(
+                    'No new connections yet. Open the site or app you want to check.',
+                  )
+                : activeTab === 'active'
+                  ? _('No active connections')
+                  : _('No closed connections'),
+            },
+      ),
     );
     return;
   }
@@ -1362,16 +1740,25 @@ function bindControls() {
     };
   }
 
-  for (const key of Object.keys(extraFilters)) {
-    const input = document.getElementById(
-      `monitoring-${key}-filter`,
-    ) as HTMLInputElement | null;
-    if (!input) continue;
-    input.value = extraFilters[key];
-    input.oninput = () => {
-      extraFilters[key] = input.value.trim();
+  const pathSelect = document.getElementById(
+    'monitoring-path-filter',
+  ) as HTMLSelectElement | null;
+  if (pathSelect) {
+    pathSelect.onchange = () => {
+      pathFilter = pathSelect.value || ALL_FILTER_VALUE;
       saveMonitoringPreferences();
-      renderConnections();
+      renderConnections({ force: true });
+    };
+  }
+
+  const followButton = document.getElementById('monitoring-follow-toggle');
+  if (followButton) {
+    followButton.onclick = () => {
+      followBaseline = followBaseline
+        ? null
+        : new Set([...activeConnections.keys(), ...closedConnections.keys()]);
+      renderControls();
+      renderConnections({ force: true });
     };
   }
   const sort = document.getElementById(
@@ -1397,25 +1784,13 @@ function bindControls() {
     connectionsContainer.onclick = (event) => {
       const target = event.target as HTMLElement | null;
       const action = target?.closest<HTMLButtonElement>(
-        '.fkp-monitoring-details, .fkp-monitoring-trace, .fkp-monitoring-copy',
+        '.fkp-monitoring-details',
       );
       if (action?.value) {
         const connection =
           activeConnections.get(action.value) ||
           closedConnections.get(action.value);
-        if (!connection) return;
-        if (action.classList.contains('fkp-monitoring-copy')) {
-          // navigator.clipboard needs a secure context; LuCI is usually plain HTTP.
-          copyToClipboard(
-            connectionDetails(connection)
-              .map(([key, value]) => `${key}: ${value}`)
-              .join('\n'),
-          );
-        } else
-          showConnectionDetails(
-            connection,
-            action.classList.contains('fkp-monitoring-trace'),
-          );
+        if (connection) showConnectionDetails(connection);
         return;
       }
       const button = target?.closest(
@@ -1426,6 +1801,22 @@ function bindControls() {
         void closeConnection(button.value);
       }
     };
+  }
+}
+
+async function loadNodeDisplayNames() {
+  try {
+    const response = await CustomForkopMethods.getDashboardSections();
+    const names: Record<string, string> = {};
+    for (const group of response.success ? response.data : [])
+      for (const outbound of group.outbounds)
+        if (outbound.displayName && outbound.displayName !== outbound.code)
+          names[outbound.code] = outbound.displayName;
+    nodeDisplayNames = names;
+  } catch (error) {
+    logger.warn('[MONITORING]', 'loadNodeDisplayNames: failed', error);
+  } finally {
+    renderConnections();
   }
 }
 
@@ -1441,9 +1832,12 @@ async function loadLocalDevices() {
   }
 }
 
+// Both roles read the same derived section view: rule labels plus the DPI
+// provider and strategy name, never the raw strategy options.
 async function loadRouteDisplayNames() {
   try {
-    buildRouteDisplayNames(await CustomForkopMethods.getConfigSections());
+    const response = await ForkopShellMethods.getReadonlyConfigSections();
+    buildRouteDisplayNames(response.success ? response.data : []);
   } catch (error) {
     logger.warn('[MONITORING]', 'loadRouteDisplayNames: failed', error);
     buildRouteDisplayNames([]);
@@ -1648,6 +2042,10 @@ function resetMonitoringState() {
   selectedDeviceFilter = ALL_FILTER_VALUE;
   // A deep link (monitoring#search=example.com) opens pre-filtered.
   searchQuery = readPageParams().search || '';
+  pathFilter = ALL_FILTER_VALUE;
+  followBaseline = null;
+  selectedConnectionId = null;
+  lastPathFilterSignature = '';
   lastDeviceFilterSignature = '';
   loading = true;
   failed = false;
@@ -1684,6 +2082,7 @@ async function onPageMount() {
 
   void loadLocalDevices();
   void loadRouteDisplayNames();
+  void loadNodeDisplayNames();
 
   if (getCachedRuntimeUiState()) {
     void refreshRuntimeUiState({ force: true });
@@ -1768,6 +2167,10 @@ export async function initController(
   }
 
   monitoringControllerInitialized = true;
+
+  // monitoring#view=nodes opens on node selection (the dashboard controller).
+  if (getForkopPage() === 'monitoring')
+    setForkopPage(controllerForView(readMonitoringView()));
 
   onMount('monitoring-status').then(() => {
     registerLifecycleListeners();

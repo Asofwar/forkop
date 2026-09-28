@@ -11,7 +11,10 @@ const EntryPoint = {
       .then((readonly) => shell.startPage("monitoring").then(() => readonly));
   },
 
+  // Connections run the monitoring controller; the Nodes view runs the
+  // dashboard controller (node selection).
   render() {
+    main.DashboardTab.initController();
     main.MonitoringTab.initController({
       loadLocalDeviceChoices: localDevices.loadLocalDeviceChoices,
     });

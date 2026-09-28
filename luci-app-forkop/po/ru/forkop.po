@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-28 22:20+0000\n"
-"PO-Revision-Date: 2026-09-28 22:20+0000\n"
+"POT-Creation-Date: 2026-09-28 22:50+0000\n"
+"PO-Revision-Date: 2026-09-28 22:50+0000\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -76,6 +76,9 @@ msgstr "%s не установлен. Установите его в разде�
 
 msgid "%s: “%s” cannot be written in the current form unchanged"
 msgstr "%s: «%s» нельзя записать в текущем виде без изменения смысла"
+
+msgid "%s: not moved to the Device filter, the rule has no destination condition and does not use it"
+msgstr "%s: не переносится в «Фильтр по устройствам» — у правила нет условия назначения, и он не используется"
 
 msgid "+ Add JSON outbound"
 msgstr "+ Добавить JSON outbound"

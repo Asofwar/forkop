@@ -105,7 +105,15 @@ const convertible = {
   // the converted device list stays for the downloaded list.
   remote_and_devices: { rule: rule({ action: 'block', remote_subnet_lists: ['https://example.com/subnets.srs'],
     source_ip_cidr_text: '192.168.1.5' }) },
+  // Without a destination condition the rule does not use a device filter
+  // (sing-box and nft match devices only together with one), the field is
+  // hidden and a save drops it: the conversion removes the legacy devices
+  // and says so instead of moving them to the field.
+  devices_without_destination: { rule: rule({ action: 'block', source_ip_cidr_text: '192.168.1.5' }) },
+  interfaces_devices_without_destination: { rule: rule({ action: 'connection', ...routed, interfaces: ['awg0'],
+    source_ip_cidr_text: '192.168.1.5', source_ip_cidr_text_mode: '1' }) },
 };
+const devicesUnused = new Set(['devices_without_destination', 'interfaces_devices_without_destination']);
 
 // Values the current form cannot hold as they are: no conversion.
 const blocked = {
@@ -252,6 +260,15 @@ async function openNotice(version, config, options) {
         for (const key of new Set([...Object.keys(config.rule), ...Object.keys(after.rule)]))
           if (JSON.stringify(config.rule[key]) !== JSON.stringify(after.rule[key]))
             assert(changed(preview, key), `the preview does not mention ${key}: ${previewLines}`);
+        // What the preview sets and removes is what the save stores.
+        const shown = (value) => (Array.isArray(value) ? value : `${value ?? ''}`.split('\n'))
+          .map((item) => `${item}`.trim()).filter(Boolean).join(', ');
+        previewLines.filter((line) => line.startsWith('set ')).forEach((line) => {
+          const key = line.slice('set '.length, line.indexOf(': '));
+          assert.equal(`set ${key}: ${shown(after.rule[key])}`, line, 'the save stored another value');
+        });
+        for (const key of removed(preview))
+          assert.equal(after.rule[key], undefined, `the preview removes ${key}, the save kept it`);
         const added = Object.values(after).filter((s) => !config[s['.name']]);
         for (const item of added)
           assert(previewLines.some((line) => line.startsWith(`add the interface item ${item.name}`)),
@@ -262,7 +279,18 @@ async function openNotice(version, config, options) {
         assert.equal(generated[0].ok, true, `the fixture must generate: ${generated[0].error}`);
         assert.equal(generated[1].text, generated[0].text, 'the generated sing-box configuration changed');
         assert.equal(backend.validate(after).ok, backend.validate(config).ok, 'the validator verdict changed');
-        assert.deepEqual(firewallConditions(after), firewallConditions(config), 'the firewall sets changed');
+        const firewall = [firewallConditions(config), firewallConditions(after)];
+        if (devicesUnused.has(name)) {
+          // nft matches the device set only together with destination or
+          // DNS conditions, which the rule has none of.
+          assert(previewLines.some((line) => /no destination condition/.test(line)),
+            `the preview does not say why the devices go: ${previewLines}`);
+          assert.equal(firewall[0].rule.domains, false);
+          assert.deepEqual([firewall[0].rule.ip_cidr, firewall[0].rule.ports], [[], []]);
+          assert.deepEqual(firewall[1].rule.source_ip_cidr, []);
+          firewall.forEach((sets) => delete sets.rule.source_ip_cidr);
+        }
+        assert.deepEqual(firewall[1], firewall[0], 'the firewall sets changed');
 
         // Opened again, only what cannot be converted is left, and a plain
         // save keeps the converted rule as it is.
@@ -296,6 +324,24 @@ async function openNotice(version, config, options) {
       const items = Object.values(env.uci.data).filter((item) => item['.type'] === 'section_interface');
       assert.deepEqual(items.map((item) => item.name), ['wg1']);
       assert.deepEqual(legacyOptions(env.uci.data.rule), []);
+    });
+
+    // A destination condition added before Convert… shows the Device filter
+    // field: the devices move there and the save keeps them.
+    await check(`${version} devices with a destination added in the form`, async () => {
+      const config = convertible.devices_without_destination;
+      const { env, modal, notice } = await openNotice(version, config);
+      assert.equal(modal.active('source_ip_cidr'), false);
+      modal.option('domain').getUIElement('rule').setValue('example.com');
+      modal.map.checkDepends();
+      assert.equal(modal.active('source_ip_cidr'), true);
+      button(notice, 'Convert…').attrs.click();
+      const preview = lines(notice.querySelector('div.fkp-legacy-settings__actions'));
+      assert.deepEqual(preview, ['set source_ip_cidr: 192.168.1.5', 'remove source_ip_cidr_text']);
+      button(notice, 'Convert').attrs.click();
+      await modal.save();
+      assert.deepEqual(env.uci.data.rule, rule({ action: 'block', domain: 'example.com',
+        source_ip_cidr: ['192.168.1.5'] }));
     });
 
     for (const [name, [config, reason]] of Object.entries(blocked))

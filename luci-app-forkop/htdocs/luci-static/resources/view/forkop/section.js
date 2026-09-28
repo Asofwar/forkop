@@ -4387,6 +4387,28 @@ const LEGACY_INTERFACE_OPTIONS = [
   "domain_resolver_dns_server",
 ];
 
+// Downloaded lists match destinations the editor has no field for.
+function hasRemoteRuleLists(section_id) {
+  return ["remote_domain_lists", "remote_subnet_lists"].some(
+    (key) =>
+      normalizeOptionValues(uci.get(UCI_PACKAGE, section_id, key)).length,
+  );
+}
+
+// The Device filter field is shown only with a destination condition; while
+// it is hidden, a save of the rule drops what it holds (sourceIpOption.remove).
+function hiddenDeviceFilterDropped(option, section_id) {
+  const field = option.section.children.find(
+    (child) => child.option === "source_ip_cidr",
+  );
+
+  return (
+    Boolean(field) &&
+    !field.isActive(section_id) &&
+    !hasRemoteRuleLists(section_id)
+  );
+}
+
 function hasStoredOption(section_id, key) {
   const value = uci.get(UCI_PACKAGE, section_id, key);
   return Array.isArray(value)
@@ -4489,12 +4511,16 @@ function legacyInterfaceSettings(section_id, name) {
 
 // What the rule keeps in a legacy form, what the backend does with it, and
 // the conversion: { changes: { option: value or null to remove }, items:
-// interface items to add }. Null when the rule has nothing legacy.
-function legacyRuleConditions(section_id) {
+// interface items to add, unusedDevices: device options removed because the
+// rule does not use them }. Null when the rule has nothing legacy.
+// `devicesUnused`: the Device filter field is hidden, so a save drops what it
+// holds (hiddenDeviceFilterDropped()).
+function legacyRuleConditions(section_id, devicesUnused) {
   const findings = [];
   const blockers = [];
   const changes = {};
   const items = [];
+  const unusedDevices = [];
   const raw = (key) => uci.get(UCI_PACKAGE, section_id, key);
   const has = (key) => hasStoredOption(section_id, key);
   const found = (key, effect) => {
@@ -4595,6 +4621,16 @@ function legacyRuleConditions(section_id) {
       modeKey,
       backendFlag(section_id, modeKey) ? _("turns text mode on") : noEffect,
     );
+    if (key === "source_ip_cidr" && devicesUnused) {
+      // sing-box and nft match devices only together with a destination
+      // condition; the rule has none, so its devices go instead of moving
+      // to a field the save would clear.
+      [key, textKey, modeKey].filter(has).forEach((item) => {
+        unusedDevices.push(item);
+        drop(item);
+      });
+      return;
+    }
     drop(textKey);
     drop(modeKey);
 
@@ -4806,7 +4842,9 @@ function legacyRuleConditions(section_id) {
   }
 
   const conversion =
-    Object.keys(changes).length || items.length ? { changes, items } : null;
+    Object.keys(changes).length || items.length
+      ? { changes, items, unusedDevices }
+      : null;
   return {
     findings,
     blockers: conversion ? blockers : [],
@@ -4839,6 +4877,13 @@ function legacyConversionPreview(conversion) {
         : _("add the interface item %s").format(name),
     );
   });
+  if (conversion.unusedDevices.length) {
+    lines.push(
+      _(
+        "%s: not moved to the Device filter, the rule has no destination condition and does not use it",
+      ).format(conversion.unusedDevices.join(", ")),
+    );
+  }
   if (removed.length) {
     lines.push(_("remove %s").format(removed.join(", ")));
   }
@@ -4972,9 +5017,20 @@ function renderLegacyConditionsNotice(option, section_id) {
     }
 
     if (state.conversion && !state.blockers.length) {
-      const { conversion } = state;
       actions.append(
-        actionButton(_("Convert…"), "cbi-button-action", () =>
+        actionButton(_("Convert…"), "cbi-button-action", () => {
+          // What the save keeps depends on the form as it is now (a field
+          // hidden by its dependencies drops its option).
+          const current = legacyRuleConditions(
+            section_id,
+            hiddenDeviceFilterDropped(option, section_id),
+          );
+          if (!current || !current.conversion || current.blockers.length) {
+            render(message);
+            return;
+          }
+
+          const { conversion } = current;
           confirm(
             _(
               "Convert the legacy settings of this rule? When you save the rule:",
@@ -5008,8 +5064,8 @@ function renderLegacyConditionsNotice(option, section_id) {
                 ),
               );
             },
-          ),
-        ),
+          );
+        }),
         " ",
       );
     }
@@ -9318,13 +9374,7 @@ function createSectionContent(section) {
   // device. Without any destination condition the filter is dropped.
   const removeSourceIp = sourceIpOption.remove;
   sourceIpOption.remove = function (section_id) {
-    if (
-      !this.isActive(section_id) &&
-      ["remote_domain_lists", "remote_subnet_lists"].some(
-        (key) =>
-          normalizeOptionValues(uci.get(UCI_PACKAGE, section_id, key)).length,
-      )
-    ) {
+    if (!this.isActive(section_id) && hasRemoteRuleLists(section_id)) {
       return;
     }
     removeSourceIp.call(this, section_id);

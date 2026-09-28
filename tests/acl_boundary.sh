@@ -27,6 +27,10 @@ for (const command of [
   '/usr/bin/forkop config_snapshot_restore 1',
   '/usr/bin/forkop config_snapshot_delete 1',
   '/usr/bin/forkop validate_nfqws_strategy_json test',
+  '/usr/bin/forkop autotune_policy_set mode auto',
+  '/usr/bin/forkop autotune_apply youtube',
+  '/usr/bin/forkop autotune_rollback',
+  '/usr/bin/forkop autotune_run_async all',
 ]) {
   if (allowed(command)) throw Error(`read role may execute ${command}`);
 }
@@ -35,6 +39,8 @@ for (const command of [
   '/usr/bin/forkop get_readonly_config_sections',
   '/usr/bin/forkop get_health_status',
   '/usr/bin/forkop get_history',
+  '/usr/bin/forkop autotune_status',
+  '/usr/bin/forkop autotune_target youtube',
   '/usr/bin/forkop route_trace example.org 192.168.1.1 TCP 443',
   '/usr/bin/forkop config_snapshot_list',
   '/usr/bin/forkop config_snapshot_diff 123',

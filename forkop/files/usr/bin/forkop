@@ -108,6 +108,8 @@ function show_help() {
     print("    config_snapshot_restore Restore a snapshot with reload and rollback\n");
     print("    config_snapshot_delete Delete a snapshot\n");
     print("    connectivity_test      Run a router-originated DNS/TCP probe\n");
+    print("    autotune_status         Get autotune policy, targets and cached results\n");
+    print("    autotune_target         Get the last full autotune result of a target\n");
     print("    service_action_async    Start a service action in the background\n");
     print("    service_action_status   Get background service action status\n");
     print("    latency_test_async      Start a dashboard latency test in the background\n");
@@ -208,7 +210,9 @@ function command_spec(command) {
         package_postinst: [ "service/package.uc", "postinst", 0 ],
         luci_postinst: [ "service/package.uc", "luci-postinst", 0 ],
         urltest_override_save: [ "config/urltest_override.uc", "save", 7 ],
-        urltest_override_reset: [ "config/urltest_override.uc", "reset", 2 ]
+        urltest_override_reset: [ "config/urltest_override.uc", "reset", 2 ],
+        autotune_status: [ "autotune/manager.uc", "status", 0 ],
+        autotune_target: [ "autotune/manager.uc", "target", 1 ]
     };
 
     return commands[as_string(command)];

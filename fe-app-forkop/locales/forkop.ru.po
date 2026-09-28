@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-28 08:43+0000\n"
-"PO-Revision-Date: 2026-09-28 08:43+0000\n"
+"POT-Creation-Date: 2026-09-28 09:35+0000\n"
+"PO-Revision-Date: 2026-09-28 09:35+0000\n"
 "Last-Translator: Claude\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -256,6 +256,12 @@ msgstr "Применение автоподбора"
 
 msgid "Autotune mode changed"
 msgstr "Изменён режим автоподбора"
+
+msgid "Autotune recommendation confirmed"
+msgstr "Рекомендация автоподбора подтверждена"
+
+msgid "Autotune run"
+msgstr "Запуск автоподбора"
 
 msgid "Available to administrators only."
 msgstr "Доступно только администратору."

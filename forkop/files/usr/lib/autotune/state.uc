@@ -6,7 +6,12 @@
 // (temporary file + rename) and only when its content changed, at most once
 // per worker run:
 //   { version, targets: { <id>: summary }, groups: { <section>: group },
-//     applies: [ timestamps ], next_run_at, rotation, worker }
+//     applies: [ records ], next_run_at, rotation, worker, recovered_at }
+// A state file that exists but cannot be trusted (corrupt, foreign version)
+// reads as an empty state marked recovered_from; the next write keeps the
+// bad file as state.json.corrupt and records recovered_at, after which
+// autonomous applies wait out a cooldown (the lost state held the budget
+// and the cooldowns).
 // A target summary keeps what the UI and hysteresis need: status, reason,
 // selected candidate, confidence and per-candidate stability, success ratio,
 // median TLS time and failure classes — never raw strategies of the user's
@@ -25,7 +30,8 @@ function as_string(v) { return v == null ? "" : "" + v; }
 function object_or_empty(v) { return type(v) == "object" ? v : {}; }
 
 function empty() {
-    return { version: VERSION, targets: {}, groups: {}, applies: [], next_run_at: null, rotation: 0, worker: null };
+    return { version: VERSION, targets: {}, groups: {}, applies: [], next_run_at: null, rotation: 0, worker: null,
+        recovered_at: null };
 }
 
 function valid_id(id) {
@@ -43,7 +49,11 @@ function mkdir_p(dir, mode) {
 function read() {
     let data = fs.readfile(STATE_FILE), parsed = null;
     try { parsed = data == null ? null : json(data); } catch (e) { parsed = null; }
-    if (type(parsed) != "object" || parsed.version != VERSION) return empty();
+    if (type(parsed) != "object" || parsed.version != VERSION) {
+        let state = empty();
+        if (data != null) state.recovered_from = type(parsed) == "object" ? "unsupported_version" : "corrupt";
+        return state;
+    }
     let state = empty();
     for (let key, value in object_or_empty(parsed.targets)) if (valid_id(key) && type(value) == "object") state.targets[key] = value;
     for (let key, value in object_or_empty(parsed.groups)) if (valid_id(key) && type(value) == "object") state.groups[key] = value;
@@ -51,6 +61,7 @@ function read() {
     state.next_run_at = type(parsed.next_run_at) == "int" ? parsed.next_run_at : null;
     state.rotation = type(parsed.rotation) == "int" && parsed.rotation >= 0 ? parsed.rotation : 0;
     state.worker = type(parsed.worker) == "object" ? parsed.worker : null;
+    state.recovered_at = type(parsed.recovered_at) == "int" ? parsed.recovered_at : null;
     return state;
 }
 
@@ -65,6 +76,12 @@ function write_atomic(path, text, mode) {
 
 // Flash is written only when the content changed.
 function write(state) {
+    if (state.recovered_from != null) {
+        // The untrusted file is kept for inspection, never parsed again.
+        fs.rename(STATE_FILE, STATE_FILE + ".corrupt");
+        if (state.recovered_at == null) state.recovered_at = time();
+        delete state.recovered_from;
+    }
     state.applies = slice(state.applies || [], -MAX_APPLY_RECORDS);
     let text = sprintf("%J\n", state);
     if (fs.readfile(STATE_FILE) == text) return true;

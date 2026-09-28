@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-28 08:43+0000\n"
-"PO-Revision-Date: 2026-09-28 08:43+0000\n"
+"POT-Creation-Date: 2026-09-28 09:35+0000\n"
+"PO-Revision-Date: 2026-09-28 09:35+0000\n"
 "Last-Translator: Claude <noreply@anthropic.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -185,7 +185,7 @@ msgstr ""
 msgid "Advanced settings"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:122
+#: src/forkop/tabs/history/model.ts:124
 msgid "All"
 msgstr ""
 
@@ -340,7 +340,7 @@ msgstr ""
 msgid "Autostart is on"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:120
+#: src/forkop/tabs/history/model.ts:122
 msgid "Autotune"
 msgstr ""
 
@@ -350,6 +350,14 @@ msgstr ""
 
 #: src/forkop/ui/status.ts:274
 msgid "Autotune mode changed"
+msgstr ""
+
+#: src/forkop/ui/status.ts:276
+msgid "Autotune recommendation confirmed"
+msgstr ""
+
+#: src/forkop/ui/status.ts:278
+msgid "Autotune run"
 msgstr ""
 
 #: src/forkop/ui/states.ts:60
@@ -367,15 +375,15 @@ msgstr ""
 msgid "Basics"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:156
+#: src/forkop/tabs/history/model.ts:158
 msgid "Before applying changes"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:162
+#: src/forkop/tabs/history/model.ts:164
 msgid "Before autotune"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:158
+#: src/forkop/tabs/history/model.ts:160
 msgid "Before restore"
 msgstr ""
 
@@ -488,11 +496,11 @@ msgstr ""
 msgid "Cache file path cannot be empty"
 msgstr ""
 
-#: src/forkop/ui/status.ts:294
+#: src/forkop/ui/status.ts:298
 msgid "Calculated"
 msgstr ""
 
-#: src/forkop/ui/status.ts:307
+#: src/forkop/ui/status.ts:311
 msgid "Calculated result"
 msgstr ""
 
@@ -715,7 +723,7 @@ msgstr ""
 msgid "Config File Path"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:116
+#: src/forkop/tabs/history/model.ts:118
 msgid "Configuration"
 msgstr ""
 
@@ -912,7 +920,7 @@ msgstr ""
 msgid "Delete…"
 msgstr ""
 
-#: src/forkop/ui/status.ts:305
+#: src/forkop/ui/status.ts:309
 msgid "Derived from configuration"
 msgstr ""
 
@@ -1654,7 +1662,7 @@ msgstr ""
 msgid "Forkop-managed nfqws2 runtime is ready"
 msgstr ""
 
-#: src/forkop/ui/status.ts:292
+#: src/forkop/ui/status.ts:296
 msgid "From configuration"
 msgstr ""
 
@@ -2157,7 +2165,7 @@ msgid "Last important event"
 msgstr ""
 
 #: src/forkop/tabs/history/initController.ts:367
-#: src/forkop/tabs/history/model.ts:160
+#: src/forkop/tabs/history/model.ts:162
 msgid "Last known good"
 msgstr ""
 
@@ -2266,7 +2274,7 @@ msgstr ""
 msgid "Make sure the provider is installed and the rule strategy is valid, then restart Forkop X."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:154
+#: src/forkop/tabs/history/model.ts:156
 msgid "Manual"
 msgstr ""
 
@@ -2515,8 +2523,8 @@ msgstr ""
 msgid "Not checked"
 msgstr ""
 
-#: src/forkop/ui/status.ts:296
-#: src/forkop/ui/status.ts:309
+#: src/forkop/ui/status.ts:300
+#: src/forkop/ui/status.ts:313
 msgid "Not determined"
 msgstr ""
 
@@ -2569,7 +2577,7 @@ msgstr ""
 msgid "Now"
 msgstr ""
 
-#: src/forkop/ui/status.ts:290
+#: src/forkop/ui/status.ts:294
 msgid "Observed"
 msgstr ""
 
@@ -2652,12 +2660,12 @@ msgstr ""
 msgid "Original repositories could not be restored. Removal was cancelled before deleting packages."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:164
+#: src/forkop/tabs/history/model.ts:166
 #: src/forkop/tabs/monitoring/connectionView.ts:122
 msgid "Other"
 msgstr ""
 
-#: src/forkop/ui/status.ts:280
+#: src/forkop/ui/status.ts:284
 msgid "Other event"
 msgstr ""
 
@@ -3177,7 +3185,7 @@ msgstr ""
 msgid "See connections to this address"
 msgstr ""
 
-#: src/forkop/ui/status.ts:303
+#: src/forkop/ui/status.ts:307
 msgid "Seen in an active connection"
 msgstr ""
 
@@ -3289,7 +3297,7 @@ msgstr ""
 msgid "server_port must be a number from 1 to 65535"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:118
+#: src/forkop/tabs/history/model.ts:120
 msgid "Service"
 msgstr ""
 
@@ -3387,11 +3395,11 @@ msgstr ""
 msgid "Snapshot actions"
 msgstr ""
 
-#: src/forkop/ui/status.ts:276
+#: src/forkop/ui/status.ts:280
 msgid "Snapshot created"
 msgstr ""
 
-#: src/forkop/ui/status.ts:278
+#: src/forkop/ui/status.ts:282
 #: src/forkop/tabs/history/initController.ts:301
 msgid "Snapshot deleted"
 msgstr ""

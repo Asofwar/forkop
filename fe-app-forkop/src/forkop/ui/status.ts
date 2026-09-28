@@ -272,6 +272,10 @@ export function eventKindLabel(kind: string): string {
       return _('Autotune apply');
     case 'autotune_mode':
       return _('Autotune mode changed');
+    case 'autotune_recommendation':
+      return _('Autotune recommendation confirmed');
+    case 'autotune_run':
+      return _('Autotune run');
     case 'snapshot_create':
       return _('Snapshot created');
     case 'snapshot_delete':

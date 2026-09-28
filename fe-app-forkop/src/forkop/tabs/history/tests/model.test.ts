@@ -142,6 +142,15 @@ describe('history list', () => {
         'autotune',
       ).map((item) => item.title),
     ).toEqual(['Autotune mode changed']);
+    expect(
+      historyItems(
+        [
+          { kind: 'autotune_run', status: 'failure', timestamp: 2 },
+          { kind: 'autotune_recommendation', status: 'success', timestamp: 1 },
+        ],
+        'autotune',
+      ).map((item) => item.title),
+    ).toEqual(['Autotune run', 'Autotune recommendation confirmed']);
     expect(historyItems(events, 'service').map((item) => item.title)).toEqual([
       'Service start',
     ]);

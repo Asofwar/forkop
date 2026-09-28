@@ -5655,6 +5655,10 @@ function eventKindLabel(kind) {
       return _("Autotune apply");
     case "autotune_mode":
       return _("Autotune mode changed");
+    case "autotune_recommendation":
+      return _("Autotune recommendation confirmed");
+    case "autotune_run":
+      return _("Autotune run");
     case "snapshot_create":
       return _("Snapshot created");
     case "snapshot_delete":
@@ -17134,7 +17138,9 @@ var CATEGORY = {
   start: "service",
   recovery: "service",
   autotune_apply: "autotune",
-  autotune_mode: "autotune"
+  autotune_mode: "autotune",
+  autotune_recommendation: "autotune",
+  autotune_run: "autotune"
 };
 function historyFilterLabel(filter2) {
   switch (filter2) {

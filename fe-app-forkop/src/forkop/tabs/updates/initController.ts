@@ -909,7 +909,7 @@ function getComponentCards(): ComponentCard[] {
   if (!singBoxTiny) {
     singBoxActions.push({
       key: 'singBoxInstallTiny',
-      text: 'Tiny',
+      text: _('Install Tiny build'),
       icon: renderDownloadIcon24,
       component: 'sing_box',
       action: 'install_tiny',
@@ -918,7 +918,7 @@ function getComponentCards(): ComponentCard[] {
   if (!singBoxExtended) {
     singBoxActions.push({
       key: 'singBoxInstallExtended',
-      text: 'Extended',
+      text: _('Install Extended build'),
       icon: renderDownloadIcon24,
       component: 'sing_box',
       action: 'install_extended',

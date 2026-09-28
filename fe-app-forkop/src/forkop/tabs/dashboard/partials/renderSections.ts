@@ -314,7 +314,9 @@ function renderDefaultState({
                   ? 'fkp_dashboard-page__outbound-grid__item__latency--green'
                   : 'fkp_dashboard-page__outbound-grid__item__latency--empty',
               },
-              member.latency ? `${member.latency}ms` : 'N/A',
+              member.latency
+                ? _('%d ms').replace('%d', String(member.latency))
+                : '—',
             ),
           ],
         ),
@@ -481,7 +483,9 @@ function renderDefaultState({
           E(
             'div',
             { class: getLatencyClass() },
-            outbound.latency ? `${outbound.latency}ms` : 'N/A',
+            outbound.latency
+              ? _('%d ms').replace('%d', String(outbound.latency))
+              : '—',
           ),
         ]),
         ...(priorityMembers ? [priorityMembers] : []),

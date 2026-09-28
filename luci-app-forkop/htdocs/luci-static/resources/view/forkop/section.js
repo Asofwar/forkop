@@ -6602,8 +6602,8 @@ function loadRulesetValues(option) {
   delete option.keylist;
   delete option.vallist;
 
-  Object.entries(main.DOMAIN_LIST_OPTIONS).forEach(([key, label]) => {
-    option.value(key, _(label));
+  Object.keys(main.DOMAIN_LIST_OPTIONS).forEach((key) => {
+    option.value(key, main.domainListLabel(key));
   });
 }
 

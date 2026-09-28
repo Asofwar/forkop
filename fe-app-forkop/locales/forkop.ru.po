@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-28 10:59+0000\n"
-"PO-Revision-Date: 2026-09-28 10:59+0000\n"
+"POT-Creation-Date: 2026-09-28 11:19+0000\n"
+"PO-Revision-Date: 2026-09-28 11:19+0000\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -185,6 +185,12 @@ msgstr "Адрес"
 msgid "Address set for checking"
 msgstr "Набор адресов для проверки"
 
+msgid "Ads (Hagezi Pro)"
+msgstr "Реклама (Hagezi Pro)"
+
+msgid "Adult sites"
+msgstr "Сайты для взрослых"
+
 msgid "Advanced"
 msgstr "Дополнительно"
 
@@ -250,6 +256,9 @@ msgstr "Для IP-адреса DNS не нужен"
 
 msgid "and %d more"
 msgstr "и ещё %d"
+
+msgid "Anime"
+msgstr "Аниме"
 
 msgid "Another autotune operation is running."
 msgstr "Уже выполняется другая операция автоподбора."
@@ -422,6 +431,9 @@ msgstr "Лучшая"
 msgid "Block"
 msgstr "Блокировка"
 
+msgid "Block list"
+msgstr "Список блокировки"
+
 msgid "Bootstrap DNS"
 msgstr "Bootstrap DNS"
 
@@ -448,6 +460,9 @@ msgstr "Встроенные наборы правил"
 
 msgid "By flag emoji from name"
 msgstr "По эмодзи флага из названия"
+
+msgid "ByeDPI checks"
+msgstr "Проверки ByeDPI"
 
 msgid "ByeDPI listen address and port are assigned by Forkop and must not be set in the strategy."
 msgstr "Адрес и порт прослушивания ByeDPI назначаются Forkop и не должны задаваться в стратегии."
@@ -602,9 +617,6 @@ msgstr "Проверяем, пожалуйста подождите"
 msgid "Checking…"
 msgstr "Проверяется…"
 
-msgid "checks"
-msgstr "проверки"
-
 msgid "Checks failed"
 msgstr "Проверки не выполнены"
 
@@ -663,7 +675,7 @@ msgid "Components"
 msgstr "Компоненты"
 
 msgid "compressed"
-msgstr "compressed"
+msgstr "сжатая"
 
 msgid "Conditions"
 msgstr "Условия"
@@ -818,6 +830,9 @@ msgstr "Своя стратегия"
 msgid "Dashboard currently unavailable"
 msgstr "Дашборд сейчас недоступен"
 
+msgid "Debug"
+msgstr "Отладка"
+
 msgid "Dedicated cgroup unavailable"
 msgstr "Отдельная cgroup недоступна"
 
@@ -896,6 +911,9 @@ msgstr "Диагностика"
 msgid "Diagnostics has not been run yet"
 msgstr "Диагностика ещё не запускалась"
 
+msgid "direct"
+msgstr "напрямую"
+
 msgid "Direct"
 msgstr "Напрямую"
 
@@ -934,6 +952,9 @@ msgstr "Период проверки DNS"
 
 msgid "DNS check needs a domain name"
 msgstr "Для проверки DNS укажите доменное имя"
+
+msgid "DNS checks"
+msgstr "Проверки DNS"
 
 msgid "DNS name did not resolve"
 msgstr "DNS не разрешил имя"
@@ -1286,6 +1307,9 @@ msgstr "FakeIP и контрольная проверка используют �
 msgid "FakeIP and control checks use the same public IP"
 msgstr "FakeIP и контрольная проверка используют один публичный IP"
 
+msgid "FakeIP checks"
+msgstr "Проверки FakeIP"
+
 msgid "FakeIP works; only the comparison with the control address did not give an answer."
 msgstr "FakeIP работает; не удалось только сравнение с контрольным адресом."
 
@@ -1298,11 +1322,17 @@ msgstr "Интервал поиска более быстрого сервера
 msgid "Fastest"
 msgstr "Самый быстрый"
 
+msgid "Fatal"
+msgstr "Критическая"
+
 msgid "Firewall rules that send traffic to Forkop are missing or not hit, so rules may not apply."
 msgstr "Правила межсетевого экрана, которые направляют трафик в Forkop, отсутствуют или не срабатывают — правила могут не применяться."
 
 msgid "Fix the highlighted fields and save again."
 msgstr "Исправьте подсвеченные поля и сохраните снова."
+
+msgid "Flash"
+msgstr "Флеш-память"
 
 msgid "Follow new"
 msgstr "Следить за новыми"
@@ -1430,6 +1460,9 @@ msgstr "Полное удаление"
 msgid "Fuzzing is not supported here because Forkop needs deterministic runtime validation."
 msgstr "Fuzzing здесь не поддерживается, потому что Forkop нужна предсказуемая runtime-валидация."
 
+msgid "Geo-blocked services"
+msgstr "Сервисы с геоблокировкой"
+
 msgid "Get global check"
 msgstr "Получить глобальную проверку"
 
@@ -1520,14 +1553,23 @@ msgstr "Учитывать IP-адреса и подсети"
 msgid "Include servers"
 msgstr "Включить серверы"
 
+msgid "Info"
+msgstr "Информация"
+
 msgid "Install"
 msgstr "Установить"
 
 msgid "Install another build:"
 msgstr "Установить другую сборку:"
 
+msgid "Install Extended build"
+msgstr "Установить сборку Extended"
+
 msgid "Install selected version"
 msgstr "Установить выбранную версию"
+
+msgid "Install Tiny build"
+msgstr "Установить сборку Tiny"
 
 msgid "Installed"
 msgstr "установлена"
@@ -1877,6 +1919,9 @@ msgstr "Уровень логов"
 msgid "low"
 msgstr "низкая"
 
+msgid "LuCI app"
+msgstr "Приложение LuCI"
+
 msgid "Main DNS"
 msgstr "Основной DNS"
 
@@ -1979,6 +2024,9 @@ msgstr "Настройки сетевого интерфейса"
 msgid "New version %s is available for %s"
 msgstr "Доступна новая версия %s для %s"
 
+msgid "News"
+msgstr "Новости"
+
 msgid "Next scheduled check"
 msgstr "Следующая плановая проверка"
 
@@ -1999,6 +2047,9 @@ msgstr "Стратегия NFQWS2"
 
 msgid "NFQWS2 strategy cannot be empty"
 msgstr "Стратегия NFQWS2 не может быть пустой"
+
+msgid "nftables checks"
+msgstr "Проверки nftables"
 
 msgid "No"
 msgstr "Нет"
@@ -2222,6 +2273,9 @@ msgstr "Необязательные значения здесь должны з
 msgid "Original repositories could not be restored. Removal was cancelled before deleting packages."
 msgstr "Не удалось восстановить исходные репозитории. Удаление отменено до удаления пакетов."
 
+msgid "OS"
+msgstr "ОС"
+
 msgid "Other"
 msgstr "Другое"
 
@@ -2230,6 +2284,9 @@ msgstr "Другое событие"
 
 msgid "Outbound chain"
 msgstr "Цепочка выходов"
+
+msgid "Outbound checks"
+msgstr "Проверки исходящих подключений"
 
 msgid "Outbound checks need access to the Forkop configuration, which this role does not have."
 msgstr "Для проверки outbound нужен доступ к конфигурации Forkop, которого у этой роли нет."
@@ -2251,6 +2308,9 @@ msgstr "Восстановление пакетов"
 
 msgid "Package recovery has not finished"
 msgstr "Восстановление пакетов не завершено"
+
+msgid "Panic"
+msgstr "Паника"
 
 msgid "Part of Forkop X does not work as expected."
 msgstr "Часть Forkop X работает не так, как ожидается."
@@ -2386,6 +2446,9 @@ msgstr "Провайдер"
 
 msgid "Proxy"
 msgstr "Прокси"
+
+msgid "RAM"
+msgstr "ОЗУ"
 
 msgid "Reachable"
 msgstr "Доступно"
@@ -2618,6 +2681,12 @@ msgstr "Правила с этим провайдером перестанут �
 msgid "Run full diagnostics"
 msgstr "Запустить полную диагностику"
 
+msgid "Russia: blocked from outside"
+msgstr "Россия: блокируют извне"
+
+msgid "Russia: blocked inside"
+msgstr "Россия: заблокировано внутри"
+
 msgid "Save"
 msgstr "Сохранить"
 
@@ -2761,6 +2830,9 @@ msgstr "Показано %d из %d"
 
 msgid "Sing-box autostart disabled"
 msgstr "Автостарт sing-box отключен"
+
+msgid "sing-box checks"
+msgstr "Проверки sing-box"
 
 msgid "Sing-box FakeIP DNS does not work"
 msgstr "FakeIP DNS sing-box не работает"
@@ -3278,6 +3350,9 @@ msgstr "TorrServer не найден"
 msgid "Total traffic"
 msgstr "Общий трафик"
 
+msgid "Trace"
+msgstr "Трассировка"
+
 msgid "Traffic"
 msgstr "Трафик"
 
@@ -3313,6 +3388,9 @@ msgstr "Тип"
 
 msgid "UDP (Unprotected DNS)"
 msgstr "UDP (Незащищённый DNS)"
+
+msgid "Ukraine"
+msgstr "Украина"
 
 msgid "Unable to validate the ByeDPI strategy through the backend parser."
 msgstr "Не удалось проверить стратегию ByeDPI через backend-парсер."
@@ -3518,6 +3596,9 @@ msgstr "Да"
 msgid "You can select Output Network Interface, by default autodetect"
 msgstr "Вы можете выбрать выходной сетевой интерфейс, по умолчанию он определяется автоматически."
 
+msgid "Zapret checks"
+msgstr "Проверки Zapret"
+
 msgid "Zapret hostlist templates are not supported here because Forkop does not expand them for per-rule NFQWS strategies."
 msgstr "Шаблоны hostlist zapret здесь не поддерживаются, потому что Forkop не разворачивает их для per-rule стратегий NFQWS."
 
@@ -3541,6 +3622,9 @@ msgstr "sing-box outbound для Zapret настроен"
 
 msgid "Zapret sing-box outbound is not configured"
 msgstr "sing-box outbound для Zapret не настроен"
+
+msgid "Zapret2 checks"
+msgstr "Проверки Zapret2"
 
 msgid "Zapret2 hostlist templates are not supported here because Forkop does not expand them for per-rule NFQWS2 strategies."
 msgstr "Шаблоны hostlist Zapret2 здесь не поддерживаются, потому что Forkop не разворачивает их для per-rule стратегий NFQWS2."

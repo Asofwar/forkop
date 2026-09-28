@@ -284,7 +284,12 @@ export namespace Forkop {
       | 'needs_attention'
       | 'failed'
       | 'deleted'
-      | 'busy';
+      | 'busy'
+      // config/snapshots.uc: a concurrent change, nothing to restore, and
+      // the last-known-good confirmation.
+      | 'stale'
+      | 'no_change'
+      | 'confirmed';
     snapshot?: SnapshotMetadata;
     changes?: SnapshotChange[];
     reason?: string;

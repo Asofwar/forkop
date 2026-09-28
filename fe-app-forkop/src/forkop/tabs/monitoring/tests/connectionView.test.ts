@@ -60,4 +60,11 @@ describe('connection row actions', () => {
       'copy',
     ]);
   });
+  it('does not offer closing a connection to a read-only session', () => {
+    expect(connectionActions(true, true).map((action) => action.kind)).toEqual([
+      'details',
+      'trace',
+      'copy',
+    ]);
+  });
 });

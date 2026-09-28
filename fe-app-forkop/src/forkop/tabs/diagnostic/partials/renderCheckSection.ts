@@ -10,6 +10,8 @@ import {
 } from '../../../../icons';
 import type { IDiagnosticsChecksStoreItem } from '../../../services';
 import { copyToClipboard } from '../../../../helpers/copyToClipboard';
+import { openForkopPage } from '../../../helpers/navigation';
+import { isReadonlyMode } from '../../../services/accessMode.service';
 import { checkStatus, renderStatusBadge } from '../statusLabels';
 
 type IRenderCheckSectionProps = IDiagnosticsChecksStoreItem;
@@ -36,17 +38,14 @@ function renderRecoveryActions(props: IRenderCheckSectionProps) {
       },
       _('Retry'),
     ),
-    // LuCI tabs switch on the inner link; read-only sessions have no Settings tab.
-    document.querySelector('[data-tab="settings"] > a')
+    // Read-only sessions have no Settings page.
+    !isReadonlyMode()
       ? E(
           'button',
           {
             type: 'button',
             class: 'btn cbi-button',
-            click: () =>
-              document
-                .querySelector<HTMLElement>('[data-tab="settings"] > a')
-                ?.click(),
+            click: () => openForkopPage('settings'),
           },
           _('Open settings'),
         )

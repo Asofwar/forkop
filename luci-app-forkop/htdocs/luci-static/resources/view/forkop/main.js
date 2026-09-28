@@ -4501,7 +4501,20 @@ function render() {
   );
 }
 
+// src/forkop/services/forkopPage.ts
+var standalonePage = null;
+function setStandalonePage(pageId) {
+  standalonePage = pageId || null;
+}
+function getForkopPage() {
+  return standalonePage;
+}
+
 // src/forkop/services/tab.service.ts
+function setForkopPage(pageId) {
+  setStandalonePage(pageId);
+  TabService.getInstance().refresh();
+}
 var TabService = class _TabService {
   constructor() {
     this.observer = null;
@@ -4541,7 +4554,7 @@ var TabService = class _TabService {
     const active = document.querySelector(
       ".cbi-tab:not(.cbi-tab-disabled)"
     );
-    return active?.dataset.tab || null;
+    return active?.dataset.tab || getForkopPage();
   }
   notify() {
     const tabs = this.getTabsInfo();
@@ -4551,9 +4564,15 @@ var TabService = class _TabService {
       this.callback?.(activeId, tabs);
     }
   }
+  refresh() {
+    this.notify();
+  }
+  // A new subscriber always gets the current tab, even when it was already
+  // known before (a page registered before the subscription).
   onChange(callback) {
     this.callback = callback;
-    this.notify();
+    this.lastActiveId = this.getActiveTabId();
+    callback(this.lastActiveId, this.getTabsInfo());
   }
 };
 var TabServiceInstance = TabService.getInstance();
@@ -5840,6 +5859,9 @@ async function fetchServicesInfo() {
 
 // src/forkop/helpers/isActiveLuciTab.ts
 function isActiveLuciTab(tabId) {
+  if (getForkopPage() === tabId) {
+    return true;
+  }
   if (typeof document === "undefined") {
     return false;
   }
@@ -5887,6 +5909,23 @@ function createPriorityMembersState() {
       }
     }
   };
+}
+
+// src/forkop/helpers/navigation.ts
+var FORKOP_MENU_PATH = "admin/services/forkop";
+function luci() {
+  return globalThis.L;
+}
+function forkopPageUrl(page, params = {}) {
+  const base = typeof luci()?.url === "function" ? luci().url(FORKOP_MENU_PATH, page) : `/cgi-bin/luci/${FORKOP_MENU_PATH}/${page}`;
+  const query = new URLSearchParams(params).toString();
+  return query ? `${base}#${query}` : base;
+}
+function openForkopPage(page, params = {}) {
+  window.location.href = forkopPageUrl(page, params);
+}
+function readPageParams(hash = window.location.hash) {
+  return Object.fromEntries(new URLSearchParams(hash.replace(/^#/, "")));
 }
 
 // src/forkop/tabs/dashboard/health.ts
@@ -5941,7 +5980,7 @@ function renderHealth(health) {
       {
         type: "button",
         class: "btn cbi-button",
-        click: () => document.querySelector('[data-tab="diagnostic"] > a')?.click()
+        click: () => openForkopPage("diagnostics")
       },
       _("Open Diagnostics")
     ),
@@ -9865,13 +9904,13 @@ function renderRecoveryActions(props) {
       },
       _("Retry")
     ),
-    // LuCI tabs switch on the inner link; read-only sessions have no Settings tab.
-    document.querySelector('[data-tab="settings"] > a') ? E(
+    // Read-only sessions have no Settings page.
+    !isReadonlyMode() ? E(
       "button",
       {
         type: "button",
         class: "btn cbi-button",
-        click: () => document.querySelector('[data-tab="settings"] > a')?.click()
+        click: () => openForkopPage("settings")
       },
       _("Open settings")
     ) : "",
@@ -10276,7 +10315,6 @@ function routeFacts(trace) {
       });
   return facts;
 }
-var MONITORING_TAB_LINK = '[data-tab="monitoring"] > a';
 function routeTraceFailureText(response) {
   const data = response.data;
   if (response.success && data?.error === "invalid_input") {
@@ -10284,8 +10322,8 @@ function routeTraceFailureText(response) {
   }
   return _("The route check did not complete. Try again.");
 }
-function openMonitoring() {
-  document.querySelector(MONITORING_TAB_LINK)?.click();
+function openMonitoring(target) {
+  openForkopPage("monitoring", { search: target });
 }
 function initRouteDebugger() {
   const button = document.getElementById(
@@ -10320,9 +10358,6 @@ function initRouteDebugger() {
         container.textContent = routeTraceFailureText(response);
         return;
       }
-      const hasMonitoring = Boolean(
-        document.querySelector(MONITORING_TAB_LINK)
-      );
       container.replaceChildren(
         E(
           "dl",
@@ -10340,15 +10375,15 @@ function initRouteDebugger() {
             "The Forkop rule and outbound are only known for a real connection. The check runs on the router and does not prove the path of a LAN client."
           ),
           " ",
-          hasMonitoring ? E(
+          E(
             "button",
             {
               type: "button",
               class: "btn cbi-button",
-              click: openMonitoring
+              click: () => openMonitoring(target)
             },
             _("Trace a real connection in Monitoring")
-          ) : ""
+          )
         ])
       );
     } catch (_error) {
@@ -12582,18 +12617,20 @@ function render3() {
             ])
           ]),
           E("div", { class: "fkp_monitoring-page__actions" }, [
-            E(
-              "button",
-              {
-                id: "monitoring-close-all",
-                class: "btn cbi-button fkp_monitoring-page__icon-button",
-                title: _("Close all connections"),
-                "aria-label": _("Close all connections"),
-                type: "button",
-                disabled: true
-              },
-              []
-            ),
+            ...isReadonlyMode() ? [] : [
+              E(
+                "button",
+                {
+                  id: "monitoring-close-all",
+                  class: "btn cbi-button fkp_monitoring-page__icon-button",
+                  title: _("Close all connections"),
+                  "aria-label": _("Close all connections"),
+                  type: "button",
+                  disabled: true
+                },
+                []
+              )
+            ],
             E(
               "button",
               {
@@ -12639,7 +12676,7 @@ function trafficSortValue(connection, mode) {
     return (connection.download || 0) + (connection.upload || 0);
   return null;
 }
-function connectionActions(active) {
+function connectionActions(active, readonly = false) {
   const actions = [
     {
       kind: "details",
@@ -12653,7 +12690,7 @@ function connectionActions(active) {
       className: "fkp-monitoring-copy"
     }
   ];
-  if (active)
+  if (active && !readonly)
     actions.push({
       kind: "close",
       label: _("Close connection"),
@@ -13182,7 +13219,7 @@ function renderConnectionRow(connection) {
   const actions = E(
     "div",
     { class: "fkp_monitoring-page__actions" },
-    connectionActions(activeTab === "active").map(
+    connectionActions(activeTab === "active", isReadonlyMode()).map(
       (action) => E(
         "button",
         {
@@ -13879,7 +13916,7 @@ function watchServiceState() {
 function resetMonitoringState() {
   activeTab = "active";
   selectedDeviceFilter = ALL_FILTER_VALUE;
-  searchQuery = "";
+  searchQuery = readPageParams().search || "";
   lastDeviceFilterSignature = "";
   loading = true;
   failed = false;
@@ -13895,7 +13932,7 @@ function resetMonitoringState() {
     "monitoring-search"
   );
   if (searchInput) {
-    searchInput.value = "";
+    searchInput.value = searchQuery;
   }
 }
 async function onPageMount3() {
@@ -13974,7 +14011,7 @@ async function initController3(controllerDependencies = {}) {
   monitoringControllerInitialized = true;
   onMount("monitoring-status").then(() => {
     registerLifecycleListeners3();
-    if (store.get().tabService.current === "monitoring") {
+    if (store.get().tabService.current === "monitoring" || isActiveLuciTab("monitoring")) {
       onPageMount3();
     }
   });
@@ -14250,8 +14287,12 @@ var styles5 = `
     min-width: 0;
 }
 
+/* width: 0 + min-width: 100% keeps the 840px table from widening the page
+   (flex layouts such as OpenWrt2020 size the content to its min-content);
+   the wrapper still fills its parent and scrolls the table inside. */
 .fkp_monitoring-page__table-wrap {
-    width: 100%;
+    width: 0;
+    min-width: 100%;
     overflow-x: auto;
     margin-bottom: 0;
 }
@@ -16511,6 +16552,7 @@ return baseclass.extend({
   getProxyUrlName,
   injectGlobalStyles,
   parseValueList,
+  setForkopPage,
   setReadonlyMode,
   showToast,
   store,

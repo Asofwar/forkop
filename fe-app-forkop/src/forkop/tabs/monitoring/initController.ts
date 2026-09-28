@@ -3,6 +3,9 @@ import { prettyBytes } from '../../../helpers/prettyBytes';
 import { showToast } from '../../../helpers/showToast';
 import { confirmAction } from '../../ui/confirmAction';
 import { renderStartServiceAction } from '../shared/startService';
+import { isReadonlyMode } from '../../services/accessMode.service';
+import { readPageParams } from '../../helpers/navigation';
+import { isActiveLuciTab } from '../../helpers/isActiveLuciTab';
 import { copyToClipboard } from '../../../helpers/copyToClipboard';
 import {
   renderCopyIcon24,
@@ -744,7 +747,7 @@ function renderConnectionRow(connection: MonitoredConnection) {
   const actions = E(
     'div',
     { class: 'fkp_monitoring-page__actions' },
-    connectionActions(activeTab === 'active').map((action) =>
+    connectionActions(activeTab === 'active', isReadonlyMode()).map((action) =>
       E(
         'button',
         {
@@ -1643,7 +1646,8 @@ function watchServiceState() {
 function resetMonitoringState() {
   activeTab = 'active';
   selectedDeviceFilter = ALL_FILTER_VALUE;
-  searchQuery = '';
+  // A deep link (monitoring#search=example.com) opens pre-filtered.
+  searchQuery = readPageParams().search || '';
   lastDeviceFilterSignature = '';
   loading = true;
   failed = false;
@@ -1660,7 +1664,7 @@ function resetMonitoringState() {
     'monitoring-search',
   ) as HTMLInputElement | null;
   if (searchInput) {
-    searchInput.value = '';
+    searchInput.value = searchQuery;
   }
 }
 
@@ -1768,7 +1772,10 @@ export async function initController(
   onMount('monitoring-status').then(() => {
     registerLifecycleListeners();
 
-    if (store.get().tabService.current === 'monitoring') {
+    if (
+      store.get().tabService.current === 'monitoring' ||
+      isActiveLuciTab('monitoring')
+    ) {
       onPageMount();
     }
   });

@@ -1,4 +1,5 @@
 import { ForkopShellMethods } from '../../methods';
+import { openForkopPage } from '../../helpers/navigation';
 import { Forkop } from '../../types';
 import type { StatusTone } from './statusLabels';
 
@@ -83,9 +84,6 @@ export function routeFacts(trace: Forkop.RouteTrace): RouteFact[] {
   return facts;
 }
 
-// LuCI tabs switch on the inner link; inactive tabs carry `cbi-tab-disabled`.
-const MONITORING_TAB_LINK = '[data-tab="monitoring"] > a';
-
 // route_trace answers {error:"invalid_input"} for a target it rejects;
 // anything else is a failed check, not a typing mistake.
 export function routeTraceFailureText(response: {
@@ -100,8 +98,9 @@ export function routeTraceFailureText(response: {
   return _('The route check did not complete. Try again.');
 }
 
-function openMonitoring() {
-  document.querySelector<HTMLElement>(MONITORING_TAB_LINK)?.click();
+// Monitoring opens filtered to the checked address.
+function openMonitoring(target: string) {
+  openForkopPage('monitoring', { search: target });
 }
 
 export function initRouteDebugger() {
@@ -138,9 +137,6 @@ export function initRouteDebugger() {
         container.textContent = routeTraceFailureText(response);
         return;
       }
-      const hasMonitoring = Boolean(
-        document.querySelector(MONITORING_TAB_LINK),
-      );
       container.replaceChildren(
         E(
           'dl',
@@ -158,17 +154,15 @@ export function initRouteDebugger() {
             'The Forkop rule and outbound are only known for a real connection. The check runs on the router and does not prove the path of a LAN client.',
           ),
           ' ',
-          hasMonitoring
-            ? E(
-                'button',
-                {
-                  type: 'button',
-                  class: 'btn cbi-button',
-                  click: openMonitoring,
-                },
-                _('Trace a real connection in Monitoring'),
-              )
-            : '',
+          E(
+            'button',
+            {
+              type: 'button',
+              class: 'btn cbi-button',
+              click: () => openMonitoring(target),
+            },
+            _('Trace a real connection in Monitoring'),
+          ),
         ]),
       );
     } catch (_error) {

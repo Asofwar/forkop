@@ -1,4 +1,5 @@
 import { Forkop } from '../../types';
+import { openForkopPage } from '../../helpers/navigation';
 
 export function healthItems(health: Forkop.HealthStatus) {
   return [
@@ -55,10 +56,7 @@ export function renderHealth(health: Forkop.HealthStatus) {
       {
         type: 'button',
         class: 'btn cbi-button',
-        click: () =>
-          document
-            .querySelector<HTMLElement>('[data-tab="diagnostic"] > a')
-            ?.click(),
+        click: () => openForkopPage('diagnostics'),
       },
       _('Open Diagnostics'),
     ),

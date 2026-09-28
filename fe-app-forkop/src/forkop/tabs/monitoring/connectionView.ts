@@ -30,7 +30,11 @@ export interface ConnectionAction {
 
 // Every row action is a compact icon button with a text label for the tooltip
 // and screen readers, so all of them fit the actions column at any width.
-export function connectionActions(active: boolean): ConnectionAction[] {
+// Read-only sessions cannot close connections.
+export function connectionActions(
+  active: boolean,
+  readonly = false,
+): ConnectionAction[] {
   const actions: ConnectionAction[] = [
     {
       kind: 'details',
@@ -44,7 +48,7 @@ export function connectionActions(active: boolean): ConnectionAction[] {
       className: 'fkp-monitoring-copy',
     },
   ];
-  if (active)
+  if (active && !readonly)
     actions.push({
       kind: 'close',
       label: _('Close connection'),

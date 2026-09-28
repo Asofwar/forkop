@@ -1,3 +1,5 @@
+import { isReadonlyMode } from '../../services/accessMode.service';
+
 export function render() {
   return E(
     'div',
@@ -78,18 +80,22 @@ export function render() {
             ]),
           ]),
           E('div', { class: 'fkp_monitoring-page__actions' }, [
-            E(
-              'button',
-              {
-                id: 'monitoring-close-all',
-                class: 'btn cbi-button fkp_monitoring-page__icon-button',
-                title: _('Close all connections'),
-                'aria-label': _('Close all connections'),
-                type: 'button',
-                disabled: true,
-              },
-              [],
-            ),
+            ...(isReadonlyMode()
+              ? []
+              : [
+                  E(
+                    'button',
+                    {
+                      id: 'monitoring-close-all',
+                      class: 'btn cbi-button fkp_monitoring-page__icon-button',
+                      title: _('Close all connections'),
+                      'aria-label': _('Close all connections'),
+                      type: 'button',
+                      disabled: true,
+                    },
+                    [],
+                  ),
+                ]),
             E(
               'button',
               {

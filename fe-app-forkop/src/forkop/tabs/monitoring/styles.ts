@@ -270,8 +270,12 @@ export const styles = `
     min-width: 0;
 }
 
+/* width: 0 + min-width: 100% keeps the 840px table from widening the page
+   (flex layouts such as OpenWrt2020 size the content to its min-content);
+   the wrapper still fills its parent and scrolls the table inside. */
 .fkp_monitoring-page__table-wrap {
-    width: 100%;
+    width: 0;
+    min-width: 100%;
     overflow-x: auto;
     margin-bottom: 0;
 }

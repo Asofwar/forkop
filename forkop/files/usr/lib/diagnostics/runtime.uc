@@ -2289,7 +2289,8 @@ function support_report() {
 // D-1: the otherwise unmasked support report keeps the Clash API secret out;
 // support never needs it. The report is collected by a child process and the
 // secret is replaced wherever it appears (config file, raw global check, raw
-// sing-box config), plus the option line itself for very short secrets.
+// sing-box config, also JSON-escaped), plus the option line itself for very
+// short secrets.
 function support_report_without_clash_secret() {
     let secret = common.clash_api_secret(settings());
     if (secret == "")
@@ -2308,8 +2309,14 @@ function support_report_without_clash_secret() {
         let key = match(line, /^(yacd_secret_key['"]?[ =]*)/);
         return (key ? key[1] : "yacd_secret_key ") + "'MASKED'";
     });
-    if (length(secret) >= 4)
+    if (length(secret) >= 4) {
+        // The raw sing-box config is JSON: a secret with a quote or a
+        // backslash appears there in its escaped form.
+        let escaped = substr(sprintf("%J", secret), 1, -1);
+        if (escaped != secret)
+            text = replace(text, escaped, "MASKED");
         text = replace(text, secret, "MASKED");
+    }
     print(text);
     return status;
 }

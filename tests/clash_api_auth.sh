@@ -178,6 +178,20 @@ grep -Fq 'CONFIDENTIAL SUPPORT REPORT' "$WORK_DIR/report.txt" || fail "the suppo
 grep -Fq "yacd_secret_key" "$WORK_DIR/report.txt" || fail "the support report must keep the option shape"
 grep -Fq "$SECRET" "$WORK_DIR/report.txt" && fail "the support report must not contain the Clash secret"
 
+# A user secret with a quote or a backslash appears JSON-escaped in the raw
+# sing-box config; that form must be masked too.
+ESCAPED_SECRET='Qu0teMark"Back\slash'
+write_state "forkop.settings.yacd_secret_key=$ESCAPED_SECRET"
+printf "\toption yacd_secret_key '%s'\n\toption config_path '%s'\n" "$ESCAPED_SECRET" "$WORK_DIR/sing-box.json" >>"$WORK_DIR/etc/forkop"
+printf 'forkop.settings.config_path=%s\n' "$WORK_DIR/sing-box.json" >>"$WORK_DIR/uci-state"
+"$UCODE_BIN" -e 'require("fs").writefile(ARGV[0], sprintf("{\"experimental\":{\"clash_api\":{\"secret\":%J}}}\n", ARGV[1]));' \
+  "$WORK_DIR/sing-box.json" "$ESCAPED_SECRET"
+grep -Fq 'Back\\slash' "$WORK_DIR/sing-box.json" || fail "the fixture must hold the JSON-escaped secret"
+backend support-report >"$WORK_DIR/report-escaped.txt" 2>&1 </dev/null || true
+grep -Fq 'CONFIDENTIAL SUPPORT REPORT' "$WORK_DIR/report-escaped.txt" || fail "the support report was not produced"
+grep -Fq 'Qu0teMark' "$WORK_DIR/report-escaped.txt" &&
+  fail "the support report must mask the JSON-escaped form of the Clash secret"
+
 # --- Reload signature ------------------------------------------------------------
 
 # A changed secret changes the controller, so it must reload sing-box even

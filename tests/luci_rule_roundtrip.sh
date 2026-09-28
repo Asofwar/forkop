@@ -7,6 +7,8 @@ set -euo pipefail
 # touching anything must leave the rule's UCI section byte-for-byte unchanged.
 # Also covers the rule-set item settings modal ("Include IP addresses and
 # subnets"), which must not drop Built-in rule sets #2 (UC-003, UC-004).
+# Built-in rule sets #2 are hidden for DNS rules without dropping stored
+# values (UC-046).
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 node - "$ROOT_DIR/tests/helpers/luci_form_harness.js" <<'NODE'
@@ -53,6 +55,17 @@ const fixtures = {
     domain: 'example.net', community_lists: ['youtube'], source_ip_cidr: ['192.168.1.50'] }),
   disabled_rule: rule({ enabled: '0', action: 'connection', ...routed, community_lists: ['youtube'],
     outbound_detour_enabled: '1', outbound_detour_section: 'transit', sort_by_latency: '1' }),
+  // UC-046: a DNS rule never shows Built-in rule sets #2 but keeps stored ones.
+  dns_rule_secondary_rule_sets: rule({ action: 'dns', dns_type: 'udp', dns_server: '1.1.1.1',
+    dns_detour_enabled: '0', domain: 'example.net', rule_set_with_subnets: [VALVE] }),
+  dns_rule_sets_and_secondary: rule({ action: 'dns', dns_type: 'udp', dns_server: '1.1.1.1',
+    dns_detour_enabled: '0', rule_set: [CUSTOM], rule_set_with_subnets: [GOOGLE] }),
+  // DPI rules with their strategies.
+  zapret_rule: rule({ action: 'zapret', ...routed, nfqws_opt: '--filter-tcp=443 --dpi-desync=fake',
+    community_lists: ['youtube'] }),
+  zapret2_rule: rule({ action: 'zapret2', ...routed, nfqws2_opt: '--filter-tcp=443 --lua-desync=fake:blob=fake_default_tls',
+    community_lists: ['youtube'] }),
+  byedpi_rule: rule({ action: 'byedpi', ...routed, byedpi_cmd_opts: '-o 1 -d 1', community_lists: ['youtube'] }),
 };
 
 // Every case runs; all failures are reported together.
@@ -73,6 +86,22 @@ async function check(label, fn) {
         await (await env.openRule('rule')).save();
         assert.deepEqual(env.uci.data.rule, fixture, 'an unchanged rule modal save changed UCI');
       });
+
+    // UC-046: Built-in rule sets #2 are hidden for DNS rules and edits of the
+    // DNS rule sets keep the stored values.
+    await check(`${version} dns rule hides Built-in rule sets #2`, async () => {
+      const fixture = fixtures.dns_rule_sets_and_secondary;
+      const env = createEnvironment({ version, config: { rule: fixture } });
+      const modal = await env.openRule('rule');
+      assert.equal(modal.active('secondary_rule_sets'), false);
+      modal.option('_dns_rule_set').getUIElement('rule').setValue([CUSTOM, CUSTOM_SUBNETS]);
+      await modal.save();
+      assert.deepEqual(env.uci.data.rule.rule_set, [CUSTOM, CUSTOM_SUBNETS]);
+      assert.deepEqual(env.uci.data.rule.rule_set_with_subnets, [GOOGLE]);
+
+      const routedRule = createEnvironment({ version, config: { rule: fixtures.device_filter_secondary_only } });
+      assert.equal((await routedRule.openRule('rule')).active('secondary_rule_sets'), true);
+    });
 
     // UC-003: the device filter is offered whenever a Built-in rule set #2 is set.
     await check(`${version} device filter visibility`, async () => {

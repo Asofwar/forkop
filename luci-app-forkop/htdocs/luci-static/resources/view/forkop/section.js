@@ -6792,7 +6792,14 @@ function writeCustomRulesetReferences(section_id, values) {
 
 function writeDnsRulesetReferences(section_id, values) {
   writeListOption(section_id, "rule_set", uniqueDynamicListItems(values));
-  uci.unset(UCI_PACKAGE, section_id, "rule_set_with_subnets");
+  // Hidden Built-in rule sets #2 are not the DNS widget's to drop (UC-046).
+  writeListOption(
+    section_id,
+    "rule_set_with_subnets",
+    getConfigListValues(section_id, "rule_set_with_subnets").filter((value) =>
+      secondaryRulesetId(value),
+    ),
+  );
   uci.unset(UCI_PACKAGE, section_id, RULE_SET_ITEM_SETTINGS_KEY);
 }
 
@@ -7658,6 +7665,10 @@ function createSectionContent(section) {
     _("Select a predefined IP rule set from b4geoip-forkop"),
   );
   secondaryRulesetOption.modalonly = true;
+  // DNS rules match domains only: the widget is hidden for them, and stored
+  // values stay in the shared rule_set_with_subnets option (UC-046).
+  secondaryRulesetOption.retain = true;
+  dependsOnRoutingAction(secondaryRulesetOption);
   secondaryRulesetOption.placeholder = _("Service list");
   secondaryRulesetOption.load = function (section_id) {
     refreshOptionChoices(

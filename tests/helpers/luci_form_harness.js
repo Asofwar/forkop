@@ -16,7 +16,9 @@
 //     are not rendered (every modal field is rendered here).
 // Widgets are not rendered; each keeps the value its LuCI ui.* counterpart
 // would report (ui.Textfield/Textarea string, ui.Checkbox enabled/disabled,
-// ui.Select selected choice, ui.DynamicList item array).
+// ui.Select selected choice, ui.DynamicList item array). Like the LuCI
+// validator bound to a rendered widget, a text or select widget is valid only
+// while option.validate(section_id, value) returns true.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -107,6 +109,8 @@ function createUciStore(initial) {
   let counter = 0;
   const uci = {
     data,
+    // luci-base uci keeps loaded packages here; settings.js reads it directly.
+    state: { values: { forkop: data } },
     get(_config, sid, option) {
       const section = data[sid];
       if (!section) return null;
@@ -452,9 +456,10 @@ function createForm({ version, baseclass, uci, jsonMaps }) {
   const GridSection = TypedSection.extend({});
 
   class ModelWidget {
-    constructor(kind, value, option) {
+    constructor(kind, value, option, section_id) {
       this.kind = kind;
       this.option = option;
+      this.section_id = section_id;
       this.setValue(value);
     }
     setValue(value) {
@@ -483,14 +488,18 @@ function createForm({ version, baseclass, uci, jsonMaps }) {
     isChecked() {
       return this.value === this.option.enabled;
     }
-    isValid() {
-      return true;
-    }
+    // Lists validate per item while typing and checkboxes carry no validator.
     getValidationError() {
-      return "";
+      if (this.kind === "list" || this.kind === "checkbox") return "";
+      if (typeof this.option.validate !== "function") return "";
+      const result = this.option.validate(this.section_id, this.getValue());
+      return result === true ? "" : `${result || "invalid"}`;
+    }
+    isValid() {
+      return this.getValidationError() === "";
     }
     triggerValidation() {
-      return true;
+      return this.isValid();
     }
   }
 
@@ -544,6 +553,7 @@ function createForm({ version, baseclass, uci, jsonMaps }) {
         this.widgetKind,
         cfgvalue != null ? cfgvalue : this.default,
         this,
+        section_id,
       );
       this.fields ??= {};
       this.fields[section_id] = { active: true };
@@ -590,7 +600,11 @@ function createForm({ version, baseclass, uci, jsonMaps }) {
     parse(section_id) {
       const active = this.isActive(section_id);
       if (active && !this.isValid(section_id))
-        return Promise.reject(new TypeError(`Option "${this.option}" contains an invalid input value.`));
+        return Promise.reject(
+          new TypeError(
+            `Option "${this.option}" contains an invalid input value. ${this.getValidationError(section_id)}`,
+          ),
+        );
       if (active) {
         const cval = this.cfgvalue(section_id);
         const fval = this.formvalue(section_id);
@@ -700,17 +714,32 @@ function loadModule(file, modules, globals) {
 }
 
 // Loads the real section.js for one UCI state. `version` is "24.10" or "25.12".
-function createEnvironment({ version = "24.10", config = {} } = {}) {
+// `providers` is what the DPI provider availability probe reports (all
+// installed by default); `fs` overrides methods of the LuCI fs stub.
+function createEnvironment({
+  version = "24.10",
+  config = {},
+  providers = { zapretInstalled: true, zapret2Installed: true, byedpiInstalled: true },
+  fs: fsOverrides = {},
+} = {}) {
   const baseclass = createBaseclass();
   const uci = createUciStore(config);
   const document = createDocument();
+  const listeners = new Map();
   const window = {
     document,
     location: { hostname: "192.168.1.1", protocol: "http:", pathname: "/" },
     navigator: { language: "en" },
-    addEventListener() {},
-    removeEventListener() {},
-    dispatchEvent() {
+    addEventListener(type, listener) {
+      if (!listeners.has(type)) listeners.set(type, []);
+      listeners.get(type).push(listener);
+    },
+    removeEventListener(type, listener) {
+      const list = listeners.get(type) || [];
+      if (list.includes(listener)) list.splice(list.indexOf(listener), 1);
+    },
+    dispatchEvent(event) {
+      (listeners.get(event.type) || []).slice().forEach((listener) => listener(event));
       return true;
     },
     setTimeout: () => 0,
@@ -758,6 +787,7 @@ function createEnvironment({ version = "24.10", config = {} } = {}) {
     read_direct: () => Promise.reject(new Error("ENOENT")),
     stat: () => Promise.reject(new Error("ENOENT")),
     list: () => Promise.resolve([]),
+    ...fsOverrides,
   };
   const globals = {
     _: (text) => `${text}`,
@@ -798,10 +828,10 @@ function createEnvironment({ version = "24.10", config = {} } = {}) {
     },
     globals,
   );
-  // Providers are installed: every action is a valid choice.
-  section.setActionProvidersAvailabilityLoader(() =>
-    Promise.resolve({ zapretInstalled: true, zapret2Installed: true, byedpiInstalled: true }),
-  );
+  section.setActionProvidersAvailabilityLoader(() => Promise.resolve(Object.assign({}, providers)));
+  const moduleGlobals = globals;
+  let settingsModule = null;
+  let shellModule = null;
 
   // The Settings page declares the rules grid once.
   const pageMap = new form.Map("forkop");
@@ -815,6 +845,55 @@ function createEnvironment({ version = "24.10", config = {} } = {}) {
     main,
     section,
     document,
+    window,
+    CustomEvent: globals.CustomEvent,
+    // view/forkop/shell.js sharing this environment's main.js and window.
+    shell() {
+      shellModule ??= loadModule("shell.js", { baseclass, uci, main }, moduleGlobals);
+      return shellModule;
+    },
+    // The Settings tabs of page/settings.js (one "settings" section) for the
+    // given provider capabilities object (shell.uiCapabilities on the page).
+    async openSettings(capabilities) {
+      settingsModule ??= loadModule(
+        "settings.js",
+        {
+          form,
+          uci,
+          baseclass,
+          main,
+          widgets: { DeviceSelect: form.DynamicList, NetworkSelect: form.ListValue },
+        },
+        moduleGlobals,
+      );
+      const map = new form.Map("forkop");
+      const tab = (type) => {
+        const tabSection = map.section(form.TypedSection, type);
+        tabSection.cfgsections = () => ["settings"];
+        return tabSection;
+      };
+      settingsModule.createSettingsContent(
+        {
+          dns: tab("settings_dns"),
+          network: tab("settings_network"),
+          lists: tab("settings_lists"),
+          service: tab("settings_service"),
+        },
+        capabilities,
+      );
+      await map.render();
+      return {
+        map,
+        option(name) {
+          for (const tabSection of map.children) {
+            const found = tabSection.children.find((option) => option.option === name);
+            if (found) return found;
+          }
+          throw new Error(`settings have no option ${name}`);
+        },
+        save: () => map.save(),
+      };
+    },
     // GridSection.renderMoreOptionsModal() for an existing rule.
     async openRule(section_id) {
       const map = new form.Map("forkop");

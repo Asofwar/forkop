@@ -27,8 +27,18 @@ generate_config() {
 
 validate_fixture() {
   local fixture="$1"
+  local normalized
+  normalized="$WORK_DIR/validator-$(basename "$fixture")"
+  # The validator requires the Clash API secret (D-1); the migration provides
+  # it on real configurations.
+  node -e '
+    const fs = require("fs");
+    const input = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+    input.settings.yacd_secret_key ??= "test-clash-secret";
+    fs.writeFileSync(process.argv[2], JSON.stringify(input));
+  ' "$fixture" "$normalized"
   FORKOP_LIB="$FORKOP_LIB" ucode -L "$FORKOP_LIB" "$VALIDATOR_UC" \
-    validate-runtime-fixture "$fixture" "{}"
+    validate-runtime-fixture "$normalized" "{}"
 }
 
 cat >"$WORK_DIR/mixed.json" <<'JSON'

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-28 17:21+0000\n"
-"PO-Revision-Date: 2026-09-28 17:21+0000\n"
+"POT-Creation-Date: 2026-09-28 17:25+0000\n"
+"PO-Revision-Date: 2026-09-28 17:25+0000\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -640,6 +640,9 @@ msgstr "Выбрать версию"
 
 msgid "CIDR must be between 0 and 32 for IPv4 or 0 and 128 for IPv6"
 msgstr "CIDR должен быть от 0 до 32 для IPv4 или от 0 до 128 для IPv6"
+
+msgid "Clash API secret cannot be empty"
+msgstr "Секрет Clash API не может быть пустым"
 
 msgid "Close"
 msgstr "Закрыть"
@@ -2699,8 +2702,8 @@ msgstr "Плановые измерения выключены. Админист
 msgid "Search"
 msgstr "Поиск"
 
-msgid "Secret of the Clash API controller used by YACD and the Forkop pages. It protects the controller with or without WAN access."
-msgstr "Секрет контроллера Clash API, который используют YACD и страницы Forkop. Защищает контроллер независимо от доступа через WAN."
+msgid "Secret of the Clash API controller used by YACD and the Forkop pages. Required: it is generated on installation and protects the controller with or without WAN access."
+msgstr "Секрет контроллера Clash API, который используют YACD и страницы Forkop. Обязателен: создаётся при установке и защищает контроллер независимо от доступа через WAN."
 
 msgid "Section name"
 msgstr "Имя секции"

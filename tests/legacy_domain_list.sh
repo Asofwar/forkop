@@ -17,7 +17,7 @@ trap 'rm -rf "$WORK"' EXIT HUP INT TERM
 cat >"$WORK/fixture.json" <<'JSON'
 {
   "settings": { ".name": "settings", ".type": "settings", "log_level": "warn",
-    "dns_server": ["77.88.8.8"], "bootstrap_dns_server": ["77.88.8.8"] },
+    "dns_server": ["77.88.8.8"], "bootstrap_dns_server": ["77.88.8.8"], "yacd_secret_key": "test-clash-secret" },
   "section": [
     { ".name": "text", ".type": "section", "enabled": "1", "action": "block", "domain": "text.example\nfull:exact-text.example" },
     { ".name": "one", ".type": "section", "enabled": "1", "action": "block", "domain": [ "one.example" ] },

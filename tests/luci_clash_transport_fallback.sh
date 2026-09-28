@@ -28,9 +28,14 @@ function functionBody(source, signature) {
 
 const dashboard = read('fe-app-forkop/src/forkop/tabs/dashboard/initController.ts');
 const start = functionBody(dashboard, 'function startDashboardDataUpdates()');
-assert.match(start, /if \(canUseDirectClashApi\(\)\) \{\s*void connectToClashSockets\(dataUpdatesId\);\s*\} else \{\s*startClashRpcPolling\(dataUpdatesId\);/,
-  'dashboard must poll through rpcd when the controller socket is not reachable');
+assert.match(start, /void connectToClashSockets\(dataUpdatesId\);/,
+  'dashboard must start the Clash updates');
 const sockets = functionBody(dashboard, 'async function connectToClashSockets(dataUpdatesId: number)');
+// UC-035, D-1: direct sockets need the Clash secret, which read-only
+// sessions never receive; they poll through rpcd instead.
+assert.match(sockets, /if \(!canUseDirectClashApi\(clashApiSecret\)\) \{\s*startClashRpcPolling\(dataUpdatesId\);\s*return;/,
+  'dashboard must poll through rpcd when the controller socket is not reachable or there is no secret');
+assert.doesNotMatch(sockets, /token=\$\{/, 'the secret must be URL-encoded by getClashWsStreamUrl');
 assert.equal((sockets.match(/fallBackToClashRpcPolling\(dataUpdatesId\)/g) || []).length, 2,
   'both dashboard sockets must fall back to rpcd polling on error');
 assert.doesNotMatch(sockets, /failed: true/,
@@ -49,6 +54,9 @@ assert.match(functionBody(dashboard, 'function stopDashboardDataUpdates()'),
 
 const monitoring = read('fe-app-forkop/src/forkop/tabs/monitoring/initController.ts');
 const monitoringSocket = functionBody(monitoring, 'async function connectToConnectionsSocket(updatesId: number)');
+assert.match(monitoringSocket, /if \(!canUseDirectClashApi\(clashApiSecret\)\) \{\s*startConnectionsPolling\(\);\s*return;/,
+  'monitoring must poll through rpcd when the controller socket is not reachable or there is no secret');
+assert.doesNotMatch(monitoringSocket, /token=\$\{/, 'the secret must be URL-encoded by getClashWsStreamUrl');
 assert.match(monitoringSocket, /socket\.disconnect\(connectionsSocketUrl\);[\s\S]*startConnectionsPolling\(\);/,
   'monitoring must fall back to rpcd polling when the socket fails');
 assert.doesNotMatch(monitoringSocket, /failed = true/,

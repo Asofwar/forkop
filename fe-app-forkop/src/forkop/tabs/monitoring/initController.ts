@@ -1,4 +1,8 @@
-import { canUseDirectClashApi, getClashWsUrl, onMount } from '../../../helpers';
+import {
+  canUseDirectClashApi,
+  getClashWsStreamUrl,
+  onMount,
+} from '../../../helpers';
 import { prettyBytes } from '../../../helpers/prettyBytes';
 import { showToast } from '../../../helpers/showToast';
 import { confirmAction } from '../../ui/confirmAction';
@@ -1929,7 +1933,12 @@ async function connectToConnectionsSocket(updatesId: number) {
     return;
   }
 
-  connectionsSocketUrl = `${getClashWsUrl()}/connections?token=${clashApiSecret}`;
+  if (!canUseDirectClashApi(clashApiSecret)) {
+    startConnectionsPolling();
+    return;
+  }
+
+  connectionsSocketUrl = getClashWsStreamUrl('/connections', clashApiSecret);
 
   socket.subscribe(
     connectionsSocketUrl,
@@ -1974,13 +1983,10 @@ function startConnectionsUpdates() {
     return;
   }
 
-  if (canUseDirectClashApi()) {
-    const updatesId = ++connectionsUpdatesId;
-    void connectToConnectionsSocket(updatesId);
-    return;
-  }
-
-  startConnectionsPolling();
+  // Direct sockets need the secret; without it (read-only, HTTPS) the
+  // connections are polled through rpcd.
+  const updatesId = ++connectionsUpdatesId;
+  void connectToConnectionsSocket(updatesId);
 }
 
 function stopConnectionsUpdates() {

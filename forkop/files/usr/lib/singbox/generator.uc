@@ -404,12 +404,13 @@ function clash_api_config(settings, service_address) {
     let result = {
         external_controller: controller + ":9090"
     };
-    if (bool_option(settings, "enable_yacd", false)) {
+    if (bool_option(settings, "enable_yacd", false))
         result.external_ui = "ui";
-        let secret = option(settings, "yacd_secret_key", "");
-        if (secret != "")
-            result.secret = secret;
-    }
+    // The secret protects the controller wherever it listens (UC-035): the
+    // backend sends it under the same predicate.
+    let secret = common.clash_api_secret(settings);
+    if (secret != "")
+        result.secret = secret;
     return result;
 }
 

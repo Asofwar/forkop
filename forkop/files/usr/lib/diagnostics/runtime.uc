@@ -7,6 +7,7 @@ let uci_core = require("core.uci");
 let runtime_dns = require("singbox.dns");
 let netstat = require("core.netstat");
 let dpi_strategy = require("core.dpi_strategy");
+let common = require("core.common");
 
 const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || constants.FORKOP_CONFIG_NAME || "forkop";
 const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
@@ -1589,11 +1590,35 @@ function clash_api_url() {
     return address + ":" + SB_CLASH_API_CONTROLLER_PORT;
 }
 
+let clash_auth_files = [];
+
+// curl arguments that authenticate against the controller under the shared
+// predicate (UC-035): whenever a secret is configured, whatever YACD and WAN
+// access say. The header goes through a private file, never the command line,
+// because the process list is part of the support report. Returns null when
+// the file cannot be prepared; clash_auth_close() removes it.
 function clash_auth_args() {
-    let cfg = settings();
-    if (!bool_option(cfg, "enable_yacd_wan_access", false))
+    let secret = common.clash_api_secret(settings());
+    if (secret == "")
         return [];
-    return [ "--header", "Authorization: Bearer " + option(cfg, "yacd_secret_key", "") ];
+    let path = trim(command_output_from_args([ "mktemp" ]));
+    if (path == "")
+        return null;
+    push(clash_auth_files, path);
+    let fh = fs.open(path, "w", 0600);
+    if (fh == null || !fs.chmod(path, 0600) || fh.write("Authorization: Bearer " + secret + "\n") == null) {
+        if (fh != null)
+            fh.close();
+        return null;
+    }
+    fh.close();
+    return [ "-H", "@" + path ];
+}
+
+function clash_auth_close() {
+    for (let path in clash_auth_files)
+        fs.unlink(path);
+    clash_auth_files = [];
 }
 
 function clash_urlencode(value) {
@@ -1608,6 +1633,8 @@ function clash_json_error(message) {
 }
 
 function clash_proxy_type_map(base_url, auth) {
+    if (auth == null)
+        return null;
     let args = [ "curl", "-s" ];
     for (let item in auth) push(args, item);
     push(args, base_url + "/proxies");
@@ -1630,7 +1657,9 @@ function clash_proxy_type_map(base_url, auth) {
 }
 
 function clash_api_ready() {
-    return clash_proxy_type_map(clash_api_url(), clash_auth_args()) != null;
+    let ready = clash_proxy_type_map(clash_api_url(), clash_auth_args()) != null;
+    clash_auth_close();
+    return ready;
 }
 
 function latency_testable_proxy_type(proxy_type) {
@@ -1754,10 +1783,9 @@ function latency_test_url() {
     return value == "" ? DEFAULT_LATENCY_TEST_URL : value;
 }
 
-function clash_api(action, arg1, arg2, arg3) {
+function clash_api_request(action, arg1, arg2, arg3, auth) {
     let base_url = clash_api_url();
     let test_url = latency_test_url();
-    let auth = clash_auth_args();
 
     if (action == "get_proxies") {
         let args = [ "curl", "-s" ];
@@ -1888,6 +1916,15 @@ function clash_api(action, arg1, arg2, arg3) {
     return 1;
 }
 
+function clash_api(action, arg1, arg2, arg3) {
+    let auth = clash_auth_args();
+    let status = auth == null
+        ? clash_json_error("clash_api_auth_unavailable")
+        : clash_api_request(action, arg1, arg2, arg3, auth);
+    clash_auth_close();
+    return status;
+}
+
 function automatic_latency_test(start_kind) {
     let marker = automatic_latency_pending_marker();
     if (marker == null) {
@@ -1951,6 +1988,7 @@ function automatic_latency_test(start_kind) {
     let readiness_attempts = AUTOMATIC_LATENCY_CLASH_READY_ATTEMPTS > 0 ? AUTOMATIC_LATENCY_CLASH_READY_ATTEMPTS : 15;
     for (let readiness_attempt = 0; readiness_attempt < readiness_attempts; readiness_attempt++) {
         proxy_types = clash_proxy_type_map(clash_api_url(), clash_auth_args());
+        clash_auth_close();
         if (proxy_types != null)
             break;
         if (readiness_attempt + 1 < readiness_attempts)

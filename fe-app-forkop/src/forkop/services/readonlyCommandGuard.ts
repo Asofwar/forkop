@@ -19,6 +19,7 @@ export const READONLY_EXEC_PATTERNS = [
   '/usr/bin/forkop autotune_status',
   '/usr/bin/forkop autotune_target *',
   '/usr/bin/forkop autotune_groups',
+  '/usr/bin/forkop autotune_run_status *',
   '/usr/bin/forkop route_trace *',
   '/usr/bin/forkop config_snapshot_list',
   '/usr/bin/forkop config_snapshot_diff *',

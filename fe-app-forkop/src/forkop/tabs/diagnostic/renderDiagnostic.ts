@@ -58,12 +58,60 @@ function renderDpiValidator() {
   ];
 }
 
+const HELP_URL = 'https://github.com/slayer326/forkop#readme';
+
+function renderSiteCheck() {
+  return card(
+    'site-check',
+    _('Check a site or app'),
+    _(
+      'The route is calculated from the configuration; DNS and the HTTPS request are made by the router itself.',
+    ),
+    [
+      E('div', { class: 'fkp-route__form' }, [
+        E('label', { class: 'fkp-diag-field fkp-diag-field--wide' }, [
+          E('span', {}, _('Domain or IP address')),
+          E('input', {
+            id: 'site-check-target',
+            class: 'cbi-input-text',
+            placeholder: 'youtube.com',
+            maxLength: 253,
+          }),
+        ]),
+        E('label', { class: 'fkp-diag-field' }, [
+          E('span', {}, _('Device')),
+          E('select', { id: 'site-check-device', class: 'cbi-input-select' }, [
+            E('option', { value: '' }, _('Any device')),
+          ]),
+        ]),
+        E(
+          'button',
+          {
+            id: 'site-check-run',
+            class: 'btn cbi-button cbi-button-apply',
+            type: 'button',
+          },
+          _('Check'),
+        ),
+      ]),
+      E('div', { id: 'site-check-result', role: 'status' }),
+    ],
+  );
+}
+
 export function render() {
   return E('div', { id: 'diagnostic-status', class: 'fkp-diag' }, [
+    E('div', { class: 'fkp-diag-help' }, [
+      E(
+        'a',
+        { href: HELP_URL, target: '_blank', rel: 'noopener noreferrer' },
+        _('Help'),
+      ),
+    ]),
     E('section', { class: 'fkp-diag-card fkp-diag-system' }, [
       E('div', { class: 'fkp-diag-card__head' }, [
         E('div', {}, [
-          E('h3', { class: 'fkp-diag-card__title' }, _('System diagnostics')),
+          E('h3', { class: 'fkp-diag-card__title' }, _('System check')),
           E('span', {
             id: 'fkp_diagnostic-last-run',
             class: 'fkp-diag-hint',
@@ -73,19 +121,28 @@ export function render() {
         E('div', { id: 'fkp_diagnostic-page-run-check' }),
       ]),
       E('div', {
+        id: 'fkp_diagnostic-run-reason',
+        class: 'fkp-diag-run-reason',
+        role: 'status',
+      }),
+      E('div', {
         class: 'fkp-diag-checks',
         id: 'fkp_diagnostic-page-checks',
       }),
     ]),
-    E('div', { class: 'fkp-diag-row' }, [
-      E('div', { id: 'fkp_diagnostic-page-actions' }),
-      E('div', { id: 'fkp_diagnostic-page-system-info' }),
-    ]),
-    card(
-      'connectivity-matrix',
-      _('Reachability check'),
-      _('Checks run on the router and do not prove the path of a LAN client.'),
+    renderSiteCheck(),
+    E(
+      'details',
+      { class: 'fkp-diag-card fkp-diag-details', id: 'connectivity-matrix' },
       [
+        E('summary', {}, _('Address set for checking')),
+        E(
+          'p',
+          { class: 'fkp-diag-hint' },
+          _(
+            'Checks run on the router and do not prove the path of a LAN client.',
+          ),
+        ),
         E('div', { id: 'connectivity-rows', class: 'fkp-conn' }),
         E('div', { class: 'fkp-diag-actions' }, [
           E(
@@ -105,41 +162,20 @@ export function render() {
         ]),
       ],
     ),
-    card(
-      'route-debugger',
-      _('Route check'),
-      _(
-        'Shows the address the router DNS returns and the interface of the router kernel route.',
-      ),
-      [
-        E('div', { class: 'fkp-route__form' }, [
-          E('label', { class: 'fkp-diag-field fkp-diag-field--wide' }, [
-            E('span', {}, _('Domain or IP address')),
-            E('input', {
-              id: 'trace-target',
-              class: 'cbi-input-text',
-              placeholder: 'example.com',
-              maxLength: 253,
-            }),
-          ]),
-          E(
-            'button',
-            { id: 'trace-run', class: 'btn cbi-button', type: 'button' },
-            _('Check'),
-          ),
-        ]),
-        E('div', { id: 'trace-result', role: 'status' }),
-      ],
-    ),
-    E('h3', { class: 'fkp-diag-section-title' }, _('Additional tools')),
     E(
       'details',
-      { class: 'fkp-diag-card fkp-diag-details', id: 'dpi-playground' },
+      { class: 'fkp-diag-card fkp-diag-details', id: 'technical-data' },
       [
-        E('summary', {}, _('DPI strategy syntax check')),
-        ...renderDpiValidator(),
+        E('summary', {}, _('Technical data')),
+        E('div', { class: 'fkp-diag-row' }, [
+          E('div', { id: 'fkp_diagnostic-page-actions' }),
+          E('div', { id: 'fkp_diagnostic-page-system-info' }),
+        ]),
+        E('div', { class: 'fkp-diag-subsection', id: 'dpi-playground' }, [
+          E('h4', {}, _('DPI strategy syntax check')),
+          ...renderDpiValidator(),
+        ]),
       ],
     ),
-    E('div', { id: 'fkp_diagnostic-page-wiki' }),
   ]);
 }

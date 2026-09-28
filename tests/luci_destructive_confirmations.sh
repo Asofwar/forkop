@@ -34,9 +34,10 @@ function assertConfirmedBefore(body, confirmCall, backendCall, label) {
     `${label}: a declined confirmation must stop the action`);
 }
 
+// Service control lives on the Overview only; Diagnostics has no stop.
 const diagnostics = read('fe-app-forkop/src/forkop/tabs/diagnostic/initController.ts');
-assertConfirmedBefore(functionBody(diagnostics, 'async function handleStop()'),
-  'confirmStopForkop(', 'handleServiceRuntimeAction(', 'stop Forkop X');
+assert.doesNotMatch(diagnostics, /serviceActionStart\(|handleStop|ForkopShellMethods\.(enable|disable)\(/,
+  'Diagnostics must not control the service');
 
 const dashboard = read('fe-app-forkop/src/forkop/tabs/dashboard/initController.ts');
 assert.match(functionBody(dashboard, 'async function handleServiceAction(action: ForkopServiceAction)'),

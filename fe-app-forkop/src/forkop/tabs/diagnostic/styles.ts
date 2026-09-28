@@ -164,13 +164,94 @@ export const styles = `
     vertical-align: top;
 }
 
-/* System checks: compact grid instead of full-width alert cards. */
+/* System checks: problems first as full-width cards, then one-line rows;
+   passed checks fold into one group. */
 .fkp-diag-checks {
     display: grid;
-    align-items: start;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    grid-template-columns: minmax(0, 1fr);
     gap: 8px;
     margin-top: 10px;
+}
+
+.fkp-diag-summary {
+    margin: 0;
+    font-weight: 600;
+}
+
+.fkp-diag-run-reason:empty {
+    display: none;
+}
+
+.fkp-diag-run-reason {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    margin-top: 8px;
+    color: var(--text-color-medium, gray);
+}
+
+.fkp-diag-run-reason .btn {
+    margin: 0;
+}
+
+.fkp-check-passed > summary {
+    cursor: pointer;
+    color: var(--success-color-medium, green);
+}
+
+.fkp-check-passed[open] {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    align-items: start;
+    gap: 8px;
+}
+
+.fkp-check-passed[open] > summary {
+    grid-column: 1 / -1;
+}
+
+.fkp-check__advice {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 4px 12px;
+    margin: 8px 0 0;
+}
+
+.fkp-check__advice dt {
+    font-weight: 600;
+    color: var(--text-color-medium, gray);
+}
+
+.fkp-check__advice dd {
+    margin: 0;
+}
+
+.fkp-check__advice ul {
+    margin: 0;
+    padding-left: 1.2em;
+}
+
+.fkp-diag-help {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: -4px;
+}
+
+.fkp-diag-subsection h4 {
+    margin: 12px 0 4px;
+}
+
+.fkp-site__value {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 8px;
+}
+
+.fkp-site__conclusion {
+    margin: 10px 0 0;
+    font-weight: 600;
 }
 
 .fkp-check {
@@ -314,34 +395,9 @@ export const styles = `
 .fkp-route__facts small { color: var(--text-color-medium, gray); }
 
 @media (max-width: 560px) {
-    .fkp-diag-facts, .fkp-route__facts { grid-template-columns: minmax(0, 1fr); }
+    .fkp-diag-facts, .fkp-route__facts, .fkp-check__advice { grid-template-columns: minmax(0, 1fr); }
     .fkp-diag-checks { grid-template-columns: minmax(0, 1fr); }
 }
-
-.fkp_diagnostic-page__right-bar__wiki {
-    border: 2px var(--background-color-low, lightgray) solid;
-    border-radius: 4px;
-    padding: 10px;
-
-    display: grid;
-    grid-template-columns: auto;
-    grid-row-gap: 10px;
-}
-
-.fkp_diagnostic-page__right-bar__wiki--warning {
-    border: 2px var(--warn-color-medium, orange) solid;
-}
-.fkp_diagnostic-page__right-bar__wiki--error {
-    border: 2px var(--error-color-medium, red) solid;
-}
-
-.fkp_diagnostic-page__right-bar__wiki__content {
-    display: grid;
-    grid-template-columns: 1fr 5fr;
-    grid-column-gap: 10px;
-}
-
-.fkp_diagnostic-page__right-bar__wiki__texts {}
 
 .fkp_diagnostic-page__right-bar__actions {
     border: 2px var(--background-color-low, lightgray) solid;

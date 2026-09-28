@@ -6,6 +6,7 @@ let core_ip = require("core.ip");
 let uci_core = require("core.uci");
 let runtime_dns = require("singbox.dns");
 let netstat = require("core.netstat");
+let dpi_strategy = require("core.dpi_strategy");
 
 const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || constants.FORKOP_CONFIG_NAME || "forkop";
 const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
@@ -806,42 +807,8 @@ function show_sing_box_config(visibility) {
     return 0;
 }
 
-// Derived, read-only view of a DPI rule's strategy: the provider, the name of
-// a known strategy (a catalog template or the provider default) and whether it
-// is custom. The raw option text stays admin-only.
-const DPI_STRATEGY_OPTIONS = { zapret: "nfqws_opt", zapret2: "nfqws2_opt", byedpi: "byedpi_cmd_opts" };
-
-function strategy_words(value) {
-    value = trim(replace(as_string(value), /[ \t\r\n]+/g, " "));
-    return value;
-}
-
-function dpi_strategy_view(source, catalog) {
-    let provider = as_string(source.action);
-    let raw = strategy_words(source[DPI_STRATEGY_OPTIONS[provider]]);
-    let defaults = {
-        zapret: [ constants.ZAPRET_DEFAULT_NFQWS_OPT, constants.ZAPRET_LEGACY_DEFAULT_NFQWS_OPT ],
-        zapret2: [ constants.ZAPRET2_DEFAULT_NFQWS2_OPT ],
-        byedpi: [ constants.BYEDPI_DEFAULT_CMD_OPTS ]
-    };
-    let strategy = "";
-    if (raw == "")
-        strategy = "default";
-    else {
-        for (let value in defaults[provider])
-            if (value != null && raw == strategy_words(value))
-                strategy = "default";
-        if (strategy == "" && provider == "zapret")
-            for (let entry in (catalog ? catalog.entries() : []))
-                if (entry.nfqws_opt != "" && raw == strategy_words(entry.nfqws_opt))
-                    strategy = entry.id;
-    }
-    return { dpi_provider: provider, dpi_strategy: strategy, dpi_strategy_custom: strategy == "" };
-}
-
 function get_readonly_config_sections() {
     let result = [];
-    let catalog = null;
     // Explicit allowlist: never return connection links, passwords, raw JSON or
     // subscription URLs through a read-only rpcd capability.
     let safe_keys = [ "action", "enabled", "interface", "interfaces", "label",
@@ -852,14 +819,10 @@ function get_readonly_config_sections() {
             for (let key in safe_keys)
                 if (source[key] != null)
                     item[key] = source[key];
-            if (DPI_STRATEGY_OPTIONS[as_string(source.action)] != null) {
-                if (catalog == null) {
-                    try { catalog = require("autotune.catalog"); }
-                    catch (e) { catalog = false; }
-                }
-                for (let key, value in dpi_strategy_view(source, catalog))
+            // DPI rules: provider and strategy name, never the raw options.
+            if (dpi_strategy.is_dpi_action(source.action))
+                for (let key, value in dpi_strategy.view(source))
                     item[key] = value;
-            }
             push(result, item);
         }
     }

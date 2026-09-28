@@ -77,14 +77,22 @@ import {
   validateTarget,
   type Target,
 } from '../connectivityMatrix';
-import { routeFacts, routeTraceFailureText } from '../routeDebugger';
+import {
+  dnsRow,
+  probeRow,
+  routeRow,
+  routeTraceFailureText,
+  siteConclusion,
+} from '../siteCheck';
 import { validationView } from '../dpiPlayground';
 import { checkStatus, eventStatus, healthStatus } from '../statusLabels';
 import {
-  checkDetailsOpen,
   diagnosticActionSummary,
+  renderCheckRow,
   renderCheckSection,
+  renderChecks,
 } from '../partials/renderCheckSection';
+import { checkAdvice, checkSummary, provenFacts } from '../checkCards';
 import { lastRunText, saveLastRun } from '../partials/renderRunAction';
 import { render } from '../renderDiagnostic';
 import { styles } from '../styles';
@@ -279,63 +287,92 @@ describe('route check', () => {
     ...overrides,
   });
 
-  it('shows only established facts, never permanent unknown rows', () => {
-    const facts = routeFacts(trace());
-    expect(facts.map((fact) => fact.label)).toEqual([
-      'Domain',
-      'Resolved IP',
-      'Router kernel route',
-    ]);
-    expect(facts.map((fact) => fact.value)).toEqual([
-      'example.org',
-      '93.184.216.34',
-      'pppoe-wan',
-    ]);
-    expect(JSON.stringify(facts)).not.toMatch(
-      /Unknown|unknown|Matched rule|Outbound/,
+  it('names the calculated route with the rule and DPI strategy', () => {
+    const row = routeRow(
+      trace({
+        rule: { value: 'YouTube', section: 'youtube', provenance: 'simulated' },
+        action: { value: 'zapret', provenance: 'simulated' },
+        outbound: { value: 'youtube-out', provenance: 'simulated' },
+        dpi: {
+          value: 'zapret',
+          strategy: 'multisplit',
+          strategy_custom: false,
+          provenance: 'configured',
+        },
+      }),
     );
+    expect(row).toMatchObject({
+      value: 'DPI · rule «YouTube» · Zapret · multisplit',
+      provenance: 'simulated',
+    });
+    expect(
+      routeRow(
+        trace({
+          rule: {
+            value: null,
+            provenance: 'simulated',
+            reason: 'no_rule_matched',
+          },
+          action: { value: 'direct', provenance: 'simulated' },
+        }),
+      ),
+    ).toMatchObject({ value: 'Direct', note: 'No rule matched' });
   });
 
-  it('describes an IP literal and an unresolved domain truthfully', () => {
-    const literal = routeFacts(
+  it('says why the route is not calculated instead of hiding it', () => {
+    const row = routeRow(
       trace({
-        target: { ...trace().target, value: '1.1.1.1' },
-        dns: { address: '1.1.1.1', provenance: 'simulated' },
+        rule: {
+          value: null,
+          provenance: 'unknown',
+          reason: 'source_scoped_rule',
+        },
       }),
     );
-    expect(literal.map((fact) => fact.label)).toEqual([
-      'IP address',
-      'Router kernel route',
-    ]);
-    const unresolved = routeFacts(
-      trace({
-        dns: { address: null, provenance: 'unknown' },
-        interface: { value: null, provenance: 'unknown' },
-      }),
-    );
-    expect(unresolved.map((fact) => [fact.label, fact.value])).toEqual([
-      ['Domain', 'example.org'],
-      ['Resolved IP', 'Not resolved'],
-    ]);
+    expect(row).toMatchObject({
+      value: 'Rule not calculated',
+      provenance: 'unknown',
+    });
+    expect(row.note).toContain('choose a device');
   });
 
-  it('keeps provenance of additional stages and never upgrades simulated', () => {
-    const facts = routeFacts(
-      trace({
-        outbound: { value: 'main', provenance: 'configured' },
-        rule: { value: 'ru-block', provenance: 'simulated' },
-        dpi: { value: 'zapret', provenance: 'observed' },
-      }),
+  it('marks DNS as observed and an IP literal as needing no DNS', () => {
+    expect(dnsRow(trace())).toMatchObject({
+      value: '93.184.216.34',
+      provenance: 'observed',
+    });
+    expect(
+      dnsRow(trace({ dns: { address: '198.18.0.5', provenance: 'observed' } }))
+        .value,
+    ).toBe('198.18.0.5 (FakeIP)');
+    expect(
+      dnsRow(trace({ dns: { address: null, provenance: 'unknown' } })),
+    ).toMatchObject({ value: 'Not resolved', tone: 'error' });
+    expect(
+      dnsRow(trace({ dns: { address: '1.1.1.1', provenance: 'simulated' } }))
+        .note,
+    ).toBe('An IP address needs no DNS');
+  });
+
+  it('concludes no more than the router established', () => {
+    const ok = { state: 'done' as const, result: result() };
+    const failed = {
+      state: 'done' as const,
+      result: result({ status: 'error', error: 'connect_failed' }),
+    };
+    expect(probeRow(ok).provenance).toBe('observed');
+    expect(siteConclusion(trace(), ok)).toContain('opens from the router');
+    const dpi = trace({ action: { value: 'zapret', provenance: 'simulated' } });
+    expect(siteConclusion(dpi, failed)).toContain('strategy does not work');
+    expect(siteConclusion(dpi, failed)).toContain(
+      'different path than devices',
     );
-    expect(facts.find((f) => f.label === 'Outbound')?.note).toBe(
-      'Derived from configuration',
-    );
-    expect(facts.find((f) => f.label === 'Matched rule')?.note).toBe(
-      'Calculated result',
-    );
-    expect(facts.find((f) => f.label === 'DPI provider')?.note).toBe(
-      'Seen in an active connection',
-    );
+    expect(
+      siteConclusion(
+        trace({ dns: { address: null, provenance: 'unknown' } }),
+        ok,
+      ),
+    ).toContain('does not resolve');
   });
 });
 
@@ -400,28 +437,78 @@ describe('DPI syntax check', () => {
 });
 
 describe('system checks', () => {
-  it('renders a compact item with a localized status and opens details on problems', () => {
-    const failed = renderCheckSection({
-      order: 1,
-      code: 'DNS',
-      title: 'DNS checks',
-      description: 'Checks failed',
-      state: 'error',
-      items: [{ key: 'Bootstrap', value: 'timeout', state: 'error' }],
+  const handlers = { onRetry: vi.fn(), busy: false };
+  const dnsFailed = {
+    order: 1,
+    code: 'DNS',
+    title: 'DNS checks',
+    description: 'Checks failed',
+    state: 'error' as const,
+    items: [
+      { key: 'Bootstrap', value: 'timeout', state: 'error' as const },
+      { key: 'Main DNS', value: 'ok', state: 'success' as const },
+    ],
+  };
+
+  it('explains a failed check: meaning, proof and what to do', () => {
+    const card = renderCheckSection(dnsFailed, handlers);
+    const body = text(card);
+    for (const heading of ['What it means', 'What was proven', 'What to do'])
+      expect(body).toContain(heading);
+    expect(provenFacts(dnsFailed)).toEqual(['Bootstrap: timeout']);
+    expect(checkAdvice(dnsFailed)?.link).toBe('settings');
+    expect(checkAdvice({ ...dnsFailed, state: 'success' })).toBeNull();
+    expect(
+      provenFacts({
+        ...dnsFailed,
+        items: [{ key: 'Package missing', value: '', state: 'error' }],
+      }),
+    ).toEqual(['Package missing']);
+  });
+
+  it('does not blame devices when the FakeIP check could not run', () => {
+    const fakeip = {
+      ...dnsFailed,
+      code: 'FAKEIP',
+      state: 'warning' as const,
+      description: 'Browser FakeIP check could not be completed',
+    };
+    expect(checkAdvice(fakeip)?.meaning).toContain('not proven');
+    expect(
+      checkAdvice({ ...fakeip, description: 'Checks failed' })?.meaning,
+    ).toContain('bypass the router DNS');
+  });
+
+  it('retries only the failed check', () => {
+    const card = renderCheckSection(dnsFailed, handlers);
+    let retry: FakeNode | undefined;
+    walk(card, (n) => {
+      if (n.tag === 'button' && text(n).includes('Retry this check')) retry = n;
     });
-    expect(text(failed)).toContain('Error');
-    let details: FakeNode | undefined;
-    walk(failed, (n) => n.tag === 'details' && (details = n));
-    expect(details?.attrs.open).toBe(true);
-    expect(checkDetailsOpen('success')).toBe(false);
-    const idle = renderCheckSection({
-      order: 1,
-      code: 'DNS',
-      title: 'DNS checks',
-      description: 'Not running',
-      state: 'skipped',
-      items: [],
+    (retry?.attrs.click as () => void)();
+    expect(handlers.onRetry).toHaveBeenCalledWith('DNS');
+    let busyRetry: FakeNode | undefined;
+    walk(renderCheckSection(dnsFailed, { ...handlers, busy: true }), (n) => {
+      if (n.tag === 'button' && text(n).includes('Retry this check'))
+        busyRetry = n;
     });
+    expect(busyRetry?.attrs.disabled).toBe(true);
+  });
+
+  it('puts problems first and folds passed checks', () => {
+    const passed = {
+      ...dnsFailed,
+      code: 'NFT',
+      order: 3,
+      state: 'success' as const,
+    };
+    const nodes = renderChecks([passed, dnsFailed], handlers);
+    expect(text(nodes[0])).toBe('Errors: 1 · Passed: 1');
+    expect(text(nodes[1])).toContain('What it means');
+    expect((nodes[2] as unknown as FakeNode).tag).toBe('details');
+    expect(text(nodes[2])).toContain('Passed checks: 1');
+    expect(checkSummary([passed]).text).toBe('Passed: 1');
+    const idle = renderCheckRow({ ...dnsFailed, state: 'skipped', items: [] });
     expect(text(idle)).toContain('Not checked');
     walk(idle, (n) => expect(n.tag).not.toBe('details'));
   });
@@ -452,15 +539,18 @@ describe('page layout', () => {
     expect((page as unknown as FakeNode).attrs.class).toBe('fkp-diag');
     for (const id of [
       'fkp_diagnostic-page-checks',
+      'fkp_diagnostic-run-reason',
+      'site-check-target',
+      'site-check-device',
       'connectivity-rows',
-      'trace-target',
+      'technical-data',
       'dpi-strategy',
     ])
       expect(found).toContain(id);
     for (const id of [
-      'trace-source',
-      'trace-protocol',
-      'trace-port',
+      'trace-target',
+      'route-debugger',
+      'fkp_diagnostic-page-wiki',
       'dpi-strategy-a',
       'dpi-strategy-b',
     ])
@@ -485,7 +575,7 @@ describe('unsupported checks and responsive layout', () => {
       text: 'Not available for checking',
       tone: 'neutral',
     });
-    const node = renderCheckSection({
+    const node = renderCheckRow({
       order: 8,
       code: 'OUTBOUNDS',
       title: 'Outbounds checks',
@@ -526,14 +616,17 @@ describe('unsupported checks and responsive layout', () => {
 
 describe('copy over plain HTTP', () => {
   it('copies failed check details through the execCommand helper', () => {
-    const node = renderCheckSection({
-      order: 1,
-      code: 'DNS',
-      title: 'DNS checks',
-      description: 'Checks failed',
-      state: 'error',
-      items: [{ key: 'Bootstrap', value: 'timeout', state: 'error' }],
-    });
+    const node = renderCheckSection(
+      {
+        order: 1,
+        code: 'DNS',
+        title: 'DNS checks',
+        description: 'Checks failed',
+        state: 'error',
+        items: [{ key: 'Bootstrap', value: 'timeout', state: 'error' }],
+      },
+      { onRetry: () => {}, busy: false },
+    );
     let copy: FakeNode | undefined;
     walk(node, (n) => {
       if (n.tag === 'button' && text(n).includes('Copy details')) copy = n;

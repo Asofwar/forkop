@@ -2,6 +2,13 @@
 
 let fs = require("fs");
 let ip = require("core.ip");
+let constants = require("core.constants");
+let uci_core = require("core.uci");
+let route_owner = require("core.route_owner");
+let dpi_strategy = require("core.dpi_strategy");
+
+const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || constants.FORKOP_CONFIG_NAME || "forkop";
+const LEGACY_CONNECTION_ACTIONS = [ "proxy", "outbound", "vpn" ];
 
 function value(v) { return v == null ? "" : "" + v; }
 function quote(v) { return "'" + replace(value(v), /'/g, "'\\''") + "'"; }
@@ -46,6 +53,62 @@ function route_interface(text) {
     let matched = match(" " + text, /[ \t]dev[ \t]+([A-Za-z0-9_.:-]+)/);
     return matched != null && length(matched[1]) <= 32 ? matched[1] : "";
 }
+function read_json(path) {
+    let data = path == "" ? null : fs.readfile(path);
+    try { return data == null ? null : json(data); } catch (e) { return null; }
+}
+
+// The Forkop rule, action, outbound and DPI strategy the generated sing-box
+// config assigns to this connection. Calculated, not observed: Monitoring
+// shows what real connections did.
+function config_route(target, address, source, protocol, port) {
+    let unknown = (reason) => ({
+        rule: { value: null, provenance: "unknown", reason },
+        action: { value: null, provenance: "unknown" },
+        outbound: { value: null, provenance: "unknown" },
+        dpi: { value: null, provenance: "unknown" }
+    });
+    if (!uci_core.available()) return unknown("config_unavailable");
+    let sections = uci_core.section_objects(CONFIG_NAME, "section") || [];
+    let config_path = value(uci_core.get(CONFIG_NAME + ".settings.config_path")) || "/etc/sing-box/config.json";
+    let literal = ip.valid_ip(target);
+    let owner = route_owner.resolve(read_json(config_path), filter(sections, (s) => value(s.enabled) != "0"), {
+        host: literal ? "" : lc(target),
+        ip: literal ? target : address,
+        fakeip: address != "" && route_owner.is_fakeip(address),
+        network: lc(protocol),
+        port: port == "" ? 443 : int(port),
+        source
+    }, {
+        tproxy_inbound: constants.SB_TPROXY_INBOUND_TAG || "tproxy-in",
+        direct: constants.SB_DIRECT_OUTBOUND_TAG || "direct-out",
+        bypass: constants.SB_BYPASS_OUTBOUND_TAG || "bypass-out"
+    });
+    if (!owner.decided) return unknown(owner.reason);
+
+    let result = unknown(null);
+    let calculated = (v) => ({ value: v, provenance: "simulated" });
+    result.outbound = calculated(owner.outbound || null);
+    if (owner.kind == "rule") {
+        let action = value(owner.section.action);
+        if (index(LEGACY_CONNECTION_ACTIONS, action) >= 0) action = "connection";
+        result.rule = { value: value(owner.section.label) || owner.section[".name"],
+            section: owner.section[".name"], provenance: "simulated" };
+        result.action = calculated(action);
+        if (dpi_strategy.is_dpi_action(action)) {
+            let view = dpi_strategy.view(owner.section);
+            result.dpi = { value: view.dpi_provider, strategy: view.dpi_strategy,
+                strategy_custom: view.dpi_strategy_custom, provenance: "configured" };
+        }
+    }
+    else {
+        // No Forkop rule of its own: bypass list, block, or no rule matched.
+        result.rule = { value: null, provenance: "simulated", reason: owner.kind == "direct" ? "no_rule_matched" : owner.kind };
+        result.action = calculated(owner.kind);
+    }
+    return result;
+}
+
 function trace(target, source, protocol, port, resolve, route) {
     target = value(target); source = value(source); protocol = value(protocol); port = value(port);
     if (!valid_target(target) || (source != "" && !ip.valid_ip(source)) ||
@@ -53,13 +116,15 @@ function trace(target, source, protocol, port, resolve, route) {
         return { error: "invalid_input" };
     let address = ip.valid_ip(target) ? target : parse_address(resolve(target));
     let interface_name = address == "" ? "" : route(address);
+    let routed = config_route(target, address, source, protocol, port);
     return {
-        target: { value: target, source, source_applied: false, protocol, port, provenance: "simulated" },
+        // A source address narrows source-scoped rules (source_ip_cidr).
+        target: { value: target, source, source_applied: source != "", protocol, port, provenance: "simulated" },
         dns: { address: address || null, provenance: !address ? "unknown" : ip.valid_ip(target) ? "simulated" : "observed" },
-        rule: { value: null, provenance: "unknown" },
-        action: { value: null, provenance: "unknown" },
-        outbound: { value: null, provenance: "unknown" },
-        dpi: { value: null, provenance: "unknown" },
+        rule: routed.rule,
+        action: routed.action,
+        outbound: routed.outbound,
+        dpi: routed.dpi,
         interface: { value: interface_name || null, provenance: interface_name ? "observed" : "unknown", context: "router" },
         runtime: { value: null, provenance: "unknown" }
     };

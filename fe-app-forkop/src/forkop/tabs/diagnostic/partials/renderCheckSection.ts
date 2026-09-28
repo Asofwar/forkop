@@ -13,10 +13,23 @@ import { copyToClipboard } from '../../../../helpers/copyToClipboard';
 import { openForkopPage } from '../../../helpers/navigation';
 import { isReadonlyMode } from '../../../services/accessMode.service';
 import { checkStatus, renderStatusBadge } from '../statusLabels';
+import {
+  checkAdvice,
+  checkSummary,
+  groupChecks,
+  provenFacts,
+  type AdviceLink,
+} from '../checkCards';
 
-type IRenderCheckSectionProps = IDiagnosticsChecksStoreItem;
+type Check = IDiagnosticsChecksStoreItem;
 
-export function diagnosticActionSummary(props: IRenderCheckSectionProps) {
+export interface CheckHandlers {
+  onRetry: (code: string) => void;
+  // A full run or another retry is in progress.
+  busy: boolean;
+}
+
+export function diagnosticActionSummary(props: Check) {
   return [
     props.title,
     props.description,
@@ -24,47 +37,7 @@ export function diagnosticActionSummary(props: IRenderCheckSectionProps) {
   ].join('\n');
 }
 
-function renderRecoveryActions(props: IRenderCheckSectionProps) {
-  return E('div', { class: 'fkp-check__actions' }, [
-    E(
-      'button',
-      {
-        type: 'button',
-        class: 'btn cbi-button',
-        click: () =>
-          document
-            .querySelector<HTMLElement>('#fkp_diagnostic-page-run-check button')
-            ?.click(),
-      },
-      _('Retry'),
-    ),
-    // Read-only sessions have no Settings page.
-    !isReadonlyMode()
-      ? E(
-          'button',
-          {
-            type: 'button',
-            class: 'btn cbi-button',
-            click: () => openForkopPage('settings'),
-          },
-          _('Open settings'),
-        )
-      : '',
-    E(
-      'button',
-      {
-        type: 'button',
-        class: 'btn cbi-button',
-        click: () =>
-          // navigator.clipboard needs a secure context; LuCI is usually plain HTTP.
-          copyToClipboard(diagnosticActionSummary(props)),
-      },
-      _('Copy details'),
-    ),
-  ]);
-}
-
-function itemIcon(state: IRenderCheckSectionProps['items'][number]['state']) {
+function itemIcon(state: Check['items'][number]['state']) {
   const icon = E('span', { class: 'fkp-check__item-icon' });
   if (state === 'success') icon.appendChild(renderCheckIcon24());
   if (state === 'warning') icon.appendChild(renderTriangleAlertIcon24());
@@ -72,7 +45,7 @@ function itemIcon(state: IRenderCheckSectionProps['items'][number]['state']) {
   return icon;
 }
 
-function stateIcon(state: IRenderCheckSectionProps['state']) {
+function stateIcon(state: Check['state']) {
   switch (state) {
     case 'success':
       return renderCircleCheckIcon24();
@@ -87,49 +60,153 @@ function stateIcon(state: IRenderCheckSectionProps['state']) {
   }
 }
 
-export function checkDetailsOpen(state: IRenderCheckSectionProps['state']) {
+export function checkDetailsOpen(state: Check['state']) {
   return state === 'error' || state === 'warning';
 }
 
-export function renderCheckSection(props: IRenderCheckSectionProps) {
-  const status = checkStatus(props.state);
+function renderHead(props: Check) {
   const icon = E('span', { class: 'fkp-check__icon' });
   icon.appendChild(stateIcon(props.state));
-  const hasDetails = props.items.length > 0 || checkDetailsOpen(props.state);
-  return E('div', { class: `fkp-check fkp-check--${status.tone}` }, [
-    E('div', { class: 'fkp-check__head' }, [
-      icon,
-      E('b', { class: 'fkp-check__title' }, props.title),
-      renderStatusBadge(status),
+  return E('div', { class: 'fkp-check__head' }, [
+    icon,
+    E('b', { class: 'fkp-check__title' }, props.title),
+    renderStatusBadge(checkStatus(props.state)),
+  ]);
+}
+
+function renderItems(props: Check) {
+  return props.items.map((item) =>
+    E('div', { class: `fkp-check__item fkp-diag-text--${item.state}` }, [
+      itemIcon(item.state),
+      E('b', {}, item.key),
+      E('span', {}, item.value),
     ]),
-    // An unsupported check explains why instead of pretending to have run.
-    props.state === 'unsupported'
-      ? E('div', { class: 'fkp-check__description' }, props.description)
-      : '',
-    hasDetails
-      ? E(
-          'details',
-          {
-            class: 'fkp-check__details',
-            open: checkDetailsOpen(props.state) || undefined,
-          },
-          [
-            E('summary', {}, _('Details')),
-            E('div', { class: 'fkp-check__description' }, props.description),
-            ...props.items.map((item) =>
+  );
+}
+
+function adviceLink(link: AdviceLink | undefined) {
+  // Read-only sessions have no Settings page and cannot restart the service.
+  if (!link || (isReadonlyMode() && link !== 'nodes')) return '';
+  const [label, open] =
+    link === 'settings'
+      ? [_('Open settings'), () => openForkopPage('settings')]
+      : link === 'nodes'
+        ? [
+            _('Nodes and groups'),
+            () => openForkopPage('monitoring', { view: 'nodes' }),
+          ]
+        : [_('Overview'), () => openForkopPage('overview')];
+  return E('button', { type: 'button', class: 'btn cbi-button', click: open }, [
+    label,
+  ]);
+}
+
+// Error or warning: what it means, what was proven, what to do.
+export function renderCheckSection(props: Check, handlers: CheckHandlers) {
+  const status = checkStatus(props.state);
+  const advice = checkAdvice(props);
+  return E('div', { class: `fkp-check fkp-check--${status.tone}` }, [
+    renderHead(props),
+    ...(advice
+      ? [
+          E('dl', { class: 'fkp-check__advice' }, [
+            E('dt', {}, _('What it means')),
+            E('dd', {}, advice.meaning),
+            E('dt', {}, _('What was proven')),
+            E(
+              'dd',
+              {},
               E(
-                'div',
-                { class: `fkp-check__item fkp-diag-text--${item.state}` },
-                [
-                  itemIcon(item.state),
-                  E('b', {}, item.key),
-                  E('span', {}, item.value),
-                ],
+                'ul',
+                {},
+                provenFacts(props).map((fact) => E('li', {}, fact)),
               ),
             ),
-            checkDetailsOpen(props.state) ? renderRecoveryActions(props) : '',
-          ],
-        )
+            E('dt', {}, _('What to do')),
+            E('dd', {}, advice.action),
+          ]),
+        ]
+      : [E('div', { class: 'fkp-check__description' }, props.description)]),
+    E('div', { class: 'fkp-check__actions' }, [
+      E(
+        'button',
+        {
+          type: 'button',
+          class: 'btn cbi-button',
+          disabled: handlers.busy ? true : undefined,
+          click: () => handlers.onRetry(props.code),
+        },
+        _('Retry this check'),
+      ),
+      adviceLink(advice?.link),
+      E(
+        'button',
+        {
+          type: 'button',
+          class: 'btn cbi-button',
+          click: () =>
+            // navigator.clipboard needs a secure context; LuCI is usually plain HTTP.
+            copyToClipboard(diagnosticActionSummary(props)),
+        },
+        _('Copy details'),
+      ),
+    ]),
+    props.items.length
+      ? E('details', { class: 'fkp-check__details' }, [
+          E('summary', {}, _('All check results')),
+          E('div', { class: 'fkp-check__description' }, props.description),
+          ...renderItems(props),
+        ])
       : '',
   ]);
+}
+
+// Passed, pending, running or unavailable: one compact line, details folded.
+export function renderCheckRow(props: Check) {
+  const status = checkStatus(props.state);
+  return E(
+    'div',
+    { class: `fkp-check fkp-check--compact fkp-check--${status.tone}` },
+    [
+      renderHead(props),
+      // An unsupported check explains why instead of pretending to have run.
+      props.state === 'unsupported'
+        ? E('div', { class: 'fkp-check__description' }, props.description)
+        : '',
+      props.state === 'success' && props.items.length
+        ? E('details', { class: 'fkp-check__details' }, [
+            E('summary', {}, _('Details')),
+            E('div', { class: 'fkp-check__description' }, props.description),
+            ...renderItems(props),
+          ])
+        : '',
+    ],
+  );
+}
+
+export function renderChecks(checks: Check[], handlers: CheckHandlers) {
+  const groups = groupChecks(checks);
+  const summary = checkSummary(checks);
+  return [
+    ...(summary.text
+      ? [E('p', { class: 'fkp-diag-summary', role: 'status' }, summary.text)]
+      : []),
+    ...groups.attention.map((check) => renderCheckSection(check, handlers)),
+    ...groups.other.map(renderCheckRow),
+    ...(groups.passed.length
+      ? [
+          E('details', { class: 'fkp-check-passed' }, [
+            E(
+              'summary',
+              {},
+              _('Passed checks: %d').replace(
+                '%d',
+                String(groups.passed.length),
+              ),
+            ),
+            ...groups.passed.map(renderCheckRow),
+          ]),
+        ]
+      : []),
+  ];
 }

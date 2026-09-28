@@ -50,6 +50,11 @@ export namespace Forkop {
     address?: string | null;
     provenance: 'observed' | 'configured' | 'simulated' | 'unknown';
     context?: string;
+    // Why a stage is not determined, or what decided it (route_trace).
+    reason?: string | null;
+    section?: string;
+    strategy?: string;
+    strategy_custom?: boolean;
   }
   export interface RouteTrace {
     target: RouteTraceStage & {

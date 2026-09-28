@@ -157,6 +157,42 @@ describe('getDashboardSections', () => {
     mocks.canUseDirectClashApi.mockReturnValue(false);
   });
 
+  it('shows a runtime group to a read-only session without link lists', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      {
+        '.name': 'main',
+        '.type': 'section',
+        enabled: '1',
+        action: 'connection',
+        label: 'Main',
+      },
+    ]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'main-out': proxy('Selector', {
+            name: 'main-out',
+            now: 'main-2-out',
+            all: ['main-1-out', 'main-2-out'],
+          }),
+          'main-1-out': proxy('VLESS', { name: 'main-1-out' }),
+          'main-2-out': proxy('VLESS', { name: 'main-2-out' }),
+        },
+      },
+    });
+
+    const [section] = (await getDashboardSections()).data;
+
+    expect(section.withTagSelect).toBe(true);
+    expect(section.outbounds.map((item) => [item.code, item.selected])).toEqual(
+      [
+        ['main-1-out', false],
+        ['main-2-out', true],
+      ],
+    );
+  });
+
   it('shows the full selector group by default', async () => {
     mocks.getConfigSections.mockResolvedValue([proxySection()]);
 

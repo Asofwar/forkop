@@ -94,6 +94,43 @@ export const styles = `
     gap: var(--fkp-space-2);
     min-width: 0;
 }
+.fkp-menu {
+    position: relative;
+    display: inline-block;
+}
+.fkp-menu > summary {
+    list-style: none;
+    cursor: pointer;
+    min-width: 32px;
+    text-align: center;
+}
+.fkp-menu > summary::-webkit-details-marker { display: none; }
+.fkp-menu__list {
+    position: absolute;
+    right: 0;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    min-width: max-content;
+    max-width: min(320px, 90vw);
+    margin-top: var(--fkp-space-1);
+    padding: var(--fkp-space-1) 0;
+    border: 1px solid var(--fkp-border);
+    border-radius: 6px;
+    background: var(--background-color-high, #fff);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+.fkp-menu__item {
+    padding: var(--fkp-space-2) var(--fkp-space-4);
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    white-space: normal;
+    cursor: pointer;
+}
+.fkp-menu__item:hover:not([disabled]) { background: var(--background-color-medium, rgba(127,127,127,0.12)); }
+.fkp-menu__item[disabled] { opacity: 0.5; cursor: default; }
 .fkp-action-danger-text {
     color: var(--fkp-tone-error) !important;
 }

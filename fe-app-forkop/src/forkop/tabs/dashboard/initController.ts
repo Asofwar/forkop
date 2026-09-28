@@ -5,7 +5,6 @@ import {
   preserveScrollForPage,
 } from '../../../helpers';
 import { showToast } from '../../../helpers/showToast';
-import { prettyBytes } from '../../../helpers/prettyBytes';
 import { CustomForkopMethods, ForkopShellMethods } from '../../methods';
 import {
   logger,
@@ -21,7 +20,6 @@ import {
   getLatencyTestLabel,
   renderFlagEmojis,
   renderSections,
-  renderWidget,
 } from './partials';
 import { fetchServicesInfo } from '../../fetchers/fetchServicesInfo';
 import { getClashApiSecret } from '../../methods/custom/getClashApiSecret';
@@ -36,7 +34,23 @@ import { isTransientRpcError } from '../../helpers/isTransientRpcError';
 import { shouldShowLoadingForRestoredAction } from '../../helpers/restoredActionLoading';
 import { getServiceAvailability } from '../../helpers/serviceAvailability';
 import { createPriorityMembersState } from './priorityMembersState';
-import { renderHealth } from './health';
+import {
+  overviewLastEvent,
+  overviewRecovery,
+  overviewRouting,
+  overviewState,
+  overviewWarning,
+  type OverviewInput,
+} from './overview';
+import { renderOverview } from './overviewCards';
+import { readLastRun } from '../diagnostic/partials/renderRunAction';
+import { serviceActionErrorText } from '../diagnostic/serviceTransition';
+import {
+  confirmStopForkop,
+  runForkopServiceAction,
+  setForkopAutostart,
+  type ForkopServiceAction,
+} from '../shared/serviceControl';
 import {
   ConnectionsSample,
   sampleFromConnections,
@@ -52,13 +66,131 @@ const LATENCY_TEST_BUTTON_LABEL_CLASS =
 let sectionsRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let healthRefreshTimer: ReturnType<typeof setInterval> | null = null;
 
+let overviewHealth: Forkop.HealthStatus | null = null;
+let overviewRuleCount: number | null = null;
+let overviewSnapshotCount: number | null = null;
+let overviewServiceBusy = false;
+
 async function refreshHealth(mountId: number) {
   const response = await ForkopShellMethods.getHealthStatus();
   if (!dashboardMounted || mountId !== dashboardMountId) return;
-  const container = document.getElementById('dashboard-health');
-  if (container && response.success && response.data)
-    container.replaceChildren(renderHealth(response.data));
-  else if (container) container.textContent = _('Health status unavailable');
+  overviewHealth = response.success && response.data ? response.data : null;
+  renderOverviewCards();
+}
+
+// Rule and snapshot counts change rarely; read them once per visit.
+async function loadOverviewCounts(mountId: number) {
+  const [sections, snapshots] = await Promise.allSettled([
+    CustomForkopMethods.getConfigSections(),
+    ForkopShellMethods.snapshotList(),
+  ]);
+  if (!dashboardMounted || mountId !== dashboardMountId) return;
+
+  overviewRuleCount =
+    sections.status === 'fulfilled'
+      ? sections.value.filter(
+          (section) =>
+            section['.type'] === 'section' && section.enabled !== '0',
+        ).length
+      : null;
+  overviewSnapshotCount =
+    snapshots.status === 'fulfilled' &&
+    snapshots.value.success &&
+    Array.isArray(snapshots.value.data)
+      ? snapshots.value.data.length
+      : null;
+  renderOverviewCards();
+}
+
+function overviewInput(): OverviewInput {
+  const state = store.get();
+  const services = state.servicesInfoWidget;
+  const bandwidth = state.bandwidthWidget;
+  const systemInfo = state.systemInfoWidget;
+
+  return {
+    health: overviewHealth,
+    availability: getDashboardServiceAvailability(),
+    forkopEnabled: Boolean(services.data.forkopEnabled),
+    singBoxRunning: Boolean(services.data.singbox),
+    groups: state.sectionsWidget.data,
+    ruleCount: overviewRuleCount,
+    traffic:
+      !bandwidth.loading && !bandwidth.failed
+        ? { up: bandwidth.data.up, down: bandwidth.data.down }
+        : null,
+    connections:
+      !systemInfo.loading && !systemInfo.failed
+        ? systemInfo.data.connections
+        : null,
+    snapshotCount: overviewSnapshotCount,
+    lastDiagnosticRun: readLastRun(localStorage),
+    nowMs: Date.now(),
+  };
+}
+
+async function handleServiceAction(action: ForkopServiceAction) {
+  if (overviewServiceBusy) return;
+  if (action === 'stop' && !(await confirmStopForkop())) return;
+
+  overviewServiceBusy = true;
+  renderOverviewCards();
+  try {
+    await runForkopServiceAction(action);
+  } catch (error) {
+    showToast(serviceActionErrorText(error), 'error', 6000);
+  } finally {
+    overviewServiceBusy = false;
+    await refreshRuntimeUiState({ force: true });
+    renderOverviewCards();
+  }
+}
+
+async function handleToggleAutostart() {
+  if (overviewServiceBusy) return;
+  const wanted = !store.get().servicesInfoWidget.data.forkopEnabled;
+
+  overviewServiceBusy = true;
+  renderOverviewCards();
+  try {
+    if ((await setForkopAutostart(wanted)) !== wanted) {
+      showToast(_('Could not change autostart'), 'error', 6000);
+    }
+  } catch (_error) {
+    showToast(_('Could not change autostart'), 'error', 6000);
+  } finally {
+    overviewServiceBusy = false;
+    renderOverviewCards();
+  }
+}
+
+function renderOverviewCards() {
+  const container = document.getElementById('dashboard-overview');
+  if (!container || !dashboardMounted) return;
+
+  const input = overviewInput();
+  const view = renderOverview(
+    {
+      warning: overviewWarning(input.health),
+      state: overviewState(input),
+      routing: overviewRouting(input),
+      recovery: overviewRecovery(input),
+      event: overviewLastEvent(input),
+    },
+    {
+      readonly: isReadonlyMode(),
+      serviceBusy: overviewServiceBusy,
+      autostart: input.forkopEnabled,
+      onStart: () => void handleServiceAction('start'),
+      onRestart: () => void handleServiceAction('restart'),
+      onStop: () => void handleServiceAction('stop'),
+      onToggleAutostart: () => void handleToggleAutostart(),
+    },
+  );
+
+  // Keep an open service menu open across data refreshes.
+  if (container.querySelector('.fkp-menu[open]')) return;
+  preserveScrollForPage(() => container.replaceChildren(view));
 }
 let sectionsRefreshPromise: Promise<boolean> | null = null;
 let sectionsRefreshQueued = false;
@@ -1762,174 +1894,6 @@ async function renderSectionsWidget() {
   });
 }
 
-async function renderBandwidthWidget() {
-  logger.debug('[DASHBOARD]', 'renderBandwidthWidget');
-  const traffic = store.get().bandwidthWidget;
-
-  const container = document.getElementById('dashboard-widget-traffic');
-
-  if (!container) {
-    return;
-  }
-
-  if (traffic.loading || traffic.failed) {
-    const renderedWidget = renderWidget({
-      loading: traffic.loading,
-      failed: traffic.failed,
-      title: '',
-      items: [],
-    });
-
-    return container.replaceChildren(renderedWidget);
-  }
-
-  const renderedWidget = renderWidget({
-    loading: traffic.loading,
-    failed: traffic.failed,
-    title: _('Traffic'),
-    items: [
-      { key: _('Uplink'), value: `${prettyBytes(traffic.data.up)}/s` },
-      { key: _('Downlink'), value: `${prettyBytes(traffic.data.down)}/s` },
-    ],
-  });
-
-  container.replaceChildren(renderedWidget);
-}
-
-async function renderTrafficTotalWidget() {
-  logger.debug('[DASHBOARD]', 'renderTrafficTotalWidget');
-  const trafficTotalWidget = store.get().trafficTotalWidget;
-
-  const container = document.getElementById('dashboard-widget-traffic-total');
-
-  if (!container) {
-    return;
-  }
-
-  if (trafficTotalWidget.loading || trafficTotalWidget.failed) {
-    const renderedWidget = renderWidget({
-      loading: trafficTotalWidget.loading,
-      failed: trafficTotalWidget.failed,
-      title: '',
-      items: [],
-    });
-
-    return container.replaceChildren(renderedWidget);
-  }
-
-  const renderedWidget = renderWidget({
-    loading: trafficTotalWidget.loading,
-    failed: trafficTotalWidget.failed,
-    title: _('Traffic Total'),
-    items: [
-      {
-        key: _('Uplink'),
-        value: String(prettyBytes(trafficTotalWidget.data.uploadTotal)),
-      },
-      {
-        key: _('Downlink'),
-        value: String(prettyBytes(trafficTotalWidget.data.downloadTotal)),
-      },
-    ],
-  });
-
-  container.replaceChildren(renderedWidget);
-}
-
-async function renderSystemInfoWidget() {
-  logger.debug('[DASHBOARD]', 'renderSystemInfoWidget');
-  const systemInfoWidget = store.get().systemInfoWidget;
-
-  const container = document.getElementById('dashboard-widget-system-info');
-
-  if (!container) {
-    return;
-  }
-
-  if (systemInfoWidget.loading || systemInfoWidget.failed) {
-    const renderedWidget = renderWidget({
-      loading: systemInfoWidget.loading,
-      failed: systemInfoWidget.failed,
-      title: '',
-      items: [],
-    });
-
-    return container.replaceChildren(renderedWidget);
-  }
-
-  const renderedWidget = renderWidget({
-    loading: systemInfoWidget.loading,
-    failed: systemInfoWidget.failed,
-    title: _('System info'),
-    items: [
-      {
-        key: _('Active Connections'),
-        value: String(systemInfoWidget.data.connections),
-      },
-      {
-        key: _('Memory Usage'),
-        value: String(prettyBytes(systemInfoWidget.data.memory)),
-      },
-    ],
-  });
-
-  container.replaceChildren(renderedWidget);
-}
-
-async function renderServicesInfoWidget() {
-  logger.debug('[DASHBOARD]', 'renderServicesInfoWidget');
-  const servicesInfoWidget = store.get().servicesInfoWidget;
-
-  const container = document.getElementById('dashboard-widget-service-info');
-
-  if (!container) {
-    return;
-  }
-
-  if (servicesInfoWidget.loading || servicesInfoWidget.failed) {
-    const renderedWidget = renderWidget({
-      loading: servicesInfoWidget.loading,
-      failed: servicesInfoWidget.failed,
-      title: '',
-      items: [],
-    });
-
-    return container.replaceChildren(renderedWidget);
-  }
-
-  const renderedWidget = renderWidget({
-    loading: servicesInfoWidget.loading,
-    failed: servicesInfoWidget.failed,
-    title: _('Services info'),
-    items: [
-      {
-        key: 'Forkop',
-        value: servicesInfoWidget.data.forkopRunning
-          ? _('✔ Running')
-          : _('✘ Stopped'),
-        attributes: {
-          class: servicesInfoWidget.data.forkopRunning
-            ? 'fkp_dashboard-page__widgets-section__item__row--success'
-            : 'fkp_dashboard-page__widgets-section__item__row--error',
-        },
-      },
-      {
-        key: 'Sing-box',
-        value: servicesInfoWidget.data.singbox
-          ? _('✔ Running')
-          : _('✘ Stopped'),
-        attributes: {
-          class: servicesInfoWidget.data.singbox
-            ? 'fkp_dashboard-page__widgets-section__item__row--success'
-            : 'fkp_dashboard-page__widgets-section__item__row--error',
-        },
-      },
-    ],
-  });
-
-  container.replaceChildren(renderedWidget);
-}
-
 async function onStoreUpdate(
   next: StoreType,
   prev: StoreType,
@@ -1947,21 +1911,17 @@ async function onStoreUpdate(
     }
   }
 
-  if (diff.bandwidthWidget) {
-    renderBandwidthWidget();
-  }
-
-  if (diff.trafficTotalWidget) {
-    renderTrafficTotalWidget();
-  }
-
-  if (diff.systemInfoWidget) {
-    renderSystemInfoWidget();
-  }
-
   if (diff.servicesInfoWidget) {
     syncDashboardServiceAvailability();
-    renderServicesInfoWidget();
+  }
+
+  if (
+    diff.bandwidthWidget ||
+    diff.systemInfoWidget ||
+    diff.servicesInfoWidget ||
+    diff.sectionsWidget
+  ) {
+    renderOverviewCards();
   }
 }
 
@@ -1992,11 +1952,9 @@ async function onPageMount() {
   store.subscribe(onStoreUpdate);
   startActionStateWatcher();
   void renderSectionsWidget();
-  void renderBandwidthWidget();
-  void renderTrafficTotalWidget();
-  void renderSystemInfoWidget();
-  void renderServicesInfoWidget();
+  void loadOverviewCounts(mountId);
   syncDashboardServiceAvailability();
+  renderOverviewCards();
 
   if (hasRuntimeSnapshot) {
     void refreshRuntimeUiState({ force: true });

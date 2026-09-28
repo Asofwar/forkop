@@ -257,6 +257,22 @@ export function eventOutcomeView(outcome: EventOutcome): {
   }
 }
 
+// What a recorded event was about (diagnostics/health.uc event kinds).
+export function eventKindLabel(kind: string): string {
+  switch (kind) {
+    case 'start':
+      return _('Start');
+    case 'reload':
+      return _('Configuration reload');
+    case 'restore':
+      return _('Snapshot restore');
+    case 'recovery':
+      return _('Recovery');
+    default:
+      return _('Other event');
+  }
+}
+
 // Where a route or strategy fact comes from. Always shown next to the fact.
 export type Provenance = 'observed' | 'configured' | 'simulated' | 'unknown';
 

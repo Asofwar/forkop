@@ -1,5 +1,4 @@
-import { renderSections, renderWidget } from './partials';
-import { renderStartServiceAction } from '../shared/startService';
+import { renderSections } from './partials';
 
 export function render() {
   return E(
@@ -11,67 +10,17 @@ export function render() {
     [
       E(
         'div',
-        {
-          class: 'fkp_dashboard-page__service-stopped',
-          role: 'status',
-        },
-        [
-          E(
-            'span',
-            {},
-            _(
-              'Forkop service is stopped. Start the service to display the dashboard.',
-            ),
-          ),
-          ...renderStartServiceAction(),
-        ],
+        { id: 'dashboard-overview', role: 'status' },
+        E('p', { class: 'fkp-overview__hint' }, _('Loading…')),
       ),
-      E('div', { class: 'fkp_dashboard-page__content' }, [
-        E('div', { id: 'dashboard-health' }, _('Loading health status')),
-        // Widgets section
-        E('div', { class: 'fkp_dashboard-page__widgets-section' }, [
-          E(
-            'div',
-            { id: 'dashboard-widget-traffic' },
-            renderWidget({
-              loading: true,
-              failed: false,
-              title: '',
-              items: [],
-            }),
-          ),
-          E(
-            'div',
-            { id: 'dashboard-widget-traffic-total' },
-            renderWidget({
-              loading: true,
-              failed: false,
-              title: '',
-              items: [],
-            }),
-          ),
-          E(
-            'div',
-            { id: 'dashboard-widget-system-info' },
-            renderWidget({
-              loading: true,
-              failed: false,
-              title: '',
-              items: [],
-            }),
-          ),
-          E(
-            'div',
-            { id: 'dashboard-widget-service-info' },
-            renderWidget({
-              loading: true,
-              failed: false,
-              title: '',
-              items: [],
-            }),
-          ),
-        ]),
-        // All outbounds
+      // Until Monitoring gets its Nodes view (Stage 6.5) node selection
+      // stays here, below the summary.
+      E('section', { class: 'fkp_dashboard-page__content' }, [
+        E(
+          'h3',
+          { class: 'fkp-overview__section-title' },
+          _('Nodes and groups'),
+        ),
         E(
           'div',
           { id: 'dashboard-sections-grid' },

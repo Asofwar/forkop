@@ -1,0 +1,228 @@
+{
+ "zapret_owner": {
+  "decided": true,
+  "kind": "zapret",
+  "rule": 0,
+  "outbound": "youtube-out",
+  "section": "youtube",
+  "index": 1,
+  "mark": "0x01000001",
+  "mark_value": 16777217,
+  "queue": 4000
+ },
+ "first_match_connection": {
+  "decided": true,
+  "kind": "outbound",
+  "rule": 0,
+  "outbound": "main-out"
+ },
+ "reject": {
+  "decided": true,
+  "kind": "reject",
+  "rule": 0,
+  "outbound": null
+ },
+ "final": {
+  "decided": true,
+  "kind": "final",
+  "rule": null,
+  "outbound": "direct-out"
+ },
+ "rule_set_before_owner": {
+  "decided": false,
+  "reason": "undecidable_matcher",
+  "rule": 0
+ },
+ "rule_set_with_domain_hit": {
+  "decided": true,
+  "kind": "outbound",
+  "rule": 0,
+  "outbound": "main-out"
+ },
+ "domain_regex": {
+  "decided": false,
+  "reason": "undecidable_matcher",
+  "rule": 0
+ },
+ "logical": {
+  "decided": false,
+  "reason": "logical_rule",
+  "rule": 0
+ },
+ "unknown_field": {
+  "decided": false,
+  "reason": "unknown_rule_field:geosite",
+  "rule": 0
+ },
+ "source_scoped": {
+  "decided": false,
+  "reason": "source_scoped_rule",
+  "rule": 0
+ },
+ "fakeip_skips_ip_cidr": {
+  "decided": true,
+  "kind": "zapret",
+  "rule": 1,
+  "outbound": "youtube-out",
+  "section": "youtube",
+  "index": 1,
+  "mark": "0x01000001",
+  "mark_value": 16777217,
+  "queue": 4000
+ },
+ "real_address_ip_cidr": {
+  "decided": true,
+  "kind": "outbound",
+  "rule": 0,
+  "outbound": "main-out"
+ },
+ "resolve_above_owner_fakeip": {
+  "decided": false,
+  "reason": "resolve_rule",
+  "rule": 0
+ },
+ "resolve_above_owner_real": {
+  "decided": true,
+  "kind": "zapret",
+  "rule": 1,
+  "outbound": "youtube-out",
+  "section": "youtube",
+  "index": 1,
+  "mark": "0x01000001",
+  "mark_value": 16777217,
+  "queue": 4000
+ },
+ "udp_only_rule": {
+  "decided": true,
+  "kind": "zapret",
+  "rule": 1,
+  "outbound": "youtube-out",
+  "section": "youtube",
+  "index": 1,
+  "mark": "0x01000001",
+  "mark_value": 16777217,
+  "queue": 4000
+ },
+ "port_80_rule": {
+  "decided": true,
+  "kind": "zapret",
+  "rule": 1,
+  "outbound": "youtube-out",
+  "section": "youtube",
+  "index": 1,
+  "mark": "0x01000001",
+  "mark_value": 16777217,
+  "queue": 4000
+ },
+ "port_range_rule": {
+  "decided": true,
+  "kind": "outbound",
+  "rule": 0,
+  "outbound": "main-out"
+ },
+ "quic_reject": {
+  "decided": true,
+  "kind": "zapret",
+  "rule": 1,
+  "outbound": "youtube-out",
+  "section": "youtube",
+  "index": 1,
+  "mark": "0x01000001",
+  "mark_value": 16777217,
+  "queue": 4000
+ },
+ "tls_protocol": {
+  "decided": false,
+  "reason": "protocol_matcher",
+  "rule": 0
+ },
+ "other_inbound": {
+  "decided": true,
+  "kind": "zapret",
+  "rule": 2,
+  "outbound": "youtube-out",
+  "section": "youtube",
+  "index": 1,
+  "mark": "0x01000001",
+  "mark_value": 16777217,
+  "queue": 4000
+ },
+ "sniff_skipped": {
+  "decided": true,
+  "kind": "zapret",
+  "rule": 1,
+  "outbound": "youtube-out",
+  "section": "youtube",
+  "index": 1,
+  "mark": "0x01000001",
+  "mark_value": 16777217,
+  "queue": 4000
+ },
+ "mark_mismatch": {
+  "decided": true,
+  "kind": "outbound",
+  "rule": 0,
+  "outbound": "youtube-out"
+ },
+ "second_zapret_rule": {
+  "decided": true,
+  "kind": "zapret",
+  "rule": 0,
+  "outbound": "discord-out",
+  "section": "discord",
+  "index": 2,
+  "mark": "0x01000002",
+  "mark_value": 16777218,
+  "queue": 4001
+ },
+ "singbox_config_missing": {
+  "decided": false,
+  "reason": "singbox_config_unavailable",
+  "rule": null
+ },
+ "suffix_subdomain_only_apex": {
+  "decided": true,
+  "kind": "final",
+  "rule": null,
+  "outbound": "direct-out"
+ },
+ "suffix_subdomain_only_sub": {
+  "decided": true,
+  "kind": "zapret",
+  "rule": 0,
+  "outbound": "youtube-out",
+  "section": "youtube",
+  "index": 1,
+  "mark": "0x01000001",
+  "mark_value": 16777217,
+  "queue": 4000
+ },
+ "keyword": {
+  "decided": true,
+  "kind": "zapret",
+  "rule": 0,
+  "outbound": "youtube-out",
+  "section": "youtube",
+  "index": 1,
+  "mark": "0x01000001",
+  "mark_value": 16777217,
+  "queue": 4000
+ },
+ "exact_domain_other_host": {
+  "decided": true,
+  "kind": "final",
+  "rule": null,
+  "outbound": "direct-out"
+ },
+ "case_insensitive": {
+  "decided": true,
+  "kind": "zapret",
+  "rule": 0,
+  "outbound": "youtube-out",
+  "section": "youtube",
+  "index": 1,
+  "mark": "0x01000001",
+  "mark_value": 16777217,
+  "queue": 4000
+ }
+}

@@ -6755,6 +6755,24 @@ function getSecondaryRulesetReferences(section_id) {
   );
 }
 
+// Built-in rule sets #2 match IP addresses, which a DNS rule cannot use, and
+// the backend rejects such a rule. Values the rule already has stay visible
+// for DNS and block that action until the user removes them, so they are
+// neither dropped nor kept silently (UC-046).
+function hasSecondaryRulesetsForDns(option, section_id) {
+  if (!getSecondaryRulesetReferences(section_id).length) {
+    return false;
+  }
+
+  const found =
+    option.map && typeof option.map.lookupOption === "function"
+      ? option.map.lookupOption("secondary_rule_sets", section_id)
+      : null;
+  const value = found ? found[0].formvalue(found[1]) : null;
+
+  return value == null || normalizeDynamicListItems(value).length > 0;
+}
+
 function normalizeReferenceForExtensionCheck(value) {
   return `${value || ""}`.split(/[?#]/, 1)[0].toLowerCase();
 }
@@ -6995,8 +7013,17 @@ function createSectionContent(section) {
       return this.cfgvalue(section_id);
     });
   };
-  o.validate = function (_section_id, value) {
-    return unavailableChoiceError(this, value) || true;
+  o.validate = function (section_id, value) {
+    const unavailable = unavailableChoiceError(this, value);
+    if (unavailable) {
+      return unavailable;
+    }
+    if (value === "dns" && hasSecondaryRulesetsForDns(this, section_id)) {
+      return _(
+        "Built-in rule sets #2 are not supported for DNS rules. Remove them on the What tab or choose another action.",
+      );
+    }
+    return true;
   };
 
   o = section.taboption(
@@ -7779,10 +7806,23 @@ function createSectionContent(section) {
     _("Select a predefined IP rule set from b4geoip-forkop"),
   );
   secondaryRulesetOption.modalonly = true;
-  // DNS rules match domains only: the widget is hidden for them, and stored
-  // values stay in the shared rule_set_with_subnets option (UC-046).
+  // DNS rules match domains only: the widget is hidden for them. Values the
+  // rule already has stay visible for DNS so they can be removed, and the
+  // action refuses DNS until they are (UC-046).
   secondaryRulesetOption.retain = true;
   dependsOnRoutingAction(secondaryRulesetOption);
+  const secondaryRulesetRoutingDepends = secondaryRulesetOption.checkDepends;
+  secondaryRulesetOption.checkDepends = function (section_id) {
+    return (
+      secondaryRulesetRoutingDepends.call(this, section_id) ||
+      (getSecondaryRulesetReferences(section_id).length > 0 &&
+        this.map.isDependencySatisfied(
+          [{ action: "dns" }],
+          this.map.config,
+          section_id,
+        ))
+    );
+  };
   secondaryRulesetOption.placeholder = _("Service list");
   secondaryRulesetOption.load = function (section_id) {
     refreshOptionChoices(

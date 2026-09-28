@@ -34,6 +34,14 @@
       "path": "forkop/page/diagnostics"
     }
   },
+  "admin/services/forkop/autotune": {
+    "title": "DPI autotune",
+    "order": 35,
+    "action": {
+      "type": "view",
+      "path": "forkop/page/autotune"
+    }
+  },
   "admin/services/forkop/history": {
     "title": "History and recovery",
     "order": 40,

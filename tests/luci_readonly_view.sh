@@ -44,7 +44,7 @@ function stubs(canReadUci, calls, { stale = false } = {}) {
     ForkopShellMethods: { getUiCapabilities: async () => ({ success: true, data: {} }) },
   };
   if (stale) delete main.setReadonlyMode;
-  for (const tab of ['DashboardTab', 'MonitoringTab', 'DiagnosticTab', 'HistoryTab']) {
+  for (const tab of ['DashboardTab', 'MonitoringTab', 'DiagnosticTab', 'AutotuneTab', 'HistoryTab']) {
     main[tab] = {
       initController() { calls.push(`init:${tab}`); },
       render() {
@@ -69,6 +69,7 @@ function stubs(canReadUci, calls, { stale = false } = {}) {
     'page/overview.js': 'DashboardTab',
     'page/monitoring.js': 'MonitoringTab',
     'page/diagnostics.js': 'DiagnosticTab',
+    'page/autotune.js': 'AutotuneTab',
     'page/history.js': 'HistoryTab',
   };
   for (const [file, tab] of Object.entries(pages)) {
@@ -129,7 +130,7 @@ function stubs(canReadUci, calls, { stale = false } = {}) {
   assert.deepEqual(parent.depends.acl, ['luci-app-forkop']);
   const children = Object.entries(menu).filter(([key]) => key.startsWith('admin/services/forkop/'));
   const order = children.sort((a, b) => a[1].order - b[1].order).map(([key]) => key.split('/').pop());
-  assert.deepEqual(order, ['overview', 'monitoring', 'diagnostics', 'history', 'settings']);
+  assert.deepEqual(order, ['overview', 'monitoring', 'diagnostics', 'autotune', 'history', 'settings']);
   for (const [key, node] of children) {
     assert.equal(node.action.type, 'view', `${key} must be a view`);
     assert(fs.existsSync(path.join(root, 'luci-app-forkop/htdocs/luci-static/resources/view', `${node.action.path}.js`)),
@@ -137,7 +138,7 @@ function stubs(canReadUci, calls, { stale = false } = {}) {
   }
   assert.deepEqual(menu['admin/services/forkop/settings'].depends, { acl: ['luci-app-forkop-admin'] },
     'Settings must be hidden from the read-only role');
-  for (const key of ['overview', 'monitoring', 'diagnostics', 'history'])
+  for (const key of ['overview', 'monitoring', 'diagnostics', 'autotune', 'history'])
     assert(!menu[`admin/services/forkop/${key}`].depends,
       `${key} must stay available to the read-only role`);
 

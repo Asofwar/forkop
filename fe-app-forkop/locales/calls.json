@@ -12,10 +12,31 @@
     ]
   },
   {
+    "call": "%d confirmations",
+    "key": "%d confirmations",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:512"
+    ]
+  },
+  {
     "call": "%d connections now",
     "key": "%d connections now",
     "places": [
       "src/forkop/tabs/dashboard/overview.ts:212"
+    ]
+  },
+  {
+    "call": "%d d",
+    "key": "%d d",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:579"
+    ]
+  },
+  {
+    "call": "%d h",
+    "key": "%d h",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:578"
     ]
   },
   {
@@ -40,6 +61,13 @@
     ]
   },
   {
+    "call": "%d ms",
+    "key": "%d ms",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:443"
+    ]
+  },
+  {
     "call": "%d node groups",
     "key": "%d node groups",
     "places": [
@@ -58,6 +86,13 @@
     "key": "%d rules · %d node groups",
     "places": [
       "src/forkop/tabs/dashboard/overview.ts:199"
+    ]
+  },
+  {
+    "call": "%s is not applied again before %t",
+    "key": "%s is not applied again before %t",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:699"
     ]
   },
   {
@@ -89,6 +124,29 @@
     ]
   },
   {
+    "call": "0–5; 0 turns automatic changes off.",
+    "key": "0–5; 0 turns automatic changes off.",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:361"
+    ]
+  },
+  {
+    "call": "3–7 attempts per strategy and target in each check.",
+    "key": "3–7 attempts per strategy and target in each check.",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:373"
+    ]
+  },
+  {
+    "call": "A check is already running.",
+    "key": "A check is already running.",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:190",
+      "src/forkop/tabs/autotune/initController.ts:225",
+      "src/forkop/tabs/autotune/model.ts:544"
+    ]
+  },
+  {
     "call": "A configuration backup will be saved in /etc/forkop-backups. Older versions may not support all current settings.",
     "key": "A configuration backup will be saved in /etc/forkop-backups. Older versions may not support all current settings.",
     "places": [
@@ -100,6 +158,27 @@
     "key": "A configuration change was not confirmed. Traffic that needs DPI bypass may be blocked until recovery completes.",
     "places": [
       "src/forkop/tabs/dashboard/overview.ts:96"
+    ]
+  },
+  {
+    "call": "A group is one Zapret DPI rule. Forkop X changes only the strategy of an existing rule, for all its targets at once. It never creates or deletes rules and never turns DPI bypass off.",
+    "key": "A group is one Zapret DPI rule. Forkop X changes only the strategy of an existing rule, for all its targets at once. It never creates or deletes rules and never turns DPI bypass off.",
+    "places": [
+      "src/forkop/tabs/autotune/render.ts:21"
+    ]
+  },
+  {
+    "call": "a previous apply is not resolved",
+    "key": "a previous apply is not resolved",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:530"
+    ]
+  },
+  {
+    "call": "A rolled back strategy is not applied again before this time passes.",
+    "key": "A rolled back strategy is not applied again before this time passes.",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:366"
     ]
   },
   {
@@ -121,6 +200,34 @@
     "key": "a rule is too complex to calculate",
     "places": [
       "src/forkop/tabs/diagnostic/siteCheck.ts:45"
+    ]
+  },
+  {
+    "call": "A safe isolated check is not possible right now.",
+    "key": "A safe isolated check is not possible right now.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:122"
+    ]
+  },
+  {
+    "call": "A site or service checked through the DPI rule that routes it.",
+    "key": "A site or service checked through the DPI rule that routes it.",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:430"
+    ]
+  },
+  {
+    "call": "a snapshot operation is in progress",
+    "key": "a snapshot operation is in progress",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:526"
+    ]
+  },
+  {
+    "call": "A strategy is set for the whole rule, so Forkop X does not change it. You can split the targets into separate rules.",
+    "key": "A strategy is set for the whole rule, so Forkop X does not change it. You can split the targets into separate rules.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:279"
     ]
   },
   {
@@ -184,6 +291,13 @@
     ]
   },
   {
+    "call": "Add a target first",
+    "key": "Add a target first",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:650"
+    ]
+  },
+  {
     "call": "Add address",
     "key": "Add address",
     "places": [
@@ -202,6 +316,21 @@
     "key": "Add prefix to nodes",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2324"
+    ]
+  },
+  {
+    "call": "Add target",
+    "key": "Add target",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:425",
+      "src/forkop/tabs/autotune/initController.ts:857"
+    ]
+  },
+  {
+    "call": "Add the sites that go through your DPI rules, for example youtube.com.",
+    "key": "Add the sites that go through your DPI rules, for example youtube.com.",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:808"
     ]
   },
   {
@@ -312,6 +441,7 @@
     "call": "All events",
     "key": "All events",
     "places": [
+      "src/forkop/tabs/autotune/initController.ts:980",
       "src/forkop/tabs/dashboard/overviewCards.ts:233"
     ]
   },
@@ -428,6 +558,27 @@
     ]
   },
   {
+    "call": "another check is running",
+    "key": "another check is running",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:528"
+    ]
+  },
+  {
+    "call": "Another check was running.",
+    "key": "Another check was running.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:125"
+    ]
+  },
+  {
+    "call": "Another group was changed in this run; at most one change per run.",
+    "key": "Another group was changed in this run; at most one change per run.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:204"
+    ]
+  },
+  {
     "call": "Another snapshot operation is already in progress. Changes were not applied; try again in a moment.",
     "key": "Another snapshot operation is already in progress. Changes were not applied; try again in a moment.",
     "places": [
@@ -456,10 +607,24 @@
     ]
   },
   {
+    "call": "Applied, check passed",
+    "key": "Applied, check passed",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:223"
+    ]
+  },
+  {
     "call": "Apply section rules only to the specified local IP addresses",
     "key": "Apply section rules only to the specified local IP addresses",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:7784"
+    ]
+  },
+  {
+    "call": "Applying a strategy",
+    "key": "Applying a strategy",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:498"
     ]
   },
   {
@@ -505,10 +670,45 @@
     ]
   },
   {
+    "call": "At most %d change(s) per day; a rolled back strategy waits %s.",
+    "key": "At most %d change(s) per day; a rolled back strategy waits %s.",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:163"
+    ]
+  },
+  {
     "call": "Auto refresh",
     "key": "Auto refresh",
     "places": [
       "src/partials/modal/renderModal.ts:286"
+    ]
+  },
+  {
+    "call": "Automatic",
+    "key": "Automatic",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:15"
+    ]
+  },
+  {
+    "call": "Automatic applies are disabled by the policy (0 per day).",
+    "key": "Automatic applies are disabled by the policy (0 per day).",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:200"
+    ]
+  },
+  {
+    "call": "Automatic apply requires high confidence.",
+    "key": "Automatic apply requires high confidence.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:188"
+    ]
+  },
+  {
+    "call": "Automatic changes per day",
+    "key": "Automatic changes per day",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:359"
     ]
   },
   {
@@ -569,10 +769,32 @@
     ]
   },
   {
+    "call": "Autotune checks only the sites listed here.",
+    "key": "Autotune checks only the sites listed here.",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:934"
+    ]
+  },
+  {
+    "call": "Autotune history",
+    "key": "Autotune history",
+    "places": [
+      "src/forkop/tabs/autotune/render.ts:32"
+    ]
+  },
+  {
     "call": "Autotune mode changed",
     "key": "Autotune mode changed",
     "places": [
-      "src/forkop/ui/status.ts:274"
+      "src/forkop/ui/status.ts:274",
+      "src/forkop/tabs/autotune/initController.ts:174"
+    ]
+  },
+  {
+    "call": "Autotune policy",
+    "key": "Autotune policy",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:343"
     ]
   },
   {
@@ -587,6 +809,13 @@
     "key": "Autotune run",
     "places": [
       "src/forkop/ui/status.ts:278"
+    ]
+  },
+  {
+    "call": "Autotune state is unavailable",
+    "key": "Autotune state is unavailable",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:531"
     ]
   },
   {
@@ -632,6 +861,13 @@
     "key": "Before restore",
     "places": [
       "src/forkop/tabs/history/model.ts:160"
+    ]
+  },
+  {
+    "call": "Best",
+    "key": "Best",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:473"
     ]
   },
   {
@@ -805,6 +1041,13 @@
     ]
   },
   {
+    "call": "Bypass not needed",
+    "key": "Bypass not needed",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:343"
+    ]
+  },
+  {
     "call": "Cache File Path",
     "key": "Cache File Path",
     "places": [
@@ -837,6 +1080,7 @@
     "key": "Cancel",
     "places": [
       "src/forkop/ui/confirmAction.ts:28",
+      "src/forkop/tabs/autotune/initController.ts:277",
       "src/forkop/tabs/dashboard/initController.ts:1395",
       "src/forkop/tabs/updates/fullUninstall.ts:11",
       "src/forkop/tabs/updates/releaseSelector.ts:50",
@@ -885,6 +1129,13 @@
     ]
   },
   {
+    "call": "Changes are made only by scheduled checks, one group at a time.",
+    "key": "Changes are made only by scheduled checks, one group at a time.",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:166"
+    ]
+  },
+  {
     "call": "Changes compare a snapshot with the saved configuration. Unsaved form edits are not included.",
     "key": "Changes compare a snapshot with the saved configuration. Unsaved form edits are not included.",
     "places": [
@@ -929,10 +1180,38 @@
     ]
   },
   {
+    "call": "Check all now",
+    "key": "Check all now",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:654"
+    ]
+  },
+  {
+    "call": "Check completed",
+    "key": "Check completed",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:188"
+    ]
+  },
+  {
+    "call": "Check every",
+    "key": "Check every",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:345"
+    ]
+  },
+  {
     "call": "Check failed",
     "key": "Check failed",
     "places": [
       "src/forkop/tabs/diagnostic/connectivityMatrix.ts:94"
+    ]
+  },
+  {
+    "call": "Check failed, rolled back automatically",
+    "key": "Check failed, rolled back automatically",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:226"
     ]
   },
   {
@@ -942,6 +1221,20 @@
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2410",
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2873",
       "src/forkop/tabs/dashboard/initController.ts:1522"
+    ]
+  },
+  {
+    "call": "Check now",
+    "key": "Check now",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:748"
+    ]
+  },
+  {
+    "call": "Check started. Targets are measured in isolation; production traffic is not changed.",
+    "key": "Check started. Targets are measured in isolation; production traffic is not changed.",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:217"
     ]
   },
   {
@@ -982,6 +1275,21 @@
     ]
   },
   {
+    "call": "Checked",
+    "key": "Checked",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:686"
+    ]
+  },
+  {
+    "call": "Checking targets",
+    "key": "Checking targets",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:578",
+      "src/forkop/tabs/autotune/model.ts:499"
+    ]
+  },
+  {
     "call": "Checking, please wait",
     "key": "Checking, please wait",
     "places": [
@@ -1001,6 +1309,8 @@
     "key": "Checking…",
     "places": [
       "src/forkop/ui/status.ts:135",
+      "src/forkop/tabs/autotune/initController.ts:654",
+      "src/forkop/tabs/autotune/initController.ts:748",
       "src/forkop/tabs/dashboard/overview.ts:136",
       "src/forkop/tabs/diagnostic/connectivityMatrix.ts:104",
       "src/forkop/tabs/diagnostic/dpiPlayground.ts:48",
@@ -1081,6 +1391,7 @@
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3202",
       "src/partials/modal/renderModal.ts:263",
+      "src/forkop/tabs/autotune/initController.ts:501",
       "src/forkop/tabs/dashboard/initController.ts:1276",
       "src/forkop/tabs/dashboard/initController.ts:1654",
       "src/forkop/tabs/history/initController.ts:221",
@@ -1177,6 +1488,20 @@
     ]
   },
   {
+    "call": "confidence",
+    "key": "confidence",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:473"
+    ]
+  },
+  {
+    "call": "Confidence",
+    "key": "Confidence",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:683"
+    ]
+  },
+  {
     "call": "Config File Path",
     "key": "Config File Path",
     "places": [
@@ -1237,6 +1562,41 @@
     "key": "Confirm version change",
     "places": [
       "src/forkop/tabs/updates/releaseSelector.ts:39"
+    ]
+  },
+  {
+    "call": "Confirmation",
+    "key": "Confirmation",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:685"
+    ]
+  },
+  {
+    "call": "Confirmation %d / %d",
+    "key": "Confirmation %d / %d",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:671"
+    ]
+  },
+  {
+    "call": "Confirmations",
+    "key": "Confirmations",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:347"
+    ]
+  },
+  {
+    "call": "Confirming",
+    "key": "Confirming",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:330"
+    ]
+  },
+  {
+    "call": "Conflict",
+    "key": "Conflict",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:351"
     ]
   },
   {
@@ -1371,6 +1731,13 @@
     ]
   },
   {
+    "call": "Could not determine the current rule of each target; results of the last check are shown.",
+    "key": "Could not determine the current rule of each target; results of the last check are shown.",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:788"
+    ]
+  },
+  {
     "call": "Could not load available versions",
     "key": "Could not load available versions",
     "places": [
@@ -1414,6 +1781,14 @@
     ]
   },
   {
+    "call": "Could not start the check",
+    "key": "Could not start the check",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:227",
+      "src/forkop/tabs/autotune/initController.ts:231"
+    ]
+  },
+  {
     "call": "Create snapshot",
     "key": "Create snapshot",
     "places": [
@@ -1449,6 +1824,13 @@
     ]
   },
   {
+    "call": "Custom strategy",
+    "key": "Custom strategy",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:51"
+    ]
+  },
+  {
     "call": "Dashboard currently unavailable",
     "key": "Dashboard currently unavailable",
     "places": [
@@ -1474,6 +1856,13 @@
     "key": "default strategy",
     "places": [
       "src/forkop/tabs/monitoring/connectionView.ts:142"
+    ]
+  },
+  {
+    "call": "Default strategy",
+    "key": "Default strategy",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:43"
     ]
   },
   {
@@ -1539,6 +1928,7 @@
     "call": "Details",
     "key": "Details",
     "places": [
+      "src/forkop/tabs/autotune/initController.ts:905",
       "src/forkop/tabs/monitoring/connectionView.ts:198",
       "src/forkop/tabs/diagnostic/partials/renderCheckSection.ts:178"
     ]
@@ -1549,6 +1939,13 @@
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2492",
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2701"
+    ]
+  },
+  {
+    "call": "Determining which rule routes each target…",
+    "key": "Determining which rule routes each target…",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:780"
     ]
   },
   {
@@ -1689,6 +2086,7 @@
     "key": "Disabled",
     "places": [
       "src/forkop/ui/status.ts:167",
+      "src/forkop/tabs/autotune/model.ts:468",
       "src/forkop/tabs/updates/initController.ts:1071",
       "src/forkop/tabs/updates/initController.ts:1103"
     ]
@@ -1816,6 +2214,13 @@
     ]
   },
   {
+    "call": "DNS server for checks",
+    "key": "DNS server for checks",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:433"
+    ]
+  },
+  {
     "call": "DNS server used by the resolver",
     "key": "DNS server used by the resolver",
     "places": [
@@ -1905,6 +2310,20 @@
     "key": "Do not test specified servers.",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2573"
+    ]
+  },
+  {
+    "call": "Does not work without bypass; a stable strategy was found.",
+    "key": "Does not work without bypass; a stable strategy was found.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:94"
+    ]
+  },
+  {
+    "call": "Domain",
+    "key": "Domain",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:428"
     ]
   },
   {
@@ -2059,6 +2478,13 @@
     ]
   },
   {
+    "call": "DPI autotune",
+    "key": "DPI autotune",
+    "places": [
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/autotune.js:16"
+    ]
+  },
+  {
     "call": "DPI bypass of the rules using this provider may not work.",
     "key": "DPI bypass of the rules using this provider may not work.",
     "places": [
@@ -2073,10 +2499,24 @@
     ]
   },
   {
+    "call": "DPI protection is active",
+    "key": "DPI protection is active",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:524"
+    ]
+  },
+  {
     "call": "DPI protection is holding traffic",
     "key": "DPI protection is holding traffic",
     "places": [
       "src/forkop/tabs/dashboard/overview.ts:95"
+    ]
+  },
+  {
+    "call": "DPI rule groups",
+    "key": "DPI rule groups",
+    "places": [
+      "src/forkop/tabs/autotune/render.ts:17"
     ]
   },
   {
@@ -2130,10 +2570,24 @@
     ]
   },
   {
+    "call": "Edit target",
+    "key": "Edit target",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:425"
+    ]
+  },
+  {
     "call": "Edit URLTest",
     "key": "Edit URLTest",
     "places": [
       "src/forkop/tabs/dashboard/initController.ts:1400"
+    ]
+  },
+  {
+    "call": "Edit…",
+    "key": "Edit…",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:914"
     ]
   },
   {
@@ -2219,6 +2673,7 @@
     "call": "Enabled",
     "key": "Enabled",
     "places": [
+      "src/forkop/tabs/autotune/initController.ts:439",
       "src/forkop/tabs/updates/initController.ts:1070",
       "src/forkop/tabs/updates/initController.ts:1100"
     ]
@@ -2238,6 +2693,13 @@
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2854",
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3491",
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3507"
+    ]
+  },
+  {
+    "call": "Enter a domain name, for example youtube.com.",
+    "key": "Enter a domain name, for example youtube.com.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:546"
     ]
   },
   {
@@ -2311,6 +2773,13 @@
     "key": "Errors: %d",
     "places": [
       "src/forkop/tabs/diagnostic/checkCards.ts:147"
+    ]
+  },
+  {
+    "call": "every %s",
+    "key": "every %s",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:511"
     ]
   },
   {
@@ -2434,6 +2903,7 @@
     "key": "Failed",
     "places": [
       "src/forkop/ui/status.ts:250",
+      "src/forkop/tabs/autotune/model.ts:79",
       "src/forkop/tabs/diagnostic/statusLabels.ts:43"
     ]
   },
@@ -2471,8 +2941,8 @@
     "call": "Failed to execute",
     "key": "Failed to execute",
     "places": [
-      "src/forkop/methods/shell/index.ts:171",
-      "src/forkop/methods/shell/index.ts:178",
+      "src/forkop/methods/shell/index.ts:173",
+      "src/forkop/methods/shell/index.ts:180",
       "src/forkop/tabs/updates/initController.ts:541",
       "src/forkop/tabs/updates/initController.ts:542",
       "src/forkop/tabs/updates/initController.ts:602",
@@ -2585,6 +3055,13 @@
     ]
   },
   {
+    "call": "For recommendations. Automatic apply always requires high confidence.",
+    "key": "For recommendations. Automatic apply always requires high confidence.",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:354"
+    ]
+  },
+  {
     "call": "For whom",
     "key": "For whom",
     "places": [
@@ -2655,6 +3132,13 @@
     ]
   },
   {
+    "call": "Forkop X does not apply recommendations in this mode.",
+    "key": "Forkop X does not apply recommendations in this mode.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:180"
+    ]
+  },
+  {
     "call": "Forkop X is running",
     "key": "Forkop X is running",
     "places": [
@@ -2683,10 +3167,38 @@
     ]
   },
   {
+    "call": "Forkop X measures the targets on schedule and applies a confirmed recommendation by itself, with a production check and automatic rollback.",
+    "key": "Forkop X measures the targets on schedule and applies a confirmed recommendation by itself, with a production check and automatic rollback.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:28"
+    ]
+  },
+  {
+    "call": "Forkop X measures the targets on schedule and shows recommendations. It does not change rules.",
+    "key": "Forkop X measures the targets on schedule and shows recommendations. It does not change rules.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:24"
+    ]
+  },
+  {
     "call": "Forkop X needs attention",
     "key": "Forkop X needs attention",
     "places": [
       "src/forkop/tabs/dashboard/overview.ts:145"
+    ]
+  },
+  {
+    "call": "Forkop X never turns DPI bypass off by itself; remove the targets from the rule manually if you want.",
+    "key": "Forkop X never turns DPI bypass off by itself; remove the targets from the rule manually if you want.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:346"
+    ]
+  },
+  {
+    "call": "Forkop X never turns DPI bypass off by itself.",
+    "key": "Forkop X never turns DPI bypass off by itself.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:208"
     ]
   },
   {
@@ -2701,6 +3213,13 @@
     "key": "Forkop X stops handling traffic until it is started again.",
     "places": [
       "src/forkop/tabs/shared/serviceControl.ts:33"
+    ]
+  },
+  {
+    "call": "Forkop X will change the strategy of existing DPI rules by itself, only after several confirmations in a row, with a production check and automatic rollback.",
+    "key": "Forkop X will change the strategy of existing DPI rules by itself, only after several confirmations in a row, with a production check and automatic rollback.",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:156"
     ]
   },
   {
@@ -2840,6 +3359,13 @@
     ]
   },
   {
+    "call": "high",
+    "key": "high",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:59"
+    ]
+  },
+  {
     "call": "Higher-level check interval",
     "key": "Higher-level check interval",
     "places": [
@@ -2879,6 +3405,7 @@
     "call": "History is unavailable",
     "key": "History is unavailable",
     "places": [
+      "src/forkop/tabs/autotune/initController.ts:944",
       "src/forkop/tabs/history/initController.ts:123"
     ]
   },
@@ -2952,6 +3479,13 @@
     "key": "Import URLTest groups returned by this subscription provider",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2340"
+    ]
+  },
+  {
+    "call": "In \"Recommendations only\" mode Forkop X does not change the rule. To let it apply the strategy with a production check and automatic rollback, switch to \"Automatic\".",
+    "key": "In \"Recommendations only\" mode Forkop X does not change the rule. To let it apply the strategy with a production check and automatic rollback, switch to \"Automatic\".",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:730"
     ]
   },
   {
@@ -3536,6 +4070,69 @@
     ]
   },
   {
+    "call": "It goes directly and is not in a DPI rule. No bypass is configured for it.",
+    "key": "It goes directly and is not in a DPI rule. No bypass is configured for it.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:161"
+    ]
+  },
+  {
+    "call": "It goes through a proxy or VPN rule. DPI autotune does not apply.",
+    "key": "It goes through a proxy or VPN rule. DPI autotune does not apply.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:157"
+    ]
+  },
+  {
+    "call": "It goes through a Zapret2 or ByeDPI rule; autotune supports Zapret rules only.",
+    "key": "It goes through a Zapret2 or ByeDPI rule; autotune supports Zapret rules only.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:153"
+    ]
+  },
+  {
+    "call": "It is blocked by a rule.",
+    "key": "It is blocked by a rule.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:167"
+    ]
+  },
+  {
+    "call": "It is excluded from Forkop X routing.",
+    "key": "It is excluded from Forkop X routing.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:165"
+    ]
+  },
+  {
+    "call": "It is not in a DPI rule.",
+    "key": "It is not in a DPI rule.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:172"
+    ]
+  },
+  {
+    "call": "It is not routed by a DPI rule.",
+    "key": "It is not routed by a DPI rule.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:170"
+    ]
+  },
+  {
+    "call": "It never creates or deletes rules, never turns DPI bypass off and never moves targets between rules.",
+    "key": "It never creates or deletes rules, never turns DPI bypass off and never moves targets between rules.",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:160"
+    ]
+  },
+  {
+    "call": "Its measurements are deleted as well. Routing rules are not changed.",
+    "key": "Its measurements are deleted as well. Routing rules are not changed.",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:448"
+    ]
+  },
+  {
     "call": "JSON outbound",
     "key": "JSON outbound",
     "places": [
@@ -3609,10 +4206,41 @@
     ]
   },
   {
+    "call": "Last change",
+    "key": "Last change",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:689"
+    ]
+  },
+  {
+    "call": "last check",
+    "key": "last check",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:463"
+    ]
+  },
+  {
     "call": "Last check",
     "key": "Last check",
     "places": [
+      "src/forkop/tabs/autotune/initController.ts:582",
+      "src/forkop/tabs/autotune/initController.ts:588",
+      "src/forkop/tabs/autotune/initController.ts:589",
       "src/forkop/tabs/diagnostic/partials/renderRunAction.ts:53"
+    ]
+  },
+  {
+    "call": "Last check completed",
+    "key": "Last check completed",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:507"
+    ]
+  },
+  {
+    "call": "Last check postponed",
+    "key": "Last check postponed",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:512"
     ]
   },
   {
@@ -3669,8 +4297,8 @@
     "call": "Latency test failed",
     "key": "Latency test failed",
     "places": [
-      "src/forkop/methods/shell/index.ts:555",
-      "src/forkop/methods/shell/index.ts:576",
+      "src/forkop/methods/shell/index.ts:614",
+      "src/forkop/methods/shell/index.ts:635",
       "src/forkop/tabs/dashboard/initController.ts:1004",
       "src/forkop/tabs/dashboard/initController.ts:1012"
     ]
@@ -3770,6 +4398,11 @@
     "key": "Loading…",
     "places": [
       "src/forkop/ui/states.ts:36",
+      "src/forkop/tabs/autotune/initController.ts:804",
+      "src/forkop/tabs/autotune/render.ts:14",
+      "src/forkop/tabs/autotune/render.ts:25",
+      "src/forkop/tabs/autotune/render.ts:29",
+      "src/forkop/tabs/autotune/render.ts:33",
       "src/forkop/tabs/dashboard/render.ts:14",
       "src/forkop/tabs/history/render.ts:13",
       "src/forkop/tabs/history/render.ts:17",
@@ -3781,6 +4414,13 @@
     "key": "Log Level",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:713"
+    ]
+  },
+  {
+    "call": "low",
+    "key": "low",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:63"
     ]
   },
   {
@@ -3819,6 +4459,13 @@
     ]
   },
   {
+    "call": "Manual checks only measure; changes are applied only on schedule.",
+    "key": "Manual checks only measure; changes are applied only on schedule.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:182"
+    ]
+  },
+  {
     "call": "Match destination IPs or subnets",
     "key": "Match destination IPs or subnets",
     "places": [
@@ -3837,6 +4484,27 @@
     "key": "Maximum time to wait for example.com to resolve during a DNS health check.",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:266"
+    ]
+  },
+  {
+    "call": "measured in isolation from production traffic",
+    "key": "measured in isolation from production traffic",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:467"
+    ]
+  },
+  {
+    "call": "medium",
+    "key": "medium",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:61"
+    ]
+  },
+  {
+    "call": "Minimum confidence",
+    "key": "Minimum confidence",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:352"
     ]
   },
   {
@@ -3868,10 +4536,25 @@
     ]
   },
   {
+    "call": "Mode",
+    "key": "Mode",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:544",
+      "src/forkop/tabs/autotune/initController.ts:552"
+    ]
+  },
+  {
     "call": "Mode 2 enabled",
     "key": "Mode 2 enabled",
     "places": [
       "src/forkop/tabs/updates/initController.ts:1046"
+    ]
+  },
+  {
+    "call": "Mode and state",
+    "key": "Mode and state",
+    "places": [
+      "src/forkop/tabs/autotune/render.ts:13"
     ]
   },
   {
@@ -3973,6 +4656,13 @@
     ]
   },
   {
+    "call": "Next scheduled check",
+    "key": "Next scheduled check",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:591"
+    ]
+  },
+  {
     "call": "NFQUEUE range is available",
     "key": "NFQUEUE range is available",
     "places": [
@@ -4034,6 +4724,34 @@
     ]
   },
   {
+    "call": "No autotune events yet",
+    "key": "No autotune events yet",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:971"
+    ]
+  },
+  {
+    "call": "No bypass (direct)",
+    "key": "No bypass (direct)",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:42"
+    ]
+  },
+  {
+    "call": "No change needed",
+    "key": "No change needed",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:340"
+    ]
+  },
+  {
+    "call": "No change was needed",
+    "key": "No change was needed",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:230"
+    ]
+  },
+  {
     "call": "No check has been run yet",
     "key": "No check has been run yet",
     "places": [
@@ -4072,7 +4790,10 @@
     "call": "No data",
     "key": "No data",
     "places": [
-      "src/forkop/ui/states.ts:102"
+      "src/forkop/ui/states.ts:102",
+      "src/forkop/tabs/autotune/initController.ts:768",
+      "src/forkop/tabs/autotune/initController.ts:864",
+      "src/forkop/tabs/autotune/model.ts:354"
     ]
   },
   {
@@ -4080,6 +4801,13 @@
     "key": "No DNS records for this name",
     "places": [
       "src/forkop/tabs/diagnostic/connectivityMatrix.ts:88"
+    ]
+  },
+  {
+    "call": "No DNS server for measurements: set a plain IPv4 DNS server in Forkop X or on the target.",
+    "key": "No DNS server for measurements: set a plain IPv4 DNS server in Forkop X or on the target.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:127"
     ]
   },
   {
@@ -4095,6 +4823,14 @@
     "places": [
       "src/forkop/tabs/dashboard/overviewCards.ts:232",
       "src/forkop/tabs/history/initController.ts:161"
+    ]
+  },
+  {
+    "call": "No measurements yet.",
+    "key": "No measurements yet.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:287",
+      "src/forkop/tabs/autotune/model.ts:325"
     ]
   },
   {
@@ -4178,6 +4914,42 @@
     ]
   },
   {
+    "call": "No strategies were measured",
+    "key": "No strategies were measured",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:492"
+    ]
+  },
+  {
+    "call": "No strategy is stable. The current strategy is kept.",
+    "key": "No strategy is stable. The current strategy is kept.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:109"
+    ]
+  },
+  {
+    "call": "No target is routed through a Zapret DPI rule",
+    "key": "No target is routed through a Zapret DPI rule",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:803"
+    ]
+  },
+  {
+    "call": "No targets yet",
+    "key": "No targets yet",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:805",
+      "src/forkop/tabs/autotune/initController.ts:931"
+    ]
+  },
+  {
+    "call": "No usable result",
+    "key": "No usable result",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:476"
+    ]
+  },
+  {
     "call": "Node list is empty",
     "key": "Node list is empty",
     "places": [
@@ -4211,6 +4983,13 @@
     ]
   },
   {
+    "call": "Not applied",
+    "key": "Not applied",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:234"
+    ]
+  },
+  {
     "call": "Not available for checking",
     "key": "Not available for checking",
     "places": [
@@ -4224,8 +5003,18 @@
     "key": "Not checked",
     "places": [
       "src/forkop/ui/status.ts:163",
+      "src/forkop/tabs/autotune/model.ts:83",
+      "src/forkop/tabs/autotune/model.ts:324",
+      "src/forkop/tabs/autotune/model.ts:471",
       "src/forkop/tabs/diagnostic/connectivityMatrix.ts:102",
       "src/forkop/tabs/diagnostic/statusLabels.ts:32"
+    ]
+  },
+  {
+    "call": "Not checked yet",
+    "key": "Not checked yet",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:589"
     ]
   },
   {
@@ -4233,7 +5022,8 @@
     "key": "Not determined",
     "places": [
       "src/forkop/ui/status.ts:300",
-      "src/forkop/ui/status.ts:313"
+      "src/forkop/ui/status.ts:313",
+      "src/forkop/tabs/autotune/model.ts:52"
     ]
   },
   {
@@ -4295,7 +5085,8 @@
     "call": "Not supported",
     "key": "Not supported",
     "places": [
-      "src/forkop/ui/status.ts:165"
+      "src/forkop/ui/status.ts:165",
+      "src/forkop/tabs/autotune/model.ts:81"
     ]
   },
   {
@@ -4309,6 +5100,7 @@
     "call": "Now",
     "key": "Now",
     "places": [
+      "src/forkop/tabs/autotune/initController.ts:679",
       "src/forkop/tabs/history/initController.ts:184"
     ]
   },
@@ -4317,6 +5109,13 @@
     "key": "Observed",
     "places": [
       "src/forkop/ui/status.ts:294"
+    ]
+  },
+  {
+    "call": "Off",
+    "key": "Off",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:17"
     ]
   },
   {
@@ -4408,6 +5207,13 @@
     ]
   },
   {
+    "call": "Open rules",
+    "key": "Open rules",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:757"
+    ]
+  },
+  {
     "call": "Open settings",
     "key": "Open settings",
     "places": [
@@ -4419,8 +5225,8 @@
     "key": "Operation timed out",
     "places": [
       "src/helpers/withTimeout.ts:7",
-      "src/forkop/methods/shell/index.ts:525",
-      "src/forkop/methods/shell/index.ts:613"
+      "src/forkop/methods/shell/index.ts:584",
+      "src/forkop/methods/shell/index.ts:672"
     ]
   },
   {
@@ -4429,6 +5235,13 @@
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:1380",
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:6376"
+    ]
+  },
+  {
+    "call": "Optional IPv4 address. By default the first IPv4 DNS server of Forkop X is used.",
+    "key": "Optional IPv4 address. By default the first IPv4 DNS server of Forkop X is used.",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:435"
     ]
   },
   {
@@ -4486,6 +5299,13 @@
     "key": "outbounds must be a non-empty array of strings",
     "places": [
       "src/validators/validateOutboundJson.ts:111"
+    ]
+  },
+  {
+    "call": "Outcome unknown",
+    "key": "Outcome unknown",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:238"
     ]
   },
   {
@@ -4591,6 +5411,27 @@
     ]
   },
   {
+    "call": "Pause",
+    "key": "Pause",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:698"
+    ]
+  },
+  {
+    "call": "Pause after a rollback",
+    "key": "Pause after a rollback",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:364"
+    ]
+  },
+  {
+    "call": "pause after a rollback %s",
+    "key": "pause after a rollback %s",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:517"
+    ]
+  },
+  {
     "call": "Pause updates",
     "key": "Pause updates",
     "places": [
@@ -4619,6 +5460,27 @@
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2472",
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2958"
+    ]
+  },
+  {
+    "call": "Policy",
+    "key": "Policy",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:573"
+    ]
+  },
+  {
+    "call": "Policy saved",
+    "key": "Policy saved",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:337"
+    ]
+  },
+  {
+    "call": "Policy…",
+    "key": "Policy…",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:638"
     ]
   },
   {
@@ -4750,6 +5612,13 @@
     ]
   },
   {
+    "call": "Probes per strategy",
+    "key": "Probes per strategy",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:371"
+    ]
+  },
+  {
     "call": "Profile",
     "key": "Profile",
     "places": [
@@ -4797,6 +5666,27 @@
     "key": "Reachable",
     "places": [
       "src/forkop/tabs/diagnostic/connectivityMatrix.ts:109"
+    ]
+  },
+  {
+    "call": "Recommendation confirmed",
+    "key": "Recommendation confirmed",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:329"
+    ]
+  },
+  {
+    "call": "Recommendations only",
+    "key": "Recommendations only",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:13"
+    ]
+  },
+  {
+    "call": "Recommended",
+    "key": "Recommended",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:681"
     ]
   },
   {
@@ -4864,6 +5754,7 @@
     "call": "Remove",
     "key": "Remove",
     "places": [
+      "src/forkop/tabs/autotune/initController.ts:449",
       "src/forkop/tabs/diagnostic/connectivityMatrix.ts:279",
       "src/forkop/tabs/diagnostic/connectivityMatrix.ts:280",
       "src/forkop/tabs/updates/initController.ts:720",
@@ -4921,10 +5812,24 @@
     ]
   },
   {
+    "call": "Remove target?",
+    "key": "Remove target?",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:447"
+    ]
+  },
+  {
     "call": "Remove the specified servers from this level.",
     "key": "Remove the specified servers from this level.",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2786"
+    ]
+  },
+  {
+    "call": "Remove…",
+    "key": "Remove…",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:919"
     ]
   },
   {
@@ -5105,6 +6010,13 @@
     ]
   },
   {
+    "call": "Rollback did not finish",
+    "key": "Rollback did not finish",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:236"
+    ]
+  },
+  {
     "call": "Rolled back",
     "key": "Rolled back",
     "places": [
@@ -5133,6 +6045,13 @@
     "key": "Route requests to this DNS server through another section.",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:6924"
+    ]
+  },
+  {
+    "call": "Router DNS",
+    "key": "Router DNS",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:395"
     ]
   },
   {
@@ -5298,6 +6217,8 @@
     "key": "Save",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3211",
+      "src/forkop/tabs/autotune/initController.ts:376",
+      "src/forkop/tabs/autotune/initController.ts:441",
       "src/forkop/tabs/dashboard/initController.ts:1390"
     ]
   },
@@ -5306,6 +6227,13 @@
     "key": "Saving URLTest settings…",
     "places": [
       "src/forkop/tabs/dashboard/initController.ts:1334"
+    ]
+  },
+  {
+    "call": "Scheduled measurements are off. An administrator can still check targets manually.",
+    "key": "Scheduled measurements are off. An administrator can still check targets manually.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:32"
     ]
   },
   {
@@ -5547,8 +6475,8 @@
     "call": "Service action failed",
     "key": "Service action failed",
     "places": [
-      "src/forkop/methods/shell/index.ts:447",
-      "src/forkop/methods/shell/index.ts:497",
+      "src/forkop/methods/shell/index.ts:506",
+      "src/forkop/methods/shell/index.ts:556",
       "src/forkop/tabs/diagnostic/serviceTransition.ts:97",
       "src/forkop/tabs/diagnostic/serviceTransition.ts:98"
     ]
@@ -5595,6 +6523,13 @@
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:1124",
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:90"
+    ]
+  },
+  {
+    "call": "Several strategies are stable with similar latency; the simplest one was chosen.",
+    "key": "Several strategies are stable with similar latency; the simplest one was chosen.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:103"
     ]
   },
   {
@@ -5740,6 +6675,13 @@
     ]
   },
   {
+    "call": "Some autotune settings are invalid; safe defaults are used for them.",
+    "key": "Some autotune settings are invalid; safe defaults are used for them.",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:606"
+    ]
+  },
+  {
     "call": "Some connections or nodes do not respond, so sites of their rules may not open.",
     "key": "Some connections or nodes do not respond, so sites of their rules may not open.",
     "places": [
@@ -5779,6 +6721,20 @@
     "key": "Source Network Interface",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:320"
+    ]
+  },
+  {
+    "call": "Stability",
+    "key": "Stability",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:475"
+    ]
+  },
+  {
+    "call": "Stable",
+    "key": "Stable",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:75"
     ]
   },
   {
@@ -5894,6 +6850,7 @@
     "call": "State",
     "key": "State",
     "places": [
+      "src/forkop/tabs/autotune/initController.ts:577",
       "src/forkop/tabs/dashboard/overviewCards.ts:136"
     ]
   },
@@ -5944,6 +6901,7 @@
     "call": "Strategy",
     "key": "Strategy",
     "places": [
+      "src/forkop/tabs/autotune/initController.ts:473",
       "src/forkop/tabs/diagnostic/renderDiagnostic.ts:40"
     ]
   },
@@ -5972,8 +6930,8 @@
     "call": "Subscription update failed",
     "key": "Subscription update failed",
     "places": [
-      "src/forkop/methods/shell/index.ts:819",
-      "src/forkop/methods/shell/index.ts:839"
+      "src/forkop/methods/shell/index.ts:878",
+      "src/forkop/methods/shell/index.ts:898"
     ]
   },
   {
@@ -6010,6 +6968,13 @@
     "places": [
       "src/forkop/ui/status.ts:244",
       "src/forkop/tabs/diagnostic/statusLabels.ts:39"
+    ]
+  },
+  {
+    "call": "Successful",
+    "key": "Successful",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:474"
     ]
   },
   {
@@ -6066,6 +7031,49 @@
     "key": "Table exist",
     "places": [
       "src/forkop/tabs/diagnostic/checks/runNftCheck.ts:69"
+    ]
+  },
+  {
+    "call": "Target actions",
+    "key": "Target actions",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:912"
+    ]
+  },
+  {
+    "call": "Target removed",
+    "key": "Target removed",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:455"
+    ]
+  },
+  {
+    "call": "Target saved",
+    "key": "Target saved",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:421"
+    ]
+  },
+  {
+    "call": "Targets",
+    "key": "Targets",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:703",
+      "src/forkop/tabs/autotune/render.ts:28"
+    ]
+  },
+  {
+    "call": "Targets of this rule need different strategies.",
+    "key": "Targets of this rule need different strategies.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:275"
+    ]
+  },
+  {
+    "call": "Targets outside DPI rules (%d)",
+    "key": "Targets outside DPI rules (%d)",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:818"
     ]
   },
   {
@@ -6157,6 +7165,83 @@
     ]
   },
   {
+    "call": "The autotune state was damaged and has been reset; automatic changes wait for the pause after a rollback.",
+    "key": "The autotune state was damaged and has been reset; automatic changes wait for the pause after a rollback.",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:596"
+    ]
+  },
+  {
+    "call": "The autotune state was restored after damage; automatic apply waits for the cooldown.",
+    "key": "The autotune state was restored after damage; automatic apply waits for the cooldown.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:196"
+    ]
+  },
+  {
+    "call": "The best strategy is not stable for every target of the rule.",
+    "key": "The best strategy is not stable for every target of the rule.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:274"
+    ]
+  },
+  {
+    "call": "The change was not saved.",
+    "key": "The change was not saved.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:557"
+    ]
+  },
+  {
+    "call": "The check did not complete",
+    "key": "The check did not complete",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:197"
+    ]
+  },
+  {
+    "call": "The check gave no usable result.",
+    "key": "The check gave no usable result.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:131"
+    ]
+  },
+  {
+    "call": "The check stopped unexpectedly",
+    "key": "The check stopped unexpectedly",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:201"
+    ]
+  },
+  {
+    "call": "The check was postponed. See the state above.",
+    "key": "The check was postponed. See the state above.",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:193"
+    ]
+  },
+  {
+    "call": "The current strategy is already the best.",
+    "key": "The current strategy is already the best.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:341"
+    ]
+  },
+  {
+    "call": "The current strategy is kept.",
+    "key": "The current strategy is kept.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:292"
+    ]
+  },
+  {
+    "call": "The daily limit of automatic applies is reached.",
+    "key": "The daily limit of automatic applies is reached.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:202"
+    ]
+  },
+  {
     "call": "The desync fwmark is managed by Forkop for loop prevention and must not be overridden here.",
     "key": "The desync fwmark is managed by Forkop for loop prevention and must not be overridden here.",
     "places": [
@@ -6165,10 +7250,46 @@
     ]
   },
   {
+    "call": "The DNS server must be an IPv4 address.",
+    "key": "The DNS server must be an IPv4 address.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:548"
+    ]
+  },
+  {
+    "call": "The DPI rule that routes it could not be identified safely.",
+    "key": "The DPI rule that routes it could not be identified safely.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:151"
+    ]
+  },
+  {
     "call": "The last change was rolled back automatically.",
     "key": "The last change was rolled back automatically.",
     "places": [
       "src/forkop/tabs/dashboard/overview.ts:151"
+    ]
+  },
+  {
+    "call": "The last check failed",
+    "key": "The last check failed",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:516"
+    ]
+  },
+  {
+    "call": "The last check gave no usable result. The current strategy is kept.",
+    "key": "The last check gave no usable result. The current strategy is kept.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:289"
+    ]
+  },
+  {
+    "call": "The last check was interrupted",
+    "key": "The last check was interrupted",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:502",
+      "src/forkop/tabs/autotune/model.ts:509"
     ]
   },
   {
@@ -6183,6 +7304,13 @@
     "key": "The last known good snapshot cannot be deleted",
     "places": [
       "src/forkop/tabs/history/initController.ts:395"
+    ]
+  },
+  {
+    "call": "The maximum number of targets is reached.",
+    "key": "The maximum number of targets is reached.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:550"
     ]
   },
   {
@@ -6208,6 +7336,13 @@
     ]
   },
   {
+    "call": "The recommendation is not confirmed yet.",
+    "key": "The recommendation is not confirmed yet.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:186"
+    ]
+  },
+  {
     "call": "The route check did not complete. Try again.",
     "key": "The route check did not complete. Try again.",
     "places": [
@@ -6219,6 +7354,13 @@
     "key": "The route is calculated from the configuration; DNS and the HTTPS request are made by the router itself.",
     "places": [
       "src/forkop/tabs/diagnostic/renderDiagnostic.ts:67"
+    ]
+  },
+  {
+    "call": "The router could not resolve the address.",
+    "key": "The router could not resolve the address.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:141"
     ]
   },
   {
@@ -6243,6 +7385,13 @@
     ]
   },
   {
+    "call": "The router does not route this address through FakeIP, so Forkop X cannot check a strategy change for it.",
+    "key": "The router does not route this address through FakeIP, so Forkop X cannot check a strategy change for it.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:143"
+    ]
+  },
+  {
     "call": "The router rejected this check",
     "key": "The router rejected this check",
     "places": [
@@ -6254,6 +7403,35 @@
     "key": "The rule applies to the domain and all its subdomains. Use full:, keyword:, or regex: prefixes for exact match, keyword match, or regular expression.",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:7596"
+    ]
+  },
+  {
+    "call": "The rule has a custom strategy; Forkop X keeps it.",
+    "key": "The rule has a custom strategy; Forkop X keeps it.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:190",
+      "src/forkop/tabs/autotune/model.ts:364"
+    ]
+  },
+  {
+    "call": "The rule that routes it cannot be determined unambiguously (for example, a remote list comes first).",
+    "key": "The rule that routes it cannot be determined unambiguously (for example, a remote list comes first).",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:147"
+    ]
+  },
+  {
+    "call": "The same result this many checks in a row (2–10).",
+    "key": "The same result this many checks in a row (2–10).",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:349"
+    ]
+  },
+  {
+    "call": "the service is busy",
+    "key": "the service is busy",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:532"
     ]
   },
   {
@@ -6285,6 +7463,69 @@
     ]
   },
   {
+    "call": "The strategy is changed only after %d checks in a row with the same result.",
+    "key": "The strategy is changed only after %d checks in a row with the same result.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:335"
+    ]
+  },
+  {
+    "call": "The strategy is more reliable than no bypass.",
+    "key": "The strategy is more reliable than no bypass.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:98"
+    ]
+  },
+  {
+    "call": "The strategy is noticeably faster.",
+    "key": "The strategy is noticeably faster.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:101"
+    ]
+  },
+  {
+    "call": "The target address could not be determined reliably during the check.",
+    "key": "The target address could not be determined reliably during the check.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:117"
+    ]
+  },
+  {
+    "call": "The target is disabled.",
+    "key": "The target is disabled.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:139"
+    ]
+  },
+  {
+    "call": "The target is reachable only through a bypass strategy.",
+    "key": "The target is reachable only through a bypass strategy.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:107"
+    ]
+  },
+  {
+    "call": "The target is unreachable in every way; the problem may not be DPI.",
+    "key": "The target is unreachable in every way; the problem may not be DPI.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:112"
+    ]
+  },
+  {
+    "call": "The targets work without bypass.",
+    "key": "The targets work without bypass.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:345"
+    ]
+  },
+  {
+    "call": "The value is outside the allowed range.",
+    "key": "The value is outside the allowed range.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:555"
+    ]
+  },
+  {
     "call": "There are rules using ByeDPI",
     "key": "There are rules using ByeDPI",
     "places": [
@@ -6303,6 +7544,13 @@
     "key": "There are rules using Zapret2",
     "places": [
       "src/forkop/tabs/diagnostic/checks/runZapret2Check.ts:81"
+    ]
+  },
+  {
+    "call": "There are unsaved configuration changes. Save or reset them in Settings first.",
+    "key": "There are unsaved configuration changes. Save or reset them in Settings first.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:540"
     ]
   },
   {
@@ -6371,6 +7619,13 @@
     ]
   },
   {
+    "call": "This strategy was rolled back recently; it waits for the cooldown.",
+    "key": "This strategy was rolled back recently; it waits for the cooldown.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:192"
+    ]
+  },
+  {
     "call": "Time in seconds for DNS record caching (default: 60)",
     "key": "Time in seconds for DNS record caching (default: 60)",
     "places": [
@@ -6396,6 +7651,13 @@
     "key": "TLS or certificate error",
     "places": [
       "src/forkop/tabs/diagnostic/connectivityMatrix.ts:91"
+    ]
+  },
+  {
+    "call": "TLS, median",
+    "key": "TLS, median",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:476"
     ]
   },
   {
@@ -6492,6 +7754,20 @@
     "key": "TTL value cannot be empty",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:282"
+    ]
+  },
+  {
+    "call": "Turn on",
+    "key": "Turn on",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:168"
+    ]
+  },
+  {
+    "call": "Turn on automatic mode?",
+    "key": "Turn on automatic mode?",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:155"
     ]
   },
   {
@@ -6649,10 +7925,38 @@
     ]
   },
   {
+    "call": "unknown reason",
+    "key": "unknown reason",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:532"
+    ]
+  },
+  {
     "call": "Unspecified IP address is not allowed",
     "key": "Unspecified IP address is not allowed",
     "places": [
       "src/validators/validateSubnet.ts:17"
+    ]
+  },
+  {
+    "call": "Unstable",
+    "key": "Unstable",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:77"
+    ]
+  },
+  {
+    "call": "Unstable without bypass; a stable strategy was found.",
+    "key": "Unstable without bypass; a stable strategy was found.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:96"
+    ]
+  },
+  {
+    "call": "up to %d automatic change(s) per day",
+    "key": "up to %d automatic change(s) per day",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:513"
     ]
   },
   {
@@ -6917,7 +8221,9 @@
     "call": "Warning",
     "key": "Warning",
     "places": [
-      "src/forkop/ui/status.ts:155"
+      "src/forkop/ui/status.ts:155",
+      "src/forkop/tabs/autotune/initController.ts:594",
+      "src/forkop/tabs/autotune/initController.ts:604"
     ]
   },
   {
@@ -6977,6 +8283,13 @@
     ]
   },
   {
+    "call": "Works without bypass.",
+    "key": "Works without bypass.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:92"
+    ]
+  },
+  {
     "call": "YACD Secret Key",
     "key": "YACD Secret Key",
     "places": [
@@ -7030,6 +8343,13 @@
     "key": "Zapret provider binary is not available",
     "places": [
       "src/forkop/tabs/diagnostic/checks/runZapretCheck.ts:61"
+    ]
+  },
+  {
+    "call": "Zapret rule",
+    "key": "Zapret rule",
+    "places": [
+      "src/forkop/tabs/autotune/initController.ts:710"
     ]
   },
   {

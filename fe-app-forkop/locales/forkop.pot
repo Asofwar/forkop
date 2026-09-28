@@ -1,15 +1,15 @@
 # SOME DESCRIPTIVE TITLE.
 # Copyright (C) 2026 THE PACKAGE'S COPYRIGHT HOLDER
 # This file is distributed under the same license as the FORKOP package.
-# Claude <noreply@anthropic.com>, 2026.
+# Asofwar <7397608+Asofwar@users.noreply.github.com>, 2026.
 #, fuzzy
 msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-28 09:35+0000\n"
-"PO-Revision-Date: 2026-09-28 09:35+0000\n"
-"Last-Translator: Claude <noreply@anthropic.com>\n"
+"POT-Creation-Date: 2026-09-28 10:21+0000\n"
+"PO-Revision-Date: 2026-09-28 10:21+0000\n"
+"Last-Translator: Asofwar <7397608+Asofwar@users.noreply.github.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
 "MIME-Version: 1.0\n"
@@ -25,8 +25,20 @@ msgstr ""
 msgid "-- Select --"
 msgstr ""
 
+#: src/forkop/tabs/autotune/initController.ts:512
+msgid "%d confirmations"
+msgstr ""
+
 #: src/forkop/tabs/dashboard/overview.ts:212
 msgid "%d connections now"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:579
+msgid "%d d"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:578
+msgid "%d h"
 msgstr ""
 
 #: src/forkop/ui/time.ts:13
@@ -41,6 +53,10 @@ msgstr ""
 msgid "%d more groups"
 msgstr ""
 
+#: src/forkop/tabs/autotune/model.ts:443
+msgid "%d ms"
+msgstr ""
+
 #: src/forkop/tabs/dashboard/overview.ts:205
 msgid "%d node groups"
 msgstr ""
@@ -51,6 +67,10 @@ msgstr ""
 
 #: src/forkop/tabs/dashboard/overview.ts:199
 msgid "%d rules · %d node groups"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:699
+msgid "%s is not applied again before %t"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:7200
@@ -69,12 +89,38 @@ msgstr ""
 msgid "+ Add URLTest"
 msgstr ""
 
+#: src/forkop/tabs/autotune/initController.ts:361
+msgid "0–5; 0 turns automatic changes off."
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:373
+msgid "3–7 attempts per strategy and target in each check."
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:190
+#: src/forkop/tabs/autotune/initController.ts:225
+#: src/forkop/tabs/autotune/model.ts:544
+msgid "A check is already running."
+msgstr ""
+
 #: src/forkop/tabs/updates/releaseSelector.ts:45
 msgid "A configuration backup will be saved in /etc/forkop-backups. Older versions may not support all current settings."
 msgstr ""
 
 #: src/forkop/tabs/dashboard/overview.ts:96
 msgid "A configuration change was not confirmed. Traffic that needs DPI bypass may be blocked until recovery completes."
+msgstr ""
+
+#: src/forkop/tabs/autotune/render.ts:21
+msgid "A group is one Zapret DPI rule. Forkop X changes only the strategy of an existing rule, for all its targets at once. It never creates or deletes rules and never turns DPI bypass off."
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:530
+msgid "a previous apply is not resolved"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:366
+msgid "A rolled back strategy is not applied again before this time passes."
 msgstr ""
 
 #: src/forkop/tabs/diagnostic/siteCheck.ts:43
@@ -87,6 +133,22 @@ msgstr ""
 
 #: src/forkop/tabs/diagnostic/siteCheck.ts:45
 msgid "a rule is too complex to calculate"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:122
+msgid "A safe isolated check is not possible right now."
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:430
+msgid "A site or service checked through the DPI rule that routes it."
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:526
+msgid "a snapshot operation is in progress"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:279
+msgid "A strategy is set for the whole rule, so Forkop X does not change it. You can split the targets into separate rules."
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:6817
@@ -125,6 +187,10 @@ msgstr ""
 msgid "Add a rule"
 msgstr ""
 
+#: src/forkop/tabs/autotune/initController.ts:650
+msgid "Add a target first"
+msgstr ""
+
 #: src/forkop/tabs/diagnostic/renderDiagnostic.ts:151
 msgid "Add address"
 msgstr ""
@@ -135,6 +201,15 @@ msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2324
 msgid "Add prefix to nodes"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:425
+#: src/forkop/tabs/autotune/initController.ts:857
+msgid "Add target"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:808
+msgid "Add the sites that go through your DPI rules, for example youtube.com."
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:7740
@@ -199,6 +274,7 @@ msgstr ""
 msgid "All devices"
 msgstr ""
 
+#: src/forkop/tabs/autotune/initController.ts:980
 #: src/forkop/tabs/dashboard/overviewCards.ts:233
 msgid "All events"
 msgstr ""
@@ -267,6 +343,18 @@ msgstr ""
 msgid "and %d more"
 msgstr ""
 
+#: src/forkop/tabs/autotune/model.ts:528
+msgid "another check is running"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:125
+msgid "Another check was running."
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:204
+msgid "Another group was changed in this run; at most one change per run."
+msgstr ""
+
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:107
 msgid "Another snapshot operation is already in progress. Changes were not applied; try again in a moment."
 msgstr ""
@@ -283,8 +371,16 @@ msgstr ""
 msgid "Any device"
 msgstr ""
 
+#: src/forkop/tabs/autotune/model.ts:223
+msgid "Applied, check passed"
+msgstr ""
+
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:7784
 msgid "Apply section rules only to the specified local IP addresses"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:498
+msgid "Applying a strategy"
 msgstr ""
 
 #: src/forkop/tabs/dashboard/overview.ts:142
@@ -311,8 +407,28 @@ msgstr ""
 msgid "At least one valid IP or subnet must be specified."
 msgstr ""
 
+#: src/forkop/tabs/autotune/initController.ts:163
+msgid "At most %d change(s) per day; a rolled back strategy waits %s."
+msgstr ""
+
 #: src/partials/modal/renderModal.ts:286
 msgid "Auto refresh"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:15
+msgid "Automatic"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:200
+msgid "Automatic applies are disabled by the policy (0 per day)."
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:188
+msgid "Automatic apply requires high confidence."
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:359
+msgid "Automatic changes per day"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:555
@@ -348,8 +464,21 @@ msgstr ""
 msgid "Autotune apply"
 msgstr ""
 
+#: src/forkop/tabs/autotune/initController.ts:934
+msgid "Autotune checks only the sites listed here."
+msgstr ""
+
+#: src/forkop/tabs/autotune/render.ts:32
+msgid "Autotune history"
+msgstr ""
+
 #: src/forkop/ui/status.ts:274
+#: src/forkop/tabs/autotune/initController.ts:174
 msgid "Autotune mode changed"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:343
+msgid "Autotune policy"
 msgstr ""
 
 #: src/forkop/ui/status.ts:276
@@ -358,6 +487,10 @@ msgstr ""
 
 #: src/forkop/ui/status.ts:278
 msgid "Autotune run"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:531
+msgid "Autotune state is unavailable"
 msgstr ""
 
 #: src/forkop/ui/states.ts:60
@@ -385,6 +518,10 @@ msgstr ""
 
 #: src/forkop/tabs/history/model.ts:160
 msgid "Before restore"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:473
+msgid "Best"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3755
@@ -488,6 +625,10 @@ msgstr ""
 msgid "Bypass"
 msgstr ""
 
+#: src/forkop/tabs/autotune/model.ts:343
+msgid "Bypass not needed"
+msgstr ""
+
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:677
 msgid "Cache File Path"
 msgstr ""
@@ -505,6 +646,7 @@ msgid "Calculated result"
 msgstr ""
 
 #: src/forkop/ui/confirmAction.ts:28
+#: src/forkop/tabs/autotune/initController.ts:277
 #: src/forkop/tabs/dashboard/initController.ts:1395
 #: src/forkop/tabs/updates/fullUninstall.ts:11
 #: src/forkop/tabs/updates/releaseSelector.ts:50
@@ -538,6 +680,10 @@ msgstr ""
 msgid "Changes"
 msgstr ""
 
+#: src/forkop/tabs/autotune/initController.ts:166
+msgid "Changes are made only by scheduled checks, one group at a time."
+msgstr ""
+
 #: src/forkop/tabs/history/render.ts:25
 msgid "Changes compare a snapshot with the saved configuration. Unsaved form edits are not included."
 msgstr ""
@@ -564,14 +710,38 @@ msgstr ""
 msgid "Check all"
 msgstr ""
 
+#: src/forkop/tabs/autotune/initController.ts:654
+msgid "Check all now"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:188
+msgid "Check completed"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:345
+msgid "Check every"
+msgstr ""
+
 #: src/forkop/tabs/diagnostic/connectivityMatrix.ts:94
 msgid "Check failed"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:226
+msgid "Check failed, rolled back automatically"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2410
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2873
 #: src/forkop/tabs/dashboard/initController.ts:1522
 msgid "Check interval"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:748
+msgid "Check now"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:217
+msgid "Check started. Targets are measured in isolation; production traffic is not changed."
 msgstr ""
 
 #: src/forkop/tabs/diagnostic/checkCards.ts:27
@@ -596,6 +766,15 @@ msgstr ""
 msgid "Check URL"
 msgstr ""
 
+#: src/forkop/tabs/autotune/initController.ts:686
+msgid "Checked"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:578
+#: src/forkop/tabs/autotune/model.ts:499
+msgid "Checking targets"
+msgstr ""
+
 #: src/forkop/tabs/diagnostic/initController.ts:846
 #: src/forkop/tabs/diagnostic/checks/runByedpiCheck.ts:14
 #: src/forkop/tabs/diagnostic/checks/runDnsCheck.ts:15
@@ -609,6 +788,8 @@ msgid "Checking, please wait"
 msgstr ""
 
 #: src/forkop/ui/status.ts:135
+#: src/forkop/tabs/autotune/initController.ts:654
+#: src/forkop/tabs/autotune/initController.ts:748
 #: src/forkop/tabs/dashboard/overview.ts:136
 #: src/forkop/tabs/diagnostic/connectivityMatrix.ts:104
 #: src/forkop/tabs/diagnostic/dpiPlayground.ts:48
@@ -659,6 +840,7 @@ msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3202
 #: src/partials/modal/renderModal.ts:263
+#: src/forkop/tabs/autotune/initController.ts:501
 #: src/forkop/tabs/dashboard/initController.ts:1276
 #: src/forkop/tabs/dashboard/initController.ts:1654
 #: src/forkop/tabs/history/initController.ts:221
@@ -719,6 +901,14 @@ msgstr ""
 msgid "Conditions"
 msgstr ""
 
+#: src/forkop/tabs/autotune/model.ts:473
+msgid "confidence"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:683
+msgid "Confidence"
+msgstr ""
+
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:664
 msgid "Config File Path"
 msgstr ""
@@ -753,6 +943,26 @@ msgstr ""
 
 #: src/forkop/tabs/updates/releaseSelector.ts:39
 msgid "Confirm version change"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:685
+msgid "Confirmation"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:671
+msgid "Confirmation %d / %d"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:347
+msgid "Confirmations"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:330
+msgid "Confirming"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:351
+msgid "Conflict"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:7360
@@ -832,6 +1042,10 @@ msgstr ""
 msgid "Could not delete snapshot"
 msgstr ""
 
+#: src/forkop/tabs/autotune/initController.ts:788
+msgid "Could not determine the current rule of each target; results of the last check are shown."
+msgstr ""
+
 #: src/forkop/tabs/updates/releaseSelector.ts:25
 #: src/forkop/tabs/updates/releaseSelector.ts:119
 msgid "Could not load available versions"
@@ -860,6 +1074,11 @@ msgstr ""
 msgid "Could not start removal. Another component action may be running."
 msgstr ""
 
+#: src/forkop/tabs/autotune/initController.ts:227
+#: src/forkop/tabs/autotune/initController.ts:231
+msgid "Could not start the check"
+msgstr ""
+
 #: src/forkop/tabs/history/initController.ts:331
 msgid "Create snapshot"
 msgstr ""
@@ -880,6 +1099,10 @@ msgstr ""
 msgid "custom strategy"
 msgstr ""
 
+#: src/forkop/tabs/autotune/model.ts:51
+msgid "Custom strategy"
+msgstr ""
+
 #: src/forkop/tabs/dashboard/partials/renderSections.ts:38
 msgid "Dashboard currently unavailable"
 msgstr ""
@@ -894,6 +1117,10 @@ msgstr ""
 
 #: src/forkop/tabs/monitoring/connectionView.ts:142
 msgid "default strategy"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:43
+msgid "Default strategy"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:451
@@ -931,6 +1158,7 @@ msgstr ""
 msgid "Destination"
 msgstr ""
 
+#: src/forkop/tabs/autotune/initController.ts:905
 #: src/forkop/tabs/monitoring/connectionView.ts:198
 #: src/forkop/tabs/diagnostic/partials/renderCheckSection.ts:178
 msgid "Details"
@@ -939,6 +1167,10 @@ msgstr ""
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2492
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2701
 msgid "Detect server country"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:780
+msgid "Determining which rule routes each target…"
 msgstr ""
 
 #: src/validators/validateOutboundJson.ts:115
@@ -1021,6 +1253,7 @@ msgid "Disable the QUIC protocol to improve compatibility or fix issues with vid
 msgstr ""
 
 #: src/forkop/ui/status.ts:167
+#: src/forkop/tabs/autotune/model.ts:468
 #: src/forkop/tabs/updates/initController.ts:1071
 #: src/forkop/tabs/updates/initController.ts:1103
 msgid "Disabled"
@@ -1100,6 +1333,10 @@ msgstr ""
 msgid "DNS server address cannot be empty"
 msgstr ""
 
+#: src/forkop/tabs/autotune/initController.ts:433
+msgid "DNS server for checks"
+msgstr ""
+
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2370
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:6905
 msgid "DNS server used by the resolver"
@@ -1151,6 +1388,14 @@ msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2573
 msgid "Do not test specified servers."
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:94
+msgid "Does not work without bypass; a stable strategy was found."
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:428
+msgid "Domain"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:7739
@@ -1241,6 +1486,10 @@ msgstr ""
 msgid "DPI"
 msgstr ""
 
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/autotune.js:16
+msgid "DPI autotune"
+msgstr ""
+
 #: src/forkop/tabs/diagnostic/checkCards.ts:56
 msgid "DPI bypass of the rules using this provider may not work."
 msgstr ""
@@ -1249,8 +1498,16 @@ msgstr ""
 msgid "DPI guard"
 msgstr ""
 
+#: src/forkop/tabs/autotune/model.ts:524
+msgid "DPI protection is active"
+msgstr ""
+
 #: src/forkop/tabs/dashboard/overview.ts:95
 msgid "DPI protection is holding traffic"
+msgstr ""
+
+#: src/forkop/tabs/autotune/render.ts:17
+msgid "DPI rule groups"
 msgstr ""
 
 #: src/forkop/tabs/monitoring/initController.ts:1107
@@ -1282,8 +1539,16 @@ msgstr ""
 msgid "Edit rule action"
 msgstr ""
 
+#: src/forkop/tabs/autotune/initController.ts:425
+msgid "Edit target"
+msgstr ""
+
 #: src/forkop/tabs/dashboard/initController.ts:1400
 msgid "Edit URLTest"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:914
+msgid "Edit…"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:6807
@@ -1332,6 +1597,7 @@ msgstr ""
 msgid "Enable YACD WAN Access"
 msgstr ""
 
+#: src/forkop/tabs/autotune/initController.ts:439
 #: src/forkop/tabs/updates/initController.ts:1070
 #: src/forkop/tabs/updates/initController.ts:1100
 msgid "Enabled"
@@ -1346,6 +1612,10 @@ msgstr ""
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3491
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3507
 msgid "Enter a display name"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:546
+msgid "Enter a domain name, for example youtube.com."
 msgstr ""
 
 #: src/forkop/tabs/diagnostic/siteCheck.ts:239
@@ -1389,6 +1659,10 @@ msgstr ""
 
 #: src/forkop/tabs/diagnostic/checkCards.ts:147
 msgid "Errors: %d"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:511
+msgid "every %s"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3833
@@ -1460,6 +1734,7 @@ msgid "External nfqws2 config files bypass Forkop queue management and explicit 
 msgstr ""
 
 #: src/forkop/ui/status.ts:250
+#: src/forkop/tabs/autotune/model.ts:79
 #: src/forkop/tabs/diagnostic/statusLabels.ts:43
 msgid "Failed"
 msgstr ""
@@ -1482,8 +1757,8 @@ msgstr ""
 msgid "Failed to create support report"
 msgstr ""
 
-#: src/forkop/methods/shell/index.ts:171
-#: src/forkop/methods/shell/index.ts:178
+#: src/forkop/methods/shell/index.ts:173
+#: src/forkop/methods/shell/index.ts:180
 #: src/forkop/tabs/updates/initController.ts:541
 #: src/forkop/tabs/updates/initController.ts:542
 #: src/forkop/tabs/updates/initController.ts:602
@@ -1554,6 +1829,10 @@ msgstr ""
 msgid "For a DPI rule this can mean the strategy does not work with your provider."
 msgstr ""
 
+#: src/forkop/tabs/autotune/initController.ts:354
+msgid "For recommendations. Automatic apply always requires high confidence."
+msgstr ""
+
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:6804
 msgid "For whom"
 msgstr ""
@@ -1594,6 +1873,10 @@ msgstr ""
 msgid "Forkop X and sing-box have been removed. Original repositories have been restored."
 msgstr ""
 
+#: src/forkop/tabs/autotune/model.ts:180
+msgid "Forkop X does not apply recommendations in this mode."
+msgstr ""
+
 #: src/forkop/tabs/dashboard/overview.ts:148
 msgid "Forkop X is running"
 msgstr ""
@@ -1610,8 +1893,24 @@ msgstr ""
 msgid "Forkop X kept or restored the previous configuration."
 msgstr ""
 
+#: src/forkop/tabs/autotune/model.ts:28
+msgid "Forkop X measures the targets on schedule and applies a confirmed recommendation by itself, with a production check and automatic rollback."
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:24
+msgid "Forkop X measures the targets on schedule and shows recommendations. It does not change rules."
+msgstr ""
+
 #: src/forkop/tabs/dashboard/overview.ts:145
 msgid "Forkop X needs attention"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:346
+msgid "Forkop X never turns DPI bypass off by itself; remove the targets from the rule manually if you want."
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:208
+msgid "Forkop X never turns DPI bypass off by itself."
 msgstr ""
 
 #: src/forkop/tabs/history/initController.ts:256
@@ -1620,6 +1919,10 @@ msgstr ""
 
 #: src/forkop/tabs/shared/serviceControl.ts:33
 msgid "Forkop X stops handling traffic until it is started again."
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:156
+msgid "Forkop X will change the strategy of existing DPI rules by itself, only after several confirmations in a row, with a production check and automatic rollback."
 msgstr ""
 
 #: src/forkop/tabs/diagnostic/checks/runByedpiCheck.ts:91
@@ -1701,6 +2004,10 @@ msgstr ""
 msgid "Hide values"
 msgstr ""
 
+#: src/forkop/tabs/autotune/model.ts:59
+msgid "high"
+msgstr ""
+
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2897
 #: src/forkop/tabs/dashboard/initController.ts:1527
 msgid "Higher-level check interval"
@@ -1722,6 +2029,7 @@ msgstr ""
 msgid "History is kept in memory until the router restarts."
 msgstr ""
 
+#: src/forkop/tabs/autotune/initController.ts:944
 #: src/forkop/tabs/history/initController.ts:123
 msgid "History is unavailable"
 msgstr ""
@@ -1766,6 +2074,10 @@ msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2340
 msgid "Import URLTest groups returned by this subscription provider"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:730
+msgid "In \"Recommendations only\" mode Forkop X does not change the rule. To let it apply the strategy with a production check and automatic rollback, switch to \"Automatic\"."
 msgstr ""
 
 #: src/forkop/ui/status.ts:161
@@ -2109,6 +2421,42 @@ msgstr ""
 msgid "Issues detected"
 msgstr ""
 
+#: src/forkop/tabs/autotune/model.ts:161
+msgid "It goes directly and is not in a DPI rule. No bypass is configured for it."
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:157
+msgid "It goes through a proxy or VPN rule. DPI autotune does not apply."
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:153
+msgid "It goes through a Zapret2 or ByeDPI rule; autotune supports Zapret rules only."
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:167
+msgid "It is blocked by a rule."
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:165
+msgid "It is excluded from Forkop X routing."
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:172
+msgid "It is not in a DPI rule."
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:170
+msgid "It is not routed by a DPI rule."
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:160
+msgid "It never creates or deletes rules, never turns DPI bypass off and never moves targets between rules."
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:448
+msgid "Its measurements are deleted as well. Routing rules are not changed."
+msgstr ""
+
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:1063
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3535
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3771
@@ -2152,8 +2500,27 @@ msgstr ""
 msgid "Keyword must not contain spaces or commas"
 msgstr ""
 
+#: src/forkop/tabs/autotune/initController.ts:689
+msgid "Last change"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:463
+msgid "last check"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:582
+#: src/forkop/tabs/autotune/initController.ts:588
+#: src/forkop/tabs/autotune/initController.ts:589
 #: src/forkop/tabs/diagnostic/partials/renderRunAction.ts:53
 msgid "Last check"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:507
+msgid "Last check completed"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:512
+msgid "Last check postponed"
 msgstr ""
 
 #: src/forkop/tabs/dashboard/overview.ts:175
@@ -2185,8 +2552,8 @@ msgstr ""
 msgid "Last reload: %s"
 msgstr ""
 
-#: src/forkop/methods/shell/index.ts:555
-#: src/forkop/methods/shell/index.ts:576
+#: src/forkop/methods/shell/index.ts:614
+#: src/forkop/methods/shell/index.ts:635
 #: src/forkop/tabs/dashboard/initController.ts:1004
 #: src/forkop/tabs/dashboard/initController.ts:1012
 msgid "Latency test failed"
@@ -2247,6 +2614,11 @@ msgid "Loading..."
 msgstr ""
 
 #: src/forkop/ui/states.ts:36
+#: src/forkop/tabs/autotune/initController.ts:804
+#: src/forkop/tabs/autotune/render.ts:14
+#: src/forkop/tabs/autotune/render.ts:25
+#: src/forkop/tabs/autotune/render.ts:29
+#: src/forkop/tabs/autotune/render.ts:33
 #: src/forkop/tabs/dashboard/render.ts:14
 #: src/forkop/tabs/history/render.ts:13
 #: src/forkop/tabs/history/render.ts:17
@@ -2256,6 +2628,10 @@ msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:713
 msgid "Log Level"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:63
+msgid "low"
 msgstr ""
 
 #: src/forkop/tabs/diagnostic/checks/runDnsCheck.ts:68
@@ -2278,6 +2654,10 @@ msgstr ""
 msgid "Manual"
 msgstr ""
 
+#: src/forkop/tabs/autotune/model.ts:182
+msgid "Manual checks only measure; changes are applied only on schedule."
+msgstr ""
+
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:7625
 msgid "Match destination IPs or subnets"
 msgstr ""
@@ -2288,6 +2668,18 @@ msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:266
 msgid "Maximum time to wait for example.com to resolve during a DNS health check."
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:467
+msgid "measured in isolation from production traffic"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:61
+msgid "medium"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:352
+msgid "Minimum confidence"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2423
@@ -2306,8 +2698,17 @@ msgstr ""
 msgid "Mixed Proxy Username"
 msgstr ""
 
+#: src/forkop/tabs/autotune/initController.ts:544
+#: src/forkop/tabs/autotune/initController.ts:552
+msgid "Mode"
+msgstr ""
+
 #: src/forkop/tabs/updates/initController.ts:1046
 msgid "Mode 2 enabled"
+msgstr ""
+
+#: src/forkop/tabs/autotune/render.ts:13
+msgid "Mode and state"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:427
@@ -2369,6 +2770,10 @@ msgstr ""
 msgid "New version %s is available for %s"
 msgstr ""
 
+#: src/forkop/tabs/autotune/initController.ts:591
+msgid "Next scheduled check"
+msgstr ""
+
 #: src/forkop/tabs/diagnostic/checks/runZapret2Check.ts:100
 #: src/forkop/tabs/diagnostic/checks/runZapretCheck.ts:97
 msgid "NFQUEUE range is available"
@@ -2406,6 +2811,22 @@ msgstr ""
 msgid "No active connections"
 msgstr ""
 
+#: src/forkop/tabs/autotune/initController.ts:971
+msgid "No autotune events yet"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:42
+msgid "No bypass (direct)"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:340
+msgid "No change needed"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:230
+msgid "No change was needed"
+msgstr ""
+
 #: src/forkop/tabs/diagnostic/partials/renderRunAction.ts:54
 msgid "No check has been run yet"
 msgstr ""
@@ -2427,11 +2848,18 @@ msgid "no data"
 msgstr ""
 
 #: src/forkop/ui/states.ts:102
+#: src/forkop/tabs/autotune/initController.ts:768
+#: src/forkop/tabs/autotune/initController.ts:864
+#: src/forkop/tabs/autotune/model.ts:354
 msgid "No data"
 msgstr ""
 
 #: src/forkop/tabs/diagnostic/connectivityMatrix.ts:88
 msgid "No DNS records for this name"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:127
+msgid "No DNS server for measurements: set a plain IPv4 DNS server in Forkop X or on the target."
 msgstr ""
 
 #: src/forkop/tabs/history/initController.ts:162
@@ -2441,6 +2869,11 @@ msgstr ""
 #: src/forkop/tabs/dashboard/overviewCards.ts:232
 #: src/forkop/tabs/history/initController.ts:161
 msgid "No events recorded yet"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:287
+#: src/forkop/tabs/autotune/model.ts:325
+msgid "No measurements yet."
 msgstr ""
 
 #: src/forkop/tabs/monitoring/initController.ts:1373
@@ -2490,6 +2923,27 @@ msgstr ""
 msgid "No snapshots yet"
 msgstr ""
 
+#: src/forkop/tabs/autotune/initController.ts:492
+msgid "No strategies were measured"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:109
+msgid "No strategy is stable. The current strategy is kept."
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:803
+msgid "No target is routed through a Zapret DPI rule"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:805
+#: src/forkop/tabs/autotune/initController.ts:931
+msgid "No targets yet"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:476
+msgid "No usable result"
+msgstr ""
+
 #: src/forkop/tabs/dashboard/initController.ts:1248
 #: src/forkop/tabs/dashboard/initController.ts:1639
 msgid "Node list is empty"
@@ -2511,6 +2965,10 @@ msgstr ""
 msgid "Normal mode"
 msgstr ""
 
+#: src/forkop/tabs/autotune/model.ts:234
+msgid "Not applied"
+msgstr ""
+
 #: src/forkop/tabs/diagnostic/statusLabels.ts:30
 #: src/forkop/tabs/diagnostic/statusLabels.ts:47
 #: src/forkop/tabs/diagnostic/statusLabels.ts:62
@@ -2518,13 +2976,21 @@ msgid "Not available for checking"
 msgstr ""
 
 #: src/forkop/ui/status.ts:163
+#: src/forkop/tabs/autotune/model.ts:83
+#: src/forkop/tabs/autotune/model.ts:324
+#: src/forkop/tabs/autotune/model.ts:471
 #: src/forkop/tabs/diagnostic/connectivityMatrix.ts:102
 #: src/forkop/tabs/diagnostic/statusLabels.ts:32
 msgid "Not checked"
 msgstr ""
 
+#: src/forkop/tabs/autotune/initController.ts:589
+msgid "Not checked yet"
+msgstr ""
+
 #: src/forkop/ui/status.ts:300
 #: src/forkop/ui/status.ts:313
+#: src/forkop/tabs/autotune/model.ts:52
 msgid "Not determined"
 msgstr ""
 
@@ -2566,6 +3032,7 @@ msgid "Not running"
 msgstr ""
 
 #: src/forkop/ui/status.ts:165
+#: src/forkop/tabs/autotune/model.ts:81
 msgid "Not supported"
 msgstr ""
 
@@ -2573,12 +3040,17 @@ msgstr ""
 msgid "not used"
 msgstr ""
 
+#: src/forkop/tabs/autotune/initController.ts:679
 #: src/forkop/tabs/history/initController.ts:184
 msgid "Now"
 msgstr ""
 
 #: src/forkop/ui/status.ts:294
 msgid "Observed"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:17
+msgid "Off"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2754
@@ -2633,19 +3105,27 @@ msgstr ""
 msgid "Open priority settings and enter a display name"
 msgstr ""
 
+#: src/forkop/tabs/autotune/initController.ts:757
+msgid "Open rules"
+msgstr ""
+
 #: src/forkop/tabs/diagnostic/partials/renderCheckSection.ts:92
 msgid "Open settings"
 msgstr ""
 
 #: src/helpers/withTimeout.ts:7
-#: src/forkop/methods/shell/index.ts:525
-#: src/forkop/methods/shell/index.ts:613
+#: src/forkop/methods/shell/index.ts:584
+#: src/forkop/methods/shell/index.ts:672
 msgid "Operation timed out"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:1380
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:6376
 msgid "Option \"%s\" contains an invalid input value."
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:435
+msgid "Optional IPv4 address. By default the first IPv4 DNS server of Forkop X is used."
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:5375
@@ -2679,6 +3159,10 @@ msgstr ""
 
 #: src/validators/validateOutboundJson.ts:111
 msgid "outbounds must be a non-empty array of strings"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:238
+msgid "Outcome unknown"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:366
@@ -2741,6 +3225,18 @@ msgstr ""
 msgid "Path type"
 msgstr ""
 
+#: src/forkop/tabs/autotune/initController.ts:698
+msgid "Pause"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:364
+msgid "Pause after a rollback"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:517
+msgid "pause after a rollback %s"
+msgstr ""
+
 #: src/forkop/tabs/monitoring/initController.ts:797
 #: src/forkop/tabs/monitoring/render.ts:140
 #: src/forkop/tabs/monitoring/render.ts:141
@@ -2758,6 +3254,18 @@ msgstr ""
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2472
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2958
 msgid "Pin on dashboard"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:573
+msgid "Policy"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:337
+msgid "Policy saved"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:638
+msgid "Policy…"
 msgstr ""
 
 #: src/forkop/tabs/diagnostic/connectivityMatrix.ts:244
@@ -2837,6 +3345,10 @@ msgstr ""
 msgid "Probe tool is missing on the router"
 msgstr ""
 
+#: src/forkop/tabs/autotune/initController.ts:371
+msgid "Probes per strategy"
+msgstr ""
+
 #: src/forkop/tabs/dashboard/partials/renderSections.ts:130
 msgid "Profile"
 msgstr ""
@@ -2864,6 +3376,18 @@ msgstr ""
 
 #: src/forkop/tabs/diagnostic/connectivityMatrix.ts:109
 msgid "Reachable"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:329
+msgid "Recommendation confirmed"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:13
+msgid "Recommendations only"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:681
+msgid "Recommended"
 msgstr ""
 
 #: src/forkop/ui/status.ts:132
@@ -2903,6 +3427,7 @@ msgstr ""
 msgid "Removal did not finish. See the removal log in /tmp/forkop-uninstall.*/output.log."
 msgstr ""
 
+#: src/forkop/tabs/autotune/initController.ts:449
 #: src/forkop/tabs/diagnostic/connectivityMatrix.ts:279
 #: src/forkop/tabs/diagnostic/connectivityMatrix.ts:280
 #: src/forkop/tabs/updates/initController.ts:720
@@ -2939,8 +3464,16 @@ msgstr ""
 msgid "Remove servers whose names match the expression from this level."
 msgstr ""
 
+#: src/forkop/tabs/autotune/initController.ts:447
+msgid "Remove target?"
+msgstr ""
+
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2786
 msgid "Remove the specified servers from this level."
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:919
+msgid "Remove…"
 msgstr ""
 
 #: src/forkop/tabs/updates/fullUninstall.ts:21
@@ -3045,6 +3578,10 @@ msgstr ""
 msgid "Retry this check"
 msgstr ""
 
+#: src/forkop/tabs/autotune/model.ts:236
+msgid "Rollback did not finish"
+msgstr ""
+
 #: src/forkop/ui/status.ts:141
 #: src/forkop/ui/status.ts:248
 msgid "Rolled back"
@@ -3062,6 +3599,10 @@ msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:6924
 msgid "Route requests to this DNS server through another section."
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:395
+msgid "Router DNS"
 msgstr ""
 
 #: src/forkop/tabs/dashboard/overview.ts:165
@@ -3157,12 +3698,18 @@ msgid "Run full diagnostics"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3211
+#: src/forkop/tabs/autotune/initController.ts:376
+#: src/forkop/tabs/autotune/initController.ts:441
 #: src/forkop/tabs/dashboard/initController.ts:1390
 msgid "Save"
 msgstr ""
 
 #: src/forkop/tabs/dashboard/initController.ts:1334
 msgid "Saving URLTest settings…"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:32
+msgid "Scheduled measurements are off. An administrator can still check targets manually."
 msgstr ""
 
 #: src/forkop/tabs/monitoring/render.ts:113
@@ -3301,8 +3848,8 @@ msgstr ""
 msgid "Service"
 msgstr ""
 
-#: src/forkop/methods/shell/index.ts:447
-#: src/forkop/methods/shell/index.ts:497
+#: src/forkop/methods/shell/index.ts:506
+#: src/forkop/methods/shell/index.ts:556
 #: src/forkop/tabs/diagnostic/serviceTransition.ts:97
 #: src/forkop/tabs/diagnostic/serviceTransition.ts:98
 msgid "Service action failed"
@@ -3332,6 +3879,10 @@ msgstr ""
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:1124
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:90
 msgid "Settings"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:103
+msgid "Several strategies are stable with similar latency; the simplest one was chosen."
 msgstr ""
 
 #: src/forkop/tabs/monitoring/render.ts:69
@@ -3416,6 +3967,10 @@ msgstr ""
 msgid "Snapshots: %d"
 msgstr ""
 
+#: src/forkop/tabs/autotune/initController.ts:606
+msgid "Some autotune settings are invalid; safe defaults are used for them."
+msgstr ""
+
 #: src/forkop/tabs/diagnostic/checkCards.ts:64
 msgid "Some connections or nodes do not respond, so sites of their rules may not open."
 msgstr ""
@@ -3438,6 +3993,14 @@ msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:320
 msgid "Source Network Interface"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:475
+msgid "Stability"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:75
+msgid "Stable"
 msgstr ""
 
 #: src/forkop/tabs/diagnostic/checks/runByedpiCheck.ts:122
@@ -3504,6 +4067,7 @@ msgstr ""
 msgid "Starting…"
 msgstr ""
 
+#: src/forkop/tabs/autotune/initController.ts:577
 #: src/forkop/tabs/dashboard/overviewCards.ts:136
 msgid "State"
 msgstr ""
@@ -3533,6 +4097,7 @@ msgstr ""
 msgid "Stop Forkop X…"
 msgstr ""
 
+#: src/forkop/tabs/autotune/initController.ts:473
 #: src/forkop/tabs/diagnostic/renderDiagnostic.ts:40
 msgid "Strategy"
 msgstr ""
@@ -3549,8 +4114,8 @@ msgstr ""
 msgid "Subscription info:"
 msgstr ""
 
-#: src/forkop/methods/shell/index.ts:819
-#: src/forkop/methods/shell/index.ts:839
+#: src/forkop/methods/shell/index.ts:878
+#: src/forkop/methods/shell/index.ts:898
 msgid "Subscription update failed"
 msgstr ""
 
@@ -3573,6 +4138,10 @@ msgstr ""
 #: src/forkop/ui/status.ts:244
 #: src/forkop/tabs/diagnostic/statusLabels.ts:39
 msgid "Succeeded"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:474
+msgid "Successful"
 msgstr ""
 
 #: src/forkop/tabs/dashboard/partials/renderSections.ts:131
@@ -3605,6 +4174,31 @@ msgstr ""
 
 #: src/forkop/tabs/diagnostic/checks/runNftCheck.ts:69
 msgid "Table exist"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:912
+msgid "Target actions"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:455
+msgid "Target removed"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:421
+msgid "Target saved"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:703
+#: src/forkop/tabs/autotune/render.ts:28
+msgid "Targets"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:275
+msgid "Targets of this rule need different strategies."
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:818
+msgid "Targets outside DPI rules (%d)"
 msgstr ""
 
 #: src/forkop/tabs/diagnostic/renderDiagnostic.ts:169
@@ -3659,13 +4253,78 @@ msgstr ""
 msgid "The address is blocked by a rule"
 msgstr ""
 
+#: src/forkop/tabs/autotune/initController.ts:596
+msgid "The autotune state was damaged and has been reset; automatic changes wait for the pause after a rollback."
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:196
+msgid "The autotune state was restored after damage; automatic apply waits for the cooldown."
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:274
+msgid "The best strategy is not stable for every target of the rule."
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:557
+msgid "The change was not saved."
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:197
+msgid "The check did not complete"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:131
+msgid "The check gave no usable result."
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:201
+msgid "The check stopped unexpectedly"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:193
+msgid "The check was postponed. See the state above."
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:341
+msgid "The current strategy is already the best."
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:292
+msgid "The current strategy is kept."
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:202
+msgid "The daily limit of automatic applies is reached."
+msgstr ""
+
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:5182
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:5627
 msgid "The desync fwmark is managed by Forkop for loop prevention and must not be overridden here."
 msgstr ""
 
+#: src/forkop/tabs/autotune/model.ts:548
+msgid "The DNS server must be an IPv4 address."
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:151
+msgid "The DPI rule that routes it could not be identified safely."
+msgstr ""
+
 #: src/forkop/tabs/dashboard/overview.ts:151
 msgid "The last change was rolled back automatically."
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:516
+msgid "The last check failed"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:289
+msgid "The last check gave no usable result. The current strategy is kept."
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:502
+#: src/forkop/tabs/autotune/model.ts:509
+msgid "The last check was interrupted"
 msgstr ""
 
 #: src/forkop/tabs/dashboard/overview.ts:113
@@ -3674,6 +4333,10 @@ msgstr ""
 
 #: src/forkop/tabs/history/initController.ts:395
 msgid "The last known good snapshot cannot be deleted"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:550
+msgid "The maximum number of targets is reached."
 msgstr ""
 
 #: src/forkop/tabs/diagnostic/siteCheck.ts:141
@@ -3689,12 +4352,20 @@ msgstr ""
 msgid "The package is removed from the router."
 msgstr ""
 
+#: src/forkop/tabs/autotune/model.ts:186
+msgid "The recommendation is not confirmed yet."
+msgstr ""
+
 #: src/forkop/tabs/diagnostic/siteCheck.ts:203
 msgid "The route check did not complete. Try again."
 msgstr ""
 
 #: src/forkop/tabs/diagnostic/renderDiagnostic.ts:67
 msgid "The route is calculated from the configuration; DNS and the HTTPS request are made by the router itself."
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:141
+msgid "The router could not resolve the address."
 msgstr ""
 
 #: src/forkop/ui/states.ts:110
@@ -3709,12 +4380,33 @@ msgstr ""
 msgid "The router DNS returned no address"
 msgstr ""
 
+#: src/forkop/tabs/autotune/model.ts:143
+msgid "The router does not route this address through FakeIP, so Forkop X cannot check a strategy change for it."
+msgstr ""
+
 #: src/forkop/tabs/diagnostic/connectivityMatrix.ts:130
 msgid "The router rejected this check"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:7596
 msgid "The rule applies to the domain and all its subdomains. Use full:, keyword:, or regex: prefixes for exact match, keyword match, or regular expression."
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:190
+#: src/forkop/tabs/autotune/model.ts:364
+msgid "The rule has a custom strategy; Forkop X keeps it."
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:147
+msgid "The rule that routes it cannot be determined unambiguously (for example, a remote list comes first)."
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:349
+msgid "The same result this many checks in a row (2–10)."
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:532
+msgid "the service is busy"
 msgstr ""
 
 #: src/forkop/tabs/diagnostic/siteCheck.ts:30
@@ -3733,6 +4425,42 @@ msgstr ""
 msgid "The strategy contains an error"
 msgstr ""
 
+#: src/forkop/tabs/autotune/model.ts:335
+msgid "The strategy is changed only after %d checks in a row with the same result."
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:98
+msgid "The strategy is more reliable than no bypass."
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:101
+msgid "The strategy is noticeably faster."
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:117
+msgid "The target address could not be determined reliably during the check."
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:139
+msgid "The target is disabled."
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:107
+msgid "The target is reachable only through a bypass strategy."
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:112
+msgid "The target is unreachable in every way; the problem may not be DPI."
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:345
+msgid "The targets work without bypass."
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:555
+msgid "The value is outside the allowed range."
+msgstr ""
+
 #: src/forkop/tabs/diagnostic/checks/runByedpiCheck.ts:78
 msgid "There are rules using ByeDPI"
 msgstr ""
@@ -3743,6 +4471,10 @@ msgstr ""
 
 #: src/forkop/tabs/diagnostic/checks/runZapret2Check.ts:81
 msgid "There are rules using Zapret2"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:540
+msgid "There are unsaved configuration changes. Save or reset them in Settings first."
 msgstr ""
 
 #: src/forkop/tabs/diagnostic/checkCards.ts:78
@@ -3783,6 +4515,10 @@ msgstr ""
 msgid "This permanently deletes saved sections and subscriptions. Other components remain installed."
 msgstr ""
 
+#: src/forkop/tabs/autotune/model.ts:192
+msgid "This strategy was rolled back recently; it waits for the cooldown."
+msgstr ""
+
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:276
 msgid "Time in seconds for DNS record caching (default: 60)"
 msgstr ""
@@ -3797,6 +4533,10 @@ msgstr ""
 
 #: src/forkop/tabs/diagnostic/connectivityMatrix.ts:91
 msgid "TLS or certificate error"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:476
+msgid "TLS, median"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2422
@@ -3854,6 +4594,14 @@ msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:282
 msgid "TTL value cannot be empty"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:168
+msgid "Turn on"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:155
+msgid "Turn on automatic mode?"
 msgstr ""
 
 #: src/forkop/tabs/diagnostic/connectivityMatrix.ts:251
@@ -3953,8 +4701,24 @@ msgstr ""
 msgid "Unknown NFQWS2 flag."
 msgstr ""
 
+#: src/forkop/tabs/autotune/model.ts:532
+msgid "unknown reason"
+msgstr ""
+
 #: src/validators/validateSubnet.ts:17
 msgid "Unspecified IP address is not allowed"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:77
+msgid "Unstable"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:96
+msgid "Unstable without bypass; a stable strategy was found."
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:513
+msgid "up to %d automatic change(s) per day"
 msgstr ""
 
 #: src/forkop/tabs/updates/initController.ts:819
@@ -4120,6 +4884,8 @@ msgid "Waiting to finish"
 msgstr ""
 
 #: src/forkop/ui/status.ts:155
+#: src/forkop/tabs/autotune/initController.ts:594
+#: src/forkop/tabs/autotune/initController.ts:604
 msgid "Warning"
 msgstr ""
 
@@ -4155,6 +4921,10 @@ msgstr ""
 msgid "Where to"
 msgstr ""
 
+#: src/forkop/tabs/autotune/model.ts:92
+msgid "Works without bypass."
+msgstr ""
+
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:487
 msgid "YACD Secret Key"
 msgstr ""
@@ -4185,6 +4955,10 @@ msgstr ""
 
 #: src/forkop/tabs/diagnostic/checks/runZapretCheck.ts:61
 msgid "Zapret provider binary is not available"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:710
+msgid "Zapret rule"
 msgstr ""
 
 #: src/forkop/tabs/diagnostic/checks/runZapretCheck.ts:103

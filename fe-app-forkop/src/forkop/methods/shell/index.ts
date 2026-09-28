@@ -19,6 +19,8 @@ const COMPONENT_ACTION_TRANSIENT_RPC_GRACE_MS = 30000;
 const COMPONENT_ACTION_STATE_DIR = '/var/run/forkop/component-actions';
 const GET_UI_STATE_RPC_TIMEOUT_MS = 3000;
 const SUPPORT_REPORT_RPC_TIMEOUT_MS = 60000;
+// Up to 16 targets, one DNS lookup (2 s timeout) each.
+const AUTOTUNE_GROUPS_RPC_TIMEOUT_MS = 45000;
 
 function sleep(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -364,6 +366,63 @@ export const ForkopShellMethods = {
     ),
   getHistory: async () =>
     callBaseMethod<Forkop.HistoryResult>(Forkop.AvailableMethods.GET_HISTORY),
+  // Autotune commands exit non-zero with a structured result (failed,
+  // refused, busy); keep it instead of a bare failure.
+  autotuneStatus: async () =>
+    callBaseMethod<Forkop.AutotuneStatus>(
+      Forkop.AvailableMethods.AUTOTUNE_STATUS,
+      [],
+      '/usr/bin/forkop',
+      { allowNonZeroWithStdout: true },
+    ),
+  // Resolves every target through the router DNS.
+  autotuneGroups: async () =>
+    callBaseMethod<Forkop.AutotuneGroups>(
+      Forkop.AvailableMethods.AUTOTUNE_GROUPS,
+      [],
+      '/usr/bin/forkop',
+      { allowNonZeroWithStdout: true, timeout: AUTOTUNE_GROUPS_RPC_TIMEOUT_MS },
+    ),
+  autotunePolicySet: async (option: string, value: string) =>
+    callBaseMethod<Forkop.AutotuneMutationResult>(
+      Forkop.AvailableMethods.AUTOTUNE_POLICY_SET,
+      [option, value],
+      '/usr/bin/forkop',
+      { allowNonZeroWithStdout: true },
+    ),
+  autotuneTargetSet: async (
+    id: string,
+    host: string,
+    enabled: boolean,
+    resolver: string,
+  ) =>
+    callBaseMethod<Forkop.AutotuneMutationResult>(
+      Forkop.AvailableMethods.AUTOTUNE_TARGET_SET,
+      [id, host, enabled ? '1' : '0', resolver],
+      '/usr/bin/forkop',
+      { allowNonZeroWithStdout: true },
+    ),
+  autotuneTargetRemove: async (id: string) =>
+    callBaseMethod<Forkop.AutotuneMutationResult>(
+      Forkop.AvailableMethods.AUTOTUNE_TARGET_REMOVE,
+      [id],
+      '/usr/bin/forkop',
+      { allowNonZeroWithStdout: true },
+    ),
+  autotuneRunAsync: async (scope: string) =>
+    callBaseMethod<Forkop.AutotuneMutationResult>(
+      Forkop.AvailableMethods.AUTOTUNE_RUN_ASYNC,
+      [scope],
+      '/usr/bin/forkop',
+      { allowNonZeroWithStdout: true },
+    ),
+  autotuneRunStatus: async (job: string) =>
+    callBaseMethod<Forkop.AutotuneJobStatus>(
+      Forkop.AvailableMethods.AUTOTUNE_RUN_STATUS,
+      [job],
+      '/usr/bin/forkop',
+      { allowNonZeroWithStdout: true },
+    ),
   routeTrace: async (
     target: string,
     source: string,

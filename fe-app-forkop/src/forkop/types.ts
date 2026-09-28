@@ -92,6 +92,163 @@ export namespace Forkop {
     persistent: boolean;
     events: HistoryEvent[];
   }
+  // autotune/manager.uc: policy, targets and cached results. Strategy
+  // identities are catalog candidate ids, never raw strategies.
+  export type AutotuneMode = 'off' | 'recommend' | 'auto';
+
+  export interface AutotunePolicy {
+    mode: AutotuneMode;
+    interval: string;
+    confirmations: number;
+    min_confidence: 'medium' | 'high';
+    max_applies_per_day: number;
+    cooldown: string;
+    probes: number;
+    interval_seconds?: number | null;
+    cooldown_seconds?: number | null;
+  }
+
+  export interface AutotuneCandidateSummary {
+    id: string;
+    stability?: string;
+    success?: number;
+    attempted?: number;
+    success_ratio?: number | null;
+    median_tls_ms?: number | null;
+    failure_classes?: string[];
+  }
+
+  export interface AutotuneTargetSummary {
+    at: number;
+    status: string;
+    reason: string | null;
+    selected: string | null;
+    confidence: string | null;
+    leading?: string | null;
+    host?: string | null;
+    group?: string | null;
+    candidates: AutotuneCandidateSummary[];
+  }
+
+  export interface AutotuneTarget {
+    id: string;
+    host: string;
+    enabled: boolean;
+    resolver: string | null;
+    last: AutotuneTargetSummary | null;
+  }
+
+  export interface AutotuneGroupResult {
+    status: string;
+    candidate: string | null;
+    confidence: string | null;
+    representative?: string | null;
+    reason: string | null;
+    conflict?: { target: string; selected: string }[];
+  }
+
+  export interface AutotuneApplyRecord {
+    at: number;
+    group: string;
+    candidate: string | null;
+    status: string;
+    reason: string | null;
+    counted?: boolean;
+  }
+
+  // Hysteresis state of a group, written by the worker.
+  export interface AutotuneGroupState {
+    pending: {
+      candidate: string;
+      count: number;
+      confidence?: string | null;
+      first_seen?: number;
+      last_seen?: number;
+      inconclusive_streak?: number;
+    } | null;
+    last?: {
+      status: string;
+      candidate: string | null;
+      confidence: string | null;
+      reason: string | null;
+      at: number;
+    } | null;
+    cooldowns?: Record<string, number>;
+    last_apply?: AutotuneApplyRecord | null;
+    label?: string | null;
+    targets?: string[];
+    current?: string | null;
+    ready?: boolean;
+    required?: number;
+    result?: AutotuneGroupResult | null;
+    decision?: { reason: string | null; at: number } | null;
+  }
+
+  export interface AutotuneWorker {
+    state: 'running' | 'finished' | 'crashed' | string;
+    trigger?: string;
+    scope?: string;
+    started_at?: number;
+    finished_at?: number;
+    phase?: string;
+    result?: string;
+    reason?: string | null;
+    applied?: string | null;
+  }
+
+  export interface AutotuneStatus {
+    status: 'ok' | 'failed';
+    reason?: string;
+    policy: AutotunePolicy;
+    errors: { option?: string; target?: string; error: string }[];
+    targets: AutotuneTarget[];
+    groups: Record<string, AutotuneGroupState>;
+    next_run_at: number | null;
+    worker: AutotuneWorker | null;
+    recovered_at: number | null;
+    state_recovered: string | null;
+  }
+
+  // Membership calculated from the routing now (DNS lookups on the router).
+  export interface AutotuneLiveGroup {
+    label: string | null;
+    targets: string[];
+    current: string | null;
+    custom: boolean | null;
+    result: AutotuneGroupResult | null;
+  }
+
+  export interface AutotuneGroups {
+    status: 'ok' | 'failed';
+    reason?: string;
+    groups: Record<string, AutotuneLiveGroup>;
+    outside: {
+      id: string;
+      host: string;
+      reason: string;
+      detail: string | null;
+    }[];
+  }
+
+  export interface AutotuneMutationResult {
+    status: 'ok' | 'failed' | 'refused' | 'busy';
+    reason?: string;
+    job?: string;
+  }
+
+  export interface AutotuneJob {
+    id: string;
+    scope: string;
+    state: 'starting' | 'running' | 'finished' | 'lost';
+    result: { status: string; result?: string; reason?: string | null } | null;
+  }
+
+  export interface AutotuneJobStatus {
+    status: 'ok' | 'failed';
+    reason?: string;
+    job?: AutotuneJob;
+  }
+
   export interface SnapshotChange {
     section: string;
     option: string;
@@ -212,6 +369,13 @@ export namespace Forkop {
     COMPONENT_UPDATE_CHECK_CACHE = 'component_update_check_cache',
     SUBSCRIPTION_UPDATE_ASYNC = 'subscription_update_async',
     SUBSCRIPTION_UPDATE_STATUS = 'subscription_update_status',
+    AUTOTUNE_STATUS = 'autotune_status',
+    AUTOTUNE_GROUPS = 'autotune_groups',
+    AUTOTUNE_POLICY_SET = 'autotune_policy_set',
+    AUTOTUNE_TARGET_SET = 'autotune_target_set',
+    AUTOTUNE_TARGET_REMOVE = 'autotune_target_remove',
+    AUTOTUNE_RUN_ASYNC = 'autotune_run_async',
+    AUTOTUNE_RUN_STATUS = 'autotune_run_status',
   }
 
   export enum AvailableClashAPIMethods {

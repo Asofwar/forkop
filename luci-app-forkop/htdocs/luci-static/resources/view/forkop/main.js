@@ -980,6 +980,7 @@ function downloadAsTxt(text, filename) {
 }
 
 // src/forkop/services/logger.service.ts
+var MAX_BUFFERED_LOGS = 500;
 var Logger = class {
   constructor() {
     this.logs = [];
@@ -992,6 +993,9 @@ var Logger = class {
     if (!this.levels.includes(level)) level = "info";
     const message = this.format(level, ...args);
     this.logs.push(message);
+    if (this.logs.length > MAX_BUFFERED_LOGS) {
+      this.logs.splice(0, this.logs.length - MAX_BUFFERED_LOGS);
+    }
     switch (level) {
       case "error":
         console.error(message);
@@ -1053,7 +1057,7 @@ async function withTimeout(
   } finally {
     clearTimeout(timeoutId);
     const elapsed = performance.now() - start;
-    logger.info("[SHELL]", `[${operationName}] took ${elapsed.toFixed(2)} ms`);
+    logger.debug("[SHELL]", `[${operationName}] took ${elapsed.toFixed(2)} ms`);
   }
 }
 
@@ -5804,6 +5808,9 @@ function coreService(options = {}) {
 }
 
 // src/forkop/services/socket.service.ts
+function loggableUrl(url) {
+  return url.split("?")[0];
+}
 var SocketManager = class _SocketManager {
   constructor() {
     this.sockets = /* @__PURE__ */ new Map();
@@ -5829,7 +5836,7 @@ var SocketManager = class _SocketManager {
       } catch (err) {
         logger.error(
           "[SOCKET]",
-          `resetAll: failed to close socket ${url}`,
+          `resetAll: failed to close socket ${loggableUrl(url)}`,
           err,
         );
       }
@@ -5848,7 +5855,7 @@ var SocketManager = class _SocketManager {
     } catch (err) {
       logger.error(
         "[SOCKET]",
-        `failed to construct WebSocket for ${url}:`,
+        `failed to construct WebSocket for ${loggableUrl(url)}:`,
         err,
       );
       this.triggerError(url, err instanceof Event ? err : String(err));
@@ -5862,7 +5869,7 @@ var SocketManager = class _SocketManager {
       this.errorListeners.set(url, /* @__PURE__ */ new Set());
     ws.addEventListener("open", () => {
       this.connected.set(url, true);
-      logger.info("[SOCKET]", "Connected to", url);
+      logger.info("[SOCKET]", "Connected to", loggableUrl(url));
     });
     ws.addEventListener("message", (event) => {
       const handlers = this.listeners.get(url);
@@ -5871,18 +5878,22 @@ var SocketManager = class _SocketManager {
           try {
             handler(event.data);
           } catch (err) {
-            logger.error("[SOCKET]", `Handler error for ${url}:`, err);
+            logger.error(
+              "[SOCKET]",
+              `Handler error for ${loggableUrl(url)}:`,
+              err,
+            );
           }
         }
       }
     });
     ws.addEventListener("close", () => {
       this.connected.set(url, false);
-      logger.warn("[SOCKET]", `Disconnected: ${url}`);
+      logger.warn("[SOCKET]", `Disconnected: ${loggableUrl(url)}`);
       this.triggerError(url, "Connection closed");
     });
     ws.addEventListener("error", (err) => {
-      logger.error("[SOCKET]", `Socket error for ${url}:`, err);
+      logger.error("[SOCKET]", `Socket error for ${loggableUrl(url)}:`, err);
       this.triggerError(url, err);
     });
   }
@@ -5913,7 +5924,10 @@ var SocketManager = class _SocketManager {
     if (ws && this.connected.get(url)) {
       ws.send(typeof data === "string" ? data : JSON.stringify(data));
     } else {
-      logger.warn("[SOCKET]", `Cannot send: not connected to ${url}`);
+      logger.warn(
+        "[SOCKET]",
+        `Cannot send: not connected to ${loggableUrl(url)}`,
+      );
       this.triggerError(url, "Not connected");
     }
   }
@@ -5939,7 +5953,11 @@ var SocketManager = class _SocketManager {
         try {
           cb(err);
         } catch (e) {
-          logger.error("[SOCKET]", `Error handler threw for ${url}:`, e);
+          logger.error(
+            "[SOCKET]",
+            `Error handler threw for ${loggableUrl(url)}:`,
+            e,
+          );
         }
       }
     }

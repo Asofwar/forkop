@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-28 19:58+0000\n"
-"PO-Revision-Date: 2026-09-28 19:58+0000\n"
+"POT-Creation-Date: 2026-09-28 21:34+0000\n"
+"PO-Revision-Date: 2026-09-28 21:34+0000\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -661,6 +661,15 @@ msgstr "CIDR должен быть от 0 до 32 для IPv4 или от 0 до
 
 msgid "Clash API secret cannot be empty"
 msgstr "Секрет Clash API не может быть пустым"
+
+msgid "Clear"
+msgstr "Очистить"
+
+msgid "Clear the cascade setting of this rule? When you save the rule, %s and %s are removed and its servers connect without a transit rule. Nothing else in the rule changes."
+msgstr "Очистить настройку каскада этого правила? При сохранении правила %s и %s будут удалены, и его серверы будут подключаться без транзитного правила. Остальное в правиле не изменится."
+
+msgid "Clear…"
+msgstr "Очистить…"
 
 msgid "Close"
 msgstr "Закрыть"
@@ -2168,6 +2177,9 @@ msgstr "Ни одна цель не идёт через DPI-правило Zapre
 msgid "No targets yet"
 msgstr "Целей пока нет"
 
+msgid "no transit rule is selected"
+msgstr "не выбрано транзитное правило"
+
 msgid "No usable result"
 msgstr "Нет пригодного результата"
 
@@ -3122,6 +3134,9 @@ msgstr "Состояние автоподбора восстановлено п�
 msgid "The best strategy is not stable for every target of the rule."
 msgstr "Лучшая стратегия стабильна не для всех целей правила."
 
+msgid "The cascade setting is cleared. Save the rule to keep the change."
+msgstr "Настройка каскада очищена. Сохраните правило, чтобы сохранить изменение."
+
 msgid "The change affects the whole group:"
 msgstr "Изменение затронет всю группу:"
 
@@ -3233,6 +3248,9 @@ msgstr "Роутер отклонил эту проверку"
 msgid "The rule applies to the domain and all its subdomains. Use full:, keyword:, or regex: prefixes for exact match, keyword match, or regular expression."
 msgstr "Правило применяется к домену и всем его поддоменам. Для полного совпадения, совпадению по слову или регулярному выражению используйте префиксы full:, keyword: или regex:."
 
+msgid "the rule cannot use itself"
+msgstr "правило не может использовать само себя"
+
 msgid "The rule has a custom strategy; Forkop X keeps it."
 msgstr "У правила своя стратегия; Forkop X её не меняет."
 
@@ -3241,6 +3259,9 @@ msgstr "Правило, по которому она идёт, нельзя оп
 
 msgid "The rule will be removed on the next successful save. The page could not be saved now: %s"
 msgstr "Правило будет удалено при следующем успешном сохранении. Сейчас страницу сохранить не удалось: %s"
+
+msgid "the rules connect through each other in a loop"
+msgstr "правила подключаются друг через друга по кругу"
 
 msgid "The same result this many checks in a row (2–10)."
 msgstr "Столько проверок подряд с одинаковым результатом (2–10)."
@@ -3302,6 +3323,15 @@ msgstr "Цель недоступна ни одним способом; возм
 msgid "The targets work without bypass."
 msgstr "Цели работают без обхода."
 
+msgid "the transit rule “%s” is disabled"
+msgstr "транзитное правило «%s» отключено"
+
+msgid "the transit rule “%s” is not a Connection rule"
+msgstr "у транзитного правила «%s» действие не «Подключение»"
+
+msgid "the transit rule “%s” no longer exists"
+msgstr "транзитного правила «%s» больше нет"
+
 msgid "The value is outside the allowed range."
 msgstr "Значение вне допустимого диапазона."
 
@@ -3346,6 +3376,21 @@ msgstr "Этой опции требуется значение."
 
 msgid "This permanently deletes saved sections and subscriptions. Other components remain installed."
 msgstr "Сохранённые секции и подписки будут удалены безвозвратно. Остальные компоненты останутся установленными."
+
+msgid "This rule has a cascade setting from an earlier version, which the editor no longer shows: servers of this rule connect through the rule “%s”."
+msgstr "У этого правила есть настройка каскада из прежней версии, которую редактор больше не показывает: серверы этого правила подключаются через правило «%s»."
+
+msgid "This rule has a cascade setting from an earlier version, which the editor no longer shows. Applying the configuration fails while it is set: %s."
+msgstr "У этого правила есть настройка каскада из прежней версии, которую редактор больше не показывает. Пока она задана, применить конфигурацию не удастся: %s."
+
+msgid "This rule has a hidden cascade setting from an earlier version. An administrator can clear it."
+msgstr "У этого правила есть скрытая настройка каскада из прежней версии. Администратор может её очистить."
+
+msgid "this rule is not a Connection rule"
+msgstr "у этого правила действие не «Подключение»"
+
+msgid "This rule keeps a switched-off cascade setting from an earlier version (transit rule “%s”). It has no effect."
+msgstr "У этого правила сохранилась выключенная настройка каскада из прежней версии (транзитное правило «%s»). Она ни на что не влияет."
 
 msgid "This strategy is already active; nothing was changed."
 msgstr "Эта стратегия уже активна; ничего не изменено."

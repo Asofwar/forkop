@@ -1155,11 +1155,14 @@ function createEnvironment({
         removeRule: (section_id) => rules.handleRemove(section_id),
       };
     },
-    // GridSection.renderMoreOptionsModal() for an existing rule.
-    async openRule(section_id) {
+    // GridSection.renderMoreOptionsModal() for an existing rule. The modal
+    // map takes `readonly` from the page map (a role that may read but not
+    // write the Forkop UCI package).
+    async openRule(section_id, { readonly = false } = {}) {
       const map = new form.Map("forkop");
       const named = map.section(form.NamedSection, section_id, "section");
       map.parent = pageMap;
+      if (readonly) map.readonly = true;
       form.cloneOptions(grid, named);
       await grid.addModalOptions(named, section_id);
       openModalShell(document);

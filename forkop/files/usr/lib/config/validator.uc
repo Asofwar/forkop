@@ -523,6 +523,12 @@ function fail_validation(message) {
     exit(1);
 }
 
+// The Cascade editor is gone; the rule editor only shows a stored cascade
+// and clears it (UC-041), so every refusal names that fix.
+function outbound_detour_fix(section) {
+    return " Clear the cascade setting of rule '" + section + "' in the rule editor. Aborted.";
+}
+
 function validate_outbound_detours_rows(rows) {
     let parsed = outbound_detour_rows_by_section(rows);
 
@@ -530,33 +536,35 @@ function validate_outbound_detours_rows(rows) {
         if (!row.enabled || !row.detour_enabled)
             continue;
 
+        let fix = outbound_detour_fix(row.section);
+
         if (!outbound_detour_source_action(row.action))
             fail_outbound_detour("Outbound cascade is supported only for Connection rules, but rule '" +
-                row.section + "' uses action '" + row.action + "'. Aborted.");
+                row.section + "' uses action '" + row.action + "'." + fix);
 
         if (row.detour_section == "")
             fail_outbound_detour("Outbound cascade is enabled for rule '" + row.section +
-                "', but no intermediate rule is selected. Aborted.");
+                "', but no intermediate rule is selected." + fix);
 
         if (row.detour_section == row.section)
-            fail_outbound_detour("Outbound cascade for rule '" + row.section + "' cannot point to itself. Aborted.");
+            fail_outbound_detour("Outbound cascade for rule '" + row.section + "' cannot point to itself." + fix);
 
         let target = parsed.by_section[row.detour_section];
         if (type(target) != "object")
             fail_outbound_detour("Outbound cascade for rule '" + row.section + "' references missing rule '" +
-                row.detour_section + "'. Select an enabled Connection rule or disable cascade connection. Aborted.");
+                row.detour_section + "'." + fix);
 
         if (!target.enabled)
             fail_outbound_detour("Outbound cascade for rule '" + row.section + "' references disabled rule '" +
-                row.detour_section + "'. Select an enabled Connection rule or disable cascade connection. Aborted.");
+                row.detour_section + "'." + fix);
 
         if (!outbound_detour_target_action(target.action))
             fail_outbound_detour("Outbound cascade for rule '" + row.section + "' references rule '" +
-                row.detour_section + "', but it is not a Connection rule. Select an enabled Connection rule or disable cascade connection. Aborted.");
+                row.detour_section + "', but it is not a Connection rule." + fix);
 
         if (outbound_detour_chain_reaches_source(parsed.by_section, row.section, row.detour_section))
             fail_outbound_detour("Outbound cascade for rule '" + row.section + "' creates a cycle through '" +
-                row.detour_section + "'. Aborted.");
+                row.detour_section + "'." + fix);
 
     }
 }

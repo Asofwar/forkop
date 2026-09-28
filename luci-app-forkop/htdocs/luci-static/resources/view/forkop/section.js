@@ -109,6 +109,206 @@ function refreshOutboundDetourSectionOptionValues(option, sectionId) {
   });
 }
 
+// Hidden cascade settings (UC-041, D-22 b). The Cascade editor is gone, but
+// a rule may still keep outbound_detour_enabled/outbound_detour_section from
+// an earlier version or the CLI: the generator still applies them and the
+// validator refuses them when they cannot work
+// (config/validator.uc validate_outbound_detours_rows()).
+const CONNECTION_RULE_ACTIONS = ["connection", "proxy", "outbound", "vpn"];
+
+function ruleSectionFlag(section, key, fallback) {
+  const value =
+    section && section[key] !== undefined && section[key] !== null
+      ? backendOptionText(section[key])
+      : fallback
+        ? "1"
+        : "0";
+
+  return ["1", "true", "yes", "on"].includes(value);
+}
+
+function isConnectionRuleSection(section) {
+  return CONNECTION_RULE_ACTIONS.includes(
+    backendOptionText(section && section.action),
+  );
+}
+
+// Why the validator refuses the cascade of a rule, in its order of checks,
+// or "" when it accepts it.
+function hiddenCascadeProblem(section_id, target) {
+  const rules = {};
+  (uci.sections(UCI_PACKAGE, "section") || []).forEach((item) => {
+    rules[getUciSectionName(item)] = item;
+  });
+  const label = (name) => getUciSectionLabel(rules[name]) || name;
+
+  if (!isConnectionRuleSection(rules[section_id])) {
+    return _("this rule is not a Connection rule");
+  }
+  if (!target) {
+    return _("no transit rule is selected");
+  }
+  if (target === section_id) {
+    return _("the rule cannot use itself");
+  }
+  if (!rules[target]) {
+    return _("the transit rule “%s” no longer exists").format(target);
+  }
+  if (!ruleSectionFlag(rules[target], "enabled", true)) {
+    return _("the transit rule “%s” is disabled").format(label(target));
+  }
+  if (!isConnectionRuleSection(rules[target])) {
+    return _("the transit rule “%s” is not a Connection rule").format(
+      label(target),
+    );
+  }
+
+  const seen = new Set();
+  for (let current = target; current; ) {
+    if (current === section_id) {
+      return _("the rules connect through each other in a loop");
+    }
+    const row = rules[current];
+    if (
+      seen.has(current) ||
+      !row ||
+      !ruleSectionFlag(row, "enabled", true) ||
+      !isConnectionRuleSection(row) ||
+      !ruleSectionFlag(row, "outbound_detour_enabled", false)
+    ) {
+      break;
+    }
+    seen.add(current);
+    current = backendOptionText(row.outbound_detour_section);
+  }
+
+  return "";
+}
+
+// The stored cascade of a rule, or null. The old editor stored
+// outbound_detour_enabled '0' on every Connection rule: that alone is not a
+// setting.
+function hiddenCascadeState(section_id) {
+  const enabled = backendFlag(section_id, "outbound_detour_enabled");
+  const target = backendOptionText(
+    uci.get(UCI_PACKAGE, section_id, "outbound_detour_section"),
+  );
+
+  if (!enabled && !target) {
+    return null;
+  }
+
+  return {
+    enabled,
+    target,
+    targetLabel:
+      getUciSectionLabel(uci.get(UCI_PACKAGE, target)) || target || "—",
+    problem: enabled ? hiddenCascadeProblem(section_id, target) : "",
+  };
+}
+
+function renderHiddenCascadeNotice(option, section_id) {
+  const state = option.cascadeStates ? option.cascadeStates[section_id] : null;
+  const node = E("div", { class: "alert-message warning fkp-legacy-settings" });
+
+  if (!state) {
+    return node;
+  }
+
+  // A role that may not change the configuration learns only that the
+  // setting exists (D-22 b).
+  if (option.map.readonly) {
+    node.append(
+      E(
+        "p",
+        {},
+        _(
+          "This rule has a hidden cascade setting from an earlier version. An administrator can clear it.",
+        ),
+      ),
+    );
+    return node;
+  }
+
+  let description;
+  if (!state.enabled) {
+    description = _(
+      "This rule keeps a switched-off cascade setting from an earlier version (transit rule “%s”). It has no effect.",
+    ).format(state.targetLabel);
+  } else if (state.problem) {
+    description = _(
+      "This rule has a cascade setting from an earlier version, which the editor no longer shows. Applying the configuration fails while it is set: %s.",
+    ).format(state.problem);
+  } else {
+    description = _(
+      "This rule has a cascade setting from an earlier version, which the editor no longer shows: servers of this rule connect through the rule “%s”.",
+    ).format(state.targetLabel);
+  }
+
+  const actions = E("div", { class: "fkp-legacy-settings__actions" });
+  const clear = () => {
+    // Staged like any other edit of the rule: Save keeps it, Dismiss
+    // restores the options (the hidden fields retain what uci holds).
+    uci.unset(UCI_PACKAGE, section_id, "outbound_detour_enabled");
+    uci.unset(UCI_PACKAGE, section_id, "outbound_detour_section");
+    node.textContent = "";
+    node.append(
+      E(
+        "p",
+        {},
+        _("The cascade setting is cleared. Save the rule to keep the change."),
+      ),
+    );
+  };
+  const showActions = () => {
+    actions.textContent = "";
+    actions.append(
+      E(
+        "button",
+        {
+          type: "button",
+          class: "btn cbi-button cbi-button-negative",
+          click: confirm,
+        },
+        _("Clear…"),
+      ),
+    );
+  };
+  const confirm = () => {
+    actions.textContent = "";
+    actions.append(
+      E(
+        "p",
+        {},
+        _(
+          "Clear the cascade setting of this rule? When you save the rule, %s and %s are removed and its servers connect without a transit rule. Nothing else in the rule changes.",
+        ).format("outbound_detour_enabled", "outbound_detour_section"),
+      ),
+      E("div", { class: "fkp-legacy-settings__buttons" }, [
+        E(
+          "button",
+          { type: "button", class: "btn cbi-button", click: showActions },
+          _("Cancel"),
+        ),
+        " ",
+        E(
+          "button",
+          {
+            type: "button",
+            class: "btn cbi-button cbi-button-negative",
+            click: clear,
+          },
+          _("Clear"),
+        ),
+      ]),
+    );
+  };
+
+  showActions();
+  node.append(E("p", {}, description), actions);
+  return node;
+}
+
 function isDnsDetourTargetSection(section, currentSectionId) {
   const sectionName = getUciSectionName(section);
   const action = (section && section.action) || "";
@@ -7858,6 +8058,26 @@ function createSectionContent(section) {
       return _("Current section cannot be used as its own transit section");
     }
     return true;
+  };
+
+  // What the two hidden options above hold, and a way to clear them.
+  o = section.taboption(
+    "basic",
+    form.DummyValue,
+    "_hidden_cascade",
+    _("Cascade connection"),
+  );
+  o.modalonly = true;
+  o.load = function (section_id) {
+    this.cascadeStates = this.cascadeStates || {};
+    this.cascadeStates[section_id] = hiddenCascadeState(section_id);
+    return Promise.resolve(null);
+  };
+  o.checkDepends = function (section_id) {
+    return Boolean(this.cascadeStates && this.cascadeStates[section_id]);
+  };
+  o.renderWidget = function (section_id) {
+    return renderHiddenCascadeNotice(this, section_id);
   };
 
   o = section.taboption(

@@ -272,10 +272,13 @@ const NFQWS_REMOTE_VALIDATION_DEBOUNCE_MS = 500;
 const NFQWS_VALIDATION_COMMAND = "/usr/bin/forkop";
 const nfqwsRemoteValidationCache = new Map();
 const nfqwsRemoteValidationInflight = new Map();
+const nfqwsRemoteValidationUnavailable = new Map();
 const nfqws2RemoteValidationCache = new Map();
 const nfqws2RemoteValidationInflight = new Map();
+const nfqws2RemoteValidationUnavailable = new Map();
 const byedpiRemoteValidationCache = new Map();
 const byedpiRemoteValidationInflight = new Map();
+const byedpiRemoteValidationUnavailable = new Map();
 const BYEDPI_LONG_VALUE_OPTIONS = new Set([
   "--max-conn",
   "--conn-ip",
@@ -5170,7 +5173,9 @@ function normalizeNfqwsStrategyValue(value) {
 function getCachedNfqwsRemoteValidation(value) {
   const normalized = normalizeNfqwsStrategyValue(value);
   return normalized.length
-    ? nfqwsRemoteValidationCache.get(normalized) || null
+    ? nfqwsRemoteValidationCache.get(normalized) ||
+        nfqwsRemoteValidationUnavailable.get(normalized) ||
+        null
     : null;
 }
 
@@ -5244,6 +5249,7 @@ function validateNfqwsStrategyRemotely(value) {
       if (typeof payload.valid !== "boolean") {
         throw new Error();
       }
+      nfqwsRemoteValidationUnavailable.delete(normalized);
       return cacheNfqwsRemoteValidation(normalized, {
         valid: payload.valid === true,
         message: payload.message || "",
@@ -5256,8 +5262,13 @@ function validateNfqwsStrategyRemotely(value) {
       });
     })
     // A failed call is not a verdict: it is not cached, so the next
-    // validation or Save asks the backend again (UC-040).
-    .catch((error) => buildNfqwsRemoteValidationFallback(error))
+    // validation or Save asks the backend again (UC-040). Until then the
+    // field says the check is unavailable.
+    .catch((error) => {
+      const fallback = buildNfqwsRemoteValidationFallback(error);
+      nfqwsRemoteValidationUnavailable.set(normalized, fallback);
+      return fallback;
+    })
     .finally(() => {
       nfqwsRemoteValidationInflight.delete(normalized);
     });
@@ -5617,7 +5628,9 @@ function normalizeNfqws2StrategyValue(value) {
 function getCachedNfqws2RemoteValidation(value) {
   const normalized = normalizeNfqws2StrategyValue(value);
   return normalized.length
-    ? nfqws2RemoteValidationCache.get(normalized) || null
+    ? nfqws2RemoteValidationCache.get(normalized) ||
+        nfqws2RemoteValidationUnavailable.get(normalized) ||
+        null
     : null;
 }
 
@@ -5691,6 +5704,7 @@ function validateNfqws2StrategyRemotely(value) {
       if (typeof payload.valid !== "boolean") {
         throw new Error();
       }
+      nfqws2RemoteValidationUnavailable.delete(normalized);
       return cacheNfqws2RemoteValidation(normalized, {
         valid: payload.valid === true,
         message: payload.message || "",
@@ -5703,8 +5717,13 @@ function validateNfqws2StrategyRemotely(value) {
       });
     })
     // A failed call is not a verdict: it is not cached, so the next
-    // validation or Save asks the backend again (UC-040).
-    .catch((error) => buildNfqws2RemoteValidationFallback(error))
+    // validation or Save asks the backend again (UC-040). Until then the
+    // field says the check is unavailable.
+    .catch((error) => {
+      const fallback = buildNfqws2RemoteValidationFallback(error);
+      nfqws2RemoteValidationUnavailable.set(normalized, fallback);
+      return fallback;
+    })
     .finally(() => {
       nfqws2RemoteValidationInflight.delete(normalized);
     });
@@ -6031,7 +6050,9 @@ function normalizeByedpiStrategyValue(value) {
 function getCachedByedpiRemoteValidation(value) {
   const normalized = normalizeByedpiStrategyValue(value);
   return normalized.length
-    ? byedpiRemoteValidationCache.get(normalized) || null
+    ? byedpiRemoteValidationCache.get(normalized) ||
+        byedpiRemoteValidationUnavailable.get(normalized) ||
+        null
     : null;
 }
 
@@ -6105,6 +6126,7 @@ function validateByedpiStrategyRemotely(value) {
       if (typeof payload.valid !== "boolean") {
         throw new Error();
       }
+      byedpiRemoteValidationUnavailable.delete(normalized);
       return cacheByedpiRemoteValidation(normalized, {
         valid: payload.valid === true,
         message: payload.message || "",
@@ -6117,8 +6139,13 @@ function validateByedpiStrategyRemotely(value) {
       });
     })
     // A failed call is not a verdict: it is not cached, so the next
-    // validation or Save asks the backend again (UC-040).
-    .catch((error) => buildByedpiRemoteValidationFallback(error))
+    // validation or Save asks the backend again (UC-040). Until then the
+    // field says the check is unavailable.
+    .catch((error) => {
+      const fallback = buildByedpiRemoteValidationFallback(error);
+      byedpiRemoteValidationUnavailable.set(normalized, fallback);
+      return fallback;
+    })
     .finally(() => {
       byedpiRemoteValidationInflight.delete(normalized);
     });
@@ -6539,6 +6566,14 @@ function parseStrategyWithRemoteValidation(section_id, config) {
   }
 
   return Promise.resolve();
+}
+
+// A failed backend check is shown on the strategy field until the next Save,
+// which asks the backend again instead of refusing on the old failure.
+function forgetUnavailableStrategyValidations() {
+  nfqwsRemoteValidationUnavailable.clear();
+  nfqws2RemoteValidationUnavailable.clear();
+  byedpiRemoteValidationUnavailable.clear();
 }
 
 // The backend check of a changed strategy runs inside parse, after the other
@@ -8112,11 +8147,20 @@ function refuseInvalidModalSave(modalMap) {
   modalMap.parse = function (...args) {
     const checks = [];
 
+    forgetUnavailableStrategyValidations();
+
     for (const modalSection of this.children) {
       for (const section_id of modalSection.cfgsections()) {
         for (const option of modalSection.children) {
           if (!option.isActive(section_id)) {
             continue;
+          }
+
+          if (
+            typeof option.checkBeforeSave === "function" &&
+            typeof option.triggerValidation === "function"
+          ) {
+            option.triggerValidation(section_id);
           }
 
           if (!option.isValid(section_id)) {

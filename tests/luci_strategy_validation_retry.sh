@@ -3,9 +3,11 @@ set -euo pipefail
 
 # A DPI strategy is checked by the backend parser (/usr/bin/forkop
 # validate_*_strategy_json) before the rule editor saves it. A failed call
-# (rpcd timeout, access denied, unparsable output) refuses this Save but is
-# not remembered as a verdict: the next Save asks the backend again and
-# succeeds once it answers (UC-040). Real verdicts stay cached.
+# (rpcd timeout, access denied, unparsable output) refuses this Save and the
+# strategy field says the check is unavailable (LuCI drops the rejection of a
+# modal save silently), but it is not remembered as a verdict: the next Save
+# asks the backend again and succeeds once it answers (UC-040). Real verdicts
+# stay cached.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 node - "$ROOT_DIR/tests/helpers/luci_form_harness.js" <<'NODE'
@@ -59,12 +61,14 @@ function rule(action, option, value) {
           return true;
         });
         assert.equal(env.uci.data.rule[option], original, 'a failed validation saved the strategy');
-        assert.equal(modal.option(option).isValid('rule'), true,
-          'a backend failure must not mark the strategy invalid');
+        assert.match(modal.option(option).getValidationError('rule'),
+          /Backend validation unavailable: .*Save again to retry\./,
+          'the strategy field must say why Save did nothing');
 
         await modal.save();
         assert.equal(calls, 2, 'the backend must be asked again');
         assert.equal(env.uci.data.rule[option], edited);
+        assert.equal(modal.option(option).isValid('rule'), true, 'the answered check must clear the field');
       });
 
   // A real verdict is cached: an invalid strategy is not re-sent.

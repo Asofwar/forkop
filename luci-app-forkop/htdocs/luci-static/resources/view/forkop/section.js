@@ -9701,24 +9701,29 @@ function configureSectionSection(sectionRef, options = {}) {
 
   const handleRemove = sectionRef.handleRemove;
   sectionRef.handleRemove = function (section_id) {
+    // LuCI saves the whole page silently after a removal. When another field
+    // refuses that save (e.g. a Settings select on this rule or on an
+    // unavailable section), the row stays, but the removal and the cleanup
+    // of its child items would stay staged: the next rule modal Save sends
+    // the whole package through uci.save(), past that check. Put the staged
+    // state back and say why instead of doing nothing visible.
+    const staged = captureStagedUciState();
+
     cleanupRemovedChildItems(section_id, "subscription_url", []);
     cleanupRemovedChildItems(section_id, "section_interface", []);
     cleanupRemovedChildItems(section_id, "urltest", []);
     cleanupRemovedChildItems(section_id, "priority_group", []);
     cleanupRuleUrlTestOverrides(section_id);
-    // LuCI saves the whole page silently after a removal. When another field
-    // refuses that save (e.g. a Settings select kept on an unavailable
-    // section), the row stays and the removal waits for the next successful
-    // save; say why instead of doing nothing visible.
     return Promise.resolve(handleRemove.apply(this, arguments)).catch(
       (error) => {
+        restoreStagedUciState(staged);
         ui.addNotification(
           null,
           E(
             "p",
             {},
             _(
-              "The rule will be removed on the next successful save. The page could not be saved now: %s",
+              "The rule was not removed because the page could not be saved: %s",
             ).format(error?.message || error),
           ),
           "error",

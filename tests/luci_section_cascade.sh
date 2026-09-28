@@ -23,6 +23,21 @@ const overrideCleanups = [];
 function cleanupRuleUrlTestOverrides(...args) {
   overrideCleanups.push(args);
 }
+// The staged uci state is captured before the cleanups and put back when the
+// save that follows the removal is refused.
+const snapshot = { staged: true };
+const restored = [];
+function captureStagedUciState() {
+  assert.deepStrictEqual(cleanupCalls, [], 'the staged state must be captured before the cleanups');
+  return snapshot;
+}
+function restoreStagedUciState(value) {
+  restored.push(value);
+}
+const notifications = [];
+const ui = { addNotification: (...args) => notifications.push(args) };
+const E = (...args) => args;
+const _ = (text) => ({ format: (...values) => `${text} ${values.join(' ')}` });
 eval(match[0].slice(0, -'\n\nconst EntryPoint'.length));
 
 const event = {};
@@ -54,8 +69,25 @@ assert.match(
   'priority_group cleanup does not cascade to priority_level',
 );
 
-removal.then((value) => {
-  assert.strictEqual(value, result);
-  console.log('LuCI section cascade checks passed');
-});
+removal
+  .then((value) => {
+    assert.strictEqual(value, result);
+    assert.deepStrictEqual(restored, [], 'a saved removal must not restore the staged state');
+
+    cleanupCalls.length = 0;
+    sectionRef.handleRemove = function () {
+      return Promise.reject(new Error('refused'));
+    };
+    configureSectionSection(sectionRef);
+    return sectionRef.handleRemove('parent', event);
+  })
+  .then(() => {
+    assert.deepStrictEqual(restored, [snapshot], 'a refused removal must restore the staged state');
+    assert.strictEqual(notifications.length, 1, 'a refused removal must be reported');
+    console.log('LuCI section cascade checks passed');
+  })
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
 NODE

@@ -1550,28 +1550,28 @@
       "src/forkop/ui/status.ts:135",
       "src/forkop/tabs/autotune/initController.ts:763",
       "src/forkop/tabs/autotune/initController.ts:903",
+      "src/forkop/tabs/dashboard/overview.ts:136",
       "src/forkop/tabs/diagnostic/connectivityMatrix.ts:104",
       "src/forkop/tabs/diagnostic/dpiPlayground.ts:48",
       "src/forkop/tabs/diagnostic/siteCheck.ts:243",
-      "src/forkop/tabs/diagnostic/statusLabels.ts:28",
-      "src/forkop/tabs/dashboard/overview.ts:136"
+      "src/forkop/tabs/diagnostic/statusLabels.ts:28"
     ]
   },
   {
     "call": "Checks failed",
     "key": "Checks failed",
     "places": [
-      "src/forkop/tabs/diagnostic/helpers/getMeta.ts:26",
-      "src/forkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:10"
+      "src/forkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:10",
+      "src/forkop/tabs/diagnostic/helpers/getMeta.ts:26"
     ]
   },
   {
     "call": "Checks passed",
     "key": "Checks passed",
     "places": [
-      "src/forkop/tabs/diagnostic/helpers/getMeta.ts:13",
       "src/forkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:23",
-      "src/forkop/tabs/diagnostic/checks/runFakeIPCheck.ts:43"
+      "src/forkop/tabs/diagnostic/checks/runFakeIPCheck.ts:43",
+      "src/forkop/tabs/diagnostic/helpers/getMeta.ts:13"
     ]
   },
   {
@@ -1652,9 +1652,9 @@
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3581",
       "src/partials/modal/renderModal.ts:263",
       "src/forkop/tabs/autotune/initController.ts:608",
-      "src/forkop/tabs/history/initController.ts:221",
       "src/forkop/tabs/dashboard/initController.ts:1279",
       "src/forkop/tabs/dashboard/initController.ts:1657",
+      "src/forkop/tabs/history/initController.ts:221",
       "src/forkop/tabs/updates/releaseSelector.ts:121"
     ]
   },
@@ -4507,8 +4507,8 @@
     "call": "Issues detected",
     "key": "Issues detected",
     "places": [
-      "src/forkop/tabs/diagnostic/helpers/getMeta.ts:20",
-      "src/forkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:17"
+      "src/forkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:17",
+      "src/forkop/tabs/diagnostic/helpers/getMeta.ts:20"
     ]
   },
   {
@@ -4852,11 +4852,11 @@
       "src/forkop/tabs/autotune/render.ts:25",
       "src/forkop/tabs/autotune/render.ts:29",
       "src/forkop/tabs/autotune/render.ts:33",
+      "src/forkop/tabs/dashboard/render.ts:14",
       "src/forkop/tabs/diagnostic/initController.ts:737",
       "src/forkop/tabs/history/render.ts:13",
       "src/forkop/tabs/history/render.ts:17",
-      "src/forkop/tabs/history/render.ts:29",
-      "src/forkop/tabs/dashboard/render.ts:14"
+      "src/forkop/tabs/history/render.ts:29"
     ]
   },
   {
@@ -5306,8 +5306,8 @@
     "call": "No events recorded yet",
     "key": "No events recorded yet",
     "places": [
-      "src/forkop/tabs/history/initController.ts:161",
-      "src/forkop/tabs/dashboard/overviewCards.ts:232"
+      "src/forkop/tabs/dashboard/overviewCards.ts:232",
+      "src/forkop/tabs/history/initController.ts:161"
     ]
   },
   {
@@ -5350,8 +5350,8 @@
     "call": "No reload recorded yet",
     "key": "No reload recorded yet",
     "places": [
-      "src/forkop/tabs/history/model.ts:87",
-      "src/forkop/tabs/dashboard/overview.ts:255"
+      "src/forkop/tabs/dashboard/overview.ts:255",
+      "src/forkop/tabs/history/model.ts:87"
     ]
   },
   {
@@ -8118,10 +8118,10 @@
     ]
   },
   {
-    "call": "The rule will be removed on the next successful save. The page could not be saved now: %s",
-    "key": "The rule will be removed on the next successful save. The page could not be saved now: %s",
+    "call": "The rule was not removed because the page could not be saved: %s",
+    "key": "The rule was not removed because the page could not be saved: %s",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9720"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9725"
     ]
   },
   {

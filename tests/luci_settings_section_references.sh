@@ -120,6 +120,10 @@ const references = [
       env.window.dispatchEvent(new env.CustomEvent(env.main.FORKOP_ACTION_PROVIDERS_AVAILABILITY_EVENT,
         { detail: { zapretInstalled: true, zapret2Installed: false, byedpiInstalled: false } }));
       assert.equal(shell.uiCapabilities.zapretInstalled, true, 'shell capabilities were not refreshed');
+      // Components is a tab of the same page: Settings saves without a reload.
+      await settings.save();
+      assert.equal(env.uci.data.settings.dns_detour_section, 'dpi');
+
       settings = await env.openSettings(shell.uiCapabilities);
       const select = settings.option('dns_detour_section');
       assert.equal(select.vallist[select.keylist.indexOf('dpi')], 'DPI');

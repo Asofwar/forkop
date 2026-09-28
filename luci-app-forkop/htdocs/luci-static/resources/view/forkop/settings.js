@@ -40,6 +40,14 @@ function isDownloadSectionAction(action, capabilities) {
   }
 }
 
+function isDownloadSection(sec, capabilities) {
+  return (
+    sec?.[".type"] === "section" &&
+    sec.enabled !== "0" &&
+    isDownloadSectionAction(sec.action, capabilities)
+  );
+}
+
 function refreshDownloadSectionChoices(option, capabilities) {
   const sections = option.map?.data?.state?.values?.[UCI_PACKAGE] ?? {};
 
@@ -48,11 +56,7 @@ function refreshDownloadSectionChoices(option, capabilities) {
 
   for (const secName in sections) {
     const sec = sections[secName];
-    if (
-      sec[".type"] === "section" &&
-      sec.enabled !== "0" &&
-      isDownloadSectionAction(sec.action, capabilities)
-    ) {
+    if (isDownloadSection(sec, capabilities)) {
       option.value(secName, sec.label || secName);
     }
   }
@@ -143,9 +147,15 @@ function configureDownloadSectionOption(option, sectionOption, capabilities) {
       return _("Select a section");
     }
     const unavailable = this.unavailableChoices || {};
-    return Object.prototype.hasOwnProperty.call(unavailable, value)
-      ? unavailable[value]
-      : true;
+    if (!Object.prototype.hasOwnProperty.call(unavailable, value)) {
+      return true;
+    }
+    // Components, a tab of the same page, can install the provider after
+    // the choices were built; capabilities follow it (UC-152).
+    const sections = this.map?.data?.state?.values?.[UCI_PACKAGE] ?? {};
+    return isDownloadSection(sections[value], capabilities)
+      ? true
+      : unavailable[value];
   };
 }
 

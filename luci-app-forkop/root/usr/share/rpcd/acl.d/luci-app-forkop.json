@@ -15,6 +15,7 @@
         "/usr/bin/forkop get_history": ["exec"],
         "/usr/bin/forkop autotune_status": ["exec"],
         "/usr/bin/forkop autotune_target *": ["exec"],
+        "/usr/bin/forkop autotune_groups": ["exec"],
         "/usr/bin/forkop route_trace *": ["exec"],
         "/usr/bin/forkop config_snapshot_list": ["exec"],
         "/usr/bin/forkop config_snapshot_diff *": ["exec"],

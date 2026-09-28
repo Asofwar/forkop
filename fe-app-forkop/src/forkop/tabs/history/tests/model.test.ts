@@ -136,6 +136,12 @@ describe('history list', () => {
       'Configuration reload',
     ]);
     expect(historyItems(events, 'autotune')).toHaveLength(1);
+    expect(
+      historyItems(
+        [{ kind: 'autotune_mode', status: 'success', timestamp: 1 }],
+        'autotune',
+      ).map((item) => item.title),
+    ).toEqual(['Autotune mode changed']);
     expect(historyItems(events, 'service').map((item) => item.title)).toEqual([
       'Service start',
     ]);

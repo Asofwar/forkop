@@ -1083,6 +1083,7 @@ var READONLY_EXEC_PATTERNS = [
   "/usr/bin/forkop get_history",
   "/usr/bin/forkop autotune_status",
   "/usr/bin/forkop autotune_target *",
+  "/usr/bin/forkop autotune_groups",
   "/usr/bin/forkop route_trace *",
   "/usr/bin/forkop config_snapshot_list",
   "/usr/bin/forkop config_snapshot_diff *",
@@ -5651,6 +5652,8 @@ function eventKindLabel(kind) {
       return _("Recovery");
     case "autotune_apply":
       return _("Autotune apply");
+    case "autotune_mode":
+      return _("Autotune mode changed");
     case "snapshot_create":
       return _("Snapshot created");
     case "snapshot_delete":
@@ -17129,7 +17132,8 @@ var CATEGORY = {
   snapshot_delete: "config",
   start: "service",
   recovery: "service",
-  autotune_apply: "autotune"
+  autotune_apply: "autotune",
+  autotune_mode: "autotune"
 };
 function historyFilterLabel(filter2) {
   switch (filter2) {

@@ -4934,11 +4934,26 @@ function appendUniqueDomainTextValues(textValue, values) {
   return [base, ...additions].filter(Boolean).join("\n");
 }
 
+// Legacy `list domain` holds exact domains (the backend reads it the same
+// way, see routing/rule_conditions.uc); in the combined text they are full:.
+function legacyExactDomainValues(section_id) {
+  const value = uci.get(UCI_PACKAGE, section_id, "domain");
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return normalizeOptionValues(value).map((item) =>
+    /^(full|keyword|regex):/.test(item) ? item : `full:${item}`,
+  );
+}
+
 function loadCombinedDomainText(section_id) {
+  const domainValue = uci.get(UCI_PACKAGE, section_id, "domain");
   const textValue =
-    uci.get(UCI_PACKAGE, section_id, "domain") ||
+    (typeof domainValue === "string" ? domainValue : "") ||
     uci.get(UCI_PACKAGE, section_id, "domain_suffix_text");
   const values = [
+    ...legacyExactDomainValues(section_id),
     ...domainValuesWithPrefix(section_id, "domain_suffix", ""),
     ...domainValuesWithPrefix(section_id, "domain_keyword", "keyword"),
     ...domainValuesWithPrefix(section_id, "domain_regex", "regex"),

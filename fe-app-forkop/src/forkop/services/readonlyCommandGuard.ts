@@ -1,57 +1,63 @@
 import { isReadonlyMode } from './accessMode.service';
 import { logger } from './logger.service';
 
+export const FORKOP_CLI = '/usr/bin/forkop';
+
+// rpcd hands the caller's environment to file.exec children, so the read
+// role may run the CLI only through this wrapper, which clears it (UC-001).
+export const FORKOP_READONLY_CLI = '/usr/libexec/forkop-ro';
+
 // Mirror of the "read" exec grants of the luci-app-forkop ACL group
 // (luci-app-forkop/root/usr/share/rpcd/acl.d/luci-app-forkop.json); a test
 // keeps both lists identical. A read-only session only ever issues these
 // commands, so rendering a page cannot start a mutation or trip the ACL.
 export const READONLY_EXEC_PATTERNS = [
-  '/usr/bin/forkop get_status',
-  '/usr/bin/forkop get_sing_box_status',
-  '/usr/bin/forkop get_zapret_status',
-  '/usr/bin/forkop get_zapret2_status',
-  '/usr/bin/forkop get_byedpi_status',
-  '/usr/bin/forkop get_system_info',
-  '/usr/bin/forkop get_ui_capabilities',
-  '/usr/bin/forkop get_ui_state',
-  '/usr/bin/forkop get_health_status',
-  '/usr/bin/forkop get_history',
-  '/usr/bin/forkop autotune_status',
-  '/usr/bin/forkop autotune_target *',
-  '/usr/bin/forkop autotune_groups',
-  '/usr/bin/forkop autotune_run_status *',
-  '/usr/bin/forkop route_trace *',
-  '/usr/bin/forkop config_snapshot_list',
-  '/usr/bin/forkop config_snapshot_diff *',
-  '/usr/bin/forkop connectivity_test *',
-  '/usr/bin/forkop get_readonly_config_sections',
-  '/usr/bin/forkop get_dashboard_runtime_metadata',
-  '/usr/bin/forkop get_outbound_metadata *',
-  '/usr/bin/forkop show_version',
-  '/usr/bin/forkop show_sing_box_version',
-  '/usr/bin/forkop check_proxy',
-  '/usr/bin/forkop check_nft',
-  '/usr/bin/forkop check_nft_rules',
-  '/usr/bin/forkop check_sing_box',
-  '/usr/bin/forkop check_logs',
-  '/usr/bin/forkop check_sing_box_logs',
-  '/usr/bin/forkop check_fakeip',
-  '/usr/bin/forkop check_zapret_runtime',
-  '/usr/bin/forkop check_zapret2_runtime',
-  '/usr/bin/forkop check_byedpi_runtime',
-  '/usr/bin/forkop check_dns_available',
-  '/usr/bin/forkop clash_api get_proxies',
-  '/usr/bin/forkop clash_api get_connections',
-  '/usr/bin/forkop clash_api get_proxy_latency *',
-  '/usr/bin/forkop clash_api get_proxy_latencies *',
-  '/usr/bin/forkop clash_api get_group_latency *',
-  '/usr/bin/forkop service_action_status *',
-  '/usr/bin/forkop latency_test_status *',
-  '/usr/bin/forkop component_action_status *',
-  '/usr/bin/forkop subscription_update_status *',
-  '/usr/bin/forkop component_update_check_cache',
-  '/usr/bin/forkop global_check masked',
-  '/usr/bin/forkop show_sing_box_config masked',
+  '/usr/libexec/forkop-ro get_status',
+  '/usr/libexec/forkop-ro get_sing_box_status',
+  '/usr/libexec/forkop-ro get_zapret_status',
+  '/usr/libexec/forkop-ro get_zapret2_status',
+  '/usr/libexec/forkop-ro get_byedpi_status',
+  '/usr/libexec/forkop-ro get_system_info',
+  '/usr/libexec/forkop-ro get_ui_capabilities',
+  '/usr/libexec/forkop-ro get_ui_state',
+  '/usr/libexec/forkop-ro get_health_status',
+  '/usr/libexec/forkop-ro get_history',
+  '/usr/libexec/forkop-ro autotune_status',
+  '/usr/libexec/forkop-ro autotune_target *',
+  '/usr/libexec/forkop-ro autotune_groups',
+  '/usr/libexec/forkop-ro autotune_run_status *',
+  '/usr/libexec/forkop-ro route_trace *',
+  '/usr/libexec/forkop-ro config_snapshot_list',
+  '/usr/libexec/forkop-ro config_snapshot_diff *',
+  '/usr/libexec/forkop-ro connectivity_test *',
+  '/usr/libexec/forkop-ro get_readonly_config_sections',
+  '/usr/libexec/forkop-ro get_dashboard_runtime_metadata',
+  '/usr/libexec/forkop-ro get_outbound_metadata *',
+  '/usr/libexec/forkop-ro show_version',
+  '/usr/libexec/forkop-ro show_sing_box_version',
+  '/usr/libexec/forkop-ro check_proxy',
+  '/usr/libexec/forkop-ro check_nft',
+  '/usr/libexec/forkop-ro check_nft_rules',
+  '/usr/libexec/forkop-ro check_sing_box',
+  '/usr/libexec/forkop-ro check_logs',
+  '/usr/libexec/forkop-ro check_sing_box_logs',
+  '/usr/libexec/forkop-ro check_fakeip',
+  '/usr/libexec/forkop-ro check_zapret_runtime',
+  '/usr/libexec/forkop-ro check_zapret2_runtime',
+  '/usr/libexec/forkop-ro check_byedpi_runtime',
+  '/usr/libexec/forkop-ro check_dns_available',
+  '/usr/libexec/forkop-ro clash_api get_proxies',
+  '/usr/libexec/forkop-ro clash_api get_connections',
+  '/usr/libexec/forkop-ro clash_api get_proxy_latency *',
+  '/usr/libexec/forkop-ro clash_api get_proxy_latencies *',
+  '/usr/libexec/forkop-ro clash_api get_group_latency *',
+  '/usr/libexec/forkop-ro service_action_status *',
+  '/usr/libexec/forkop-ro latency_test_status *',
+  '/usr/libexec/forkop-ro component_action_status *',
+  '/usr/libexec/forkop-ro subscription_update_status *',
+  '/usr/libexec/forkop-ro component_update_check_cache',
+  '/usr/libexec/forkop-ro global_check masked',
+  '/usr/libexec/forkop-ro show_sing_box_config masked',
 ];
 
 // stderr of a command refused locally in a read-only session.
@@ -71,6 +77,14 @@ const compiled = READONLY_EXEC_PATTERNS.map(
 export function isReadonlyCommandAllowed(command: string, args: string[]) {
   const invocation = [command, ...args].join(' ');
   return compiled.some((pattern) => pattern.test(invocation));
+}
+
+// A read-only session reaches the CLI through the wrapper; administrators
+// keep calling it directly.
+export function resolveReadonlyCommand(command: string) {
+  return isReadonlyMode() && command === FORKOP_CLI
+    ? FORKOP_READONLY_CLI
+    : command;
 }
 
 const reported = new Set<string>();

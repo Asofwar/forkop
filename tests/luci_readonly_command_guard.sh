@@ -5,7 +5,8 @@ set -euo pipefail
 # grants of the ACL: the frontend refuses everything else locally
 # (fe-app-forkop/src/forkop/services/readonlyCommandGuard.ts). The allowlist
 # there must stay identical to the ACL, and the pages must ask for the
-# masked variants the read role is allowed to run.
+# masked variants the read role is allowed to run. Read-only sessions run the
+# CLI through /usr/libexec/forkop-ro, which drops the caller environment.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 node - "$ROOT_DIR" <<'NODE'
@@ -34,6 +35,25 @@ assert.match(shell, /shouldRefuseCommand\(command, args\)[\s\S]*?return \{[^}]*R
   'executeShellCommand must refuse commands before fs.exec');
 assert(shell.indexOf('shouldRefuseCommand(') < shell.indexOf('fs.exec('),
   'the read-only check must run before fs.exec');
+
+// UC-001: rpcd passes the caller's env table to file.exec children; the read
+// role only reaches the CLI through the wrapper that clears the environment.
+const wrapper = '/usr/libexec/forkop-ro';
+for (const pattern of patterns) {
+  assert(pattern.startsWith(`${wrapper} `), `read grant bypasses ${wrapper}: ${pattern}`);
+}
+assert.match(guard, new RegExp(`FORKOP_READONLY_CLI = '${wrapper}'`),
+  'read-only sessions must be routed to the wrapper');
+assert.match(shell, /const command = resolveReadonlyCommand\(requestedCommand\);/,
+  'executeShellCommand must route read-only sessions to the wrapper');
+assert(shell.indexOf('resolveReadonlyCommand(') < shell.indexOf('shouldRefuseCommand('),
+  'the wrapper must be chosen before the allowlist check');
+assert.match(shell, /fs\.exec\(command, args\)/, 'fs.exec must run the resolved command');
+const bundle = fs.readFileSync(
+  path.join(root, 'luci-app-forkop/htdocs/luci-static/resources/view/forkop/main.js'), 'utf8');
+assert(bundle.includes(`"${wrapper}"`), 'main.js bundle is not rebuilt with the read-only wrapper');
+assert(!/"\/usr\/bin\/forkop (get_status|global_check masked)"/.test(bundle),
+  'main.js bundle still lists the direct CLI as a read-only command');
 
 const diagnostics = fs.readFileSync(
   path.join(root, 'fe-app-forkop/src/forkop/tabs/diagnostic/initController.ts'), 'utf8');

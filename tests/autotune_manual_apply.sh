@@ -237,10 +237,11 @@ node - "$ACL" <<'NODE'
 const acl = JSON.parse(require('node:fs').readFileSync(process.argv[2], 'utf8'))['luci-app-forkop'];
 const allowed = (c) => Object.entries(acl.read.file).some(([p, perms]) => perms.includes('exec') &&
   new RegExp('^' + p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\\\*/g, '.*') + '$').test(c));
-for (const c of ['/usr/bin/forkop autotune_apply youtube', '/usr/bin/forkop autotune_apply_async youtube',
-  '/usr/bin/forkop autotune_apply youtube fake'])
-  if (allowed(c)) throw Error(`read role may execute ${c}`);
-if (!allowed('/usr/bin/forkop autotune_run_status 1_1')) throw Error('read role lost the job status');
+for (const cli of ['/usr/bin/forkop', '/usr/libexec/forkop-ro'])
+  for (const c of [`${cli} autotune_apply youtube`, `${cli} autotune_apply_async youtube`,
+    `${cli} autotune_apply youtube fake`])
+    if (allowed(c)) throw Error(`read role may execute ${c}`);
+if (!allowed('/usr/libexec/forkop-ro autotune_run_status 1_1')) throw Error('read role lost the job status');
 NODE
 
 # ---- background job: the page can leave and come back ---------------------------

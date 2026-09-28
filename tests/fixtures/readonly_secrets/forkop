@@ -1,0 +1,82 @@
+config settings 'settings'
+	option config_version '1.0.5'
+	list applied_migrations 'interface_sections'
+	option dns_type 'doh'
+	list dns_server 'https://dns.example/SECRET_MARKER_01'
+	list bootstrap_dns_server '77.88.8.8'
+	option dns_strategy 'prefer_ipv4'
+	list source_network_interfaces 'br-lan'
+	option enable_yacd '1'
+	option enable_yacd_wan_access '0'
+	option yacd_secret_key 'SECRET_MARKER_02'
+	option mixed_proxy_enabled '1'
+	option mixed_proxy_auth_enabled '1'
+	option mixed_proxy_port '2080'
+	option mixed_proxy_username 'SECRET_MARKER_03'
+	option mixed_proxy_password 'SECRET_MARKER_04'
+	option latency_test_url 'https://SECRET_MARKER_05:SECRET_MARKER_06@latency.example/generate_204?token=SECRET_MARKER_07'
+	option mirror_base_url 'https://mirror.example/?key=SECRET_MARKER_08'
+	option hwid 'SECRET_MARKER_09'
+	option subscription_user_agent 'SECRET_MARKER_10'
+	option config_path '@SING_BOX_CONFIG@'
+	option log_level 'warn'
+	# option yacd_secret_key 'SECRET_MARKER_11'
+
+config section 'main'
+	option label 'Main'
+	option enabled '1'
+	option action 'connection'
+	option connection_type 'proxy'
+	option proxy_config_type 'url'
+	option proxy_string 'vless://SECRET_MARKER_12@vless.example:443?security=reality&pbk=SECRET_MARKER_13&sid=SECRET_MARKER_14#node'
+	list selector_proxy_links 'trojan://SECRET_MARKER_15@trojan.example:443#t'
+	list selector_proxy_links 'vmess://SECRET_MARKER_16'
+	list urltest_proxy_links 'ss://SECRET_MARKER_17@ss.example:8388#s'
+	list urltest_proxy_links 'hysteria2://SECRET_MARKER_18@hy2.example:443?obfs-password=SECRET_MARKER_19'
+	list urltest_proxy_links 'tuic://SECRET_MARKER_20:SECRET_MARKER_21@tuic.example:443'
+	list urltest_proxy_links 'socks5://SECRET_MARKER_22:SECRET_MARKER_23@socks.example:1080'
+	list outbound_jsons '{"type":"vless","tag":"json-vless","server":"json.example","server_port":443,"uuid":"SECRET_MARKER_24","tls":{"enabled":true,"reality":{"enabled":true,"public_key":"SECRET_MARKER_25","short_id":"SECRET_MARKER_26"}}}'
+	list outbound_jsons '{
+  "type": "http",
+  "tag": "json-http",
+  "server": "http.example",
+  "server_port": 8080,
+  "username": "SECRET_MARKER_27",
+  "password": "SECRET_MARKER_28"
+}'
+	option outbound_json '{"type":"wireguard","private_key":"SECRET_MARKER_29","peer_public_key":"SECRET_MARKER_30","pre_shared_key":"SECRET_MARKER_31"}'
+	list rule_set 'https://SECRET_MARKER_32:SECRET_MARKER_33@rules.example/rules.srs?token=SECRET_MARKER_34'
+	list rule_set_with_subnets 'https://rules.example/subnets.json?token=SECRET_MARKER_35'
+	list remote_domain_lists 'https://lists.example/domains.lst?token=SECRET_MARKER_36'
+	list remote_subnet_lists 'https://lists.example/subnets.lst?access_token=SECRET_MARKER_37#SECRET_MARKER_38'
+	list domain_ip_lists 'https://SECRET_MARKER_39@lists.example/domain-ip.lst'
+	list community_lists 'russia_inside'
+	list user_domains 'secret-SECRET_MARKER_40.example'
+	list fully_routed_ips '192.0.2.77'
+	option sort_by_latency '0'
+	#list outbound_jsons '{"type":"socks","password":"SECRET_MARKER_41"}'
+
+config section_interface
+	option section 'main'
+	option name 'awg1'
+	option domain_resolver_enabled '1'
+	option domain_resolver_dns_type 'doh'
+	option domain_resolver_dns_server 'https://doh.example/SECRET_MARKER_42'
+
+config subscription_url
+	option section 'main'
+	option url 'https://SECRET_MARKER_43:SECRET_MARKER_44@sub.example/api/SECRET_MARKER_45?token=SECRET_MARKER_46'
+	option user_agent 'SECRET_MARKER_47'
+	option subscription_update_enabled '1'
+
+config urltest
+	option section 'main'
+	option name 'Fastest'
+	option check_interval '3m'
+	option testing_url 'https://urltest.example/generate_204?token=SECRET_MARKER_48'
+
+config section 'dpi'
+	option label 'DPI'
+	option enabled '1'
+	option action 'zapret'
+	option nfqws_opt '--filter-tcp=443 --dpi-desync=fake --dpi-desync-fake-tls=SECRET_MARKER_49'

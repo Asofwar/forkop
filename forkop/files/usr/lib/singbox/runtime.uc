@@ -677,6 +677,11 @@ function prepare_subscription_caches(prepared, no_refresh) {
 }
 
 function save_config_file(temp_file_path, config_path) {
+    // The staged file is private (mktemp, write_private_json_file) and mv
+    // keeps its mode. A config left by an older release is narrowed too, also
+    // when it is unchanged (UC-037).
+    if (file_exists(config_path))
+        fs.chmod(config_path, 0600);
     let current_hash = md5_file(config_path);
     let temp_hash = md5_file(temp_file_path);
 
@@ -746,6 +751,8 @@ function commit_config_stage(stage_path, backup_path) {
 
     // The reload lifecycle creates this backup before the first live config
     // change. It is consumed only after nft and sing-box reach the same state.
+    // cp -p keeps the mode, so the live config is narrowed first (UC-037).
+    fs.chmod(config_path, 0600);
     if (!command_success_from_args([ "cp", "-p", config_path, backup_path ]))
         return false;
     if (!save_config_file(stage_path, config_path))
@@ -793,7 +800,7 @@ function patch_dns_config(state_path) {
     let temp_config = temp_path();
     if (backup_path == "" || temp_config == "" ||
         fs.writefile(backup_path, fs.readfile(config_path)) == null ||
-        !common.write_json_file(temp_config, config)) {
+        !common.write_private_json_file(temp_config, config)) {
         remove_files([ backup_path, temp_config ]);
         exit(1);
     }

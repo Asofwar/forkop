@@ -71,6 +71,9 @@ define Package/forkop/install
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) ./files/usr/bin/forkop $(1)/usr/bin/forkop
 
+	$(INSTALL_DIR) $(1)/usr/libexec
+	$(INSTALL_BIN) ./files/usr/libexec/forkop-ro $(1)/usr/libexec/forkop-ro
+
 	$(INSTALL_DIR) $(1)/usr/lib/forkop
 	$(CP) ./files/usr/lib/. $(1)/usr/lib/forkop/
 

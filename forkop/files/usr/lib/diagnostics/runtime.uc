@@ -6,6 +6,8 @@ let core_ip = require("core.ip");
 let uci_core = require("core.uci");
 let runtime_dns = require("singbox.dns");
 let netstat = require("core.netstat");
+let dpi_strategy = require("core.dpi_strategy");
+let common = require("core.common");
 
 const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || constants.FORKOP_CONFIG_NAME || "forkop";
 const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
@@ -812,12 +814,25 @@ function get_readonly_config_sections() {
     // subscription URLs through a read-only rpcd capability.
     let safe_keys = [ "action", "enabled", "interface", "interfaces", "label",
         "section", "sort_by_latency", "urltest_enabled", "urltests", "priority_groups" ];
+    // Display names of child items (interface names, URLTest and priority
+    // group/level labels) and the owner links of priority levels. Never for
+    // subscription_url or other types (UC-039).
+    let safe_child_keys = {
+        section_interface: [ "name", "display_name" ],
+        urltest: [ "name", "display_name" ],
+        priority_group: [ "name", "display_name" ],
+        priority_level: [ "name", "display_name", "group", "order" ]
+    };
     for (let type_name in config_section_types(FORKOP_CONFIG)) {
         for (let source in uci_core.section_objects(CONFIG_NAME, type_name)) {
             let item = { ".name": source[".name"], ".type": source[".type"] || type_name };
-            for (let key in safe_keys)
+            for (let key in [ ...safe_keys, ...(safe_child_keys[item[".type"]] || []) ])
                 if (source[key] != null)
                     item[key] = source[key];
+            // DPI rules: provider and strategy name, never the raw options.
+            if (dpi_strategy.is_dpi_action(source.action))
+                for (let key, value in dpi_strategy.view(source))
+                    item[key] = value;
             push(result, item);
         }
     }
@@ -1375,6 +1390,7 @@ function check_dns_available() {
         dhcp_config_status = 0;
 
     let display_dns_server = replace(status_output([ "mask-dns-server", dns_server ], null), /[\r\n]+$/g, "");
+    let display_bootstrap_dns_server = replace(status_output([ "mask-dns-server", bootstrap_dns_server ], null), /[\r\n]+$/g, "");
     write_json({
         dns_type,
         dns_server: display_dns_server,
@@ -1382,7 +1398,7 @@ function check_dns_available() {
         dns_server_count: length(active.state.main_servers),
         dns_status,
         dns_on_router,
-        bootstrap_dns_server,
+        bootstrap_dns_server: display_bootstrap_dns_server,
         bootstrap_dns_server_index: active.state.bootstrap_index,
         bootstrap_dns_server_count: length(active.state.bootstrap_servers),
         bootstrap_dns_status,
@@ -1574,11 +1590,35 @@ function clash_api_url() {
     return address + ":" + SB_CLASH_API_CONTROLLER_PORT;
 }
 
+let clash_auth_files = [];
+
+// curl arguments that authenticate against the controller under the shared
+// predicate (UC-035): whenever a secret is configured, whatever YACD and WAN
+// access say. The header goes through a private file, never the command line,
+// because the process list is part of the support report. Returns null when
+// the file cannot be prepared; clash_auth_close() removes it.
 function clash_auth_args() {
-    let cfg = settings();
-    if (!bool_option(cfg, "enable_yacd_wan_access", false))
+    let secret = common.clash_api_secret(settings());
+    if (secret == "")
         return [];
-    return [ "--header", "Authorization: Bearer " + option(cfg, "yacd_secret_key", "") ];
+    let path = trim(command_output_from_args([ "mktemp" ]));
+    if (path == "")
+        return null;
+    push(clash_auth_files, path);
+    let fh = fs.open(path, "w", 0600);
+    if (fh == null || !fs.chmod(path, 0600) || fh.write("Authorization: Bearer " + secret + "\n") == null) {
+        if (fh != null)
+            fh.close();
+        return null;
+    }
+    fh.close();
+    return [ "-H", "@" + path ];
+}
+
+function clash_auth_close() {
+    for (let path in clash_auth_files)
+        fs.unlink(path);
+    clash_auth_files = [];
 }
 
 function clash_urlencode(value) {
@@ -1593,6 +1633,8 @@ function clash_json_error(message) {
 }
 
 function clash_proxy_type_map(base_url, auth) {
+    if (auth == null)
+        return null;
     let args = [ "curl", "-s" ];
     for (let item in auth) push(args, item);
     push(args, base_url + "/proxies");
@@ -1615,7 +1657,9 @@ function clash_proxy_type_map(base_url, auth) {
 }
 
 function clash_api_ready() {
-    return clash_proxy_type_map(clash_api_url(), clash_auth_args()) != null;
+    let ready = clash_proxy_type_map(clash_api_url(), clash_auth_args()) != null;
+    clash_auth_close();
+    return ready;
 }
 
 function latency_testable_proxy_type(proxy_type) {
@@ -1739,10 +1783,9 @@ function latency_test_url() {
     return value == "" ? DEFAULT_LATENCY_TEST_URL : value;
 }
 
-function clash_api(action, arg1, arg2, arg3) {
+function clash_api_request(action, arg1, arg2, arg3, auth) {
     let base_url = clash_api_url();
     let test_url = latency_test_url();
-    let auth = clash_auth_args();
 
     if (action == "get_proxies") {
         let args = [ "curl", "-s" ];
@@ -1873,6 +1916,15 @@ function clash_api(action, arg1, arg2, arg3) {
     return 1;
 }
 
+function clash_api(action, arg1, arg2, arg3) {
+    let auth = clash_auth_args();
+    let status = auth == null
+        ? clash_json_error("clash_api_auth_unavailable")
+        : clash_api_request(action, arg1, arg2, arg3, auth);
+    clash_auth_close();
+    return status;
+}
+
 function automatic_latency_test(start_kind) {
     let marker = automatic_latency_pending_marker();
     if (marker == null) {
@@ -1936,6 +1988,7 @@ function automatic_latency_test(start_kind) {
     let readiness_attempts = AUTOMATIC_LATENCY_CLASH_READY_ATTEMPTS > 0 ? AUTOMATIC_LATENCY_CLASH_READY_ATTEMPTS : 15;
     for (let readiness_attempt = 0; readiness_attempt < readiness_attempts; readiness_attempt++) {
         proxy_types = clash_proxy_type_map(clash_api_url(), clash_auth_args());
+        clash_auth_close();
         if (proxy_types != null)
             break;
         if (readiness_attempt + 1 < readiness_attempts)
@@ -2091,7 +2144,9 @@ function global_check(arg1, arg2) {
     if (validation.status == 0)
         print_global("✅ Forkop configuration is valid");
     else {
-        let message = trim(as_string(validation.output));
+        // Validator messages quote the offending value (a DNS server, URL
+        // or proxy parameter), so the masked view keeps only the verdict.
+        let message = visibility == "raw" ? trim(as_string(validation.output)) : "";
         print_global(message == "" ? "❌ Forkop configuration validation failed" : "❌ " + message);
     }
 
@@ -2231,6 +2286,41 @@ function support_report() {
     return 0;
 }
 
+// D-1: the otherwise unmasked support report keeps the Clash API secret out;
+// support never needs it. The report is collected by a child process and the
+// secret is replaced wherever it appears (config file, raw global check, raw
+// sing-box config, also JSON-escaped), plus the option line itself for very
+// short secrets.
+function support_report_without_clash_secret() {
+    let secret = common.clash_api_secret(settings());
+    if (secret == "")
+        return support_report();
+
+    let path = trim(command_output_from_args([ "mktemp" ]));
+    if (path == "")
+        return 1;
+    let status = command_status(command_from_args([
+        "ucode", "-L", LIB_DIR, LIB_DIR + "/diagnostics/runtime.uc", "support-report-unredacted"
+    ]) + " >" + shell_quote(path) + " 2>&1");
+    let text = as_string(fs.readfile(path) || "");
+    fs.unlink(path);
+
+    text = replace(text, /(yacd_secret_key[^\n]*)/g, function(line) {
+        let key = match(line, /^(yacd_secret_key['"]?[ =]*)/);
+        return (key ? key[1] : "yacd_secret_key ") + "'MASKED'";
+    });
+    if (length(secret) >= 4) {
+        // The raw sing-box config is JSON: a secret with a quote or a
+        // backslash appears there in its escaped form.
+        let escaped = substr(sprintf("%J", secret), 1, -1);
+        if (escaped != secret)
+            text = replace(text, escaped, "MASKED");
+        text = replace(text, secret, "MASKED");
+    }
+    print(text);
+    return status;
+}
+
 let mode = ARGV[0] || "";
 
 if (mode == "check-proxy")
@@ -2300,6 +2390,8 @@ else if (mode == "check-dns-available")
 else if (mode == "global-check")
     exit(global_check(ARGV[1] || "", ARGV[2] || ""));
 else if (mode == "support-report")
+    exit(support_report_without_clash_secret());
+else if (mode == "support-report-unredacted")
     exit(support_report());
 else if (mode == "validate-nfqws-strategy-json")
     exit(validate_nfqws_strategy_json(ARGV[1] || ""));

@@ -3771,11 +3771,11 @@ function getRuleResolvedAction(section_id) {
 function getActionOptionLabel(action) {
   switch (`${action}`) {
     case "block":
-      return "Block";
+      return _("Block");
     case "bypass":
-      return "Bypass";
+      return _("Bypass");
     case "connection":
-      return "Connection";
+      return _("Connection");
     case "dns":
       return "DNS";
     case "vpn":
@@ -3790,26 +3790,70 @@ function getActionOptionLabel(action) {
       return _("JSON outbound");
     case "proxy":
     default:
-      return "Proxy";
+      return _("Proxy");
   }
 }
 
+// DPI providers read as "DPI · <provider>", the same words Monitoring and
+// Diagnostics use for the path of a connection.
 function getRuleActionDisplayValue(section_id) {
   const action = getRuleResolvedAction(section_id);
 
-  if (action === "zapret") {
-    return "Zapret";
-  }
-
-  if (action === "zapret2") {
-    return "Zapret2";
-  }
-
-  if (action === "byedpi") {
-    return "ByeDPI";
+  if (action === "zapret" || action === "zapret2" || action === "byedpi") {
+    return `${_("DPI")} · ${getActionOptionLabel(action)}`;
   }
 
   return getActionOptionLabel(action);
+}
+
+function countConfigValues(section_id, keys) {
+  return keys.reduce((total, key) => {
+    const value = uci.get(UCI_PACKAGE, section_id, key);
+    if (Array.isArray(value)) return total + value.length;
+    return value ? total + main.parseValueList(`${value}`).length : total;
+  }, 0);
+}
+
+// Grid summary: how much the rule matches, without opening the editor.
+function getRuleConditionsSummary(section_id) {
+  const parts = [
+    [
+      _("Lists: %d"),
+      countConfigValues(section_id, [
+        "community_lists",
+        "rule_set",
+        "rule_set_with_subnets",
+        "domain_ip_lists",
+      ]),
+    ],
+    [
+      _("Domains: %d"),
+      countConfigValues(section_id, [
+        "domain",
+        "domain_suffix",
+        "domain_suffix_text",
+      ]),
+    ],
+    [_("IPs: %d"), countConfigValues(section_id, ["ip_cidr", "ip_cidr_text"])],
+    [_("Ports: %d"), countConfigValues(section_id, ["ports"])],
+  ]
+    .filter(([, count]) => count > 0)
+    .map(([label, count]) => label.format(count));
+
+  return parts.length ? parts.join(" · ") : "—";
+}
+
+function getRuleDevicesSummary(section_id) {
+  const only = countConfigValues(section_id, ["source_ip_cidr"]);
+  const except = countConfigValues(section_id, ["excluded_source_ip_cidr"]);
+  const forced = countConfigValues(section_id, ["fully_routed_ips"]);
+  const parts = [
+    only ? _("Only: %d").format(only) : "",
+    except ? _("Except: %d").format(except) : "",
+    forced ? _("All traffic: %d").format(forced) : "",
+  ].filter(Boolean);
+
+  return parts.length ? parts.join(" · ") : _("All devices");
 }
 
 function getRuleActionDisplayMarkup(section_id) {
@@ -3821,8 +3865,8 @@ function populateActionOptionValues(option) {
   delete option.vallist;
 
   option.value("connection", getActionOptionLabel("connection"));
-  option.value("bypass", "Bypass");
-  option.value("block", "Block");
+  option.value("bypass", getActionOptionLabel("bypass"));
+  option.value("block", getActionOptionLabel("block"));
   option.value("dns", "DNS");
   if (isZapretInstalledForUi()) {
     option.value("zapret", getActionOptionLabel("zapret"));
@@ -4909,11 +4953,26 @@ function appendUniqueDomainTextValues(textValue, values) {
   return [base, ...additions].filter(Boolean).join("\n");
 }
 
+// Legacy `list domain` holds exact domains (the backend reads it the same
+// way, see routing/rule_conditions.uc); in the combined text they are full:.
+function legacyExactDomainValues(section_id) {
+  const value = uci.get(UCI_PACKAGE, section_id, "domain");
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return normalizeOptionValues(value).map((item) =>
+    /^(full|keyword|regex):/.test(item) ? item : `full:${item}`,
+  );
+}
+
 function loadCombinedDomainText(section_id) {
+  const domainValue = uci.get(UCI_PACKAGE, section_id, "domain");
   const textValue =
-    uci.get(UCI_PACKAGE, section_id, "domain") ||
+    (typeof domainValue === "string" ? domainValue : "") ||
     uci.get(UCI_PACKAGE, section_id, "domain_suffix_text");
   const values = [
+    ...legacyExactDomainValues(section_id),
     ...domainValuesWithPrefix(section_id, "domain_suffix", ""),
     ...domainValuesWithPrefix(section_id, "domain_keyword", "keyword"),
     ...domainValuesWithPrefix(section_id, "domain_regex", "regex"),
@@ -6414,7 +6473,7 @@ function parseNfqws2StrategyOnSave(section_id) {
 
 function addDynamicConditionField(section, config) {
   const o = section.taboption(
-    "conditions",
+    "match",
     form.DynamicList,
     config.key,
     config.label,
@@ -6450,7 +6509,7 @@ function addDynamicConditionField(section, config) {
 
 function addLocalDeviceSubnetDynamicField(section, config) {
   const o = section.taboption(
-    "conditions",
+    "devices",
     form.DynamicList,
     config.key,
     config.label,
@@ -6497,7 +6556,7 @@ function addTextConditionField(section, config) {
   const legacyTextOptionName =
     config.legacyTextOptionName || `${config.key}_text`;
   const o = section.taboption(
-    "conditions",
+    "match",
     form.TextValue,
     optionName,
     config.label,
@@ -6562,8 +6621,8 @@ function loadRulesetValues(option) {
   delete option.keylist;
   delete option.vallist;
 
-  Object.entries(main.DOMAIN_LIST_OPTIONS).forEach(([key, label]) => {
-    option.value(key, _(label));
+  Object.keys(main.DOMAIN_LIST_OPTIONS).forEach((key) => {
+    option.value(key, main.domainListLabel(key));
   });
 }
 
@@ -6756,17 +6815,22 @@ function writeDnsRulesetReferences(section_id, values) {
 function createSectionContent(section) {
   let o;
 
-  section.tab("settings", _("Settings"));
-  section.tab("conditions", _("Conditions"));
+  // The rule editor walks through steps: what the rule is, where traffic
+  // goes, what it matches, which devices it covers, and rare options.
+  section.tab("basic", _("Basics"));
+  section.tab("target", _("Where to"));
+  section.tab("match", _("What"));
+  section.tab("devices", _("For whom"));
+  section.tab("advanced", _("Advanced"));
 
-  o = section.taboption("settings", form.Flag, "enabled", _("Enable"));
+  o = section.taboption("basic", form.Flag, "enabled", _("Enable"));
   o.default = "1";
   o.rmempty = false;
   o.editable = true;
   o.width = "6rem";
 
   o = section.taboption(
-    "settings",
+    "basic",
     form.DummyValue,
     "_action_display",
     _("Action"),
@@ -6779,10 +6843,34 @@ function createSectionContent(section) {
   o.textvalue = function (section_id) {
     return getRuleActionDisplayValue(section_id);
   };
-  o.width = "7rem";
+  o.width = "8rem";
 
   o = section.taboption(
-    "settings",
+    "basic",
+    form.DummyValue,
+    "_conditions_summary",
+    _("Conditions"),
+  );
+  o.modalonly = false;
+  o.cfgvalue = function (section_id) {
+    return getRuleConditionsSummary(section_id);
+  };
+  o.textvalue = o.cfgvalue;
+
+  o = section.taboption(
+    "basic",
+    form.DummyValue,
+    "_devices_summary",
+    _("Devices"),
+  );
+  o.modalonly = false;
+  o.cfgvalue = function (section_id) {
+    return getRuleDevicesSummary(section_id);
+  };
+  o.textvalue = o.cfgvalue;
+
+  o = section.taboption(
+    "basic",
     form.Value,
     "label",
     _("Section name"),
@@ -6795,7 +6883,7 @@ function createSectionContent(section) {
   };
 
   o = section.taboption(
-    "settings",
+    "basic",
     form.ListValue,
     "action",
     _("Action"),
@@ -6816,7 +6904,7 @@ function createSectionContent(section) {
   };
 
   o = section.taboption(
-    "settings",
+    "target",
     form.ListValue,
     "dns_type",
     _("DNS protocol"),
@@ -6829,7 +6917,7 @@ function createSectionContent(section) {
   o.modalonly = true;
 
   o = section.taboption(
-    "settings",
+    "target",
     form.Value,
     "dns_server",
     _("DNS server"),
@@ -6848,7 +6936,7 @@ function createSectionContent(section) {
   };
 
   o = section.taboption(
-    "settings",
+    "target",
     form.Flag,
     "dns_detour_enabled",
     _("DNS through section"),
@@ -6860,7 +6948,7 @@ function createSectionContent(section) {
   o.modalonly = true;
 
   o = section.taboption(
-    "settings",
+    "target",
     form.ListValue,
     "dns_detour_section",
     _("DNS requests through section"),
@@ -6877,7 +6965,7 @@ function createSectionContent(section) {
   };
 
   o = section.taboption(
-    "settings",
+    "target",
     form.TextValue,
     "nfqws_opt",
     _("NFQWS Strategy"),
@@ -6924,7 +7012,7 @@ function createSectionContent(section) {
   configureTextareaOption(o, analyzeNfqwsStrategy, attachNfqwsRemoteValidation);
 
   o = section.taboption(
-    "settings",
+    "target",
     form.TextValue,
     "nfqws2_opt",
     _("NFQWS2 Strategy"),
@@ -6967,7 +7055,7 @@ function createSectionContent(section) {
   );
 
   o = section.taboption(
-    "settings",
+    "target",
     form.TextValue,
     "byedpi_cmd_opts",
     _("ByeDPI Strategy"),
@@ -7005,7 +7093,7 @@ function createSectionContent(section) {
   configureTextareaOption(o, analyzeByedpiStrategy);
 
   o = section.taboption(
-    "settings",
+    "target",
     form.DynamicList,
     "selector_proxy_links",
     _("Connection URL"),
@@ -7030,7 +7118,7 @@ function createSectionContent(section) {
   outboundNameSourceOptions.set("selector_proxy_links", o);
 
   o = section.taboption(
-    "settings",
+    "target",
     SettingsDynamicList,
     "subscription_url",
     _("Subscription URL"),
@@ -7078,7 +7166,7 @@ function createSectionContent(section) {
   };
 
   o = section.taboption(
-    "settings",
+    "target",
     InterfaceSettingsDynamicList,
     "interfaces",
     _("Network Interface"),
@@ -7119,7 +7207,7 @@ function createSectionContent(section) {
   outboundNameSourceOptions.set("interfaces", o);
 
   o = section.taboption(
-    "settings",
+    "target",
     ButtonAddSettingsDynamicList,
     "outbound_jsons",
     _("JSON outbound"),
@@ -7146,7 +7234,7 @@ function createSectionContent(section) {
   outboundNameSourceOptions.set("outbound_jsons", o);
 
   o = section.taboption(
-    "settings",
+    "target",
     ButtonAddSettingsDynamicList,
     "urltest",
     _("URLTest"),
@@ -7205,7 +7293,7 @@ function createSectionContent(section) {
   sectionGroupSourceOptions.set("urltest", o);
 
   o = section.taboption(
-    "settings",
+    "target",
     ButtonAddSettingsDynamicList,
     "priority_group",
     _("Priority"),
@@ -7244,7 +7332,7 @@ function createSectionContent(section) {
   sectionGroupSourceOptions.set("priority_group", o);
 
   o = section.taboption(
-    "settings",
+    "target",
     form.Flag,
     "outbound_detour_enabled",
     _("Cascade connection"),
@@ -7255,6 +7343,8 @@ function createSectionContent(section) {
   o.default = "0";
   o.rmempty = false;
   o.depends("action", "__internal_hidden__");
+  // Never shown, but still read by the backend: keep the stored value when
+  // the rule is saved (LuCI removes inactive options without retain).
   o.retain = true;
   o.modalonly = true;
   o.parse = parseOutboundDetourOption(o.parse);
@@ -7284,7 +7374,7 @@ function createSectionContent(section) {
   };
 
   o = section.taboption(
-    "settings",
+    "target",
     form.ListValue,
     "outbound_detour_section",
     _("Connect through"),
@@ -7312,7 +7402,7 @@ function createSectionContent(section) {
   };
 
   o = section.taboption(
-    "settings",
+    "target",
     form.Flag,
     "sort_by_latency",
     _("Sort by latency"),
@@ -7325,7 +7415,7 @@ function createSectionContent(section) {
   o.modalonly = true;
 
   o = section.taboption(
-    "settings",
+    "advanced",
     form.Flag,
     "mixed_proxy_enabled",
     _("Enable Mixed Proxy"),
@@ -7343,7 +7433,7 @@ function createSectionContent(section) {
   o.modalonly = true;
 
   o = section.taboption(
-    "settings",
+    "advanced",
     form.Value,
     "mixed_proxy_port",
     _("Mixed Proxy Port"),
@@ -7372,7 +7462,7 @@ function createSectionContent(section) {
   };
 
   o = section.taboption(
-    "settings",
+    "advanced",
     form.Flag,
     "mixed_proxy_auth_enabled",
     _("Enable Mixed Proxy Authentication"),
@@ -7390,7 +7480,7 @@ function createSectionContent(section) {
   o.modalonly = true;
 
   o = section.taboption(
-    "settings",
+    "advanced",
     form.Value,
     "mixed_proxy_username",
     _("Mixed Proxy Username"),
@@ -7441,7 +7531,7 @@ function createSectionContent(section) {
   };
 
   o = section.taboption(
-    "settings",
+    "advanced",
     form.Value,
     "mixed_proxy_password",
     _("Mixed Proxy Password"),
@@ -7493,7 +7583,7 @@ function createSectionContent(section) {
   };
 
   o = section.taboption(
-    "settings",
+    "advanced",
     form.Flag,
     "resolve_real_ip_for_routing",
     _("Resolve real IP for routing"),
@@ -7559,7 +7649,7 @@ function createSectionContent(section) {
   dependsOnRoutingAction(ipConditionOption);
 
   const builtInRulesetOption = section.taboption(
-    "conditions",
+    "match",
     form.DynamicList,
     "community_lists",
     _("Built-in rule sets"),
@@ -7579,7 +7669,7 @@ function createSectionContent(section) {
   };
 
   const secondaryRulesetOption = section.taboption(
-    "conditions",
+    "match",
     form.DynamicList,
     "secondary_rule_sets",
     `${_("Built-in rule sets")} #2`,
@@ -7604,7 +7694,7 @@ function createSectionContent(section) {
   };
 
   const ruleSetOption = section.taboption(
-    "conditions",
+    "match",
     SettingsDynamicList,
     "rule_set",
     _("Rule sets"),
@@ -7639,7 +7729,7 @@ function createSectionContent(section) {
   };
 
   const dnsRuleSetOption = section.taboption(
-    "conditions",
+    "match",
     form.DynamicList,
     "_dns_rule_set",
     _("Rule sets"),
@@ -7664,7 +7754,7 @@ function createSectionContent(section) {
   };
 
   const domainIpListsOption = section.taboption(
-    "conditions",
+    "match",
     form.DynamicList,
     "domain_ip_lists",
     _("Domain and IP lists"),
@@ -7685,7 +7775,7 @@ function createSectionContent(section) {
   };
 
   const dnsDomainListsOption = section.taboption(
-    "conditions",
+    "match",
     form.DynamicList,
     "_dns_domain_ip_lists",
     _("Domain lists"),

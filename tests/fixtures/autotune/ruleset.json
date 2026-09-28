@@ -1,0 +1,6613 @@
+{
+ "nftables": [
+  {
+   "metainfo": {
+    "version": "1.1.6",
+    "release_name": "Commodore Bullmoose #7",
+    "json_schema_version": 1
+   }
+  },
+  {
+   "table": {
+    "family": "inet",
+    "name": "fw4",
+    "handle": 1
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "input",
+    "handle": 1,
+    "type": "filter",
+    "hook": "input",
+    "prio": 0,
+    "policy": "drop"
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "forward",
+    "handle": 2,
+    "type": "filter",
+    "hook": "forward",
+    "prio": 0,
+    "policy": "drop"
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "output",
+    "handle": 3,
+    "type": "filter",
+    "hook": "output",
+    "prio": 0,
+    "policy": "accept"
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "prerouting",
+    "handle": 4,
+    "type": "filter",
+    "hook": "prerouting",
+    "prio": 0,
+    "policy": "accept"
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "handle_reject",
+    "handle": 5
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "syn_flood",
+    "handle": 6
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "input_lan",
+    "handle": 7
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "output_lan",
+    "handle": 8
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "forward_lan",
+    "handle": 9
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "helper_lan",
+    "handle": 10
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "accept_from_lan",
+    "handle": 11
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "accept_to_lan",
+    "handle": 12
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "input_wan",
+    "handle": 13
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "output_wan",
+    "handle": 14
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "forward_wan",
+    "handle": 15
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "accept_to_wan",
+    "handle": 16
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "reject_from_wan",
+    "handle": 17
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "drop_to_wan",
+    "handle": 18
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "input_vpn1",
+    "handle": 19
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "output_vpn1",
+    "handle": 20
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "forward_vpn1",
+    "handle": 21
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "accept_to_vpn1",
+    "handle": 22
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "reject_from_vpn1",
+    "handle": 23
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "reject_to_vpn1",
+    "handle": 24
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "input_vpn_srv",
+    "handle": 25
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "output_vpn_srv",
+    "handle": 26
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "forward_vpn_srv",
+    "handle": 27
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "helper_vpn_srv",
+    "handle": 28
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "accept_to_vpn_srv",
+    "handle": 29
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "reject_from_vpn_srv",
+    "handle": 30
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "reject_to_vpn_srv",
+    "handle": 31
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "dstnat",
+    "handle": 32,
+    "type": "nat",
+    "hook": "prerouting",
+    "prio": -100,
+    "policy": "accept"
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "srcnat",
+    "handle": 33,
+    "type": "nat",
+    "hook": "postrouting",
+    "prio": 100,
+    "policy": "accept"
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "dstnat_lan",
+    "handle": 34
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "srcnat_lan",
+    "handle": 35
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "dstnat_wan",
+    "handle": 36
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "srcnat_wan",
+    "handle": 37
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "srcnat_vpn1",
+    "handle": 38
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "raw_prerouting",
+    "handle": 39,
+    "type": "filter",
+    "hook": "prerouting",
+    "prio": -300,
+    "policy": "accept"
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "raw_output",
+    "handle": 40,
+    "type": "filter",
+    "hook": "output",
+    "prio": -300,
+    "policy": "accept"
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "mangle_prerouting",
+    "handle": 41,
+    "type": "filter",
+    "hook": "prerouting",
+    "prio": -150,
+    "policy": "accept"
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "mangle_postrouting",
+    "handle": 42,
+    "type": "filter",
+    "hook": "postrouting",
+    "prio": -150,
+    "policy": "accept"
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "mangle_input",
+    "handle": 43,
+    "type": "filter",
+    "hook": "input",
+    "prio": -150,
+    "policy": "accept"
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "mangle_output",
+    "handle": 44,
+    "type": "route",
+    "hook": "output",
+    "prio": -150,
+    "policy": "accept"
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "mangle_forward",
+    "handle": 45,
+    "type": "filter",
+    "hook": "forward",
+    "prio": -150,
+    "policy": "accept"
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "fw4",
+    "name": "accept_from_vpn_srv",
+    "handle": 1231
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "fw4",
+    "chain": "output",
+    "handle": 1253,
+    "comment": "!fw4: rule",
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "oif"
+        }
+       },
+       "right": "lo"
+      }
+     },
+     {
+      "accept": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "fw4",
+    "chain": "output",
+    "handle": 1255,
+    "comment": "!fw4: rule",
+    "expr": [
+     {
+      "vmap": {
+       "key": {
+        "ct": {
+         "key": "state"
+        }
+       },
+       "data": {
+        "set": [
+         [
+          "established",
+          {
+           "accept": null
+          }
+         ],
+         [
+          "related",
+          {
+           "accept": null
+          }
+         ]
+        ]
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "fw4",
+    "chain": "output",
+    "handle": 1256,
+    "comment": "!fw4: rule",
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "oifname"
+        }
+       },
+       "right": "br-lan"
+      }
+     },
+     {
+      "jump": {
+       "target": "output_lan"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "fw4",
+    "chain": "output",
+    "handle": 1257,
+    "comment": "!fw4: rule",
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "oifname"
+        }
+       },
+       "right": "pppoe-wan"
+      }
+     },
+     {
+      "jump": {
+       "target": "output_wan"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "fw4",
+    "chain": "output",
+    "handle": 1259,
+    "comment": "!fw4: rule",
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "nfproto"
+        }
+       },
+       "right": "ipv4"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "oifname"
+        }
+       },
+       "right": {
+        "set": [
+         "vpn1",
+         "vpn2"
+        ]
+       }
+      }
+     },
+     {
+      "jump": {
+       "target": "output_vpn1"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "fw4",
+    "chain": "output",
+    "handle": 1260,
+    "comment": "!fw4: rule",
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "oifname"
+        }
+       },
+       "right": "vpn_srv"
+      }
+     },
+     {
+      "jump": {
+       "target": "output_vpn_srv"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "fw4",
+    "chain": "output_lan",
+    "handle": 1269,
+    "expr": [
+     {
+      "jump": {
+       "target": "accept_to_lan"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "fw4",
+    "chain": "accept_to_lan",
+    "handle": 1275,
+    "comment": "!fw4: rule",
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "oifname"
+        }
+       },
+       "right": "br-lan"
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "accept": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "fw4",
+    "chain": "output_wan",
+    "handle": 1291,
+    "expr": [
+     {
+      "jump": {
+       "target": "accept_to_wan"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "fw4",
+    "chain": "accept_to_wan",
+    "handle": 1300,
+    "comment": "!fw4: rule",
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "nfproto"
+        }
+       },
+       "right": "ipv4"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "oifname"
+        }
+       },
+       "right": "pppoe-wan"
+      }
+     },
+     {
+      "match": {
+       "op": "in",
+       "left": {
+        "ct": {
+         "key": "state"
+        }
+       },
+       "right": "invalid"
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "drop": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "fw4",
+    "chain": "accept_to_wan",
+    "handle": 1301,
+    "comment": "!fw4: rule",
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "oifname"
+        }
+       },
+       "right": "pppoe-wan"
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "accept": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "fw4",
+    "chain": "output_vpn1",
+    "handle": 1305,
+    "expr": [
+     {
+      "jump": {
+       "target": "accept_to_vpn1"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "fw4",
+    "chain": "accept_to_vpn1",
+    "handle": 1308,
+    "comment": "!fw4: rule",
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "nfproto"
+        }
+       },
+       "right": "ipv4"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "oifname"
+        }
+       },
+       "right": {
+        "set": [
+         "vpn1",
+         "vpn2"
+        ]
+       }
+      }
+     },
+     {
+      "match": {
+       "op": "in",
+       "left": {
+        "ct": {
+         "key": "state"
+        }
+       },
+       "right": "invalid"
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "drop": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "fw4",
+    "chain": "accept_to_vpn1",
+    "handle": 1310,
+    "comment": "!fw4: rule",
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "nfproto"
+        }
+       },
+       "right": "ipv4"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "oifname"
+        }
+       },
+       "right": {
+        "set": [
+         "vpn1",
+         "vpn2"
+        ]
+       }
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "accept": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "fw4",
+    "chain": "output_vpn_srv",
+    "handle": 1322,
+    "expr": [
+     {
+      "jump": {
+       "target": "accept_to_vpn_srv"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "fw4",
+    "chain": "accept_to_vpn_srv",
+    "handle": 1328,
+    "comment": "!fw4: rule",
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "oifname"
+        }
+       },
+       "right": "vpn_srv"
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "accept": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "fw4",
+    "chain": "srcnat",
+    "handle": 1331,
+    "comment": "!fw4: rule",
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "oifname"
+        }
+       },
+       "right": "br-lan"
+      }
+     },
+     {
+      "jump": {
+       "target": "srcnat_lan"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "fw4",
+    "chain": "srcnat",
+    "handle": 1332,
+    "comment": "!fw4: rule",
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "oifname"
+        }
+       },
+       "right": "pppoe-wan"
+      }
+     },
+     {
+      "jump": {
+       "target": "srcnat_wan"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "fw4",
+    "chain": "srcnat",
+    "handle": 1334,
+    "comment": "!fw4: rule",
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "nfproto"
+        }
+       },
+       "right": "ipv4"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "oifname"
+        }
+       },
+       "right": {
+        "set": [
+         "vpn1",
+         "vpn2"
+        ]
+       }
+      }
+     },
+     {
+      "jump": {
+       "target": "srcnat_vpn1"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "fw4",
+    "chain": "srcnat_lan",
+    "handle": 1374,
+    "comment": "!fw4: rule",
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "saddr"
+        }
+       },
+       "right": {
+        "prefix": {
+         "addr": "192.168.1.0",
+         "len": 24
+        }
+       }
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": "192.168.1.10"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "tcp",
+         "field": "dport"
+        }
+       },
+       "right": 8443
+      }
+     },
+     {
+      "snat": {
+       "family": "ip",
+       "addr": "192.168.1.1"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "fw4",
+    "chain": "srcnat_lan",
+    "handle": 1375,
+    "comment": "!fw4: rule",
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "saddr"
+        }
+       },
+       "right": {
+        "prefix": {
+         "addr": "192.168.1.0",
+         "len": 24
+        }
+       }
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": "192.168.1.10"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "udp",
+         "field": "dport"
+        }
+       },
+       "right": 8443
+      }
+     },
+     {
+      "snat": {
+       "family": "ip",
+       "addr": "192.168.1.1"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "fw4",
+    "chain": "dstnat_wan",
+    "handle": 1413,
+    "comment": "!fw4: rule",
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "nfproto"
+        }
+       },
+       "right": "ipv4"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "tcp",
+         "field": "dport"
+        }
+       },
+       "right": 8443
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "dnat": {
+       "family": "ip",
+       "addr": "192.168.1.10",
+       "port": 8443
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "fw4",
+    "chain": "srcnat_wan",
+    "handle": 1452,
+    "comment": "!fw4: rule",
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "nfproto"
+        }
+       },
+       "right": "ipv4"
+      }
+     },
+     {
+      "masquerade": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "fw4",
+    "chain": "srcnat_vpn1",
+    "handle": 1453,
+    "comment": "!fw4: rule",
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "nfproto"
+        }
+       },
+       "right": "ipv4"
+      }
+     },
+     {
+      "masquerade": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "fw4",
+    "chain": "mangle_postrouting",
+    "handle": 1454,
+    "comment": "!fw4: rule",
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "oifname"
+        }
+       },
+       "right": "pppoe-wan"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "&": [
+         {
+          "payload": {
+           "protocol": "tcp",
+           "field": "flags"
+          }
+         },
+         {
+          "|": [
+           "fin",
+           "syn",
+           "rst"
+          ]
+         }
+        ]
+       },
+       "right": "syn"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "tcp option": {
+         "name": "maxseg",
+         "field": "size"
+        }
+       },
+       "value": {
+        "rt": {
+         "key": "mtu"
+        }
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "fw4",
+    "chain": "mangle_postrouting",
+    "handle": 1456,
+    "comment": "!fw4: rule",
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "nfproto"
+        }
+       },
+       "right": "ipv4"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "oifname"
+        }
+       },
+       "right": {
+        "set": [
+         "vpn1",
+         "vpn2"
+        ]
+       }
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "&": [
+         {
+          "payload": {
+           "protocol": "tcp",
+           "field": "flags"
+          }
+         },
+         {
+          "|": [
+           "fin",
+           "syn",
+           "rst"
+          ]
+         }
+        ]
+       },
+       "right": "syn"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "tcp option": {
+         "name": "maxseg",
+         "field": "size"
+        }
+       },
+       "value": {
+        "rt": {
+         "key": "mtu"
+        }
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "fw4",
+    "chain": "mangle_postrouting",
+    "handle": 1457,
+    "comment": "!fw4: rule",
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "oifname"
+        }
+       },
+       "right": "vpn_srv"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "&": [
+         {
+          "payload": {
+           "protocol": "tcp",
+           "field": "flags"
+          }
+         },
+         {
+          "|": [
+           "fin",
+           "syn",
+           "rst"
+          ]
+         }
+        ]
+       },
+       "right": "syn"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "tcp option": {
+         "name": "maxseg",
+         "field": "size"
+        }
+       },
+       "value": {
+        "rt": {
+         "key": "mtu"
+        }
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "table": {
+    "family": "inet",
+    "name": "ForkopTable",
+    "handle": 60
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "name": "dns_redirect",
+    "handle": 11,
+    "type": "nat",
+    "hook": "prerouting",
+    "prio": -101,
+    "policy": "accept"
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "name": "mangle",
+    "handle": 12,
+    "type": "filter",
+    "hook": "prerouting",
+    "prio": -149,
+    "policy": "accept"
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "name": "mangle_output",
+    "handle": 13,
+    "type": "route",
+    "hook": "output",
+    "prio": -150,
+    "policy": "accept"
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "name": "priority_rules",
+    "handle": 14
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "name": "priority_output_rules",
+    "handle": 15
+   }
+  },
+  {
+   "chain": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "name": "proxy",
+    "handle": 17,
+    "type": "filter",
+    "hook": "prerouting",
+    "prio": -100,
+    "policy": "accept"
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "localv4",
+    "table": "ForkopTable",
+    "type": "ipv4_addr",
+    "handle": 1,
+    "flags": [
+     "interval"
+    ],
+    "auto-merge": true
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "localv6",
+    "table": "ForkopTable",
+    "type": "ipv6_addr",
+    "handle": 2,
+    "flags": [
+     "interval"
+    ],
+    "auto-merge": true
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_subnets",
+    "table": "ForkopTable",
+    "type": "ipv4_addr",
+    "handle": 3,
+    "flags": [
+     "interval"
+    ],
+    "auto-merge": true
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_subnets6",
+    "table": "ForkopTable",
+    "type": "ipv6_addr",
+    "handle": 4,
+    "flags": [
+     "interval"
+    ],
+    "auto-merge": true
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_ports",
+    "table": "ForkopTable",
+    "type": "inet_service",
+    "handle": 5,
+    "flags": [
+     "interval"
+    ],
+    "auto-merge": true
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_ip_ports",
+    "table": "ForkopTable",
+    "type": [
+     "ipv4_addr",
+     "inet_service"
+    ],
+    "handle": 6,
+    "flags": [
+     "interval"
+    ]
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_ip6_ports",
+    "table": "ForkopTable",
+    "type": [
+     "ipv6_addr",
+     "inet_service"
+    ],
+    "handle": 7,
+    "flags": [
+     "interval"
+    ]
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_dns_sources",
+    "table": "ForkopTable",
+    "type": "ipv4_addr",
+    "handle": 8,
+    "flags": [
+     "interval"
+    ],
+    "auto-merge": true
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_dns_sources6",
+    "table": "ForkopTable",
+    "type": "ipv6_addr",
+    "handle": 9,
+    "flags": [
+     "interval"
+    ],
+    "auto-merge": true
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_interfaces",
+    "table": "ForkopTable",
+    "type": "ifname",
+    "handle": 10,
+    "flags": [
+     "interval"
+    ]
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_rule_rule_a_subnets",
+    "table": "ForkopTable",
+    "type": "ipv4_addr",
+    "handle": 50,
+    "flags": [
+     "interval"
+    ],
+    "auto-merge": true
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_rule_rule_a_subnets6",
+    "table": "ForkopTable",
+    "type": "ipv6_addr",
+    "handle": 51,
+    "flags": [
+     "interval"
+    ],
+    "auto-merge": true
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_rule_rule_a_ports",
+    "table": "ForkopTable",
+    "type": "inet_service",
+    "handle": 52,
+    "flags": [
+     "interval"
+    ],
+    "auto-merge": true
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_rule_rule_a_ip_ports",
+    "table": "ForkopTable",
+    "type": [
+     "ipv4_addr",
+     "inet_service"
+    ],
+    "handle": 53,
+    "flags": [
+     "interval"
+    ]
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_rule_rule_a_ip6_ports",
+    "table": "ForkopTable",
+    "type": [
+     "ipv6_addr",
+     "inet_service"
+    ],
+    "handle": 54,
+    "flags": [
+     "interval"
+    ]
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_rule_rule_a_udp_ip_ports",
+    "table": "ForkopTable",
+    "type": [
+     "ipv4_addr",
+     "inet_service"
+    ],
+    "handle": 55,
+    "flags": [
+     "interval"
+    ]
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_rule_rule_a_udp_ip6_ports",
+    "table": "ForkopTable",
+    "type": [
+     "ipv6_addr",
+     "inet_service"
+    ],
+    "handle": 56,
+    "flags": [
+     "interval"
+    ]
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_rule_rule_a_sources",
+    "table": "ForkopTable",
+    "type": "ipv4_addr",
+    "handle": 57,
+    "flags": [
+     "interval"
+    ],
+    "auto-merge": true
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_rule_rule_a_sources6",
+    "table": "ForkopTable",
+    "type": "ipv6_addr",
+    "handle": 58,
+    "flags": [
+     "interval"
+    ],
+    "auto-merge": true
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_rule_rule_a_excluded_sources",
+    "table": "ForkopTable",
+    "type": "ipv4_addr",
+    "handle": 59,
+    "flags": [
+     "interval"
+    ],
+    "auto-merge": true
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_rule_rule_a_excluded_sources6",
+    "table": "ForkopTable",
+    "type": "ipv6_addr",
+    "handle": 60,
+    "flags": [
+     "interval"
+    ],
+    "auto-merge": true
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_rule_rule_a_fully_sources",
+    "table": "ForkopTable",
+    "type": "ipv4_addr",
+    "handle": 61,
+    "flags": [
+     "interval"
+    ],
+    "auto-merge": true
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_rule_rule_a_fully_sources6",
+    "table": "ForkopTable",
+    "type": "ipv6_addr",
+    "handle": 62,
+    "flags": [
+     "interval"
+    ],
+    "auto-merge": true
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_rule_rule_b_subnets",
+    "table": "ForkopTable",
+    "type": "ipv4_addr",
+    "handle": 67,
+    "flags": [
+     "interval"
+    ],
+    "auto-merge": true
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_rule_rule_b_subnets6",
+    "table": "ForkopTable",
+    "type": "ipv6_addr",
+    "handle": 68,
+    "flags": [
+     "interval"
+    ],
+    "auto-merge": true
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_rule_rule_b_ports",
+    "table": "ForkopTable",
+    "type": "inet_service",
+    "handle": 69,
+    "flags": [
+     "interval"
+    ],
+    "auto-merge": true
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_rule_rule_b_ip_ports",
+    "table": "ForkopTable",
+    "type": [
+     "ipv4_addr",
+     "inet_service"
+    ],
+    "handle": 70,
+    "flags": [
+     "interval"
+    ]
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_rule_rule_b_ip6_ports",
+    "table": "ForkopTable",
+    "type": [
+     "ipv6_addr",
+     "inet_service"
+    ],
+    "handle": 71,
+    "flags": [
+     "interval"
+    ]
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_rule_rule_b_udp_ip_ports",
+    "table": "ForkopTable",
+    "type": [
+     "ipv4_addr",
+     "inet_service"
+    ],
+    "handle": 72,
+    "flags": [
+     "interval"
+    ]
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_rule_rule_b_udp_ip6_ports",
+    "table": "ForkopTable",
+    "type": [
+     "ipv6_addr",
+     "inet_service"
+    ],
+    "handle": 73,
+    "flags": [
+     "interval"
+    ]
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_rule_rule_b_sources",
+    "table": "ForkopTable",
+    "type": "ipv4_addr",
+    "handle": 74,
+    "flags": [
+     "interval"
+    ],
+    "auto-merge": true
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_rule_rule_b_sources6",
+    "table": "ForkopTable",
+    "type": "ipv6_addr",
+    "handle": 75,
+    "flags": [
+     "interval"
+    ],
+    "auto-merge": true
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_rule_rule_b_excluded_sources",
+    "table": "ForkopTable",
+    "type": "ipv4_addr",
+    "handle": 76,
+    "flags": [
+     "interval"
+    ],
+    "auto-merge": true
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_rule_rule_b_excluded_sources6",
+    "table": "ForkopTable",
+    "type": "ipv6_addr",
+    "handle": 77,
+    "flags": [
+     "interval"
+    ],
+    "auto-merge": true
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_rule_rule_b_fully_sources",
+    "table": "ForkopTable",
+    "type": "ipv4_addr",
+    "handle": 78,
+    "flags": [
+     "interval"
+    ],
+    "auto-merge": true
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_rule_rule_b_fully_sources6",
+    "table": "ForkopTable",
+    "type": "ipv6_addr",
+    "handle": 79,
+    "flags": [
+     "interval"
+    ],
+    "auto-merge": true
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_rule_main_subnets",
+    "table": "ForkopTable",
+    "type": "ipv4_addr",
+    "handle": 88,
+    "flags": [
+     "interval"
+    ],
+    "auto-merge": true
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_rule_main_subnets6",
+    "table": "ForkopTable",
+    "type": "ipv6_addr",
+    "handle": 89,
+    "flags": [
+     "interval"
+    ],
+    "auto-merge": true
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_rule_main_ports",
+    "table": "ForkopTable",
+    "type": "inet_service",
+    "handle": 90,
+    "flags": [
+     "interval"
+    ],
+    "auto-merge": true
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_rule_main_ip_ports",
+    "table": "ForkopTable",
+    "type": [
+     "ipv4_addr",
+     "inet_service"
+    ],
+    "handle": 91,
+    "flags": [
+     "interval"
+    ]
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_rule_main_ip6_ports",
+    "table": "ForkopTable",
+    "type": [
+     "ipv6_addr",
+     "inet_service"
+    ],
+    "handle": 92,
+    "flags": [
+     "interval"
+    ]
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_rule_main_udp_ip_ports",
+    "table": "ForkopTable",
+    "type": [
+     "ipv4_addr",
+     "inet_service"
+    ],
+    "handle": 93,
+    "flags": [
+     "interval"
+    ]
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_rule_main_udp_ip6_ports",
+    "table": "ForkopTable",
+    "type": [
+     "ipv6_addr",
+     "inet_service"
+    ],
+    "handle": 94,
+    "flags": [
+     "interval"
+    ]
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_rule_main_sources",
+    "table": "ForkopTable",
+    "type": "ipv4_addr",
+    "handle": 95,
+    "flags": [
+     "interval"
+    ],
+    "auto-merge": true
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_rule_main_sources6",
+    "table": "ForkopTable",
+    "type": "ipv6_addr",
+    "handle": 96,
+    "flags": [
+     "interval"
+    ],
+    "auto-merge": true
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_rule_main_excluded_sources",
+    "table": "ForkopTable",
+    "type": "ipv4_addr",
+    "handle": 97,
+    "flags": [
+     "interval"
+    ],
+    "auto-merge": true
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_rule_main_excluded_sources6",
+    "table": "ForkopTable",
+    "type": "ipv6_addr",
+    "handle": 98,
+    "flags": [
+     "interval"
+    ],
+    "auto-merge": true
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_rule_main_fully_sources",
+    "table": "ForkopTable",
+    "type": "ipv4_addr",
+    "handle": 99,
+    "flags": [
+     "interval"
+    ],
+    "auto-merge": true
+   }
+  },
+  {
+   "set": {
+    "family": "inet",
+    "name": "forkop_rule_main_fully_sources6",
+    "table": "ForkopTable",
+    "type": "ipv6_addr",
+    "handle": 100,
+    "flags": [
+     "interval"
+    ],
+    "auto-merge": true
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "dns_redirect",
+    "handle": 18,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "iifname"
+        }
+       },
+       "right": "@forkop_interfaces"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "saddr"
+        }
+       },
+       "right": "@forkop_dns_sources"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "tcp",
+         "field": "dport"
+        }
+       },
+       "right": 53
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "redirect": {
+       "port": 1603
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "dns_redirect",
+    "handle": 19,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "iifname"
+        }
+       },
+       "right": "@forkop_interfaces"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "saddr"
+        }
+       },
+       "right": "@forkop_dns_sources"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "udp",
+         "field": "dport"
+        }
+       },
+       "right": 53
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "redirect": {
+       "port": 1603
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "dns_redirect",
+    "handle": 20,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "iifname"
+        }
+       },
+       "right": "@forkop_interfaces"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "saddr"
+        }
+       },
+       "right": "@forkop_dns_sources6"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "tcp",
+         "field": "dport"
+        }
+       },
+       "right": 53
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "redirect": {
+       "port": 1603
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "dns_redirect",
+    "handle": 21,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "iifname"
+        }
+       },
+       "right": "@forkop_interfaces"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "saddr"
+        }
+       },
+       "right": "@forkop_dns_sources6"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "udp",
+         "field": "dport"
+        }
+       },
+       "right": 53
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "redirect": {
+       "port": 1603
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle",
+    "handle": 22,
+    "expr": [
+     {
+      "match": {
+       "op": "in",
+       "left": {
+        "ct": {
+         "key": "status"
+        }
+       },
+       "right": "dnat"
+      }
+     },
+     {
+      "return": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle",
+    "handle": 23,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "iifname"
+        }
+       },
+       "right": "@forkop_interfaces"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": "@localv4"
+      }
+     },
+     {
+      "return": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle",
+    "handle": 24,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "iifname"
+        }
+       },
+       "right": "@forkop_interfaces"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "daddr"
+        }
+       },
+       "right": "@localv6"
+      }
+     },
+     {
+      "match": {
+       "op": "!=",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "daddr"
+        }
+       },
+       "right": {
+        "prefix": {
+         "addr": "fc00::",
+         "len": 18
+        }
+       }
+      }
+     },
+     {
+      "return": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle",
+    "handle": 25,
+    "expr": [
+     {
+      "jump": {
+       "target": "priority_rules"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle",
+    "handle": 26,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "iifname"
+        }
+       },
+       "right": "@forkop_interfaces"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": "@forkop_subnets"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "l4proto"
+        }
+       },
+       "right": "tcp"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle",
+    "handle": 27,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "iifname"
+        }
+       },
+       "right": "@forkop_interfaces"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": "@forkop_subnets"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "l4proto"
+        }
+       },
+       "right": "udp"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle",
+    "handle": 28,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "iifname"
+        }
+       },
+       "right": "@forkop_interfaces"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "daddr"
+        }
+       },
+       "right": "@forkop_subnets6"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "l4proto"
+        }
+       },
+       "right": "tcp"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle",
+    "handle": 29,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "iifname"
+        }
+       },
+       "right": "@forkop_interfaces"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "daddr"
+        }
+       },
+       "right": "@forkop_subnets6"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "l4proto"
+        }
+       },
+       "right": "udp"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle",
+    "handle": 30,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "iifname"
+        }
+       },
+       "right": "@forkop_interfaces"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "concat": [
+         {
+          "payload": {
+           "protocol": "ip",
+           "field": "daddr"
+          }
+         },
+         {
+          "payload": {
+           "protocol": "tcp",
+           "field": "dport"
+          }
+         }
+        ]
+       },
+       "right": "@forkop_ip_ports"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle",
+    "handle": 31,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "iifname"
+        }
+       },
+       "right": "@forkop_interfaces"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "concat": [
+         {
+          "payload": {
+           "protocol": "ip",
+           "field": "daddr"
+          }
+         },
+         {
+          "payload": {
+           "protocol": "udp",
+           "field": "dport"
+          }
+         }
+        ]
+       },
+       "right": "@forkop_ip_ports"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle",
+    "handle": 32,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "iifname"
+        }
+       },
+       "right": "@forkop_interfaces"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "concat": [
+         {
+          "payload": {
+           "protocol": "ip6",
+           "field": "daddr"
+          }
+         },
+         {
+          "payload": {
+           "protocol": "tcp",
+           "field": "dport"
+          }
+         }
+        ]
+       },
+       "right": "@forkop_ip6_ports"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle",
+    "handle": 33,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "iifname"
+        }
+       },
+       "right": "@forkop_interfaces"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "concat": [
+         {
+          "payload": {
+           "protocol": "ip6",
+           "field": "daddr"
+          }
+         },
+         {
+          "payload": {
+           "protocol": "udp",
+           "field": "dport"
+          }
+         }
+        ]
+       },
+       "right": "@forkop_ip6_ports"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle",
+    "handle": 34,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "iifname"
+        }
+       },
+       "right": "@forkop_interfaces"
+      }
+     },
+     {
+      "match": {
+       "op": "!=",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": "@localv4"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "tcp",
+         "field": "dport"
+        }
+       },
+       "right": "@forkop_ports"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle",
+    "handle": 35,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "iifname"
+        }
+       },
+       "right": "@forkop_interfaces"
+      }
+     },
+     {
+      "match": {
+       "op": "!=",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": "@localv4"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "udp",
+         "field": "dport"
+        }
+       },
+       "right": "@forkop_ports"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle",
+    "handle": 36,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "iifname"
+        }
+       },
+       "right": "@forkop_interfaces"
+      }
+     },
+     {
+      "match": {
+       "op": "!=",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "daddr"
+        }
+       },
+       "right": "@localv6"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "tcp",
+         "field": "dport"
+        }
+       },
+       "right": "@forkop_ports"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle",
+    "handle": 37,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "iifname"
+        }
+       },
+       "right": "@forkop_interfaces"
+      }
+     },
+     {
+      "match": {
+       "op": "!=",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "daddr"
+        }
+       },
+       "right": "@localv6"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "udp",
+         "field": "dport"
+        }
+       },
+       "right": "@forkop_ports"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle",
+    "handle": 38,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "iifname"
+        }
+       },
+       "right": "@forkop_interfaces"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": {
+        "prefix": {
+         "addr": "198.18.0.0",
+         "len": 15
+        }
+       }
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "l4proto"
+        }
+       },
+       "right": "tcp"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle",
+    "handle": 39,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "iifname"
+        }
+       },
+       "right": "@forkop_interfaces"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": {
+        "prefix": {
+         "addr": "198.18.0.0",
+         "len": 15
+        }
+       }
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "l4proto"
+        }
+       },
+       "right": "udp"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle",
+    "handle": 40,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "iifname"
+        }
+       },
+       "right": "@forkop_interfaces"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "daddr"
+        }
+       },
+       "right": {
+        "prefix": {
+         "addr": "fc00::",
+         "len": 18
+        }
+       }
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "l4proto"
+        }
+       },
+       "right": "tcp"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle",
+    "handle": 41,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "iifname"
+        }
+       },
+       "right": "@forkop_interfaces"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "daddr"
+        }
+       },
+       "right": {
+        "prefix": {
+         "addr": "fc00::",
+         "len": 18
+        }
+       }
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "l4proto"
+        }
+       },
+       "right": "udp"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle_output",
+    "handle": 46,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": "@localv4"
+      }
+     },
+     {
+      "return": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle_output",
+    "handle": 47,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "daddr"
+        }
+       },
+       "right": "@localv6"
+      }
+     },
+     {
+      "match": {
+       "op": "!=",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "daddr"
+        }
+       },
+       "right": {
+        "prefix": {
+         "addr": "fc00::",
+         "len": 18
+        }
+       }
+      }
+     },
+     {
+      "return": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle_output",
+    "handle": 48,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "right": 134217728
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "return": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle_output",
+    "handle": 49,
+    "expr": [
+     {
+      "jump": {
+       "target": "priority_output_rules"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle_output",
+    "handle": 117,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "&": [
+         {
+          "meta": {
+           "key": "mark"
+          }
+         },
+         1073741824
+        ]
+       },
+       "right": 1073741824
+      }
+     },
+     {
+      "return": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle_output",
+    "handle": 118,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "&": [
+         {
+          "meta": {
+           "key": "mark"
+          }
+         },
+         536870912
+        ]
+       },
+       "right": 536870912
+      }
+     },
+     {
+      "return": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle_output",
+    "handle": 119,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "right": 16777217
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "l4proto"
+        }
+       },
+       "right": "tcp"
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "queue": {
+       "num": 4000,
+       "flags": [
+        "bypass"
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle_output",
+    "handle": 120,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "right": 16777217
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "l4proto"
+        }
+       },
+       "right": "udp"
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "queue": {
+       "num": 4000,
+       "flags": [
+        "bypass"
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle_output",
+    "handle": 121,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": "@forkop_subnets"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "l4proto"
+        }
+       },
+       "right": "tcp"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle_output",
+    "handle": 122,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": "@forkop_subnets"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "l4proto"
+        }
+       },
+       "right": "udp"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle_output",
+    "handle": 123,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "daddr"
+        }
+       },
+       "right": "@forkop_subnets6"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "l4proto"
+        }
+       },
+       "right": "tcp"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle_output",
+    "handle": 124,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "daddr"
+        }
+       },
+       "right": "@forkop_subnets6"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "l4proto"
+        }
+       },
+       "right": "udp"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle_output",
+    "handle": 125,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "concat": [
+         {
+          "payload": {
+           "protocol": "ip",
+           "field": "daddr"
+          }
+         },
+         {
+          "payload": {
+           "protocol": "tcp",
+           "field": "dport"
+          }
+         }
+        ]
+       },
+       "right": "@forkop_ip_ports"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle_output",
+    "handle": 126,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "concat": [
+         {
+          "payload": {
+           "protocol": "ip",
+           "field": "daddr"
+          }
+         },
+         {
+          "payload": {
+           "protocol": "udp",
+           "field": "dport"
+          }
+         }
+        ]
+       },
+       "right": "@forkop_ip_ports"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle_output",
+    "handle": 127,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "concat": [
+         {
+          "payload": {
+           "protocol": "ip6",
+           "field": "daddr"
+          }
+         },
+         {
+          "payload": {
+           "protocol": "tcp",
+           "field": "dport"
+          }
+         }
+        ]
+       },
+       "right": "@forkop_ip6_ports"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle_output",
+    "handle": 128,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "concat": [
+         {
+          "payload": {
+           "protocol": "ip6",
+           "field": "daddr"
+          }
+         },
+         {
+          "payload": {
+           "protocol": "udp",
+           "field": "dport"
+          }
+         }
+        ]
+       },
+       "right": "@forkop_ip6_ports"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle_output",
+    "handle": 129,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "tcp",
+         "field": "dport"
+        }
+       },
+       "right": "@forkop_ports"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle_output",
+    "handle": 130,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "udp",
+         "field": "dport"
+        }
+       },
+       "right": "@forkop_ports"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle_output",
+    "handle": 131,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": {
+        "prefix": {
+         "addr": "198.18.0.0",
+         "len": 15
+        }
+       }
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "l4proto"
+        }
+       },
+       "right": "tcp"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle_output",
+    "handle": 132,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": {
+        "prefix": {
+         "addr": "198.18.0.0",
+         "len": 15
+        }
+       }
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "l4proto"
+        }
+       },
+       "right": "udp"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle_output",
+    "handle": 133,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "daddr"
+        }
+       },
+       "right": {
+        "prefix": {
+         "addr": "fc00::",
+         "len": 18
+        }
+       }
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "l4proto"
+        }
+       },
+       "right": "tcp"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "mangle_output",
+    "handle": 134,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "daddr"
+        }
+       },
+       "right": {
+        "prefix": {
+         "addr": "fc00::",
+         "len": 18
+        }
+       }
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "l4proto"
+        }
+       },
+       "right": "udp"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "priority_rules",
+    "handle": 63,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "iifname"
+        }
+       },
+       "right": "@forkop_interfaces"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "saddr"
+        }
+       },
+       "right": "@forkop_rule_rule_a_sources"
+      }
+     },
+     {
+      "match": {
+       "op": "!=",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": "@localv4"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": "@forkop_rule_rule_a_subnets"
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "accept": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "priority_rules",
+    "handle": 64,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "iifname"
+        }
+       },
+       "right": "@forkop_interfaces"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "saddr"
+        }
+       },
+       "right": "@forkop_rule_rule_a_sources6"
+      }
+     },
+     {
+      "match": {
+       "op": "!=",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "daddr"
+        }
+       },
+       "right": "@localv6"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "daddr"
+        }
+       },
+       "right": "@forkop_rule_rule_a_subnets6"
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "accept": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "priority_rules",
+    "handle": 80,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "iifname"
+        }
+       },
+       "right": "@forkop_interfaces"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "saddr"
+        }
+       },
+       "right": "@forkop_rule_rule_b_sources"
+      }
+     },
+     {
+      "match": {
+       "op": "!=",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": "@localv4"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "concat": [
+         {
+          "payload": {
+           "protocol": "ip",
+           "field": "daddr"
+          }
+         },
+         {
+          "payload": {
+           "protocol": "tcp",
+           "field": "dport"
+          }
+         }
+        ]
+       },
+       "right": "@forkop_rule_rule_b_ip_ports"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "accept": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "priority_rules",
+    "handle": 81,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "iifname"
+        }
+       },
+       "right": "@forkop_interfaces"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "saddr"
+        }
+       },
+       "right": "@forkop_rule_rule_b_sources6"
+      }
+     },
+     {
+      "match": {
+       "op": "!=",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "daddr"
+        }
+       },
+       "right": "@localv6"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "concat": [
+         {
+          "payload": {
+           "protocol": "ip6",
+           "field": "daddr"
+          }
+         },
+         {
+          "payload": {
+           "protocol": "tcp",
+           "field": "dport"
+          }
+         }
+        ]
+       },
+       "right": "@forkop_rule_rule_b_ip6_ports"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "accept": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "priority_rules",
+    "handle": 82,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "iifname"
+        }
+       },
+       "right": "@forkop_interfaces"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "saddr"
+        }
+       },
+       "right": "@forkop_rule_rule_b_sources"
+      }
+     },
+     {
+      "match": {
+       "op": "!=",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": "@localv4"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "concat": [
+         {
+          "payload": {
+           "protocol": "ip",
+           "field": "daddr"
+          }
+         },
+         {
+          "payload": {
+           "protocol": "udp",
+           "field": "dport"
+          }
+         }
+        ]
+       },
+       "right": "@forkop_rule_rule_b_ip_ports"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "accept": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "priority_rules",
+    "handle": 83,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "iifname"
+        }
+       },
+       "right": "@forkop_interfaces"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "saddr"
+        }
+       },
+       "right": "@forkop_rule_rule_b_sources6"
+      }
+     },
+     {
+      "match": {
+       "op": "!=",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "daddr"
+        }
+       },
+       "right": "@localv6"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "concat": [
+         {
+          "payload": {
+           "protocol": "ip6",
+           "field": "daddr"
+          }
+         },
+         {
+          "payload": {
+           "protocol": "udp",
+           "field": "dport"
+          }
+         }
+        ]
+       },
+       "right": "@forkop_rule_rule_b_ip6_ports"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "accept": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "priority_rules",
+    "handle": 101,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "iifname"
+        }
+       },
+       "right": "@forkop_interfaces"
+      }
+     },
+     {
+      "match": {
+       "op": "!=",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": "@localv4"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": "@forkop_rule_main_subnets"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "accept": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "priority_rules",
+    "handle": 102,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "iifname"
+        }
+       },
+       "right": "@forkop_interfaces"
+      }
+     },
+     {
+      "match": {
+       "op": "!=",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "daddr"
+        }
+       },
+       "right": "@localv6"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "daddr"
+        }
+       },
+       "right": "@forkop_rule_main_subnets6"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "accept": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "priority_rules",
+    "handle": 105,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "iifname"
+        }
+       },
+       "right": "@forkop_interfaces"
+      }
+     },
+     {
+      "match": {
+       "op": "!=",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": "@localv4"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "concat": [
+         {
+          "payload": {
+           "protocol": "ip",
+           "field": "daddr"
+          }
+         },
+         {
+          "payload": {
+           "protocol": "tcp",
+           "field": "dport"
+          }
+         }
+        ]
+       },
+       "right": "@forkop_rule_main_ip_ports"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "accept": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "priority_rules",
+    "handle": 106,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "iifname"
+        }
+       },
+       "right": "@forkop_interfaces"
+      }
+     },
+     {
+      "match": {
+       "op": "!=",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "daddr"
+        }
+       },
+       "right": "@localv6"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "concat": [
+         {
+          "payload": {
+           "protocol": "ip6",
+           "field": "daddr"
+          }
+         },
+         {
+          "payload": {
+           "protocol": "tcp",
+           "field": "dport"
+          }
+         }
+        ]
+       },
+       "right": "@forkop_rule_main_ip6_ports"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "accept": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "priority_rules",
+    "handle": 107,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "iifname"
+        }
+       },
+       "right": "@forkop_interfaces"
+      }
+     },
+     {
+      "match": {
+       "op": "!=",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": "@localv4"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "concat": [
+         {
+          "payload": {
+           "protocol": "ip",
+           "field": "daddr"
+          }
+         },
+         {
+          "payload": {
+           "protocol": "udp",
+           "field": "dport"
+          }
+         }
+        ]
+       },
+       "right": "@forkop_rule_main_ip_ports"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "accept": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "priority_rules",
+    "handle": 108,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "iifname"
+        }
+       },
+       "right": "@forkop_interfaces"
+      }
+     },
+     {
+      "match": {
+       "op": "!=",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "daddr"
+        }
+       },
+       "right": "@localv6"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "concat": [
+         {
+          "payload": {
+           "protocol": "ip6",
+           "field": "daddr"
+          }
+         },
+         {
+          "payload": {
+           "protocol": "udp",
+           "field": "dport"
+          }
+         }
+        ]
+       },
+       "right": "@forkop_rule_main_ip6_ports"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "accept": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "priority_rules",
+    "handle": 113,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "iifname"
+        }
+       },
+       "right": "@forkop_interfaces"
+      }
+     },
+     {
+      "match": {
+       "op": "!=",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": "@localv4"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "concat": [
+         {
+          "payload": {
+           "protocol": "ip",
+           "field": "daddr"
+          }
+         },
+         {
+          "payload": {
+           "protocol": "udp",
+           "field": "dport"
+          }
+         }
+        ]
+       },
+       "right": "@forkop_rule_main_udp_ip_ports"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "accept": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "priority_rules",
+    "handle": 114,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "iifname"
+        }
+       },
+       "right": "@forkop_interfaces"
+      }
+     },
+     {
+      "match": {
+       "op": "!=",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "daddr"
+        }
+       },
+       "right": "@localv6"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "concat": [
+         {
+          "payload": {
+           "protocol": "ip6",
+           "field": "daddr"
+          }
+         },
+         {
+          "payload": {
+           "protocol": "udp",
+           "field": "dport"
+          }
+         }
+        ]
+       },
+       "right": "@forkop_rule_main_udp_ip6_ports"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "accept": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "priority_output_rules",
+    "handle": 16,
+    "expr": [
+     {
+      "match": {
+       "op": "!=",
+       "left": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "right": 0
+      }
+     },
+     {
+      "return": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "priority_output_rules",
+    "handle": 65,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "saddr"
+        }
+       },
+       "right": "@forkop_rule_rule_a_sources"
+      }
+     },
+     {
+      "match": {
+       "op": "!=",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": "@localv4"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": "@forkop_rule_rule_a_subnets"
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "accept": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "priority_output_rules",
+    "handle": 66,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "saddr"
+        }
+       },
+       "right": "@forkop_rule_rule_a_sources6"
+      }
+     },
+     {
+      "match": {
+       "op": "!=",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "daddr"
+        }
+       },
+       "right": "@localv6"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "daddr"
+        }
+       },
+       "right": "@forkop_rule_rule_a_subnets6"
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "accept": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "priority_output_rules",
+    "handle": 84,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "saddr"
+        }
+       },
+       "right": "@forkop_rule_rule_b_sources"
+      }
+     },
+     {
+      "match": {
+       "op": "!=",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": "@localv4"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "concat": [
+         {
+          "payload": {
+           "protocol": "ip",
+           "field": "daddr"
+          }
+         },
+         {
+          "payload": {
+           "protocol": "tcp",
+           "field": "dport"
+          }
+         }
+        ]
+       },
+       "right": "@forkop_rule_rule_b_ip_ports"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "accept": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "priority_output_rules",
+    "handle": 85,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "saddr"
+        }
+       },
+       "right": "@forkop_rule_rule_b_sources6"
+      }
+     },
+     {
+      "match": {
+       "op": "!=",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "daddr"
+        }
+       },
+       "right": "@localv6"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "concat": [
+         {
+          "payload": {
+           "protocol": "ip6",
+           "field": "daddr"
+          }
+         },
+         {
+          "payload": {
+           "protocol": "tcp",
+           "field": "dport"
+          }
+         }
+        ]
+       },
+       "right": "@forkop_rule_rule_b_ip6_ports"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "accept": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "priority_output_rules",
+    "handle": 86,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "saddr"
+        }
+       },
+       "right": "@forkop_rule_rule_b_sources"
+      }
+     },
+     {
+      "match": {
+       "op": "!=",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": "@localv4"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "concat": [
+         {
+          "payload": {
+           "protocol": "ip",
+           "field": "daddr"
+          }
+         },
+         {
+          "payload": {
+           "protocol": "udp",
+           "field": "dport"
+          }
+         }
+        ]
+       },
+       "right": "@forkop_rule_rule_b_ip_ports"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "accept": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "priority_output_rules",
+    "handle": 87,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "saddr"
+        }
+       },
+       "right": "@forkop_rule_rule_b_sources6"
+      }
+     },
+     {
+      "match": {
+       "op": "!=",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "daddr"
+        }
+       },
+       "right": "@localv6"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "concat": [
+         {
+          "payload": {
+           "protocol": "ip6",
+           "field": "daddr"
+          }
+         },
+         {
+          "payload": {
+           "protocol": "udp",
+           "field": "dport"
+          }
+         }
+        ]
+       },
+       "right": "@forkop_rule_rule_b_ip6_ports"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "accept": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "priority_output_rules",
+    "handle": 103,
+    "expr": [
+     {
+      "match": {
+       "op": "!=",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": "@localv4"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": "@forkop_rule_main_subnets"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "accept": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "priority_output_rules",
+    "handle": 104,
+    "expr": [
+     {
+      "match": {
+       "op": "!=",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "daddr"
+        }
+       },
+       "right": "@localv6"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "daddr"
+        }
+       },
+       "right": "@forkop_rule_main_subnets6"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "accept": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "priority_output_rules",
+    "handle": 109,
+    "expr": [
+     {
+      "match": {
+       "op": "!=",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": "@localv4"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "concat": [
+         {
+          "payload": {
+           "protocol": "ip",
+           "field": "daddr"
+          }
+         },
+         {
+          "payload": {
+           "protocol": "tcp",
+           "field": "dport"
+          }
+         }
+        ]
+       },
+       "right": "@forkop_rule_main_ip_ports"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "accept": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "priority_output_rules",
+    "handle": 110,
+    "expr": [
+     {
+      "match": {
+       "op": "!=",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "daddr"
+        }
+       },
+       "right": "@localv6"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "concat": [
+         {
+          "payload": {
+           "protocol": "ip6",
+           "field": "daddr"
+          }
+         },
+         {
+          "payload": {
+           "protocol": "tcp",
+           "field": "dport"
+          }
+         }
+        ]
+       },
+       "right": "@forkop_rule_main_ip6_ports"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "accept": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "priority_output_rules",
+    "handle": 111,
+    "expr": [
+     {
+      "match": {
+       "op": "!=",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": "@localv4"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "concat": [
+         {
+          "payload": {
+           "protocol": "ip",
+           "field": "daddr"
+          }
+         },
+         {
+          "payload": {
+           "protocol": "udp",
+           "field": "dport"
+          }
+         }
+        ]
+       },
+       "right": "@forkop_rule_main_ip_ports"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "accept": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "priority_output_rules",
+    "handle": 112,
+    "expr": [
+     {
+      "match": {
+       "op": "!=",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "daddr"
+        }
+       },
+       "right": "@localv6"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "concat": [
+         {
+          "payload": {
+           "protocol": "ip6",
+           "field": "daddr"
+          }
+         },
+         {
+          "payload": {
+           "protocol": "udp",
+           "field": "dport"
+          }
+         }
+        ]
+       },
+       "right": "@forkop_rule_main_ip6_ports"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "accept": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "priority_output_rules",
+    "handle": 115,
+    "expr": [
+     {
+      "match": {
+       "op": "!=",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": "@localv4"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "concat": [
+         {
+          "payload": {
+           "protocol": "ip",
+           "field": "daddr"
+          }
+         },
+         {
+          "payload": {
+           "protocol": "udp",
+           "field": "dport"
+          }
+         }
+        ]
+       },
+       "right": "@forkop_rule_main_udp_ip_ports"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "accept": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "priority_output_rules",
+    "handle": 116,
+    "expr": [
+     {
+      "match": {
+       "op": "!=",
+       "left": {
+        "payload": {
+         "protocol": "ip6",
+         "field": "daddr"
+        }
+       },
+       "right": "@localv6"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "concat": [
+         {
+          "payload": {
+           "protocol": "ip6",
+           "field": "daddr"
+          }
+         },
+         {
+          "payload": {
+           "protocol": "udp",
+           "field": "dport"
+          }
+         }
+        ]
+       },
+       "right": "@forkop_rule_main_udp_ip6_ports"
+      }
+     },
+     {
+      "mangle": {
+       "key": {
+        "meta": {
+         "key": "mark"
+        }
+       },
+       "value": 67108864
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "accept": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "proxy",
+    "handle": 42,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "&": [
+         {
+          "meta": {
+           "key": "mark"
+          }
+         },
+         67108864
+        ]
+       },
+       "right": 67108864
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "l4proto"
+        }
+       },
+       "right": "tcp"
+      }
+     },
+     {
+      "tproxy": {
+       "family": "ip",
+       "port": 1602
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "proxy",
+    "handle": 43,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "&": [
+         {
+          "meta": {
+           "key": "mark"
+          }
+         },
+         67108864
+        ]
+       },
+       "right": 67108864
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "l4proto"
+        }
+       },
+       "right": "udp"
+      }
+     },
+     {
+      "tproxy": {
+       "family": "ip",
+       "port": 1602
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "proxy",
+    "handle": 44,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "&": [
+         {
+          "meta": {
+           "key": "mark"
+          }
+         },
+         67108864
+        ]
+       },
+       "right": 67108864
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "l4proto"
+        }
+       },
+       "right": "tcp"
+      }
+     },
+     {
+      "tproxy": {
+       "family": "ip6",
+       "addr": "::1",
+       "port": 1602
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "inet",
+    "table": "ForkopTable",
+    "chain": "proxy",
+    "handle": 45,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "&": [
+         {
+          "meta": {
+           "key": "mark"
+          }
+         },
+         67108864
+        ]
+       },
+       "right": 67108864
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "meta": {
+         "key": "l4proto"
+        }
+       },
+       "right": "udp"
+      }
+     },
+     {
+      "tproxy": {
+       "family": "ip6",
+       "addr": "::1",
+       "port": 1602
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     }
+    ]
+   }
+  }
+ ]
+}

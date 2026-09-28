@@ -1,6 +1,7 @@
 #!/usr/bin/env ucode
 
 let fs = require("fs");
+let common = require("core.common");
 let uci_core = require("core.uci");
 let netstat = require("core.netstat");
 let rule_config = require("config.rule");
@@ -1670,10 +1671,10 @@ function sing_box_signature_body(settings, sections, mwan3_active) {
 
     let enable_yacd = bool_option_value(settings, "enable_yacd", false);
     body = signature_add_value(body, "settings.enable_yacd", enable_yacd);
-    if (enable_yacd == "1") {
+    if (enable_yacd == "1")
         body = signature_add_value(body, "settings.enable_yacd_wan_access", bool_option_value(settings, "enable_yacd_wan_access", false));
-        body = signature_add_value(body, "settings.yacd_secret_key", option(settings, "yacd_secret_key", ""));
-    }
+    // The controller secret applies with YACD off too (UC-035).
+    body = signature_add_value(body, "settings.yacd_secret_key", common.clash_api_secret(settings));
 
     body = signature_add_value(body, "settings.download_lists_via_proxy", bool_option_value(settings, "download_lists_via_proxy", false));
     body = signature_add_value(body, "settings.download_components_via_proxy", bool_option_value(settings, "download_components_via_proxy", false));

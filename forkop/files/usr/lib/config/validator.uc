@@ -2,6 +2,7 @@
 
 let fs = require("fs");
 let uci_core = require("core.uci");
+let common = require("core.common");
 let fixture_uci_data = null;
 let subscription_parser_module = null;
 let zapret_validator_module = null;
@@ -1599,6 +1600,18 @@ function validate_list_update_settings(settings) {
     validate_required_duration_option(update_interval, "settings.update_interval");
 }
 
+// D-1 (b), UC-038: the Clash API controller always listens (on the LAN, or
+// on every address with WAN access), so it always needs a secret. The
+// migration provides one on install and upgrade. The message never quotes the
+// value.
+function validate_clash_api_settings(settings) {
+    let secret = common.clash_api_secret(settings);
+    if (secret == "")
+        fail_validation("Clash API secret (settings.yacd_secret_key) must not be empty: the controller would accept unauthenticated requests. Aborted.");
+    if (match(secret, /[[:cntrl:]]/) != null)
+        fail_validation("Clash API secret (settings.yacd_secret_key) must not contain control characters. Aborted.");
+}
+
 function validate_runtime_mark_ranges_context(context) {
     let fakeip_mark = parse_number(context.nft_fakeip_mark);
     let outbound_mark = parse_number(context.nft_outbound_mark);
@@ -1670,6 +1683,8 @@ function validate_runtime_config(context) {
 
     for (let section in sections)
         validate_rule(section, sections, context);
+
+    validate_clash_api_settings(settings);
 }
 
 function context_from_runtime() {

@@ -3,6 +3,7 @@
 let fs = require("fs");
 let constants = require("core.constants");
 let uci_core = require("core.uci");
+let common = require("core.common");
 
 function as_string(value) {
     return value == null ? "" : "" + value;
@@ -114,6 +115,7 @@ const DNS_FAILOVER_UC = LIB_DIR + "/singbox/dns_failover.uc";
 const SUBSCRIPTION_CACHE_UC = LIB_DIR + "/subscription/cache.uc";
 const RULESET_CACHE_UC = LIB_DIR + "/singbox/ruleset_cache.uc";
 const UPDATES_UC = LIB_DIR + "/components/updates.uc";
+const AUTOTUNE_MANAGER_UC = LIB_DIR + "/autotune/manager.uc";
 const STATE_UC = LIB_DIR + "/service/state.uc";
 const RELOAD_UC = LIB_DIR + "/service/reload.uc";
 const UI_UC = LIB_DIR + "/service/ui.uc";
@@ -398,6 +400,9 @@ function mark_pending_reload_if_config_changed(initial_fingerprint, reason) {
 
 function finish_reload_status(status, initial_fingerprint) {
     status = int(status || 0);
+    if (status == 0 && external_config_fingerprint() == initial_fingerprint &&
+        !command_success_from_args([ "nft", "list", "table", "inet", "ForkopConfigRestoreDpiGuard" ]))
+        module_success(LIB_DIR + "/config/snapshots.uc", [ "confirm-working" ]);
     if (status == 0)
         mark_pending_reload_if_config_changed(initial_fingerprint, "config_changed_during_reload");
     return status;
@@ -616,6 +621,24 @@ function discard_dnsmasq_reload_config() {
     dns_reload_backup = "";
 }
 
+// D-1 (b), UC-007: the Clash API secret is mandatory. The package postinst
+// migration generates it, but a configuration that never went through the
+// postinst (Forkop built into a firmware image, a keep-settings sysupgrade, a
+// restored backup of an older config) would otherwise be refused by the
+// validator. Only an absent or blank secret is filled in; an existing one is
+// never replaced, and the value is never logged.
+function ensure_clash_api_secret() {
+    if (config_get(CONFIG_NAME + ".settings.yacd_secret_key", "") != "")
+        return true;
+    let secret = common.random_hex_secret();
+    if (secret == null || !config_set(CONFIG_NAME + ".settings.yacd_secret_key", secret) || config_commit() != 0) {
+        log_message("Could not generate the mandatory Clash API secret", "warn");
+        return false;
+    }
+    log_message("Generated the mandatory Clash API secret", "info");
+    return true;
+}
+
 function validate_start_config() {
     let status = module_status(VALIDATOR_UC, [ "check-requirements" ]);
     if (status != 0)
@@ -803,22 +826,27 @@ function restore_guarded_singbox_runtime(backup_path, guard_active) {
 }
 
 function refresh_cron() {
-    return module_status(UPDATES_UC, [
+    let status = module_status(UPDATES_UC, [
         "refresh-cron-from-uci",
         BIN_PATH,
         LIST_UPDATE_CRON_MARKER,
         SUBSCRIPTION_UPDATE_CRON_MARKER,
         COMPONENT_UPDATE_CHECK_CRON_MARKER
     ]);
+    // Autotune keeps its own cron line; it never blocks the service.
+    module_success(AUTOTUNE_MANAGER_UC, [ "cron-sync" ]);
+    return status;
 }
 
 function remove_cron_jobs() {
-    return module_status(UPDATES_UC, [
+    let status = module_status(UPDATES_UC, [
         "remove-cron-jobs",
         LIST_UPDATE_CRON_MARKER,
         SUBSCRIPTION_UPDATE_CRON_MARKER,
         COMPONENT_UPDATE_CHECK_CRON_MARKER
     ]);
+    module_success(AUTOTUNE_MANAGER_UC, [ "cron-remove" ]);
+    return status;
 }
 
 function prepare_subscription_caches(mode) {
@@ -864,6 +892,7 @@ function start_main() {
     log_message("Starting Forkop", "info");
     clear_start_failure();
 
+    ensure_clash_api_secret();
     status = validate_start_config();
     if (status != 0)
         return status;
@@ -1673,10 +1702,12 @@ function reload(reason) {
     // check/apply failures have not changed the live policy.
     let runtime_changed = false;
     let force_runtime_reload = reason == "on_config_change" ? 0 : 1;
+    ensure_clash_api_secret();
     let reload_config_fingerprint = external_config_fingerprint();
     rule_condition_cache_enabled = force_runtime_reload;
 
     log_message("Reloading Forkop", "info");
+    module_success(LIB_DIR + "/config/snapshots.uc", [ "create", "automatic" ]);
 
     status = validate_start_config();
     if (status != 0)
@@ -2025,14 +2056,18 @@ function reload(reason) {
 }
 
 function reload_tracked(reason) {
-    if (as_string(getenv("FORKOP_UI_ACTION_TRACKED") || "0") == "1")
-        return reload(reason);
+    if (as_string(getenv("FORKOP_UI_ACTION_TRACKED") || "0") == "1") {
+        let status = reload(reason);
+        module_success(LIB_DIR + "/diagnostics/health.uc", [ "record", "reload", status == 0 ? "success" : "failure" ]);
+        return status;
+    }
 
     let job_id = trim(module_output(UI_UC, [ "service-action-begin-if-idle", "reload", "runtime_reload" ]));
     if (job_id != "")
         module_success(UI_UC, [ "service-action-update-pid", job_id, owner_pid() ]);
 
     let status = reload(reason);
+    module_success(LIB_DIR + "/diagnostics/health.uc", [ "record", "reload", status == 0 ? "success" : "failure" ]);
     if (job_id != "")
         module_success(UI_UC, [ "service-action-finish-after-command", "reload", job_id, as_string(status) ]);
 
@@ -2151,8 +2186,12 @@ let status = 1;
 
 if (mode == "main")
     status = start_main();
-else if (mode == "start")
+else if (mode == "start") {
     status = start();
+    module_success(LIB_DIR + "/diagnostics/health.uc", [ "record", "start", status == 0 ? "success" : "failure" ]);
+    if (status == 0)
+        module_success(LIB_DIR + "/config/snapshots.uc", [ "confirm-working" ]);
+}
 else if (mode == "stop")
     status = stop();
 else if (mode == "reload")

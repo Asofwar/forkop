@@ -58,6 +58,62 @@ function refreshDownloadSectionChoices(option, capabilities) {
   }
 }
 
+// The saved section stays selected when it is disabled, its DPI provider is
+// not installed or it no longer exists: LuCI would otherwise show the first
+// eligible rule and the next Save would re-point DNS or downloads to it. The
+// kept choice is labelled and refused until the user picks another section
+// (UC-008).
+function describeUnavailableSection(sec, name) {
+  if (!sec || sec[".type"] !== "section") {
+    return {
+      label: _("%s (unavailable)").format(name),
+      message: _(
+        "The selected section no longer exists. Choose another section.",
+      ),
+    };
+  }
+
+  const label = sec.label || name;
+  if (sec.enabled === "0") {
+    return {
+      label: _("%s (disabled)").format(label),
+      message: _(
+        "The selected section is disabled. Enable it or choose another section.",
+      ),
+    };
+  }
+
+  // An enabled DPI section is left out only while its provider is missing.
+  if (["zapret", "zapret2", "byedpi"].includes(sec.action)) {
+    return {
+      label: _("%s (not installed)").format(label),
+      message: _(
+        "The DPI provider of the selected section is not installed. Install it in Components or choose another section.",
+      ),
+    };
+  }
+
+  return {
+    label: _("%s (unavailable)").format(label),
+    message: _(
+      "The selected section cannot be used here. Choose another section.",
+    ),
+  };
+}
+
+function keepUnavailableSectionChoice(option, value) {
+  const sections = option.map?.data?.state?.values?.[UCI_PACKAGE] ?? {};
+
+  option.unavailableChoices = {};
+  if (!value || option.keylist.includes(value)) {
+    return;
+  }
+
+  const unavailable = describeUnavailableSection(sections[value], value);
+  option.value(value, unavailable.label);
+  option.unavailableChoices[value] = unavailable.message;
+}
+
 function configureDownloadSectionOption(option, sectionOption, capabilities) {
   option.default = "";
   option.rmempty = false;
@@ -65,8 +121,10 @@ function configureDownloadSectionOption(option, sectionOption, capabilities) {
     return uci.get(UCI_PACKAGE, section_id, sectionOption) || "";
   };
   option.load = function (section_id) {
+    const value = this.cfgvalue(section_id);
     refreshDownloadSectionChoices(this, capabilities);
-    return this.cfgvalue(section_id);
+    keepUnavailableSectionChoice(this, value);
+    return value;
   };
   option.write = function (section_id, value) {
     const normalized = value ? `${value}`.trim() : "";
@@ -81,7 +139,13 @@ function configureDownloadSectionOption(option, sectionOption, capabilities) {
     uci.unset(UCI_PACKAGE, section_id, sectionOption);
   };
   option.validate = function (_section_id, value) {
-    return value ? true : _("Select a section");
+    if (!value) {
+      return _("Select a section");
+    }
+    const unavailable = this.unavailableChoices || {};
+    return Object.prototype.hasOwnProperty.call(unavailable, value)
+      ? unavailable[value]
+      : true;
   };
 }
 

@@ -147,6 +147,84 @@ function refreshDnsDetourSectionOptionValues(option, sectionId) {
     });
 }
 
+// A select keeps its saved value even when that value is no longer offered:
+// LuCI would show the first choice instead and the next Save would write it
+// without the user noticing. The kept choice is labelled, and validation
+// refuses it until the user picks another value (UC-008).
+function keepUnavailableChoice(option, value, describe) {
+  const key = value == null ? "" : `${value}`;
+
+  option.unavailableChoices = {};
+  if (!key || (option.keylist || []).includes(key)) {
+    return;
+  }
+
+  const unavailable = describe(key);
+  option.value(key, unavailable.label);
+  option.unavailableChoices[key] = unavailable.message;
+}
+
+function unavailableChoiceError(option, value) {
+  const choices = option.unavailableChoices || {};
+  const key = value == null ? "" : `${value}`;
+
+  return Object.prototype.hasOwnProperty.call(choices, key)
+    ? choices[key]
+    : null;
+}
+
+function isActionProviderInstalledForUi(action) {
+  switch (action) {
+    case "zapret":
+      return isZapretInstalledForUi();
+    case "zapret2":
+      return isZapret2InstalledForUi();
+    case "byedpi":
+      return isByedpiInstalledForUi();
+    default:
+      return true;
+  }
+}
+
+function describeUnavailableSection(name) {
+  const target = uci.get(UCI_PACKAGE, name);
+
+  if (!target || target[".type"] !== "section") {
+    return {
+      label: _("%s (unavailable)").format(name),
+      message: _(
+        "The selected section no longer exists. Choose another section.",
+      ),
+    };
+  }
+
+  const label = getUciSectionLabel(target);
+  if (target.enabled === "0") {
+    return {
+      label: _("%s (disabled)").format(label),
+      message: _(
+        "The selected section is disabled. Enable it or choose another section.",
+      ),
+    };
+  }
+
+  if (!isActionProviderInstalledForUi(target.action)) {
+    return {
+      label: _("%s (not installed)").format(label),
+      message: _(
+        "The DPI provider of the selected section is not installed. Install it in Components or choose another section.",
+      ),
+    };
+  }
+
+  return {
+    label: _("%s (unavailable)").format(label),
+    message: _(
+      "The selected section cannot be used here. Choose another section.",
+    ),
+  };
+}
+
 function dependsOnRoutingAction(option) {
   ROUTING_ACTIONS.forEach((action) => option.depends("action", action));
   return option;
@@ -2302,8 +2380,11 @@ function addSubscriptionUrlItemOptions(itemSection, options = {}) {
   o.depends("download_via_proxy_enabled", "1");
   o.load = function (itemId) {
     const sectionId = parentSectionForItem(itemId);
+    const value =
+      optionMapValue(this, itemId, "download_via_proxy_section") || "";
     refreshOptionChoices(this, subscriptionDownloadTargetChoices(sectionId));
-    return optionMapValue(this, itemId, "download_via_proxy_section") || "";
+    keepUnavailableChoice(this, value, describeUnavailableSection);
+    return value;
   };
   o.validate = function (itemId, value) {
     const sectionId = parentSectionForItem(itemId);
@@ -2316,7 +2397,7 @@ function addSubscriptionUrlItemOptions(itemSection, options = {}) {
     if (value === sectionId) {
       return _("Current section cannot download its own subscription");
     }
-    return true;
+    return unavailableChoiceError(this, value) || true;
   };
 
   o = itemSection.option(
@@ -3844,7 +3925,7 @@ function getRuleActionDisplayMarkup(section_id) {
   return getRuleActionDisplayValue(section_id);
 }
 
-function populateActionOptionValues(option) {
+function populateActionOptionValues(option, section_id) {
   delete option.keylist;
   delete option.vallist;
 
@@ -3861,6 +3942,19 @@ function populateActionOptionValues(option) {
   if (isByedpiInstalledForUi()) {
     option.value("byedpi", getActionOptionLabel("byedpi"));
   }
+
+  // A DPI rule whose provider is missing keeps its action (UC-008).
+  const configured = section_id ? getRuleConfiguredAction(section_id) : null;
+  keepUnavailableChoice(
+    option,
+    ["zapret", "zapret2", "byedpi"].includes(configured) ? configured : null,
+    (action) => ({
+      label: _("%s (not installed)").format(getActionOptionLabel(action)),
+      message: _(
+        "%s is not installed. Install it in Components or choose another action.",
+      ).format(getActionOptionLabel(action)),
+    }),
+  );
 }
 
 function getConfigListValues(section_id, key) {
@@ -6895,9 +6989,12 @@ function createSectionContent(section) {
   };
   o.load = function (section_id) {
     return ensureActionProvidersAvailabilityLoaded().then(() => {
-      populateActionOptionValues(this);
+      populateActionOptionValues(this, section_id);
       return this.cfgvalue(section_id);
     });
+  };
+  o.validate = function (_section_id, value) {
+    return unavailableChoiceError(this, value) || true;
   };
 
   o = section.taboption(
@@ -6954,11 +7051,16 @@ function createSectionContent(section) {
   o.rmempty = false;
   o.modalonly = true;
   o.load = function (section_id) {
+    const value = uci.get(UCI_PACKAGE, section_id, "dns_detour_section") || "";
     refreshDnsDetourSectionOptionValues(this, section_id);
-    return uci.get(UCI_PACKAGE, section_id, "dns_detour_section") || "";
+    keepUnavailableChoice(this, value, describeUnavailableSection);
+    return value;
   };
   o.validate = function (_section_id, value) {
-    return value ? true : _("Select a section");
+    if (!value) {
+      return _("Select a section");
+    }
+    return unavailableChoiceError(this, value) || true;
   };
 
   o = section.taboption(

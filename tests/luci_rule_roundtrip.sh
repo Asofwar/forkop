@@ -7,8 +7,10 @@ set -euo pipefail
 # touching anything must leave the rule's UCI section byte-for-byte unchanged.
 # Also covers the rule-set item settings modal ("Include IP addresses and
 # subnets"), which must not drop Built-in rule sets #2 (UC-003, UC-004).
-# Built-in rule sets #2 are hidden for DNS rules without dropping stored
-# values (UC-046).
+# A select whose saved value is no longer offered (DPI provider not installed,
+# referenced section disabled or gone) keeps that value, labels it, and
+# refuses to save until the user picks another one (UC-008). Built-in rule
+# sets #2 are hidden for DNS rules without dropping stored values (UC-046).
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 node - "$ROOT_DIR/tests/helpers/luci_form_harness.js" <<'NODE'
@@ -60,13 +62,27 @@ const fixtures = {
     dns_detour_enabled: '0', domain: 'example.net', rule_set_with_subnets: [VALVE] }),
   dns_rule_sets_and_secondary: rule({ action: 'dns', dns_type: 'udp', dns_server: '1.1.1.1',
     dns_detour_enabled: '0', rule_set: [CUSTOM], rule_set_with_subnets: [GOOGLE] }),
-  // DPI rules with their strategies.
+  // UC-008 control: DPI rules round-trip while their provider is installed.
   zapret_rule: rule({ action: 'zapret', ...routed, nfqws_opt: '--filter-tcp=443 --dpi-desync=fake',
     community_lists: ['youtube'] }),
   zapret2_rule: rule({ action: 'zapret2', ...routed, nfqws2_opt: '--filter-tcp=443 --lua-desync=fake:blob=fake_default_tls',
     community_lists: ['youtube'] }),
   byedpi_rule: rule({ action: 'byedpi', ...routed, byedpi_cmd_opts: '-o 1 -d 1', community_lists: ['youtube'] }),
 };
+
+// Rules that reference other sections, for UC-008.
+function target(values) {
+  return Object.assign({ '.type': 'section', '.anonymous': false, enabled: '1' }, values);
+}
+const targets = {
+  vpn: target({ '.name': 'vpn', label: 'VPN', action: 'connection', ...routed,
+    selector_proxy_links: ['socks5://10.0.0.1:1080'] }),
+  off: target({ '.name': 'off', label: 'Old VPN', enabled: '0', action: 'connection', ...routed,
+    selector_proxy_links: ['socks5://10.0.0.2:1080'] }),
+  dpi: target({ '.name': 'dpi', label: 'Zapret', action: 'zapret', community_lists: ['youtube'] }),
+};
+const dnsThrough = (section) => rule({ action: 'dns', dns_type: 'udp', dns_server: '1.1.1.1',
+  domain: 'example.net', dns_detour_enabled: '1', dns_detour_section: section });
 
 // Every case runs; all failures are reported together.
 const failures = [];
@@ -86,6 +102,78 @@ async function check(label, fn) {
         await (await env.openRule('rule')).save();
         assert.deepEqual(env.uci.data.rule, fixture, 'an unchanged rule modal save changed UCI');
       });
+
+    // UC-008: a DPI rule whose provider is not installed keeps its action and
+    // strategy; Save is refused until another action is chosen explicitly.
+    for (const [action, strategy] of [['zapret', 'nfqws_opt'], ['zapret2', 'nfqws2_opt'],
+      ['byedpi', 'byedpi_cmd_opts']])
+      await check(`${version} ${action} without provider`, async () => {
+        const fixture = fixtures[`${action}_rule`];
+        const env = createEnvironment({ version, config: { rule: fixture },
+          providers: { zapretInstalled: false, zapret2Installed: false, byedpiInstalled: false } });
+        const modal = await env.openRule('rule');
+        const option = modal.option('action');
+        assert.equal(option.formvalue('rule'), action, 'the widget must keep the saved action');
+        assert.match(option.vallist[option.keylist.indexOf(action)], /\(not installed\)$/);
+        assert.equal(modal.active(strategy), true, 'the strategy stays visible');
+        await assert.rejects(modal.save(), /not installed/);
+        assert.deepEqual(env.uci.data.rule, fixture, 'a refused save changed UCI');
+
+        // An explicit choice is saved; switching away clears the strategy.
+        option.getUIElement('rule').setValue('bypass');
+        await modal.save();
+        assert.equal(env.uci.data.rule.action, 'bypass');
+        assert.equal(env.uci.data.rule[strategy], undefined);
+
+        // A new rule is still offered only installed providers.
+        const fresh = createEnvironment({ version, config: { rule: rule({ action: 'block',
+          community_lists: ['youtube'] }) }, providers: { zapretInstalled: false,
+          zapret2Installed: false, byedpiInstalled: false } });
+        assert.equal((await fresh.openRule('rule')).option('action').keylist.includes(action), false);
+      });
+
+    // UC-008: DNS through a disabled, uninstalled or deleted section.
+    for (const [label, section, providers, mark] of [
+      ['disabled section', 'off', undefined, /^Old VPN \(disabled\)$/],
+      ['provider not installed', 'dpi', { zapretInstalled: false }, /^Zapret \(not installed\)$/],
+      ['deleted section', 'gone', undefined, /^gone \(unavailable\)$/],
+    ]) await check(`${version} dns through ${label}`, async () => {
+      const config = { rule: dnsThrough(section), ...targets };
+      const env = createEnvironment({ version, config, providers });
+      const modal = await env.openRule('rule');
+      const option = modal.option('dns_detour_section');
+      assert.equal(option.formvalue('rule'), section, 'the widget must keep the saved section');
+      assert.match(option.vallist[option.keylist.indexOf(section)], mark);
+      assert.equal(option.keylist.includes('vpn'), true);
+      await assert.rejects(modal.save());
+      assert.deepEqual(env.uci.data, config, 'a refused save changed UCI');
+
+      option.getUIElement('rule').setValue('vpn');
+      await modal.save();
+      assert.equal(env.uci.data.rule.dns_detour_section, 'vpn');
+    });
+
+    // UC-008: a subscription downloaded through a disabled section.
+    await check(`${version} subscription download through disabled section`, async () => {
+      const config = {
+        rule: rule({ action: 'connection', ...routed, community_lists: ['youtube'],
+          subscription_url: ['sub'] }),
+        sub: { '.name': 'sub', '.type': 'subscription_url', '.anonymous': false, section: 'rule',
+          url: 'https://example.com/sub', subscription_update_enabled: '1',
+          subscription_update_interval: '4h', download_via_proxy_enabled: '1',
+          download_via_proxy_section: 'off' },
+        ...targets,
+      };
+      const env = createEnvironment({ version, config });
+      const modal = await env.openRule('rule');
+      const settings = await modal.openItemSettings('subscription_url', 'sub');
+      const option = settings.map.children[0].children.find((o) => o.option === 'download_via_proxy_section');
+      assert.equal(option.formvalue('settings'), 'off', 'the widget must keep the saved section');
+      assert.match(option.vallist[option.keylist.indexOf('off')], /^Old VPN \(disabled\)$/);
+      await settings.save();
+      assert.deepEqual(env.uci.data, config, 'a refused subscription settings save changed UCI');
+      await assert.rejects(settings.map.parse(), /disabled/);
+    });
 
     // UC-046: Built-in rule sets #2 are hidden for DNS rules and edits of the
     // DNS rule sets keep the stored values.

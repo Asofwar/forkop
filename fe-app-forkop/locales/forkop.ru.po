@@ -53,8 +53,20 @@ msgstr "Правил: %d"
 msgid "%d rules · %d node groups"
 msgstr "Правил: %d · групп узлов: %d"
 
+msgid "%s (disabled)"
+msgstr "%s (отключена)"
+
+msgid "%s (not installed)"
+msgstr "%s (не установлен)"
+
+msgid "%s (unavailable)"
+msgstr "%s (недоступна)"
+
 msgid "%s is not applied again before %t"
 msgstr "%s не применяется повторно до %t"
+
+msgid "%s is not installed. Install it in Components or choose another action."
+msgstr "%s не установлен. Установите его в разделе «Компоненты» или выберите другое действие."
 
 msgid "+ Add JSON outbound"
 msgstr "+ Добавить JSON outbound"
@@ -3140,6 +3152,9 @@ msgstr "Desync fwmark управляется Forkop для защиты от ц�
 msgid "The DNS server must be an IPv4 address."
 msgstr "DNS-сервер должен быть IPv4-адресом."
 
+msgid "The DPI provider of the selected section is not installed. Install it in Components or choose another section."
+msgstr "DPI-провайдер выбранной секции не установлен. Установите его в разделе «Компоненты» или выберите другую секцию."
+
 msgid "The DPI rule that routes it could not be identified safely."
 msgstr "Не удалось надёжно определить DPI-правило, по которому она идёт."
 
@@ -3220,6 +3235,15 @@ msgstr "Правило, по которому она идёт, нельзя оп
 
 msgid "The same result this many checks in a row (2–10)."
 msgstr "Столько проверок подряд с одинаковым результатом (2–10)."
+
+msgid "The selected section cannot be used here. Choose another section."
+msgstr "Выбранную секцию нельзя использовать здесь. Выберите другую секцию."
+
+msgid "The selected section is disabled. Enable it or choose another section."
+msgstr "Выбранная секция отключена. Включите её или выберите другую секцию."
+
+msgid "The selected section no longer exists. Choose another section."
+msgstr "Выбранной секции больше нет. Выберите другую секцию."
 
 msgid "the service is busy"
 msgstr "служба занята"

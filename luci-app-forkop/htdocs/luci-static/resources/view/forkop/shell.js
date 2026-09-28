@@ -84,6 +84,43 @@ function updateUiCapabilities(data) {
   return uiCapabilities;
 }
 
+// Components installs and removes providers after the page has loaded; the
+// Settings page reads availability from uiCapabilities, so follow both the
+// availability event and the store refresh (UC-152).
+function refreshProviderCapabilities(next) {
+  ["zapretInstalled", "zapret2Installed", "byedpiInstalled"].forEach((key) => {
+    if (typeof next?.[key] !== "undefined") {
+      uiCapabilities[key] = Boolean(next[key]);
+    }
+  });
+}
+
+if (
+  typeof window !== "undefined" &&
+  typeof window.addEventListener === "function"
+) {
+  window.addEventListener(
+    main.FORKOP_ACTION_PROVIDERS_AVAILABILITY_EVENT,
+    (event) => refreshProviderCapabilities(event.detail),
+  );
+}
+
+if (main.store && typeof main.store.subscribe === "function") {
+  main.store.subscribe((next, _prev, diff) => {
+    const systemInfo = next?.diagnosticsSystemInfo;
+    if (
+      (!diff || diff.diagnosticsSystemInfo) &&
+      systemInfo?.providerInfoLoaded
+    ) {
+      refreshProviderCapabilities({
+        zapretInstalled: Number(systemInfo.zapret_installed) === 1,
+        zapret2Installed: Number(systemInfo.zapret2_installed) === 1,
+        byedpiInstalled: Number(systemInfo.byedpi_installed) === 1,
+      });
+    }
+  });
+}
+
 function applyUiState(data) {
   const result = updateUiCapabilities(data?.capabilities || data || {});
 

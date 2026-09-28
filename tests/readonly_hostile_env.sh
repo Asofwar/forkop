@@ -123,15 +123,38 @@ EOF
 chmod 0755 "$WORK_DIR/trampoline"
 wrapper_for "$WORK_DIR/trampoline" "$WORK_DIR/forkop-ro.cli"
 
+# The wrapper hands the CLI production default paths, so the real commands
+# would write caches under /var/run/forkop and global_check would reach the
+# network. Run them in a private mount and network namespace with an empty
+# /run where available (as root, or through an unprivileged user namespace).
+ISOLATE=()
+isolate_probe='mount -t tmpfs tmpfs /run'
+if unshare --mount --net --propagation private sh -c "$isolate_probe" 2>/dev/null; then
+  ISOLATE=(unshare --mount --net --propagation private)
+elif unshare --user --map-root-user --mount --net --propagation private \
+  sh -c "$isolate_probe" 2>/dev/null; then
+  ISOLATE=(unshare --user --map-root-user --mount --net --propagation private)
+fi
+if [ "${#ISOLATE[@]}" -gt 0 ]; then
+  ISOLATE+=(sh -c "$isolate_probe && exec \"\$@\"" sh)
+fi
+run_state() {
+  find /var/run/forkop -printf '%p %s %T@\n' 2>/dev/null | LC_ALL=C sort || true
+}
+run_state_before="$(run_state)"
+
 for command in "get_ui_capabilities" "get_system_info" "global_check masked" \
   "show_sing_box_config masked" "check_zapret_runtime" "get_status"; do
   # shellcheck disable=SC2086
-  /usr/bin/env -i "${HOSTILE_ENV[@]}" "$TIMEOUT_BIN" 60 "$WORK_DIR/forkop-ro.cli" $command \
+  "${ISOLATE[@]}" /usr/bin/env -i "${HOSTILE_ENV[@]}" "$TIMEOUT_BIN" 60 "$WORK_DIR/forkop-ro.cli" $command \
     >"$WORK_DIR/out" 2>&1 || true
   if grep -Fq 'SHADOWMARKER' "$WORK_DIR/out"; then
     fail "$command printed a file chosen by the caller environment"
   fi
 done
+
+[ "$(run_state)" = "$run_state_before" ] ||
+  fail "read commands under test changed the host /var/run/forkop"
 
 if [ -e "$MARKS/executed" ]; then
   fail "a binary chosen by the caller environment was executed: $(cat "$MARKS/executed")"

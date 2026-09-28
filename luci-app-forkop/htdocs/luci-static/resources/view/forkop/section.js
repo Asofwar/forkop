@@ -7171,17 +7171,31 @@ function addTextConditionField(section, config) {
   o.wrap = "soft";
   o.textarea = true;
   o.modalonly = true;
-  if (config.textAnalyze) {
-    o.validate = function (_section_id, value) {
-      const analysis = config.textAnalyze(value);
-      return analysis.valid ? true : analysis.message;
+  const validateText = config.textAnalyze
+    ? function (_section_id, value) {
+        const analysis = config.textAnalyze(value);
+        return analysis.valid ? true : analysis.message;
+      }
+    : config.textValidate;
+  if (validateText) {
+    // The field may show legacy values it cannot hold as they are (a
+    // keyword with a space, a regex with a comma, a value the backend
+    // ignores). Left unchanged it is not written (form.js parse()), so it
+    // does not refuse the save of the rule; editing it asks to fix them.
+    o.validate = function (section_id, value) {
+      if (
+        this.showsLegacyText?.[section_id] &&
+        `${value ?? ""}` === `${this.cfgvalue(section_id) ?? ""}`
+      ) {
+        return true;
+      }
+
+      return validateText.apply(this, arguments);
     };
-  } else if (config.textValidate) {
-    o.validate = config.textValidate;
   }
   configureTextareaOption(o, config.textAnalyze);
 
-  o.load = function (section_id) {
+  const loadTextConditionValue = function (section_id) {
     if (typeof config.loadText === "function") {
       return config.loadText(section_id);
     }
@@ -7210,6 +7224,16 @@ function addTextConditionField(section, config) {
     }
 
     return valuesToText(uci.get(UCI_PACKAGE, section_id, config.key));
+  };
+
+  o.load = function (section_id) {
+    const text = loadTextConditionValue.call(this, section_id);
+    const stored = uci.get(UCI_PACKAGE, section_id, optionName);
+
+    this.showsLegacyText = Object.assign({}, this.showsLegacyText, {
+      [section_id]: text !== (typeof stored === "string" ? stored : ""),
+    });
+    return text;
   };
 
   o.write = function (section_id, value) {

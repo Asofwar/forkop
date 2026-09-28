@@ -153,6 +153,29 @@ async function check(label, fn) {
       assert.deepEqual(await shown(fixtures.fully_routed_text, 'fully_routed_ips'), []);
     });
 
+    // Values the Domains or IPs field shows but cannot hold as they are (the
+    // text would split them, or the backend ignores them) do not refuse an
+    // unchanged save, which keeps them; an edited field is still checked.
+    for (const [name, config, optionName, addition] of [
+      ['keyword_with_space', { rule: rule({ action: 'block', domain_keyword: ['two words'] }) }, 'domain', 'example.org'],
+      ['regex_with_comma', { rule: rule({ action: 'block', domain_regex: ['^a{1,3}\\.example$'] }) }, 'domain',
+        'example.org'],
+      ['invalid_exact', { rule: rule({ action: 'block', domain: ['bad_domain!'] }) }, 'domain', 'example.org'],
+      ['ip_text_invalid', { rule: rule({ action: 'block', ip_cidr_text: '10.0.0.0/8 not-an-ip' }) }, 'ip_cidr',
+        '192.0.2.1'],
+    ]) await check(`${version} ${name}: values the field cannot hold`, async () => {
+      let env = createEnvironment({ version, config });
+      await (await env.openRule('rule')).save();
+      assert.deepEqual(env.uci.data, config, 'an unchanged save changed UCI');
+
+      env = createEnvironment({ version, config });
+      const modal = await env.openRule('rule');
+      const widget = modal.option(optionName).getUIElement('rule');
+      widget.setValue(`${widget.getValue()}\n${addition}`);
+      await assert.rejects(modal.save(), /invalid input value/);
+      assert.deepEqual(env.uci.data, config, 'a refused save changed UCI');
+    });
+
     // The rules grid counts what the rule matches, legacy options included.
     await check(`${version} grid summary`, async () => {
       const summary = (config, column) => createEnvironment({ version, config }).grid.children

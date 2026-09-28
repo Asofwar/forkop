@@ -1064,6 +1064,33 @@ function createEnvironment({
   const pageMap = new form.Map("forkop");
   const grid = rulesGrid(pageMap);
 
+  // The item settings modal just stacked on the modal: its Save and Close
+  // buttons (`button` finds them by label) and the gears of its own lists.
+  function stackedModal(button) {
+    const stackedMap = jsonMaps.at(-1);
+    const itemSection = stackedMap.children[0];
+    const option = (name) => itemSection.children.find((o) => o.option === name);
+    return {
+      map: stackedMap,
+      setValue(name, value) {
+        option(name).getUIElement(itemSection.section).setValue(value);
+      },
+      save: () => button("Save").attrs.click(),
+      close: () => button("Close").attrs.click(),
+      // The gear of an item of a list in this modal (a priority level of a
+      // priority), as the settings handler of the list widget opens it.
+      async openItemSettings(optionName, itemValue, context) {
+        const list = option(optionName);
+        const sid = itemSection.section;
+        const ownerId = list.childOwner(sid);
+        await list.renderItemSettingsModal(ownerId, itemValue, list, list.getUIElement(sid), null,
+          Object.assign({}, context, { parentSectionId: list.parentSection(sid), ownerId }));
+        const buttons = document.modal.querySelector("div.button-row").childNodes;
+        return stackedModal((label) => buttons.find((node) => node instanceof FakeNode && node.textContent === label));
+      },
+    };
+  }
+
   return {
     version,
     uci,
@@ -1157,16 +1184,7 @@ function createEnvironment({
           await option.renderItemSettingsModal(section_id, itemValue, option, widget, null, context);
           const buttons = document.modal.querySelector("div.button-row").childNodes;
           const button = (label) => buttons.find((node) => node instanceof FakeNode && node.textContent === label);
-          const stackedMap = jsonMaps.at(-1);
-          return {
-            map: stackedMap,
-            setValue(name, value) {
-              const stackedOption = stackedMap.children[0].children.find((o) => o.option === name);
-              stackedOption.getUIElement(stackedMap.children[0].section).setValue(value);
-            },
-            save: () => button("Save").attrs.click(),
-            close: () => button("Close").attrs.click(),
-          };
+          return stackedModal(button);
         },
       };
     },

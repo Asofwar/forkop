@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# The item settings modals of a rule (subscription source, URLTest, priority
-# and its levels, rule set) stack on top of the rule modal and write their
-# Save into uci right away: the rule modal map shares the page's uci state.
-# Dismiss of the rule modal must discard them together with the rest of the
-# modal, or the next Save & Apply sends edits the user never confirmed; the
-# Save button of the rule modal keeps them (UC-045). The real section.js runs
-# on the LuCI model of tests/helpers/luci_form_harness.js, whose uci keeps
-# staged edits the way luci-base uci.js does.
+# The item settings modals of a rule (subscription source, interface,
+# URLTest, priority and its levels, rule set) stack on top of the rule modal
+# and write their Save into uci right away: the rule modal map shares the
+# page's uci state. Dismiss of the rule modal must discard them together with
+# the rest of the modal, or the next Save & Apply sends edits the user never
+# confirmed; the Save button of the rule modal keeps them (UC-045). The real
+# section.js runs on the LuCI model of tests/helpers/luci_form_harness.js,
+# whose uci keeps staged edits the way luci-base uci.js does, including the
+# merge of staged edits into the loaded values on a whole-section read.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 node - "$ROOT_DIR/tests/helpers/luci_form_harness.js" <<'NODE'
@@ -39,6 +40,8 @@ const config = {
     selector_proxy_links: ['socks5://10.0.0.1:1080'] }),
   sub: section('sub', 'subscription_url', { section: 'rule', url: 'https://example.com/sub',
     subscription_update_enabled: '1', subscription_update_interval: '4h' }),
+  wan: section('wan', 'section_interface', { section: 'rule', name: 'wan', domain_resolver_enabled: '0',
+    domain_resolver_dns_type: 'udp', domain_resolver_dns_server: '8.8.8.8' }),
   // An older editor also stored id and display_name; saving the item drops them.
   fastest: section('fastest', 'urltest', { section: 'rule', name: 'Fastest', id: 'fastest',
     display_name: 'Fastest', ...urltest }),
@@ -47,36 +50,73 @@ const config = {
   lvl_b: section('lvl_b', 'priority_level', { group: 'pg_main', name: 'Second', order: '1', ...level }),
 };
 
+// The item settings modal of a list item of the rule modal.
+const item = (option, value, context) => (modal) => modal.openItemSettings(option, value, context);
+
 // What each item settings modal edits, and how its Save shows in uci.
 const edits = [
-  ['subscription source interval', 'subscription_url', 'sub', undefined, (settings) => {
+  ['subscription source interval', item('subscription_url', 'sub'), (settings) => {
     settings.setValue('subscription_update_interval', '12h');
   }, (data) => assert.equal(data.sub.subscription_update_interval, '12h')],
-  ['URLTest tolerance', 'urltest', 'fastest', undefined, (settings) => {
+  ['interface resolver', item('interfaces', 'wan'), (settings) => {
+    settings.setValue('domain_resolver_enabled', '1');
+    // LuCI re-checks dependencies on widget-change: the resolver fields show.
+    settings.map.checkDepends();
+    settings.setValue('domain_resolver_dns_server', '1.1.1.1');
+  }, (data) => {
+    assert.equal(data.wan.domain_resolver_enabled, '1');
+    assert.equal(data.wan.domain_resolver_dns_server, '1.1.1.1');
+  }],
+  ['URLTest tolerance', item('urltest', 'fastest'), (settings) => {
     settings.setValue('tolerance', '150');
   }, (data) => {
     assert.equal(data.fastest.tolerance, '150');
     assert.equal(data.fastest.id, undefined);
   }],
-  ['priority renamed and a level removed', 'priority_group', 'pg_main', undefined, (settings) => {
+  ['priority renamed and a level removed', item('priority_group', 'pg_main'), (settings) => {
     settings.setValue('name', 'Renamed');
     settings.setValue('priority_level', ['lvl_a']);
   }, (data) => {
     assert.equal(data.pg_main.name, 'Renamed');
     assert.equal(data.lvl_b, undefined);
   }],
-  ['new priority', 'priority_group', '', { adding: true }, (settings) => {
+  ['new priority', item('priority_group', '', { adding: true }), (settings) => {
     settings.setValue('name', 'Backup');
   }, (data) => {
     assert.equal(Object.values(data).filter((s) => s['.type'] === 'priority_group').length, 2);
   }],
-  ['rule set with subnets', 'rule_set', CUSTOM, undefined, (settings) => {
+  // The level modal stacks on the priority modal, which is then closed
+  // without its own Save: the level Save is already in uci.
+  ['priority level renamed', async (modal) => {
+    const group = await modal.openItemSettings('priority_group', 'pg_main');
+    const settings = await group.openItemSettings('priority_level', 'lvl_a');
+    return Object.assign({}, settings, {
+      save: async () => {
+        await settings.save();
+        await group.close();
+      },
+    });
+  }, (settings) => {
+    settings.setValue('name', 'Top');
+    settings.setValue('filter_mode', 'disabled');
+  }, (data) => {
+    assert.equal(data.lvl_a.name, 'Top');
+    assert.equal(data.lvl_a.filter_mode, 'disabled');
+    assert.equal(data.pg_main.name, 'Main');
+  }],
+  ['rule set with subnets', item('rule_set', CUSTOM), (settings) => {
     settings.setValue('include_subnets', '1');
   }, (data) => {
     assert.equal(data.rule.rule_set, undefined);
     assert.deepEqual(data.rule.rule_set_with_subnets, [VALVE, CUSTOM]);
   }],
 ];
+
+// Page code reads whole sections too (uci.get without an option), which
+// merges the staged edits into the loaded values in place.
+function readWholeSections(env) {
+  for (const sid of Object.keys(env.uci.state.values.forkop)) env.uci.get('forkop', sid);
+}
 
 const failures = [];
 async function check(label, fn) {
@@ -89,13 +129,14 @@ async function check(label, fn) {
 
 (async () => {
   for (const version of ['24.10', '25.12']) {
-    for (const [label, option, item, context, edit, saved] of edits) {
+    for (const [label, open, edit, saved] of edits) {
       await check(`${version} ${label}: Dismiss discards the item settings`, async () => {
         const env = createEnvironment({ version, config });
         const modal = await env.openRule('rule');
-        const settings = await modal.openItemSettings(option, item, context);
+        const settings = await open(modal);
         edit(settings);
         await settings.save();
+        readWholeSections(env);
         saved(env.uci.data);
 
         await modal.dismiss();
@@ -112,9 +153,10 @@ async function check(label, fn) {
       await check(`${version} ${label}: the rule's Save keeps the item settings`, async () => {
         const env = createEnvironment({ version, config });
         const modal = await env.openRule('rule');
-        const settings = await modal.openItemSettings(option, item, context);
+        const settings = await open(modal);
         edit(settings);
         await settings.save();
+        readWholeSections(env);
         await modal.saveButton();
         saved(env.uci.data);
 

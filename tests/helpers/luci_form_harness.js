@@ -1097,6 +1097,8 @@ function createEnvironment({
     form,
     main,
     section,
+    // The rules grid of the page (its row columns: grid.children).
+    grid,
     document,
     window,
     CustomEvent: globals.CustomEvent,

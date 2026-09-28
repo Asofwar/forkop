@@ -1961,6 +1961,21 @@ const InterfaceSettingsDynamicList = SettingsDynamicList.extend({
       value || text,
     );
   },
+
+  // The backend uses the legacy `list interfaces` only while the rule has
+  // no interface items (config/connections.uc interfaces()). The widget
+  // shows the items only, so an empty widget keeps a legacy list it never
+  // showed; a list the removed items shadowed goes with them.
+  remove(section_id) {
+    const ownerId = this.childOwner(section_id);
+    const hadItems =
+      getChildItemIds(ownerId, this.childType, this.ownerOption).length > 0;
+
+    cleanupRemovedChildItems(ownerId, this.childType, [], this.ownerOption);
+    if (hadItems) {
+      uci.unset(UCI_PACKAGE, section_id, this.option);
+    }
+  },
 });
 
 function urlTestFilterModeChoices() {
@@ -3898,7 +3913,8 @@ function countConfigValues(section_id, keys) {
   }, 0);
 }
 
-// Grid summary: how much the rule matches, without opening the editor.
+// Grid summary: how much the rule matches, without opening the editor. It
+// counts what the backend matches, legacy options included (UC-042).
 function getRuleConditionsSummary(section_id) {
   const parts = [
     [
@@ -3908,18 +3924,16 @@ function getRuleConditionsSummary(section_id) {
         "rule_set",
         "rule_set_with_subnets",
         "domain_ip_lists",
+        "remote_domain_lists",
+        "remote_subnet_lists",
       ]),
     ],
     [
       _("Domains: %d"),
-      countConfigValues(section_id, [
-        "domain",
-        "domain_suffix",
-        "domain_suffix_text",
-      ]),
+      main.parseValueList(loadCombinedDomainText(section_id)).length,
     ],
-    [_("IPs: %d"), countConfigValues(section_id, ["ip_cidr", "ip_cidr_text"])],
-    [_("Ports: %d"), countConfigValues(section_id, ["ports"])],
+    [_("IPs: %d"), backendConditionValues(section_id, "ip_cidr").values.length],
+    [_("Ports: %d"), backendPortValues(section_id).length],
   ]
     .filter(([, count]) => count > 0)
     .map(([label, count]) => label.format(count));
@@ -3928,8 +3942,10 @@ function getRuleConditionsSummary(section_id) {
 }
 
 function getRuleDevicesSummary(section_id) {
-  const only = countConfigValues(section_id, ["source_ip_cidr"]);
-  const except = countConfigValues(section_id, ["excluded_source_ip_cidr"]);
+  const only = backendConditionValues(section_id, "source_ip_cidr").values
+    .length;
+  const except = backendConditionValues(section_id, "excluded_source_ip_cidr")
+    .values.length;
   const forced = countConfigValues(section_id, ["fully_routed_ips"]);
   const parts = [
     only ? _("Only: %d").format(only) : "",
@@ -3978,6 +3994,121 @@ function populateActionOptionValues(option, section_id) {
 
 function getConfigListValues(section_id, key) {
   return normalizeOptionValues(uci.get(UCI_PACKAGE, section_id, key));
+}
+
+// Rule conditions read the way the backend reads them for sing-box and nft
+// (core/common.uc, config/rule.uc, routing/rule_conditions.uc), so the
+// editor shows and keeps what the rule actually matches (UC-043).
+
+// core/common.uc option(): a list reads as its items joined by a space.
+function backendOptionText(value) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  return Array.isArray(value) ? value.join(" ") : `${value}`;
+}
+
+// core/common.uc bool_option().
+function backendFlag(section_id, key) {
+  return ["1", "true", "yes", "on"].includes(
+    backendOptionText(uci.get(UCI_PACKAGE, section_id, key)),
+  );
+}
+
+// config/rule.uc text_list_values(value, "comma-space"): comments cut at
+// // or #, items separated by spaces, commas and line breaks.
+function backendTextListValues(value) {
+  const result = [];
+
+  backendOptionText(value)
+    .split("\n")
+    .forEach((line) => {
+      line
+        .replace(/\s*\/\/[^\n]*$/, "")
+        .replace(/\s*#[^\n]*$/, "")
+        .replace(/[ ,]/g, "\n")
+        .split("\n")
+        .forEach((item) => {
+          const normalized = item.replace(/\r/g, "").trim();
+          if (normalized) {
+            result.push(normalized);
+          }
+        });
+    });
+
+  return result;
+}
+
+// Text mode: the rule reads <key> from <key>_text and ignores the list.
+function conditionTextMode(section_id, key) {
+  return (
+    backendFlag(section_id, `${key}_text_mode`) ||
+    backendFlag(section_id, "conditions_text_mode")
+  );
+}
+
+// routing/rule_conditions.uc legacy_condition_values(): where the backend
+// takes the values of a condition from, and the values. `domain` as an
+// option is the combined domain text, not a legacy exact domain.
+function backendConditionValues(section_id, key) {
+  const raw = uci.get(UCI_PACKAGE, section_id, key);
+  const textValues = backendTextListValues(
+    uci.get(UCI_PACKAGE, section_id, `${key}_text`),
+  );
+
+  if (conditionTextMode(section_id, key)) {
+    return { source: "text", values: textValues };
+  }
+  if (Array.isArray(raw) && raw.length) {
+    return { source: "list", values: raw.map((item) => `${item}`) };
+  }
+
+  const optionValues =
+    Array.isArray(raw) || key === "domain" ? [] : backendTextListValues(raw);
+  if (optionValues.length) {
+    return { source: "option", values: optionValues };
+  }
+
+  return { source: textValues.length ? "text" : "none", values: textValues };
+}
+
+// config/rule.uc normalize_port_condition_value() accepts it.
+function backendPortValue(value) {
+  const number = (text) =>
+    /^[0-9]+$/.test(text) && Number(text) >= 1 && Number(text) <= 65535
+      ? Number(text)
+      : null;
+  const trimmed = `${value || ""}`.trim();
+  const dash = trimmed.indexOf("-");
+
+  if (dash < 0) {
+    return number(trimmed) !== null;
+  }
+
+  const start = number(trimmed.slice(0, dash));
+  const end = number(trimmed.slice(dash + 1));
+  return start !== null && end !== null && start <= end;
+}
+
+// The generator and nft match `ports` and the port values of the legacy
+// ports_text together.
+function backendPortValues(section_id) {
+  const seen = new Set();
+  const result = [];
+  const add = (value) => {
+    const trimmed = `${value}`.trim();
+    if (trimmed && !seen.has(trimmed)) {
+      seen.add(trimmed);
+      result.push(trimmed);
+    }
+  };
+
+  getConfigListValues(section_id, "ports").forEach(add);
+  backendTextListValues(uci.get(UCI_PACKAGE, section_id, "ports_text"))
+    .filter(backendPortValue)
+    .forEach(add);
+  return result;
 }
 
 function stringArraysEqual(left, right) {
@@ -5061,17 +5192,20 @@ function appendUniqueDomainTextValues(textValue, values) {
   return [base, ...additions].filter(Boolean).join("\n");
 }
 
-// Legacy `list domain` holds exact domains (the backend reads it the same
-// way, see routing/rule_conditions.uc); in the combined text they are full:.
-function legacyExactDomainValues(section_id) {
-  const value = uci.get(UCI_PACKAGE, section_id, "domain");
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return normalizeOptionValues(value).map((item) =>
-    /^(full|keyword|regex):/.test(item) ? item : `full:${item}`,
+// The legacy exact (`list domain` or domain_text), keyword and regex
+// conditions the backend uses (routing/rule_conditions.uc: text mode reads
+// the *_text option, otherwise a list shadows it); in the combined text they
+// are full:, keyword: and regex:.
+function legacyDomainConditionValues(section_id, key, prefix) {
+  return normalizeOptionValues(
+    backendConditionValues(section_id, key).values,
+  ).map((item) =>
+    /^(full|keyword|regex):/.test(item) ? item : `${prefix}:${item}`,
   );
+}
+
+function legacyExactDomainValues(section_id) {
+  return legacyDomainConditionValues(section_id, "domain", "full");
 }
 
 function loadCombinedDomainText(section_id) {
@@ -5082,12 +5216,9 @@ function loadCombinedDomainText(section_id) {
   const values = [
     ...legacyExactDomainValues(section_id),
     ...domainValuesWithPrefix(section_id, "domain_suffix", ""),
-    ...domainValuesWithPrefix(section_id, "domain_keyword", "keyword"),
-    ...domainValuesWithPrefix(section_id, "domain_regex", "regex"),
+    ...legacyDomainConditionValues(section_id, "domain_keyword", "keyword"),
+    ...legacyDomainConditionValues(section_id, "domain_regex", "regex"),
     ...domainTextValuesWithPrefix(section_id, "domain_suffix", ""),
-    ...domainTextValuesWithPrefix(section_id, "domain", "full"),
-    ...domainTextValuesWithPrefix(section_id, "domain_keyword", "keyword"),
-    ...domainTextValuesWithPrefix(section_id, "domain_regex", "regex"),
   ];
 
   return appendUniqueDomainTextValues(textValue, values);
@@ -6681,6 +6812,10 @@ function addDynamicConditionField(section, config) {
   }
 
   o.load = function (section_id) {
+    if (typeof config.load === "function") {
+      return config.load(section_id);
+    }
+
     const values = getConfigListValues(section_id, config.key);
     if (values.length) {
       return values;
@@ -6694,6 +6829,16 @@ function addDynamicConditionField(section, config) {
     writeListOption(section_id, config.key, value);
     uci.unset(UCI_PACKAGE, section_id, `${config.key}_text`);
     uci.unset(UCI_PACKAGE, section_id, `${config.key}_text_mode`);
+  };
+
+  // A field the user cleared drops the values it showed, the legacy text
+  // included; a hidden field drops the list only.
+  o.remove = function (section_id) {
+    if (!this.isActive(section_id)) {
+      uci.unset(UCI_PACKAGE, section_id, config.key);
+    } else if (normalizeOptionValues(this.cfgvalue(section_id)).length) {
+      this.write(section_id, []);
+    }
   };
 
   return o;
@@ -6719,18 +6864,45 @@ function addLocalDeviceSubnetDynamicField(section, config) {
     return validation.valid ? true : validation.message;
   };
   o.load = function (section_id) {
-    const values = getConfigListValues(section_id, config.key);
-    if (values.length) {
-      return values;
+    // fully_routed_ips has no legacy text form: the backend reads the list only.
+    if (!config.legacyText) {
+      return getConfigListValues(section_id, config.key);
     }
 
-    const legacyText = uci.get(UCI_PACKAGE, section_id, `${config.key}_text`);
-    return legacyText ? main.parseValueList(legacyText) : [];
+    // conditions_text_mode also keeps the other conditions in *_text
+    // options, so a list written here would not be read: read-only until
+    // the rule is converted.
+    this.readonly = backendFlag(section_id, "conditions_text_mode")
+      ? true
+      : null;
+
+    const current = backendConditionValues(section_id, config.key);
+    return current.source === "list"
+      ? getConfigListValues(section_id, config.key)
+      : current.values;
   };
   o.write = function (section_id, value) {
     writeListOption(section_id, config.key, value);
     uci.unset(UCI_PACKAGE, section_id, `${config.key}_text`);
     uci.unset(UCI_PACKAGE, section_id, `${config.key}_text_mode`);
+  };
+  // A field the user cleared drops the values it showed wherever they are
+  // stored; a field that showed nothing, or a read-only one, changes
+  // nothing. A hidden field drops the list only.
+  o.remove = function (section_id) {
+    if (!this.isActive(section_id)) {
+      uci.unset(UCI_PACKAGE, section_id, config.key);
+      return;
+    }
+
+    if (
+      this.readonly === true ||
+      !normalizeOptionValues(this.cfgvalue(section_id)).length
+    ) {
+      return;
+    }
+
+    this.write(section_id, []);
   };
   o.renderWidget = function (section_id, _option_index, cfgvalue) {
     return localDevices.createLocalDeviceDynamicListWidget(
@@ -6774,6 +6946,22 @@ function addTextConditionField(section, config) {
       return config.loadText(section_id);
     }
 
+    // conditions_text_mode also keeps the other conditions in *_text
+    // options, so this option would not be read: read-only until the rule
+    // is converted.
+    this.readonly =
+      config.lockedByConditionsTextMode &&
+      backendFlag(section_id, "conditions_text_mode")
+        ? true
+        : null;
+
+    // Text mode reads the legacy text and ignores the option.
+    if (conditionTextMode(section_id, config.key)) {
+      return valuesToText(
+        uci.get(UCI_PACKAGE, section_id, legacyTextOptionName),
+      );
+    }
+
     const textValue =
       uci.get(UCI_PACKAGE, section_id, optionName) ||
       uci.get(UCI_PACKAGE, section_id, legacyTextOptionName);
@@ -6803,6 +6991,20 @@ function addTextConditionField(section, config) {
 
     if (typeof config.afterWrite === "function") {
       config.afterWrite(section_id);
+    }
+  };
+
+  // A field the user cleared drops the values it showed wherever they are
+  // stored; a field that showed nothing, or a read-only one, changes
+  // nothing. A hidden field drops its option only.
+  o.remove = function (section_id) {
+    if (!this.isActive(section_id)) {
+      uci.unset(UCI_PACKAGE, section_id, optionName);
+    } else if (
+      this.readonly !== true &&
+      `${this.cfgvalue(section_id) || ""}`.trim()
+    ) {
+      this.write(section_id, "");
     }
   };
 
@@ -7899,6 +8101,7 @@ function createSectionContent(section) {
     key: "ip_cidr",
     optionName: "ip_cidr",
     legacyTextOptionName: "ip_cidr_text",
+    lockedByConditionsTextMode: true,
     label: _("IPs"),
     description: _("Match destination IPs or subnets"),
     textAnalyze: analyzeIpCidrText,
@@ -8075,6 +8278,7 @@ function createSectionContent(section) {
 
   const sourceIpOption = addLocalDeviceSubnetDynamicField(section, {
     key: "source_ip_cidr",
+    legacyText: true,
     label: _("Device filter"),
     description: _(
       "Apply section rules only to the specified local IP addresses",
@@ -8085,6 +8289,7 @@ function createSectionContent(section) {
   // which have no widget: while they are set, a hidden device filter must not
   // be erased on save, or a per-device rule would silently apply to every
   // device. Without any destination condition the filter is dropped.
+  const removeSourceIp = sourceIpOption.remove;
   sourceIpOption.remove = function (section_id) {
     if (
       !this.isActive(section_id) &&
@@ -8095,7 +8300,7 @@ function createSectionContent(section) {
     ) {
       return;
     }
-    uci.unset(UCI_PACKAGE, section_id, "source_ip_cidr");
+    removeSourceIp.call(this, section_id);
   };
 
   const fullyRoutedOption = addLocalDeviceSubnetDynamicField(section, {
@@ -8110,6 +8315,7 @@ function createSectionContent(section) {
 
   const excludedSourcesOption = addLocalDeviceSubnetDynamicField(section, {
     key: "excluded_source_ip_cidr",
+    legacyText: true,
     label: _("Exclude devices"),
     description: _(
       "Do not apply this section to the specified local IP addresses; matching continues with the next section.",
@@ -8128,6 +8334,7 @@ function createSectionContent(section) {
     label: _("Ports"),
     description: _("Match destination ports. Use a single port or a range"),
     dynamicValidate: validatePortCondition,
+    load: backendPortValues,
   });
   dependsOnRoutingAction(portsOption);
 }

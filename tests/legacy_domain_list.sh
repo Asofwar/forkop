@@ -84,7 +84,9 @@ function fn(name) {
   throw new Error(`${name} not closed`);
 }
 const names = ['normalizeOptionValues', 'getConfigListValues', 'domainValuesWithPrefix', 'domainTextValuesWithPrefix',
-  'uniqueDomainTextValues', 'appendUniqueDomainTextValues', 'legacyExactDomainValues', 'loadCombinedDomainText'];
+  'uniqueDomainTextValues', 'appendUniqueDomainTextValues', 'legacyExactDomainValues', 'loadCombinedDomainText',
+  'backendOptionText', 'backendFlag', 'backendTextListValues', 'conditionTextMode', 'backendConditionValues',
+  'legacyDomainConditionValues'];
 const parseValueList = (value) => value.split(/\n/).map((l) => l.split('//')[0].split('#')[0]).join(' ')
   .split(/[,\s]+/).map((s) => s.trim()).filter(Boolean);
 function loadText(section) {

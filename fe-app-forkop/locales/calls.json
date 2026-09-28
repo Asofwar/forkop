@@ -7880,6 +7880,13 @@
     ]
   },
   {
+    "call": "The rule will be removed on the next successful save. The page could not be saved now: %s",
+    "key": "The rule will be removed on the next successful save. The page could not be saved now: %s",
+    "places": [
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8082"
+    ]
+  },
+  {
     "call": "The same result this many checks in a row (2–10).",
     "key": "The same result this many checks in a row (2–10).",
     "places": [

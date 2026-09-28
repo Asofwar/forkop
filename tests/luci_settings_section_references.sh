@@ -7,7 +7,8 @@ set -euo pipefail
 # Save is refused until the user picks another section, instead of silently
 # re-pointing to the first eligible rule (UC-008). The provider availability
 # the Settings page gets from shell.js follows availability updates after
-# Components installs or removes a provider (UC-152).
+# Components installs or removes a provider (UC-152). A rule removal that
+# such a refusal blocks is reported instead of failing silently.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 node - "$ROOT_DIR/tests/helpers/luci_form_harness.js" <<'NODE'
@@ -76,6 +77,30 @@ const references = [
       const settings = await env.openSettings(installed);
       await settings.save();
       assert.equal(env.uci.data.settings.dns_detour_section, 'dpi');
+    });
+
+    // Deleting a rule saves the whole Settings page silently in LuCI. When a
+    // kept section refuses that save, the row stays and the removal waits
+    // for the next successful save; the user is told why.
+    await check(`${version} rule removal refused by a kept section`, async () => {
+      const env = createEnvironment({ version, config: settingsConfig({ dns_detour_enabled: '1',
+        dns_detour_section: 'gone' }) });
+      const notifications = [];
+      env.ui.addNotification = (_title, node, type) => notifications.push({ type, text: node.textContent });
+      const settings = await env.openSettings(installed);
+      await settings.removeRule('off');
+      assert.equal(notifications.length, 1, 'a refused removal must be reported');
+      assert.equal(notifications[0].type, 'error');
+      assert.match(notifications[0].text, /next successful save/);
+      assert.match(notifications[0].text, /The selected section no longer exists/);
+
+      // Control: a removal that saves reports nothing.
+      const ok = createEnvironment({ version, config: settingsConfig({ dns_detour_enabled: '1',
+        dns_detour_section: 'vpn' }) });
+      ok.ui.addNotification = () => notifications.push('unexpected');
+      await (await ok.openSettings(installed)).removeRule('off');
+      assert.equal(ok.uci.data.off, undefined);
+      assert.equal(notifications.length, 1, 'a saved removal must not report an error');
     });
 
     // UC-152: shell.uiCapabilities (what page/settings.js passes to the

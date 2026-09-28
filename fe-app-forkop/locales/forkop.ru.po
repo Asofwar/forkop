@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-28 18:51+0000\n"
-"PO-Revision-Date: 2026-09-28 18:51+0000\n"
+"POT-Creation-Date: 2026-09-28 19:21+0000\n"
+"PO-Revision-Date: 2026-09-28 19:21+0000\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -3238,6 +3238,9 @@ msgstr "У правила своя стратегия; Forkop X её не мен
 
 msgid "The rule that routes it cannot be determined unambiguously (for example, a remote list comes first)."
 msgstr "Правило, по которому она идёт, нельзя определить однозначно (например, выше стоит удалённый список)."
+
+msgid "The rule will be removed on the next successful save. The page could not be saved now: %s"
+msgstr "Правило будет удалено при следующем успешном сохранении. Сейчас страницу сохранить не удалось: %s"
 
 msgid "The same result this many checks in a row (2–10)."
 msgstr "Столько проверок подряд с одинаковым результатом (2–10)."

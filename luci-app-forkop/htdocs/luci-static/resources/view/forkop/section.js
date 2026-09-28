@@ -8068,7 +8068,25 @@ function configureSectionSection(sectionRef, options = {}) {
     cleanupRemovedChildItems(section_id, "section_interface", []);
     cleanupRemovedChildItems(section_id, "urltest", []);
     cleanupRemovedChildItems(section_id, "priority_group", []);
-    return handleRemove.apply(this, arguments);
+    // LuCI saves the whole page silently after a removal. When another field
+    // refuses that save (e.g. a Settings select kept on an unavailable
+    // section), the row stays and the removal waits for the next successful
+    // save; say why instead of doing nothing visible.
+    return Promise.resolve(handleRemove.apply(this, arguments)).catch(
+      (error) => {
+        ui.addNotification(
+          null,
+          E(
+            "p",
+            {},
+            _(
+              "The rule will be removed on the next successful save. The page could not be saved now: %s",
+            ).format(error?.message || error),
+          ),
+          "error",
+        );
+      },
+    );
   };
 
   sectionRef.load = function () {

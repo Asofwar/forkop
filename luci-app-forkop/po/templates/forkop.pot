@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-28 18:51+0000\n"
-"PO-Revision-Date: 2026-09-28 18:51+0000\n"
+"POT-Creation-Date: 2026-09-28 19:21+0000\n"
+"PO-Revision-Date: 2026-09-28 19:21+0000\n"
 "Last-Translator: Asofwar <7397608+Asofwar@users.noreply.github.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -4672,6 +4672,10 @@ msgstr ""
 
 #: src/forkop/tabs/autotune/model.ts:147
 msgid "The rule that routes it cannot be determined unambiguously (for example, a remote list comes first)."
+msgstr ""
+
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8082
+msgid "The rule will be removed on the next successful save. The page could not be saved now: %s"
 msgstr ""
 
 #: src/forkop/tabs/autotune/initController.ts:456

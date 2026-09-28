@@ -34,7 +34,7 @@ const sectionRef = {
 };
 configureSectionSection(sectionRef);
 
-assert.strictEqual(sectionRef.handleRemove('parent', event), result);
+const removal = sectionRef.handleRemove('parent', event);
 assert.deepStrictEqual(cleanupCalls, [
   ['parent', 'subscription_url', []],
   ['parent', 'section_interface', []],
@@ -49,5 +49,8 @@ assert.match(
   'priority_group cleanup does not cascade to priority_level',
 );
 
-console.log('LuCI section cascade checks passed');
+removal.then((value) => {
+  assert.strictEqual(value, result);
+  console.log('LuCI section cascade checks passed');
+});
 NODE

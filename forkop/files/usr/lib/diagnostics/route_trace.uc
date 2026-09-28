@@ -3,12 +3,10 @@
 let fs = require("fs");
 let ip = require("core.ip");
 let constants = require("core.constants");
-let uci_core = require("core.uci");
-let route_owner = require("core.route_owner");
-let dpi_strategy = require("core.dpi_strategy");
+let resolver = require("routing.resolve");
 
 const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || constants.FORKOP_CONFIG_NAME || "forkop";
-const LEGACY_CONNECTION_ACTIONS = [ "proxy", "outbound", "vpn" ];
+const FORKOP_CONFIG = getenv("FORKOP_CONFIG") || "/etc/config/" + CONFIG_NAME;
 
 function value(v) { return v == null ? "" : "" + v; }
 function quote(v) { return "'" + replace(value(v), /'/g, "'\\''") + "'"; }
@@ -53,58 +51,41 @@ function route_interface(text) {
     let matched = match(" " + text, /[ \t]dev[ \t]+([A-Za-z0-9_.:-]+)/);
     return matched != null && length(matched[1]) <= 32 ? matched[1] : "";
 }
-function read_json(path) {
-    let data = path == "" ? null : fs.readfile(path);
-    try { return data == null ? null : json(data); } catch (e) { return null; }
-}
-
 // The Forkop rule, action, outbound and DPI strategy the generated sing-box
-// config assigns to this connection. Calculated, not observed: Monitoring
-// shows what real connections did.
+// config assigns to this connection (routing/resolve.uc). Calculated, not
+// observed: Monitoring shows what real connections did.
 function config_route(target, address, source, protocol, port) {
-    let unknown = (reason) => ({
-        rule: { value: null, provenance: "unknown", reason },
+    let unknown = (reason, status) => ({
+        // status: undecidable | unsupported | unavailable (routing/resolve.uc).
+        rule: { value: null, provenance: "unknown", reason, status: status || "unavailable" },
         action: { value: null, provenance: "unknown" },
         outbound: { value: null, provenance: "unknown" },
         dpi: { value: null, provenance: "unknown" }
     });
-    if (!uci_core.available()) return unknown("config_unavailable");
-    let sections = uci_core.section_objects(CONFIG_NAME, "section") || [];
-    let config_path = value(uci_core.get(CONFIG_NAME + ".settings.config_path")) || "/etc/sing-box/config.json";
+    let text = fs.readfile(FORKOP_CONFIG);
+    if (text == null) return unknown("config_unavailable", "unavailable");
+    let sections = resolver.parse_config(text);
     let literal = ip.valid_ip(target);
-    let owner = route_owner.resolve(read_json(config_path), filter(sections, (s) => value(s.enabled) != "0"), {
-        host: literal ? "" : lc(target),
-        ip: literal ? target : address,
-        fakeip: address != "" && route_owner.is_fakeip(address),
-        network: lc(protocol),
-        port: port == "" ? 443 : int(port),
-        source
-    }, {
-        tproxy_inbound: constants.SB_TPROXY_INBOUND_TAG || "tproxy-in",
-        direct: constants.SB_DIRECT_OUTBOUND_TAG || "direct-out",
-        bypass: constants.SB_BYPASS_OUTBOUND_TAG || "bypass-out"
-    });
-    if (!owner.decided) return unknown(owner.reason);
+    let r = resolver.resolve(resolver.load_json(resolver.singbox_config_path(sections)), sections,
+        resolver.target(literal ? "" : target, literal ? target : address,
+            { fakeip: address != "" && resolver.is_fakeip(address), network: protocol, port, source }));
+    if (r.status != "decided") return unknown(r.reason, r.status);
 
     let result = unknown(null);
     let calculated = (v) => ({ value: v, provenance: "simulated" });
-    result.outbound = calculated(owner.outbound || null);
-    if (owner.kind == "rule") {
-        let action = value(owner.section.action);
-        if (index(LEGACY_CONNECTION_ACTIONS, action) >= 0) action = "connection";
-        result.rule = { value: value(owner.section.label) || owner.section[".name"],
-            section: owner.section[".name"], provenance: "simulated" };
-        result.action = calculated(action);
-        if (dpi_strategy.is_dpi_action(action)) {
-            let view = dpi_strategy.view(owner.section);
-            result.dpi = { value: view.dpi_provider, strategy: view.dpi_strategy,
-                strategy_custom: view.dpi_strategy_custom, provenance: "configured" };
-        }
+    result.outbound = calculated(r.outbound);
+    result.action = calculated(r.kind == "outbound" ? "outbound" : r.action);
+    if (r.kind == "rule") {
+        result.rule = { value: r.label, section: r.section, provenance: "simulated" };
+        if (r.dpi != null)
+            result.dpi = { value: r.dpi.provider, strategy: r.dpi.strategy,
+                strategy_custom: r.dpi.custom, provenance: "configured" };
     }
     else {
-        // No Forkop rule of its own: bypass list, block, or no rule matched.
-        result.rule = { value: null, provenance: "simulated", reason: owner.kind == "direct" ? "no_rule_matched" : owner.kind };
-        result.action = calculated(owner.kind);
+        // No Forkop rule of its own: bypass list, block, no rule matched, or
+        // an outbound no rule owns.
+        result.rule = { value: null, provenance: "simulated",
+            reason: r.kind == "direct" ? "no_rule_matched" : r.kind == "outbound" ? "outbound_without_rule" : r.kind };
     }
     return result;
 }

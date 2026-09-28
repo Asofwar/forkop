@@ -106,21 +106,21 @@
     "call": "a rule applies to selected devices only; choose a device",
     "key": "a rule applies to selected devices only; choose a device",
     "places": [
-      "src/forkop/tabs/diagnostic/siteCheck.ts:38"
+      "src/forkop/tabs/diagnostic/siteCheck.ts:43"
     ]
   },
   {
     "call": "A rule blocks this address. This is intended for ads and trackers.",
     "key": "A rule blocks this address. This is intended for ads and trackers.",
     "places": [
-      "src/forkop/tabs/diagnostic/siteCheck.ts:140"
+      "src/forkop/tabs/diagnostic/siteCheck.ts:145"
     ]
   },
   {
     "call": "a rule is too complex to calculate",
     "key": "a rule is too complex to calculate",
     "places": [
-      "src/forkop/tabs/diagnostic/siteCheck.ts:40"
+      "src/forkop/tabs/diagnostic/siteCheck.ts:45"
     ]
   },
   {
@@ -261,7 +261,7 @@
     "places": [
       "src/forkop/tabs/diagnostic/connectivityMatrix.ts:250",
       "src/forkop/tabs/diagnostic/connectivityMatrix.ts:297",
-      "src/forkop/tabs/diagnostic/siteCheck.ts:98"
+      "src/forkop/tabs/diagnostic/siteCheck.ts:103"
     ]
   },
   {
@@ -393,10 +393,17 @@
     ]
   },
   {
-    "call": "an earlier rule uses a list whose contents cannot be checked here",
-    "key": "an earlier rule uses a list whose contents cannot be checked here",
+    "call": "an earlier rule re-resolves the address, so the route depends on its answer",
+    "key": "an earlier rule re-resolves the address, so the route depends on its answer",
     "places": [
-      "src/forkop/tabs/diagnostic/siteCheck.ts:34"
+      "src/forkop/tabs/diagnostic/siteCheck.ts:39"
+    ]
+  },
+  {
+    "call": "an earlier rule uses a list or pattern whose contents cannot be checked here",
+    "key": "an earlier rule uses a list or pattern whose contents cannot be checked here",
+    "places": [
+      "src/forkop/tabs/diagnostic/siteCheck.ts:35"
     ]
   },
   {
@@ -410,7 +417,7 @@
     "call": "An IP address needs no DNS",
     "key": "An IP address needs no DNS",
     "places": [
-      "src/forkop/tabs/diagnostic/siteCheck.ts:100"
+      "src/forkop/tabs/diagnostic/siteCheck.ts:105"
     ]
   },
   {
@@ -438,7 +445,7 @@
     "call": "Answer of the router DNS",
     "key": "Answer of the router DNS",
     "places": [
-      "src/forkop/tabs/diagnostic/siteCheck.ts:115"
+      "src/forkop/tabs/diagnostic/siteCheck.ts:120"
     ]
   },
   {
@@ -927,7 +934,7 @@
     "call": "Check the node of the rule in Monitoring → Nodes and groups.",
     "key": "Check the node of the rule in Monitoring → Nodes and groups.",
     "places": [
-      "src/forkop/tabs/diagnostic/siteCheck.ts:154"
+      "src/forkop/tabs/diagnostic/siteCheck.ts:159"
     ]
   },
   {
@@ -976,7 +983,7 @@
       "src/forkop/tabs/dashboard/overview.ts:136",
       "src/forkop/tabs/diagnostic/connectivityMatrix.ts:104",
       "src/forkop/tabs/diagnostic/dpiPlayground.ts:48",
-      "src/forkop/tabs/diagnostic/siteCheck.ts:238",
+      "src/forkop/tabs/diagnostic/siteCheck.ts:243",
       "src/forkop/tabs/diagnostic/statusLabels.ts:28"
     ]
   },
@@ -1131,7 +1138,7 @@
     "call": "Components",
     "key": "Components",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:226"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:227"
     ]
   },
   {
@@ -1684,9 +1691,9 @@
     "call": "DNS",
     "key": "DNS",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:215",
-      "src/forkop/tabs/diagnostic/siteCheck.ts:106",
-      "src/forkop/tabs/diagnostic/siteCheck.ts:113"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:216",
+      "src/forkop/tabs/diagnostic/siteCheck.ts:111",
+      "src/forkop/tabs/diagnostic/siteCheck.ts:118"
     ]
   },
   {
@@ -2216,7 +2223,7 @@
     "call": "Enter a domain or IP address",
     "key": "Enter a domain or IP address",
     "places": [
-      "src/forkop/tabs/diagnostic/siteCheck.ts:234"
+      "src/forkop/tabs/diagnostic/siteCheck.ts:239"
     ]
   },
   {
@@ -2252,7 +2259,7 @@
     "call": "Enter a valid domain or IP address",
     "key": "Enter a valid domain or IP address",
     "places": [
-      "src/forkop/tabs/diagnostic/siteCheck.ts:195"
+      "src/forkop/tabs/diagnostic/siteCheck.ts:200"
     ]
   },
   {
@@ -2553,7 +2560,7 @@
     "call": "For a DPI rule this can mean the strategy does not work with your provider.",
     "key": "For a DPI rule this can mean the strategy does not work with your provider.",
     "places": [
-      "src/forkop/tabs/diagnostic/siteCheck.ts:150"
+      "src/forkop/tabs/diagnostic/siteCheck.ts:155"
     ]
   },
   {
@@ -2756,7 +2763,7 @@
     "call": "From the router",
     "key": "From the router",
     "places": [
-      "src/forkop/tabs/diagnostic/siteCheck.ts:124"
+      "src/forkop/tabs/diagnostic/siteCheck.ts:129"
     ]
   },
   {
@@ -2900,7 +2907,7 @@
     "call": "HTTPS request made by the router itself",
     "key": "HTTPS request made by the router itself",
     "places": [
-      "src/forkop/tabs/diagnostic/siteCheck.ts:126"
+      "src/forkop/tabs/diagnostic/siteCheck.ts:131"
     ]
   },
   {
@@ -3701,7 +3708,7 @@
     "call": "Lists and updates",
     "key": "Lists and updates",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:217"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:218"
     ]
   },
   {
@@ -3919,7 +3926,7 @@
     "call": "Network",
     "key": "Network",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:216"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:217"
     ]
   },
   {
@@ -4102,14 +4109,14 @@
     "call": "No rule handles it; it may need to be added to a rule.",
     "key": "No rule handles it; it may need to be added to a rule.",
     "places": [
-      "src/forkop/tabs/diagnostic/siteCheck.ts:156"
+      "src/forkop/tabs/diagnostic/siteCheck.ts:161"
     ]
   },
   {
     "call": "No rule matched",
     "key": "No rule matched",
     "places": [
-      "src/forkop/tabs/diagnostic/siteCheck.ts:85",
+      "src/forkop/tabs/diagnostic/siteCheck.ts:90",
       "src/forkop/tabs/monitoring/connectionView.ts:168"
     ]
   },
@@ -4239,7 +4246,7 @@
     "call": "Not resolved",
     "key": "Not resolved",
     "places": [
-      "src/forkop/tabs/diagnostic/siteCheck.ts:107"
+      "src/forkop/tabs/diagnostic/siteCheck.ts:112"
     ]
   },
   {
@@ -5088,8 +5095,8 @@
     "call": "Route",
     "key": "Route",
     "places": [
-      "src/forkop/tabs/diagnostic/siteCheck.ts:56",
-      "src/forkop/tabs/diagnostic/siteCheck.ts:81",
+      "src/forkop/tabs/diagnostic/siteCheck.ts:61",
+      "src/forkop/tabs/diagnostic/siteCheck.ts:86",
       "src/forkop/tabs/monitoring/initController.ts:1095"
     ]
   },
@@ -5118,7 +5125,7 @@
     "call": "Router kernel route",
     "key": "Router kernel route",
     "places": [
-      "src/forkop/tabs/diagnostic/siteCheck.ts:273"
+      "src/forkop/tabs/diagnostic/siteCheck.ts:278"
     ]
   },
   {
@@ -5146,7 +5153,7 @@
     "call": "rule",
     "key": "rule",
     "places": [
-      "src/forkop/tabs/diagnostic/siteCheck.ts:64"
+      "src/forkop/tabs/diagnostic/siteCheck.ts:69"
     ]
   },
   {
@@ -5162,7 +5169,7 @@
     "call": "Rule not calculated",
     "key": "Rule not calculated",
     "places": [
-      "src/forkop/tabs/diagnostic/siteCheck.ts:57"
+      "src/forkop/tabs/diagnostic/siteCheck.ts:62"
     ]
   },
   {
@@ -5312,7 +5319,7 @@
     "call": "See connections to this address",
     "key": "See connections to this address",
     "places": [
-      "src/forkop/tabs/diagnostic/siteCheck.ts:265"
+      "src/forkop/tabs/diagnostic/siteCheck.ts:270"
     ]
   },
   {
@@ -5544,7 +5551,7 @@
     "call": "Service settings",
     "key": "Service settings",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:218"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:219"
     ]
   },
   {
@@ -6125,7 +6132,7 @@
     "call": "The address is blocked by a rule",
     "key": "The address is blocked by a rule",
     "places": [
-      "src/forkop/tabs/diagnostic/siteCheck.ts:87"
+      "src/forkop/tabs/diagnostic/siteCheck.ts:92"
     ]
   },
   {
@@ -6161,7 +6168,7 @@
     "call": "The name does not resolve on the router, so no rule can open it. Check the DNS results above.",
     "key": "The name does not resolve on the router, so no rule can open it. Check the DNS results above.",
     "places": [
-      "src/forkop/tabs/diagnostic/siteCheck.ts:136"
+      "src/forkop/tabs/diagnostic/siteCheck.ts:141"
     ]
   },
   {
@@ -6183,7 +6190,7 @@
     "call": "The route check did not complete. Try again.",
     "key": "The route check did not complete. Try again.",
     "places": [
-      "src/forkop/tabs/diagnostic/siteCheck.ts:198"
+      "src/forkop/tabs/diagnostic/siteCheck.ts:203"
     ]
   },
   {
@@ -6211,7 +6218,7 @@
     "call": "The router DNS returned no address",
     "key": "The router DNS returned no address",
     "places": [
-      "src/forkop/tabs/diagnostic/siteCheck.ts:108"
+      "src/forkop/tabs/diagnostic/siteCheck.ts:113"
     ]
   },
   {
@@ -6239,14 +6246,14 @@
     "call": "The site did not open from the router. The router may take a different path than devices.",
     "key": "The site did not open from the router. The router may take a different path than devices.",
     "places": [
-      "src/forkop/tabs/diagnostic/siteCheck.ts:159"
+      "src/forkop/tabs/diagnostic/siteCheck.ts:164"
     ]
   },
   {
     "call": "The site opens from the router. If it does not open on a device, look at its real connections.",
     "key": "The site opens from the router. If it does not open on a device, look at its real connections.",
     "places": [
-      "src/forkop/tabs/diagnostic/siteCheck.ts:145"
+      "src/forkop/tabs/diagnostic/siteCheck.ts:150"
     ]
   },
   {

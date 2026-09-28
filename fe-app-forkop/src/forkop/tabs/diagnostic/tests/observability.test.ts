@@ -334,6 +334,17 @@ describe('route check', () => {
       provenance: 'unknown',
     });
     expect(row.note).toContain('choose a device');
+    expect(
+      routeRow(
+        trace({
+          rule: {
+            value: null,
+            provenance: 'unknown',
+            reason: 'undecidable_matcher',
+          },
+        }),
+      ).note,
+    ).toContain('cannot be checked here');
   });
 
   it('marks DNS as observed and an IP literal as needing no DNS', () => {

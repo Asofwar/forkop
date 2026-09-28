@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-28 02:31+0000\n"
-"PO-Revision-Date: 2026-09-28 02:31+0000\n"
+"POT-Creation-Date: 2026-09-28 07:44+0000\n"
+"PO-Revision-Date: 2026-09-28 07:44+0000\n"
 "Last-Translator: Claude <noreply@anthropic.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -77,15 +77,15 @@ msgstr ""
 msgid "A configuration change was not confirmed. Traffic that needs DPI bypass may be blocked until recovery completes."
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/siteCheck.ts:38
+#: src/forkop/tabs/diagnostic/siteCheck.ts:43
 msgid "a rule applies to selected devices only; choose a device"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/siteCheck.ts:140
+#: src/forkop/tabs/diagnostic/siteCheck.ts:145
 msgid "A rule blocks this address. This is intended for ads and trackers."
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/siteCheck.ts:40
+#: src/forkop/tabs/diagnostic/siteCheck.ts:45
 msgid "a rule is too complex to calculate"
 msgstr ""
 
@@ -169,7 +169,7 @@ msgstr ""
 
 #: src/forkop/tabs/diagnostic/connectivityMatrix.ts:250
 #: src/forkop/tabs/diagnostic/connectivityMatrix.ts:297
-#: src/forkop/tabs/diagnostic/siteCheck.ts:98
+#: src/forkop/tabs/diagnostic/siteCheck.ts:103
 msgid "Address"
 msgstr ""
 
@@ -247,15 +247,19 @@ msgstr ""
 msgid "Allows limiting the list of servers for URLTest"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/siteCheck.ts:34
-msgid "an earlier rule uses a list whose contents cannot be checked here"
+#: src/forkop/tabs/diagnostic/siteCheck.ts:39
+msgid "an earlier rule re-resolves the address, so the route depends on its answer"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/siteCheck.ts:35
+msgid "an earlier rule uses a list or pattern whose contents cannot be checked here"
 msgstr ""
 
 #: src/forkop/tabs/dashboard/overview.ts:105
 msgid "An interrupted package update is being recovered. Avoid changes until it completes."
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/siteCheck.ts:100
+#: src/forkop/tabs/diagnostic/siteCheck.ts:105
 msgid "An IP address needs no DNS"
 msgstr ""
 
@@ -271,7 +275,7 @@ msgstr ""
 msgid "Another snapshot operation is already in progress. Try again in a moment."
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/siteCheck.ts:115
+#: src/forkop/tabs/diagnostic/siteCheck.ts:120
 msgid "Answer of the router DNS"
 msgstr ""
 
@@ -562,7 +566,7 @@ msgstr ""
 msgid "Check the DNS server addresses in Settings or choose another server."
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/siteCheck.ts:154
+#: src/forkop/tabs/diagnostic/siteCheck.ts:159
 msgid "Check the node of the rule in Monitoring → Nodes and groups."
 msgstr ""
 
@@ -596,7 +600,7 @@ msgstr ""
 #: src/forkop/tabs/dashboard/overview.ts:136
 #: src/forkop/tabs/diagnostic/connectivityMatrix.ts:104
 #: src/forkop/tabs/diagnostic/dpiPlayground.ts:48
-#: src/forkop/tabs/diagnostic/siteCheck.ts:238
+#: src/forkop/tabs/diagnostic/siteCheck.ts:243
 #: src/forkop/tabs/diagnostic/statusLabels.ts:28
 msgid "Checking…"
 msgstr ""
@@ -691,7 +695,7 @@ msgstr ""
 msgid "Component update check interval"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:226
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:227
 msgid "Components"
 msgstr ""
 
@@ -1019,9 +1023,9 @@ msgstr ""
 msgid "Display name"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:215
-#: src/forkop/tabs/diagnostic/siteCheck.ts:106
-#: src/forkop/tabs/diagnostic/siteCheck.ts:113
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:216
+#: src/forkop/tabs/diagnostic/siteCheck.ts:111
+#: src/forkop/tabs/diagnostic/siteCheck.ts:118
 msgid "DNS"
 msgstr ""
 
@@ -1332,7 +1336,7 @@ msgstr ""
 msgid "Enter a display name"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/siteCheck.ts:234
+#: src/forkop/tabs/diagnostic/siteCheck.ts:239
 msgid "Enter a domain or IP address"
 msgstr ""
 
@@ -1353,7 +1357,7 @@ msgstr ""
 msgid "Enter a valid DNS server address"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/siteCheck.ts:195
+#: src/forkop/tabs/diagnostic/siteCheck.ts:200
 msgid "Enter a valid domain or IP address"
 msgstr ""
 
@@ -1534,7 +1538,7 @@ msgstr ""
 msgid "Following new connections"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/siteCheck.ts:150
+#: src/forkop/tabs/diagnostic/siteCheck.ts:155
 msgid "For a DPI rule this can mean the strategy does not work with your provider."
 msgstr ""
 
@@ -1650,7 +1654,7 @@ msgstr ""
 msgid "From configuration"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/siteCheck.ts:124
+#: src/forkop/tabs/diagnostic/siteCheck.ts:129
 msgid "From the router"
 msgstr ""
 
@@ -1734,7 +1738,7 @@ msgstr ""
 msgid "HTTP error"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/siteCheck.ts:126
+#: src/forkop/tabs/diagnostic/siteCheck.ts:131
 msgid "HTTPS request made by the router itself"
 msgstr ""
 
@@ -2205,7 +2209,7 @@ msgstr ""
 msgid "List Update Frequency"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:217
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:218
 msgid "Lists and updates"
 msgstr ""
 
@@ -2336,7 +2340,7 @@ msgstr ""
 msgid "Needs attention"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:216
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:217
 msgid "Network"
 msgstr ""
 
@@ -2444,11 +2448,11 @@ msgstr ""
 msgid "No reload recorded yet"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/siteCheck.ts:156
+#: src/forkop/tabs/diagnostic/siteCheck.ts:161
 msgid "No rule handles it; it may need to be added to a rule."
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/siteCheck.ts:85
+#: src/forkop/tabs/diagnostic/siteCheck.ts:90
 #: src/forkop/tabs/monitoring/connectionView.ts:168
 msgid "No rule matched"
 msgstr ""
@@ -2530,7 +2534,7 @@ msgstr ""
 msgid "Not recorded yet"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/siteCheck.ts:107
+#: src/forkop/tabs/diagnostic/siteCheck.ts:112
 msgid "Not resolved"
 msgstr ""
 
@@ -3034,8 +3038,8 @@ msgstr ""
 msgid "Rolled back"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/siteCheck.ts:56
-#: src/forkop/tabs/diagnostic/siteCheck.ts:81
+#: src/forkop/tabs/diagnostic/siteCheck.ts:61
+#: src/forkop/tabs/diagnostic/siteCheck.ts:86
 #: src/forkop/tabs/monitoring/initController.ts:1095
 msgid "Route"
 msgstr ""
@@ -3052,7 +3056,7 @@ msgstr ""
 msgid "Router DNS is not pointed to Forkop X"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/siteCheck.ts:273
+#: src/forkop/tabs/diagnostic/siteCheck.ts:278
 msgid "Router kernel route"
 msgstr ""
 
@@ -3068,7 +3072,7 @@ msgstr ""
 msgid "Routing, DNS and DPI bypass rules stop applying"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/siteCheck.ts:64
+#: src/forkop/tabs/diagnostic/siteCheck.ts:69
 msgid "rule"
 msgstr ""
 
@@ -3078,7 +3082,7 @@ msgstr ""
 msgid "Rule"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/siteCheck.ts:57
+#: src/forkop/tabs/diagnostic/siteCheck.ts:62
 msgid "Rule not calculated"
 msgstr ""
 
@@ -3165,7 +3169,7 @@ msgstr ""
 msgid "Security"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/siteCheck.ts:265
+#: src/forkop/tabs/diagnostic/siteCheck.ts:270
 msgid "See connections to this address"
 msgstr ""
 
@@ -3301,7 +3305,7 @@ msgstr ""
 msgid "Service list"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:218
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:219
 msgid "Service settings"
 msgstr ""
 
@@ -3639,7 +3643,7 @@ msgstr ""
 msgid "Testing URL"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/siteCheck.ts:87
+#: src/forkop/tabs/diagnostic/siteCheck.ts:92
 msgid "The address is blocked by a rule"
 msgstr ""
 
@@ -3660,7 +3664,7 @@ msgstr ""
 msgid "The last known good snapshot cannot be deleted"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/siteCheck.ts:136
+#: src/forkop/tabs/diagnostic/siteCheck.ts:141
 msgid "The name does not resolve on the router, so no rule can open it. Check the DNS results above."
 msgstr ""
 
@@ -3673,7 +3677,7 @@ msgstr ""
 msgid "The package is removed from the router."
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/siteCheck.ts:198
+#: src/forkop/tabs/diagnostic/siteCheck.ts:203
 msgid "The route check did not complete. Try again."
 msgstr ""
 
@@ -3689,7 +3693,7 @@ msgstr ""
 msgid "The router did not respond in %d s"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/siteCheck.ts:108
+#: src/forkop/tabs/diagnostic/siteCheck.ts:113
 msgid "The router DNS returned no address"
 msgstr ""
 
@@ -3705,11 +3709,11 @@ msgstr ""
 msgid "the sing-box configuration is not available; is Forkop X running?"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/siteCheck.ts:159
+#: src/forkop/tabs/diagnostic/siteCheck.ts:164
 msgid "The site did not open from the router. The router may take a different path than devices."
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/siteCheck.ts:145
+#: src/forkop/tabs/diagnostic/siteCheck.ts:150
 msgid "The site opens from the router. If it does not open on a device, look at its real connections."
 msgstr ""
 

@@ -10892,9 +10892,14 @@ function undecidedReasonText(reason) {
       return _(
         "the sing-box configuration is not available; is Forkop X running?"
       );
-    case "list_not_checkable":
+    // Reason codes of routing/resolve.uc (shared with autotune apply).
+    case "undecidable_matcher":
       return _(
-        "an earlier rule uses a list whose contents cannot be checked here"
+        "an earlier rule uses a list or pattern whose contents cannot be checked here"
+      );
+    case "resolve_rule":
+      return _(
+        "an earlier rule re-resolves the address, so the route depends on its answer"
       );
     case "source_scoped_rule":
       return _("a rule applies to selected devices only; choose a device");

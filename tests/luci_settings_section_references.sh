@@ -7,7 +7,9 @@ set -euo pipefail
 # Save is refused until the user picks another section, instead of silently
 # re-pointing to the first eligible rule (UC-008). The provider availability
 # the Settings page gets from shell.js follows availability updates after
-# Components installs or removes a provider (UC-152). A rule removal that
+# Components installs or removes a provider (UC-152). Every selected section
+# is checked as the save leaves it: provider changes on the same page, the
+# Enable checkbox of its rules grid row, its removal. A rule removal that
 # such a refusal blocks is reported instead of failing silently.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -77,6 +79,72 @@ const references = [
       const settings = await env.openSettings(installed);
       await settings.save();
       assert.equal(env.uci.data.settings.dns_detour_section, 'dpi');
+    });
+
+    // The selected section is checked as this save leaves it, whether or not
+    // it was offered when the form loaded. LuCI's uci.state.values is the
+    // config as loaded (edits staged on the page stay in state.changes until
+    // a successful save reloads it), and the Enable checkbox of a rules grid
+    // row is parsed in the same save, after LuCI validated the Settings
+    // fields (Map.save -> checkDepends -> triggerValidation, then parse).
+    const loadedValues = (env) => {
+      env.uci.state.values = { forkop: JSON.parse(JSON.stringify(env.uci.data)) };
+    };
+    for (const [label, value, enable, accepted] of [
+      ['enabling the disabled section', 'off', '1', true],
+      ['disabling the selected section', 'vpn', '0', false],
+    ]) await check(`${version} rules grid Enable: ${label}`, async () => {
+      const env = createEnvironment({ version, config: settingsConfig({ dns_detour_enabled: '1',
+        dns_detour_section: value }) });
+      loadedValues(env);
+      const settings = await env.openSettings(installed);
+      const select = settings.option('dns_detour_section');
+      const [enabled, row] = settings.map.lookupOption('enabled', value);
+      enabled.getUIElement(row).setValue(enable);
+      assert.equal(select.isValid('settings'), accepted, 'the Enable checkbox of the row was not honoured');
+      if (accepted) {
+        await settings.save();
+        assert.equal(env.uci.data[value].enabled, '1');
+        await settings.save();
+      } else {
+        await assert.rejects(settings.save(), /The selected section is disabled/);
+      }
+      assert.equal(env.uci.data.settings.dns_detour_section, value);
+    });
+
+    // UC-152 both ways: Components removes the provider on the same page.
+    await check(`${version} provider removed on the same page`, async () => {
+      const env = createEnvironment({ version, config: settingsConfig({ dns_detour_enabled: '1',
+        dns_detour_section: 'dpi' }) });
+      const shell = env.shell();
+      env.main.ForkopShellMethods.getUiCapabilities = () => Promise.resolve({ success: true,
+        data: { zapret_installed: 1, zapret2_installed: 1, byedpi_installed: 1 } });
+      await shell.loadUiCapabilities();
+      const settings = await env.openSettings(shell.uiCapabilities);
+      env.window.dispatchEvent(new env.CustomEvent(env.main.FORKOP_ACTION_PROVIDERS_AVAILABILITY_EVENT,
+        { detail: { zapretInstalled: false, zapret2Installed: true, byedpiInstalled: true } }));
+      await assert.rejects(settings.save(), /The DPI provider of the selected section is not installed/);
+      assert.equal(env.uci.data.settings.dns_detour_section, 'dpi');
+
+      settings.option('dns_detour_section').getUIElement('settings').setValue('vpn');
+      await settings.save();
+      assert.equal(env.uci.data.settings.dns_detour_section, 'vpn');
+    });
+
+    // Deleting the selected rule: the save that follows the removal is
+    // refused and reported instead of leaving Settings pointing to a rule
+    // that the backend then rejects as missing.
+    await check(`${version} removing the selected rule is reported`, async () => {
+      const env = createEnvironment({ version, config: settingsConfig({ dns_detour_enabled: '1',
+        dns_detour_section: 'vpn' }) });
+      loadedValues(env);
+      const notifications = [];
+      env.ui.addNotification = (_title, node, type) => notifications.push({ type, text: node.textContent });
+      const settings = await env.openSettings(installed);
+      await settings.removeRule('vpn');
+      assert.equal(notifications.length, 1, 'the refused save after the removal must be reported');
+      assert.match(notifications[0].text, /The selected section no longer exists/);
+      assert.equal(env.uci.data.settings.dns_detour_section, 'vpn', 'the reference must not be re-pointed');
     });
 
     // Deleting a rule saves the whole Settings page silently in LuCI. When a

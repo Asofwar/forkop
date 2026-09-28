@@ -108,14 +108,35 @@ function describeUnavailableSection(sec, name) {
 function keepUnavailableSectionChoice(option, value) {
   const sections = option.map?.data?.state?.values?.[UCI_PACKAGE] ?? {};
 
-  option.unavailableChoices = {};
   if (!value || option.keylist.includes(value)) {
     return;
   }
 
-  const unavailable = describeUnavailableSection(sections[value], value);
-  option.value(value, unavailable.label);
-  option.unavailableChoices[value] = unavailable.message;
+  option.value(value, describeUnavailableSection(sections[value], value).label);
+}
+
+// The section as this save leaves it. uci.state.values is the config as
+// loaded; uci.get adds the edits staged on this page (a rule removed from
+// the grid), and the Enable checkbox of a grid row is parsed by the same
+// save only after the Settings fields were validated.
+function currentSection(option, name) {
+  const type = uci.get(UCI_PACKAGE, name, ".type");
+  if (type == null) {
+    return null;
+  }
+
+  // Map.lookupOption() needs the rendered page.
+  const enabled = option.map?.root
+    ? option.map.lookupOption("enabled", name)
+    : null;
+  return {
+    ".type": type,
+    label: uci.get(UCI_PACKAGE, name, "label"),
+    action: uci.get(UCI_PACKAGE, name, "action"),
+    enabled: enabled
+      ? enabled[0].formvalue(enabled[1])
+      : uci.get(UCI_PACKAGE, name, "enabled"),
+  };
 }
 
 function configureDownloadSectionOption(option, sectionOption, capabilities) {
@@ -146,16 +167,14 @@ function configureDownloadSectionOption(option, sectionOption, capabilities) {
     if (!value) {
       return _("Select a section");
     }
-    const unavailable = this.unavailableChoices || {};
-    if (!Object.prototype.hasOwnProperty.call(unavailable, value)) {
-      return true;
-    }
-    // Components, a tab of the same page, can install the provider after
-    // the choices were built; capabilities follow it (UC-152).
-    const sections = this.map?.data?.state?.values?.[UCI_PACKAGE] ?? {};
-    return isDownloadSection(sections[value], capabilities)
+    // Every choice is checked as the page is now, not as it was when the
+    // choices were built: Components, a tab of the same page, can install or
+    // remove the provider (capabilities follow it, UC-152), and the rules
+    // grid can enable, disable or remove the section (UC-008).
+    const sec = currentSection(this, value);
+    return isDownloadSection(sec, capabilities)
       ? true
-      : unavailable[value];
+      : describeUnavailableSection(sec, value).message;
   };
 }
 

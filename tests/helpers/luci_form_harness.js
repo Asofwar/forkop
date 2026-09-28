@@ -352,10 +352,12 @@ function createForm({ version, baseclass, uci, jsonMaps }) {
     },
     render() {
       return this.load().then(() => {
+        // Map.renderContents() creates the root before the sections render.
+        this.root ??= E("div", { class: "cbi-map" });
         this.children.forEach((section) => section.renderWidgets());
         this.rendered = true;
         this.checkDepends();
-        return E("div", { class: "cbi-map" });
+        return this.root;
       });
     },
     checkDepends(n) {
@@ -441,11 +443,6 @@ function createForm({ version, baseclass, uci, jsonMaps }) {
         for (const option of this.children) tasks.push(option.parse(sid));
       return Promise.all(tasks);
     },
-    // TypedSection.handleRemove(): remove, then save the whole map silently.
-    handleRemove(section_id) {
-      this.map.data.remove(this.uciconfig ?? this.map.config, section_id);
-      return this.map.save(null, true);
-    },
   });
 
   const NamedSection = AbstractSection.extend({
@@ -457,10 +454,35 @@ function createForm({ version, baseclass, uci, jsonMaps }) {
       return [this.section];
     },
   });
-  const TypedSection = AbstractSection.extend({});
+  const TypedSection = AbstractSection.extend({
+    // TypedSection.handleRemove(): remove, then save the whole map silently.
+    handleRemove(section_id) {
+      this.map.data.remove(this.uciconfig ?? this.map.config, section_id);
+      return this.map.save(null, true);
+    },
+  });
+  // A grid row shows a widget only for editable options (the Enable
+  // checkbox); the other columns are text and the Add/Edit modal edits them.
+  const isGridWidget = (option) => option.editable && !option.modalonly && !option.disable;
   const GridSection = TypedSection.extend({
+    // TypedSection.cfgsections(): every UCI section of the type.
+    cfgsections() {
+      return this.map.data.sections(this.map.config, this.sectiontype).map((s) => s[".name"]);
+    },
     // TableSection.addModalOptions(): hook called for every Add/Edit modal.
     addModalOptions() {},
+    // GridSection.renderChildren().
+    renderWidgets() {
+      for (const sid of this.cfgsections())
+        for (const option of this.children) if (isGridWidget(option)) option.renderModelWidget(sid);
+    },
+    // GridSection.parse(): only the row widgets are parsed.
+    parse() {
+      const tasks = [];
+      for (const sid of this.cfgsections())
+        for (const option of this.children) if (isGridWidget(option)) tasks.push(option.parse(sid));
+      return Promise.all(tasks);
+    },
   });
 
   class ModelWidget {

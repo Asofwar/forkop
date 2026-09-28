@@ -5,6 +5,7 @@ import {
   getClashHttpUrl,
   getProxyUrlName,
 } from '../../../helpers';
+import { getClashApiSecretFromSettings } from '../../../helpers/getClashApiUrl';
 import { getOutboundTagBySection } from '../../runtimeTags';
 import { ForkopShellMethods } from '../shell';
 import { isReadonlyMode } from '../../services/accessMode.service';
@@ -138,18 +139,18 @@ function getSettingsSection(configSections: Forkop.ConfigSection[]) {
 }
 
 function getClashApiSecret(configSections: Forkop.ConfigSection[]) {
-  return getSettingsSection(configSections)?.yacd_secret_key || '';
+  return getClashApiSecretFromSettings(getSettingsSection(configSections));
 }
 
-function canFetchClashApiDirectly() {
-  return canUseDirectClashApi() && typeof fetch === 'function';
+function canFetchClashApiDirectly(secret: string) {
+  return canUseDirectClashApi(secret) && typeof fetch === 'function';
 }
 
 async function getClashApiProxies(
   configSections: Forkop.ConfigSection[],
 ): Promise<Forkop.MethodResponse<ClashAPI.Proxies>> {
-  if (canFetchClashApiDirectly()) {
-    const secret = getClashApiSecret(configSections);
+  const secret = getClashApiSecret(configSections);
+  if (canFetchClashApiDirectly(secret)) {
     const controller = new AbortController();
     const timeoutId = setTimeout(
       () => controller.abort(),
@@ -158,7 +159,7 @@ async function getClashApiProxies(
 
     try {
       const response = await fetch(`${getClashHttpUrl()}/proxies`, {
-        headers: secret ? { Authorization: `Bearer ${secret}` } : undefined,
+        headers: { Authorization: `Bearer ${secret}` },
         signal: controller.signal,
       });
 

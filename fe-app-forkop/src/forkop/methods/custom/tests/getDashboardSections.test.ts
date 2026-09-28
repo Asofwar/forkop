@@ -1258,13 +1258,31 @@ describe('getDashboardSections', () => {
       }),
     );
     expect(mocks.getClashApiProxies).not.toHaveBeenCalled();
+    expect(mocks.canUseDirectClashApi).toHaveBeenCalledWith('secret');
+  });
+
+  it('decides direct access by the configured secret (read-only has none)', async () => {
+    mocks.getConfigSections.mockResolvedValue([proxySection()]);
+    mocks.canUseDirectClashApi.mockReturnValue(false);
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await getDashboardSections();
+
+    expect(result.success).toBe(true);
+    expect(mocks.canUseDirectClashApi).toHaveBeenCalledWith('');
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mocks.getClashApiProxies).toHaveBeenCalledTimes(1);
   });
 
   it('uses rpcd fallback when direct Clash API access times out', async () => {
     vi.useFakeTimers();
 
     try {
-      mocks.getConfigSections.mockResolvedValue([proxySection()]);
+      mocks.getConfigSections.mockResolvedValue([
+        { '.name': 'settings', '.type': 'settings', yacd_secret_key: 'secret' },
+        proxySection(),
+      ]);
       mocks.canUseDirectClashApi.mockReturnValue(true);
       const fetchMock = vi.fn(
         (_url: string, options?: RequestInit) =>

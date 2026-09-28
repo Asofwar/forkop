@@ -1,6 +1,6 @@
 import {
   canUseDirectClashApi,
-  getClashWsUrl,
+  getClashWsStreamUrl,
   onMount,
   preserveScrollForPage,
 } from '../../../helpers';
@@ -638,8 +638,13 @@ async function connectToClashSockets(dataUpdatesId: number) {
     return;
   }
 
+  if (!canUseDirectClashApi(clashApiSecret)) {
+    startClashRpcPolling(dataUpdatesId);
+    return;
+  }
+
   socket.subscribe(
-    `${getClashWsUrl()}/traffic?token=${clashApiSecret}`,
+    getClashWsStreamUrl('/traffic', clashApiSecret),
     (msg) => {
       if (
         dataUpdatesId !== dashboardDataUpdatesId ||
@@ -675,7 +680,7 @@ async function connectToClashSockets(dataUpdatesId: number) {
   );
 
   socket.subscribe(
-    `${getClashWsUrl()}/connections?token=${clashApiSecret}`,
+    getClashWsStreamUrl('/connections', clashApiSecret),
     (msg) => {
       if (
         dataUpdatesId !== dashboardDataUpdatesId ||
@@ -865,11 +870,9 @@ function startDashboardDataUpdates() {
   void fetchDashboardSections({ force: true });
   if (overviewHost) {
     clashUpdatesStarted = true;
-    if (canUseDirectClashApi()) {
-      void connectToClashSockets(dataUpdatesId);
-    } else {
-      startClashRpcPolling(dataUpdatesId);
-    }
+    // Direct sockets need the secret; without it (read-only, HTTPS) the
+    // widgets poll through rpcd.
+    void connectToClashSockets(dataUpdatesId);
   }
   sectionsRefreshTimer = setInterval(() => {
     void fetchDashboardSections();

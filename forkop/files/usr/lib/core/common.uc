@@ -121,6 +121,15 @@ function bool_option(section, key, fallback) {
     return value == "1" || value == "true" || value == "yes" || value == "on";
 }
 
+// Clash API authentication (UC-035): the one predicate shared by the config
+// generator (controller secret), every backend request to the controller, the
+// validator and the reload signature. A secret is in effect exactly when this
+// value is not empty; YACD and WAN access only change where the controller
+// listens.
+function clash_api_secret(section) {
+    return trim(option(section, "yacd_secret_key", ""));
+}
+
 function int_option(section, key, fallback) {
     let value = option(section, key, fallback);
     if (match(value, /[^0-9]/))
@@ -144,5 +153,6 @@ return {
     option,
     list_option,
     bool_option,
-    int_option
+    int_option,
+    clash_api_secret
 };

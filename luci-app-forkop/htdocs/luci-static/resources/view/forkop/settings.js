@@ -486,10 +486,11 @@ function createSettingsContent(sections, capabilities) {
     "yacd_secret_key",
     _("YACD Secret Key"),
     _(
-      "Secret key for authenticating remote access to YACD when WAN access is enabled.",
+      "Secret of the Clash API controller used by YACD and the Forkop pages. It protects the controller with or without WAN access.",
     ),
   );
-  o.depends("enable_yacd_wan_access", "1");
+  // Not tied to WAN access: an inactive option would be removed on save,
+  // while sing-box keeps requiring the secret on the LAN (UC-035).
   o.password = true;
   o.rmempty = false;
 

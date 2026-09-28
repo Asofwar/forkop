@@ -1315,9 +1315,13 @@ async function onMount(target) {
 function getWindowLocation() {
   return typeof window !== "undefined" ? window.location : void 0;
 }
-function canUseDirectClashApi() {
+function getClashApiSecretFromSettings(settings) {
+  return `${settings?.yacd_secret_key ?? ""}`.trim();
+}
+function canUseDirectClashApi(secret) {
   const location = getWindowLocation();
   return (
+    secret.trim() !== "" &&
     typeof location?.hostname === "string" &&
     location.hostname !== "" &&
     location.protocol !== "https:"
@@ -1326,6 +1330,9 @@ function canUseDirectClashApi() {
 function getClashWsUrl() {
   const { hostname } = window.location;
   return `ws://${hostname}:9090`;
+}
+function getClashWsStreamUrl(path, secret) {
+  return `${getClashWsUrl()}${path}?token=${encodeURIComponent(secret)}`;
 }
 function getClashHttpUrl() {
   const { hostname } = window.location;
@@ -3435,14 +3442,14 @@ function getSettingsSection(configSections) {
   return configSections.find((section) => section[".type"] === "settings");
 }
 function getClashApiSecret(configSections) {
-  return getSettingsSection(configSections)?.yacd_secret_key || "";
+  return getClashApiSecretFromSettings(getSettingsSection(configSections));
 }
-function canFetchClashApiDirectly() {
-  return canUseDirectClashApi() && typeof fetch === "function";
+function canFetchClashApiDirectly(secret) {
+  return canUseDirectClashApi(secret) && typeof fetch === "function";
 }
 async function getClashApiProxies(configSections) {
-  if (canFetchClashApiDirectly()) {
-    const secret = getClashApiSecret(configSections);
+  const secret = getClashApiSecret(configSections);
+  if (canFetchClashApiDirectly(secret)) {
     const controller = new AbortController();
     const timeoutId = setTimeout(
       () => controller.abort(),
@@ -3450,7 +3457,7 @@ async function getClashApiProxies(configSections) {
     );
     try {
       const response = await fetch(`${getClashHttpUrl()}/proxies`, {
-        headers: secret ? { Authorization: `Bearer ${secret}` } : void 0,
+        headers: { Authorization: `Bearer ${secret}` },
         signal: controller.signal,
       });
       if (response.ok) {
@@ -4584,7 +4591,7 @@ async function getDashboardSections() {
 async function getClashApiSecret2() {
   const sections = await getConfigSections();
   const settings = sections.find((section) => section[".type"] === "settings");
-  return settings?.yacd_secret_key || "";
+  return getClashApiSecretFromSettings(settings);
 }
 
 // src/forkop/methods/custom/index.ts
@@ -7872,8 +7879,12 @@ async function connectToClashSockets(dataUpdatesId) {
   ) {
     return;
   }
+  if (!canUseDirectClashApi(clashApiSecret)) {
+    startClashRpcPolling(dataUpdatesId);
+    return;
+  }
   socket.subscribe(
-    `${getClashWsUrl()}/traffic?token=${clashApiSecret}`,
+    getClashWsStreamUrl("/traffic", clashApiSecret),
     (msg) => {
       if (
         dataUpdatesId !== dashboardDataUpdatesId ||
@@ -7905,7 +7916,7 @@ async function connectToClashSockets(dataUpdatesId) {
     },
   );
   socket.subscribe(
-    `${getClashWsUrl()}/connections?token=${clashApiSecret}`,
+    getClashWsStreamUrl("/connections", clashApiSecret),
     (msg) => {
       if (
         dataUpdatesId !== dashboardDataUpdatesId ||
@@ -8070,11 +8081,7 @@ function startDashboardDataUpdates() {
   void fetchDashboardSections({ force: true });
   if (overviewHost) {
     clashUpdatesStarted = true;
-    if (canUseDirectClashApi()) {
-      void connectToClashSockets(dataUpdatesId);
-    } else {
-      startClashRpcPolling(dataUpdatesId);
-    }
+    void connectToClashSockets(dataUpdatesId);
   }
   sectionsRefreshTimer = setInterval(() => {
     void fetchDashboardSections();
@@ -15852,7 +15859,11 @@ async function connectToConnectionsSocket(updatesId) {
   ) {
     return;
   }
-  connectionsSocketUrl = `${getClashWsUrl()}/connections?token=${clashApiSecret}`;
+  if (!canUseDirectClashApi(clashApiSecret)) {
+    startConnectionsPolling();
+    return;
+  }
+  connectionsSocketUrl = getClashWsStreamUrl("/connections", clashApiSecret);
   socket.subscribe(
     connectionsSocketUrl,
     (msg) => {
@@ -15890,12 +15901,8 @@ function startConnectionsUpdates() {
   if (serviceAvailability !== "running") {
     return;
   }
-  if (canUseDirectClashApi()) {
-    const updatesId = ++connectionsUpdatesId;
-    void connectToConnectionsSocket(updatesId);
-    return;
-  }
-  startConnectionsPolling();
+  const updatesId = ++connectionsUpdatesId;
+  void connectToConnectionsSocket(updatesId);
 }
 function stopConnectionsUpdates() {
   connectionsUpdatesId += 1;

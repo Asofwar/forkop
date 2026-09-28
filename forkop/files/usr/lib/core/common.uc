@@ -61,6 +61,22 @@ function write_json_file(path, value) {
     return fs.writefile(path, sprintf("%J\n", value));
 }
 
+// The generated sing-box config and its copies carry every outbound secret
+// (UC-037): the file is created 0600, and an existing file is narrowed to
+// 0600 before any content is written, whatever the process umask.
+function write_private_json_file(path, value) {
+    let fh = fs.open(path, "w", 0600);
+    if (fh == null)
+        return null;
+    if (!fs.chmod(path, 0600)) {
+        fh.close();
+        return null;
+    }
+    let written = fh.write(sprintf("%J\n", value));
+    fh.close();
+    return written;
+}
+
 function strip_internal_fields(value) {
     if (type(value) == "array") {
         for (let i = 0; i < length(value); i++)
@@ -146,6 +162,7 @@ return {
     write_compact_string_array,
     csv_to_json_array,
     write_json_file,
+    write_private_json_file,
     strip_internal_fields,
     array_or_empty,
     object_or_empty,

@@ -2,6 +2,10 @@ import { downloadAsTxt } from '../../helpers/downloadAsTxt';
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
+// Only the most recent lines are kept for download (UC-036): a page left open
+// logs on every poll.
+const MAX_BUFFERED_LOGS = 500;
+
 class Logger {
   private logs: string[] = [];
   private readonly levels: LogLevel[] = ['debug', 'info', 'warn', 'error'];
@@ -14,6 +18,9 @@ class Logger {
     if (!this.levels.includes(level)) level = 'info';
     const message = this.format(level, ...args);
     this.logs.push(message);
+    if (this.logs.length > MAX_BUFFERED_LOGS) {
+      this.logs.splice(0, this.logs.length - MAX_BUFFERED_LOGS);
+    }
 
     switch (level) {
       case 'error':

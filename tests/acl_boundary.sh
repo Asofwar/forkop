@@ -13,13 +13,14 @@ const fs = require('node:fs');
 const groups = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const acl = groups['luci-app-forkop'];
 const grants = acl.read.file;
+const RO = '/usr/libexec/forkop-ro';
 function allowed(command) {
   return Object.entries(grants).some(([pattern, permissions]) => {
     const matcher = new RegExp('^' + pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\\\*/g, '.*') + '$');
     return permissions.includes('exec') && matcher.test(command);
   });
 }
-for (const command of [
+const mutations = [
   '/usr/bin/forkop', '/usr/bin/forkop stop', '/usr/bin/forkop full_uninstall',
   '/usr/bin/forkop show_sing_box_config raw', '/etc/init.d/forkop stop',
   '/usr/bin/forkop clash_api set_group_proxy group direct',
@@ -36,27 +37,37 @@ for (const command of [
   '/usr/bin/forkop autotune_run_async all',
   '/usr/bin/forkop autotune_run all',
   '/usr/bin/forkop autotune_if_due',
+];
+// UC-001: rpcd passes the caller's env table to the child, so the read role
+// may only reach the CLI through the wrapper that starts it with env -i.
+for (const command of [
+  ...mutations,
+  ...mutations.map(command => command.replace(/^\/usr\/bin\/forkop(?= |$)/, RO)),
+  RO,
+  '/usr/bin/forkop get_status', '/usr/bin/forkop get_system_info',
+  '/usr/bin/forkop get_ui_capabilities', '/usr/bin/forkop global_check masked',
+  '/usr/bin/forkop show_sing_box_config masked',
 ]) {
   if (allowed(command)) throw Error(`read role may execute ${command}`);
 }
 for (const command of [
-  '/usr/bin/forkop get_status', '/usr/bin/forkop get_ui_state',
-  '/usr/bin/forkop get_readonly_config_sections',
-  '/usr/bin/forkop get_health_status',
-  '/usr/bin/forkop get_history',
-  '/usr/bin/forkop autotune_status',
-  '/usr/bin/forkop autotune_target youtube',
-  '/usr/bin/forkop autotune_groups',
-  '/usr/bin/forkop autotune_run_status 1_1',
-  '/usr/bin/forkop route_trace example.org 192.168.1.1 TCP 443',
-  '/usr/bin/forkop config_snapshot_list',
-  '/usr/bin/forkop config_snapshot_diff 123',
-  '/usr/bin/forkop connectivity_test example.org TCP 443',
+  RO + ' get_status', RO + ' get_ui_state',
+  RO + ' get_readonly_config_sections',
+  RO + ' get_health_status',
+  RO + ' get_history',
+  RO + ' autotune_status',
+  RO + ' autotune_target youtube',
+  RO + ' autotune_groups',
+  RO + ' autotune_run_status 1_1',
+  RO + ' route_trace example.org 192.168.1.1 TCP 443',
+  RO + ' config_snapshot_list',
+  RO + ' config_snapshot_diff 123',
+  RO + ' connectivity_test example.org TCP 443',
 ]) {
   if (!allowed(command)) throw Error(`read diagnostic missing: ${command}`);
 }
 // Upstream 1.0.24 grants the whole CLI to the read group; this branch must not.
-if ('/usr/bin/forkop' in grants) throw Error('wildcard CLI exec granted to read role');
+if ('/usr/bin/forkop' in grants || RO in grants) throw Error('wildcard CLI exec granted to read role');
 for (const pattern of Object.keys(grants)) {
   if (/config_snapshot_(create|restore|delete)/.test(pattern)) {
     throw Error(`snapshot mutation granted to read role: ${pattern}`);
@@ -69,8 +80,12 @@ if (acl.read.ubus.file.length !== 1) {
   throw Error('read role got extra ubus file methods');
 }
 for (const pattern of Object.keys(grants)) {
-  if (!pattern.startsWith('/usr/bin/forkop ') && !pattern.includes('/run/forkop/')) {
+  if (!pattern.startsWith(RO + ' ') && !pattern.includes('/run/forkop/')) {
     throw Error(`unexpected read file grant: ${pattern}`);
+  }
+  // rpcd serves file.read itself, so these paths do not depend on the env.
+  if (!pattern.startsWith(RO + ' ') && grants[pattern].join() !== 'read') {
+    throw Error(`read role may do more than read ${pattern}`);
   }
 }
 if (acl.read.uci?.includes('forkop')) throw Error('raw UCI exposed to read role');

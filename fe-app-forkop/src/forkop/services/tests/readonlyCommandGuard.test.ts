@@ -30,23 +30,41 @@ afterEach(() => {
 
 describe('read-only exec allowlist', () => {
   it('matches exact commands without extra arguments', () => {
-    expect(isReadonlyCommandAllowed('/usr/bin/forkop', ['get_status'])).toBe(
-      true,
-    );
     expect(
-      isReadonlyCommandAllowed('/usr/bin/forkop', ['get_status', 'extra']),
-    ).toBe(false);
-    expect(
-      isReadonlyCommandAllowed('/usr/bin/forkop', ['global_check', 'masked']),
+      isReadonlyCommandAllowed('/usr/libexec/forkop-ro', ['get_status']),
     ).toBe(true);
     expect(
-      isReadonlyCommandAllowed('/usr/bin/forkop', ['global_check', 'raw']),
+      isReadonlyCommandAllowed('/usr/libexec/forkop-ro', [
+        'get_status',
+        'extra',
+      ]),
+    ).toBe(false);
+    expect(
+      isReadonlyCommandAllowed('/usr/libexec/forkop-ro', [
+        'global_check',
+        'masked',
+      ]),
+    ).toBe(true);
+    expect(
+      isReadonlyCommandAllowed('/usr/libexec/forkop-ro', [
+        'global_check',
+        'raw',
+      ]),
+    ).toBe(false);
+  });
+
+  it('never allows the CLI without the environment-clearing wrapper', () => {
+    expect(isReadonlyCommandAllowed('/usr/bin/forkop', ['get_status'])).toBe(
+      false,
+    );
+    expect(
+      isReadonlyCommandAllowed('/usr/bin/forkop', ['global_check', 'masked']),
     ).toBe(false);
   });
 
   it('matches glob arguments, including empty trailing ones', () => {
     expect(
-      isReadonlyCommandAllowed('/usr/bin/forkop', [
+      isReadonlyCommandAllowed('/usr/libexec/forkop-ro', [
         'route_trace',
         'example.org',
         '',
@@ -55,7 +73,7 @@ describe('read-only exec allowlist', () => {
       ]),
     ).toBe(true);
     expect(
-      isReadonlyCommandAllowed('/usr/bin/forkop', [
+      isReadonlyCommandAllowed('/usr/libexec/forkop-ro', [
         'clash_api',
         'get_group_latency',
         'main',
@@ -98,23 +116,42 @@ describe('executeShellCommand in a read-only session', () => {
     expect(exec).not.toHaveBeenCalled();
   });
 
-  it('passes read commands through', async () => {
+  it('runs read commands through the read-only wrapper', async () => {
     setReadonlyMode(true);
 
     await executeShellCommand({
       command: '/usr/bin/forkop',
       args: ['get_health_status'],
     });
+    await callBaseMethod(Forkop.AvailableMethods.GLOBAL_CHECK, ['masked']);
 
-    expect(exec).toHaveBeenCalledWith('/usr/bin/forkop', ['get_health_status']);
+    expect(exec).toHaveBeenNthCalledWith(1, '/usr/libexec/forkop-ro', [
+      'get_health_status',
+    ]);
+    expect(exec).toHaveBeenNthCalledWith(2, '/usr/libexec/forkop-ro', [
+      'global_check',
+      'masked',
+    ]);
+    expect(exec).not.toHaveBeenCalledWith('/usr/bin/forkop', expect.anything());
   });
 
   it('leaves administrator sessions untouched', async () => {
     for (const [command, args] of mutations) {
       await executeShellCommand({ command, args });
     }
+    await executeShellCommand({
+      command: '/usr/bin/forkop',
+      args: ['get_health_status'],
+    });
 
-    expect(exec).toHaveBeenCalledTimes(mutations.length);
+    expect(exec).toHaveBeenCalledTimes(mutations.length + 1);
+    expect(exec).toHaveBeenLastCalledWith('/usr/bin/forkop', [
+      'get_health_status',
+    ]);
+    expect(exec).not.toHaveBeenCalledWith(
+      '/usr/libexec/forkop-ro',
+      expect.anything(),
+    );
   });
 
   it('reports a refused shell method as a failed response', async () => {

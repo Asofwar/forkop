@@ -186,6 +186,7 @@ build_backend_root() {
   make_dir "$output_root/etc/init.d"
   make_dir "$output_root/etc/config"
   make_dir "$output_root/usr/bin"
+  make_dir "$output_root/usr/libexec"
   make_dir "$output_root/usr/lib/forkop"
   make_dir "$output_root/usr/share/forkop/defaults"
 
@@ -195,6 +196,7 @@ build_backend_root() {
   install -m 0644 "$ROOT_DIR/forkop/files/etc/config/forkop" "$output_root/usr/share/forkop/defaults/forkop"
   install -m 0755 "$ROOT_DIR/forkop/files/usr/share/forkop/mirror-migration.sh" "$output_root/usr/share/forkop/mirror-migration.sh"
   install -m 0755 "$ROOT_DIR/forkop/files/usr/bin/forkop" "$output_root/usr/bin/forkop"
+  install -m 0755 "$ROOT_DIR/forkop/files/usr/libexec/forkop-ro" "$output_root/usr/libexec/forkop-ro"
   cp -a "$ROOT_DIR/forkop/files/usr/lib/." "$output_root/usr/lib/forkop/"
 
   sed -i -e "s/__COMPILED_VERSION_VARIABLE__/${RELEASE_VERSION}/g" \
@@ -205,6 +207,7 @@ build_backend_root() {
     "$output_root/etc/init.d/forkop" \
     "$output_root/etc/init.d/forkop-torrserver-direct" \
     "$output_root/usr/bin/forkop" \
+    "$output_root/usr/libexec/forkop-ro" \
     "$output_root/usr/share/forkop/mirror-migration.sh"
 }
 

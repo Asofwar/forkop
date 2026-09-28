@@ -3,6 +3,7 @@
 let fs = require("fs");
 let constants = require("core.constants");
 let uci_core = require("core.uci");
+let common = require("core.common");
 
 function as_string(value) {
     return value == null ? "" : "" + value;
@@ -620,6 +621,24 @@ function discard_dnsmasq_reload_config() {
     dns_reload_backup = "";
 }
 
+// D-1 (b), UC-007: the Clash API secret is mandatory. The package postinst
+// migration generates it, but a configuration that never went through the
+// postinst (Forkop built into a firmware image, a keep-settings sysupgrade, a
+// restored backup of an older config) would otherwise be refused by the
+// validator. Only an absent or blank secret is filled in; an existing one is
+// never replaced, and the value is never logged.
+function ensure_clash_api_secret() {
+    if (config_get(CONFIG_NAME + ".settings.yacd_secret_key", "") != "")
+        return true;
+    let secret = common.random_hex_secret();
+    if (secret == null || !config_set(CONFIG_NAME + ".settings.yacd_secret_key", secret) || config_commit() != 0) {
+        log_message("Could not generate the mandatory Clash API secret", "warn");
+        return false;
+    }
+    log_message("Generated the mandatory Clash API secret", "info");
+    return true;
+}
+
 function validate_start_config() {
     let status = module_status(VALIDATOR_UC, [ "check-requirements" ]);
     if (status != 0)
@@ -873,6 +892,7 @@ function start_main() {
     log_message("Starting Forkop", "info");
     clear_start_failure();
 
+    ensure_clash_api_secret();
     status = validate_start_config();
     if (status != 0)
         return status;
@@ -1682,6 +1702,7 @@ function reload(reason) {
     // check/apply failures have not changed the live policy.
     let runtime_changed = false;
     let force_runtime_reload = reason == "on_config_change" ? 0 : 1;
+    ensure_clash_api_secret();
     let reload_config_fingerprint = external_config_fingerprint();
     rule_condition_cache_enabled = force_runtime_reload;
 

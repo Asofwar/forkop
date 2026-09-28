@@ -289,7 +289,7 @@
     "call": "All",
     "key": "All",
     "places": [
-      "src/forkop/tabs/history/model.ts:122"
+      "src/forkop/tabs/history/model.ts:124"
     ]
   },
   {
@@ -558,7 +558,7 @@
     "call": "Autotune",
     "key": "Autotune",
     "places": [
-      "src/forkop/tabs/history/model.ts:120"
+      "src/forkop/tabs/history/model.ts:122"
     ]
   },
   {
@@ -573,6 +573,20 @@
     "key": "Autotune mode changed",
     "places": [
       "src/forkop/ui/status.ts:274"
+    ]
+  },
+  {
+    "call": "Autotune recommendation confirmed",
+    "key": "Autotune recommendation confirmed",
+    "places": [
+      "src/forkop/ui/status.ts:276"
+    ]
+  },
+  {
+    "call": "Autotune run",
+    "key": "Autotune run",
+    "places": [
+      "src/forkop/ui/status.ts:278"
     ]
   },
   {
@@ -603,21 +617,21 @@
     "call": "Before applying changes",
     "key": "Before applying changes",
     "places": [
-      "src/forkop/tabs/history/model.ts:156"
+      "src/forkop/tabs/history/model.ts:158"
     ]
   },
   {
     "call": "Before autotune",
     "key": "Before autotune",
     "places": [
-      "src/forkop/tabs/history/model.ts:162"
+      "src/forkop/tabs/history/model.ts:164"
     ]
   },
   {
     "call": "Before restore",
     "key": "Before restore",
     "places": [
-      "src/forkop/tabs/history/model.ts:158"
+      "src/forkop/tabs/history/model.ts:160"
     ]
   },
   {
@@ -808,14 +822,14 @@
     "call": "Calculated",
     "key": "Calculated",
     "places": [
-      "src/forkop/ui/status.ts:294"
+      "src/forkop/ui/status.ts:298"
     ]
   },
   {
     "call": "Calculated result",
     "key": "Calculated result",
     "places": [
-      "src/forkop/ui/status.ts:307"
+      "src/forkop/ui/status.ts:311"
     ]
   },
   {
@@ -1173,7 +1187,7 @@
     "call": "Configuration",
     "key": "Configuration",
     "places": [
-      "src/forkop/tabs/history/model.ts:116"
+      "src/forkop/tabs/history/model.ts:118"
     ]
   },
   {
@@ -1508,7 +1522,7 @@
     "call": "Derived from configuration",
     "key": "Derived from configuration",
     "places": [
-      "src/forkop/ui/status.ts:305"
+      "src/forkop/ui/status.ts:309"
     ]
   },
   {
@@ -2763,7 +2777,7 @@
     "call": "From configuration",
     "key": "From configuration",
     "places": [
-      "src/forkop/ui/status.ts:292"
+      "src/forkop/ui/status.ts:296"
     ]
   },
   {
@@ -3620,7 +3634,7 @@
     "key": "Last known good",
     "places": [
       "src/forkop/tabs/history/initController.ts:367",
-      "src/forkop/tabs/history/model.ts:160"
+      "src/forkop/tabs/history/model.ts:162"
     ]
   },
   {
@@ -3801,7 +3815,7 @@
     "call": "Manual",
     "key": "Manual",
     "places": [
-      "src/forkop/tabs/history/model.ts:154"
+      "src/forkop/tabs/history/model.ts:156"
     ]
   },
   {
@@ -4218,8 +4232,8 @@
     "call": "Not determined",
     "key": "Not determined",
     "places": [
-      "src/forkop/ui/status.ts:296",
-      "src/forkop/ui/status.ts:309"
+      "src/forkop/ui/status.ts:300",
+      "src/forkop/ui/status.ts:313"
     ]
   },
   {
@@ -4302,7 +4316,7 @@
     "call": "Observed",
     "key": "Observed",
     "places": [
-      "src/forkop/ui/status.ts:290"
+      "src/forkop/ui/status.ts:294"
     ]
   },
   {
@@ -4442,7 +4456,7 @@
     "call": "Other",
     "key": "Other",
     "places": [
-      "src/forkop/tabs/history/model.ts:164",
+      "src/forkop/tabs/history/model.ts:166",
       "src/forkop/tabs/monitoring/connectionView.ts:122"
     ]
   },
@@ -4450,7 +4464,7 @@
     "call": "Other event",
     "key": "Other event",
     "places": [
-      "src/forkop/ui/status.ts:280"
+      "src/forkop/ui/status.ts:284"
     ]
   },
   {
@@ -5333,7 +5347,7 @@
     "call": "Seen in an active connection",
     "key": "Seen in an active connection",
     "places": [
-      "src/forkop/ui/status.ts:303"
+      "src/forkop/ui/status.ts:307"
     ]
   },
   {
@@ -5526,7 +5540,7 @@
     "call": "Service",
     "key": "Service",
     "places": [
-      "src/forkop/tabs/history/model.ts:118"
+      "src/forkop/tabs/history/model.ts:120"
     ]
   },
   {
@@ -5693,14 +5707,14 @@
     "call": "Snapshot created",
     "key": "Snapshot created",
     "places": [
-      "src/forkop/ui/status.ts:276"
+      "src/forkop/ui/status.ts:280"
     ]
   },
   {
     "call": "Snapshot deleted",
     "key": "Snapshot deleted",
     "places": [
-      "src/forkop/ui/status.ts:278",
+      "src/forkop/ui/status.ts:282",
       "src/forkop/tabs/history/initController.ts:301"
     ]
   },

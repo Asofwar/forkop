@@ -12,7 +12,8 @@
 //     policy.apply_min_confidence (always "high");
 //   - the rule does not carry a custom strategy of the user;
 //   - the candidate is not in its cooldown after a rollback or failure;
-//   - fewer than policy.max_applies_per_day applies in the last 24 hours.
+//   - fewer than policy.max_applies_per_day applies in the last 24 hours;
+//   - the state was not recovered from a corrupt file within policy.cooldown.
 // "direct" is never applied: Forkop never turns DPI off by itself.
 let policy_module = require("autotune.policy");
 
@@ -28,7 +29,7 @@ function applies_today(applies, now) {
 }
 
 // ctx: { policy, trigger, group (hysteresis state), result (aggregate),
-//        custom, applies, now, cooldown_until }
+//        custom, applies, now, cooldown_until, recovered_at }
 // → { apply: bool, reason } — reason is null only when it may be applied.
 function decide(ctx) {
     let p = ctx.policy, r = ctx.result || {};
@@ -41,6 +42,8 @@ function decide(ctx) {
         return { apply: false, reason: "confidence_too_low" };
     if (ctx.custom === true) return { apply: false, reason: "custom_strategy_kept" };
     if (ctx.cooldown_until != null && ctx.now < ctx.cooldown_until) return { apply: false, reason: "candidate_in_cooldown" };
+    if (type(ctx.recovered_at) == "int" && ctx.now < ctx.recovered_at + int(p.cooldown_seconds))
+        return { apply: false, reason: "state_recovered" };
     let limit = int(p.max_applies_per_day);
     if (limit <= 0) return { apply: false, reason: "applies_disabled" };
     if (applies_today(ctx.applies, ctx.now) >= limit) return { apply: false, reason: "daily_limit_reached" };

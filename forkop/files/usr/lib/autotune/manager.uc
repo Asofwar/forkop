@@ -20,6 +20,10 @@
 //   run-status <job>    state and result of a job (read-only)
 //   cron-sync | cron-remove   the scheduling cron line
 //
+// A run is marked running in the persistent state; the next run finds a
+// run that died (crash, kill, reboot), records it in the history and, when
+// it died while applying, counts that apply and cools its candidate down.
+//
 // Must be invoked as: ucode -L <lib> <lib>/autotune/manager.uc <mode> ...
 let fs = require("fs");
 let resolver = require("routing.resolve");
@@ -73,6 +77,18 @@ function config_sections() {
 
 // ---- read-only views -----------------------------------------------------
 
+// A run marked running while nobody holds the worker lock ended without
+// finishing: the worker crashed or the router rebooted during the run.
+function worker_view(worker) {
+    if (type(worker) != "object" || worker.state != "running") return worker;
+    let handle = fs.open(WORKER_LOCK, "r");
+    if (!handle) return { ...worker, state: "crashed" };
+    let free = handle.lock("xn");
+    if (free) handle.lock("u");
+    handle.close();
+    return free ? { ...worker, state: "crashed" } : worker;
+}
+
 function status() {
     let sections = config_sections();
     if (sections == null) return { status: "failed", reason: "config_unavailable" };
@@ -85,7 +101,9 @@ function status() {
         targets: map(read.targets, (t) => ({ ...t, last: state.targets[t.id] || null })),
         groups: state.groups,
         next_run_at: state.next_run_at,
-        worker: state.worker
+        worker: worker_view(state.worker),
+        recovered_at: state.recovered_at,
+        state_recovered: state.recovered_from || null
     };
 }
 
@@ -404,6 +422,12 @@ function apply_group(name, aggregate, full, dns_resolver) {
     else if (plan.selected != aggregate.candidate) record.reason = "plan_candidate_differs";
     else if (fs.writefile(plan_file, sprintf("%J\n", plan)) == null) record.reason = "plan_write_failed";
     else {
+        // A crash from here on leaves an apply of unknown outcome; the next
+        // run counts it and cools the candidate down (recover_crashed_run).
+        with_state((state) => {
+            if (type(state.worker) == "object")
+                state.worker = { ...state.worker, phase: "applying", group: name, candidate: aggregate.candidate, phase_at: now() };
+        });
         let result = run_tool("apply", [ "apply", plan_file, dns_resolver ]);
         let o = autoapply.outcome(result);
         record.status = o.status;
@@ -416,21 +440,62 @@ function apply_group(name, aggregate, full, dns_resolver) {
     return record;
 }
 
+// Temporary selection/plan directories of a run that died; only called
+// with the worker lock held, so none of them belongs to a live run.
+function remove_stale_apply_dirs() {
+    for (let name in fs.lsdir(TMP_DIR) || [])
+        if (match(name, /^forkop-autotune-apply\.[A-Za-z0-9]+$/) != null)
+            system(command([ "rm", "-rf", TMP_DIR + "/" + name ]));
+}
+
+// Marks this run as running in the state (flash), so a crash or a reboot
+// during the run is found by the next one. A previous run still marked
+// running died: it is recorded, and an apply it was doing counts against
+// the daily limit and cools its candidate down, since its outcome is not
+// known (autotune/apply.uc itself keeps the transaction recoverable).
+function begin_run(trigger, scope, started, policy) {
+    let crashed = null;
+    with_state((state) => {
+        if (type(state.worker) == "object" && state.worker.state == "running") {
+            crashed = { ...state.worker, state: "crashed", detected_at: now() };
+            if (crashed.phase == "applying" && state_module.valid_id(crashed.group)) {
+                push(state.applies, { at: int(crashed.phase_at) || now(), group: crashed.group, candidate: crashed.candidate,
+                    representative: null, status: "unknown", reason: "worker_crashed_during_apply", counted: true });
+                let g = type(state.groups[crashed.group]) == "object" ? state.groups[crashed.group] : hysteresis.empty_group();
+                g = hysteresis.start_cooldown(g, crashed.candidate, policy.cooldown_seconds, now());
+                g.pending = null;
+                g.ready = false;
+                state.groups[crashed.group] = g;
+            }
+        }
+        let pid = self_pid();
+        state.worker = { state: "running", pid, ticks: identity.start_ticks(pid), trigger, scope, started_at: started,
+            phase: "measuring" };
+    });
+    if (crashed != null) history("autotune_run", "failure");
+    return crashed;
+}
+
 function run_locked(scope, trigger) {
     let started = now();
     let sections = config_sections();
     if (sections == null) return { status: "failed", reason: "config_unavailable" };
     let read = policy_module.read(sections), policy = read.policy;
+    let crashed = begin_run(trigger, scope, started, policy);
+    remove_stale_apply_dirs();
     let local = state_module.read();
+    // A state recovered from a corrupt file in this very run.
+    let recovered_at = local.recovered_at != null ? local.recovered_at : local.recovered_from != null ? started : null;
     let updates = { targets: {}, groups: {}, applies: [], worker: null, rotation: null, next_run_at: null };
     let report = {}, tuned = [], unmeasured = [], outside = [], chosen = [], stop = null, results = {}, applied = null;
+    let unknown_group = false;
 
     let reason = blocker();
     if (reason == null) {
         let computed = compute_groups(sections, read.targets, local);
         outside = computed.outside;
         chosen = choose(keys(computed.groups), scope, local.rotation);
-        if (chosen == null) return { status: "failed", reason: "unknown_group", group: scope };
+        if (chosen == null) { unknown_group = true; chosen = []; }
         for (let name in chosen) {
             let g = computed.groups[name];
             for (let id in g.targets) {
@@ -454,12 +519,14 @@ function run_locked(scope, trigger) {
             // confirms a recommendation a second time.
             let aggregate = groups_module.aggregate(map(g.targets, (id) => ({ id, summary: updates.targets[id] || null })), g.current);
             let observed = hysteresis.observe(local.groups[name], { ...aggregate, fingerprint: g.fingerprint }, policy, now());
+            let was_ready = type(local.groups[name]) == "object" && local.groups[name].ready === true;
+            if (observed.ready && !was_ready) history("autotune_recommendation", "success");
             let group = { ...observed.group, label: g.label, targets: g.targets, current: g.current,
                 events: observed.events, ready: observed.ready, required: observed.required, result: aggregate };
             // At most one production change per run.
             let decision = applied != null ? { apply: false, reason: "one_apply_per_run" } : autoapply.decide({
                 policy, trigger, group, result: aggregate, custom: g.custom, applies: local.applies, now: now(),
-                cooldown_until: hysteresis.cooldown_until(group, aggregate.candidate) });
+                cooldown_until: hysteresis.cooldown_until(group, aggregate.candidate), recovered_at });
             if (decision.apply && results[aggregate.representative] == null) decision = { apply: false, reason: "representative_not_measured" };
             group.decision = { reason: decision.reason, at: now() };
             if (decision.apply) {
@@ -480,16 +547,20 @@ function run_locked(scope, trigger) {
     }
 
     let result = reason == null ? "completed" : reason == "interrupted" ? "interrupted" : "skipped";
-    if (result == "completed" && length(chosen) == 0) reason = "no_groups";
+    if (unknown_group) { result = "failed"; reason = "unknown_group"; }
+    else if (result == "completed" && length(chosen) == 0) reason = "no_groups";
     // An unfinished group keeps its turn.
     if (scope == "auto" && result == "completed" && length(chosen) > 0) updates.rotation = local.rotation + 1;
     if (trigger == "schedule")
         updates.next_run_at = result == "completed" ? started + policy.interval_seconds : now() + RETRY_SECONDS;
-    updates.worker = { trigger, scope, started_at: started, finished_at: now(), result, reason,
-        groups: chosen, tuned, unmeasured, applied: applied != null ? applied.status : null };
+    updates.worker = { state: "finished", trigger, scope, started_at: started, finished_at: now(), result, reason,
+        groups: chosen, tuned, unmeasured, applied: applied != null ? applied.status : null,
+        recovered: crashed != null ? { started_at: crashed.started_at, trigger: crashed.trigger, phase: crashed.phase,
+            group: crashed.group || null } : null };
     merge(updates);
+    if (unknown_group) return { status: "failed", reason: "unknown_group", group: scope };
     return { status: "ok", result, reason, trigger, scope, groups: report, tuned, unmeasured, outside,
-        applied, next_run_at: updates.next_run_at };
+        applied, recovered: updates.worker.recovered, next_run_at: updates.next_run_at };
 }
 
 function run(scope, trigger) {

@@ -2,7 +2,8 @@
 //   status          $STUB_APPLY_STATUS or a clean state;
 //   plan <sel> <r>  $STUB_TUNE_DIR/plan.json or a ready plan for the
 //                   selection, owned by $STUB_PLAN_OWNER (default youtube);
-//   apply <plan> <r> $STUB_TUNE_DIR/apply.json or "applied".
+//   apply <plan> <r> $STUB_TUNE_DIR/apply.json or "applied" (after
+//                   $STUB_APPLY_SLEEP seconds, when set).
 // plan and apply calls are logged to $STUB_TUNE_DIR/apply.log.
 let fs = require("fs");
 let dir = getenv("STUB_TUNE_DIR");
@@ -24,6 +25,7 @@ else if (mode == "plan") {
 else if (mode == "apply") {
     let plan = read_json(ARGV[1]);
     log(sprintf("apply %s %s %s", plan ? plan.owner.section : "-", plan ? plan.selected : "-", ARGV[2]));
+    if (getenv("STUB_APPLY_SLEEP")) system("sleep " + getenv("STUB_APPLY_SLEEP"));
     let data = fs.readfile(dir + "/apply.json");
     print(data != null ? data : sprintf("%J\n", { status: "applied", reason: null, applied: true }));
 }

@@ -486,13 +486,19 @@ function createSettingsContent(sections, capabilities) {
     "yacd_secret_key",
     _("YACD Secret Key"),
     _(
-      "Secret of the Clash API controller used by YACD and the Forkop pages. It protects the controller with or without WAN access.",
+      "Secret of the Clash API controller used by YACD and the Forkop pages. Required: it is generated on installation and protects the controller with or without WAN access.",
     ),
   );
   // Not tied to WAN access: an inactive option would be removed on save,
   // while sing-box keeps requiring the secret on the LAN (UC-035).
   o.password = true;
   o.rmempty = false;
+  o.validate = function (section_id, value) {
+    if (!value || !String(value).trim()) {
+      return _("Clash API secret cannot be empty");
+    }
+    return true;
+  };
 
   o = sections.network.option(
     form.Flag,

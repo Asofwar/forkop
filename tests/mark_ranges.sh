@@ -57,7 +57,8 @@ assert_mark_range_no_overlap "Zapret2" "$((ZAPRET2_ROUTE_MARK_BASE))" "$ZAPRET2_
 
 cat >"$WORK_DIR/fixture.json" <<'JSON'
 {
-  "settings": { ".name": "settings", ".type": "settings", "dns_server": [ "77.88.8.8" ], "bootstrap_dns_server": [ "77.88.8.8" ] }
+  "settings": { ".name": "settings", ".type": "settings", "dns_server": [ "77.88.8.8" ], "bootstrap_dns_server": [ "77.88.8.8" ],
+    "yacd_secret_key": "test-clash-secret" }
 }
 JSON
 

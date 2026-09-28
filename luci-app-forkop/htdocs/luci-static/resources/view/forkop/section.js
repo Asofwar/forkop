@@ -4351,6 +4351,687 @@ function backendPortValues(section_id) {
   return result;
 }
 
+// Legacy rule settings (UC-042, UC-043, D-6 a). Earlier versions, the podkop
+// migration and the CLI can leave conditions in forms the editor does not
+// write: lists and *_text options the backend still reads, text mode
+// switches, a legacy interface list, downloaded lists and podkop matchers the
+// generator refuses. The rule modal lists them with what the backend does
+// with them. On request it converts what has an exact equivalent into the
+// options the editor writes, so that the generated sing-box configuration
+// and the firewall sets stay the same; nothing is migrated silently.
+
+// routing/rule_conditions.uc legacy_condition_values() keys, with their
+// prefix in the combined domain text.
+const LEGACY_TEXT_CONDITIONS = [
+  ["domain", "full"],
+  ["domain_keyword", "keyword"],
+  ["domain_regex", "regex"],
+  ["ip_cidr", ""],
+  ["source_ip_cidr", ""],
+  ["excluded_source_ip_cidr", ""],
+];
+// singbox/generator.uc unsupported_matcher_key().
+const UNSUPPORTED_LEGACY_MATCHERS = [
+  "subnet",
+  "subnet_text",
+  "local_domain_lists",
+  "local_subnet_lists",
+];
+// config/connections.uc interfaces() and interface_domain_resolver_*().
+const LEGACY_INTERFACE_OPTIONS = [
+  "interfaces",
+  "interface",
+  "interface_settings",
+  "domain_resolver_enabled",
+  "domain_resolver_dns_type",
+  "domain_resolver_dns_server",
+];
+
+function hasStoredOption(section_id, key) {
+  const value = uci.get(UCI_PACKAGE, section_id, key);
+  return Array.isArray(value)
+    ? value.length > 0
+    : value !== null && value !== undefined && `${value}` !== "";
+}
+
+function displayOptionValue(value) {
+  return (Array.isArray(value) ? value : `${value ?? ""}`.split("\n"))
+    .map((item) => `${item}`.trim())
+    .filter(Boolean)
+    .join(", ");
+}
+
+// An item the combined text reads back as it is (config/rule.uc
+// text_list_values(): spaces and commas separate items, // and # start a
+// comment).
+function isTextListItem(value) {
+  const text = `${value}`;
+  return /^[^\s,#]+$/.test(text) && !text.includes("//");
+}
+
+// nft reads a text mode switch with int() (config/rule.uc
+// legacy_condition_csv_value()), sing-box with bool_option().
+function textModeSwitchAgrees(section_id, key) {
+  const text = backendOptionText(uci.get(UCI_PACKAGE, section_id, key));
+  return backendFlag(section_id, key) === (Number.parseInt(text, 10) === 1);
+}
+
+// config/connections.uc interface_domain_resolver_*() for an interface of the
+// legacy list: its interface_settings entry, else the rule options. Null when
+// an interface item cannot hold the same values.
+function legacyInterfaceSettings(section_id, name) {
+  let settings = {};
+  try {
+    const parsed = JSON.parse(
+      backendOptionText(uci.get(UCI_PACKAGE, section_id, "interface_settings")),
+    );
+    const entry = parsed && !Array.isArray(parsed) ? parsed[name] : null;
+    if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+      settings = entry;
+    }
+  } catch (_error) {
+    settings = {};
+  }
+
+  const value = (key, fallback) => {
+    const item = settings[key];
+    return item === null || item === undefined ? fallback : item;
+  };
+  const enabled = value("domain_resolver_enabled", "");
+  const result = {
+    domain_resolver_enabled: (
+      enabled === ""
+        ? backendFlag(section_id, "domain_resolver_enabled")
+        : ["1", "true", "yes", "on"].includes(`${enabled}`)
+    )
+      ? "1"
+      : "0",
+    domain_resolver_dns_type: value(
+      "domain_resolver_dns_type",
+      backendOptionText(
+        uci.get(UCI_PACKAGE, section_id, "domain_resolver_dns_type"),
+      ) || "udp",
+    ),
+    domain_resolver_dns_server: value(
+      "domain_resolver_dns_server",
+      backendOptionText(
+        uci.get(UCI_PACKAGE, section_id, "domain_resolver_dns_server"),
+      ) || "8.8.8.8",
+    ),
+  };
+
+  return [
+    enabled,
+    result.domain_resolver_dns_type,
+    result.domain_resolver_dns_server,
+  ].some((item) => typeof item === "object") ||
+    result.domain_resolver_dns_type === "" ||
+    result.domain_resolver_dns_server === ""
+    ? null
+    : Object.fromEntries(
+        Object.entries(result).map(([key, item]) => [key, `${item}`]),
+      );
+}
+
+// What the rule keeps in a legacy form, what the backend does with it, and
+// the conversion: { changes: { option: value or null to remove }, items:
+// interface items to add }. Null when the rule has nothing legacy.
+function legacyRuleConditions(section_id) {
+  const findings = [];
+  const blockers = [];
+  const changes = {};
+  const items = [];
+  const raw = (key) => uci.get(UCI_PACKAGE, section_id, key);
+  const has = (key) => hasStoredOption(section_id, key);
+  const found = (key, effect) => {
+    if (has(key)) {
+      findings.push({ key, value: displayOptionValue(raw(key)), effect });
+    }
+  };
+  const drop = (key) => {
+    if (has(key)) {
+      changes[key] = null;
+    }
+  };
+  const cannotConvert = (key, value) =>
+    blockers.push(
+      _("%s: “%s” cannot be written in the current form unchanged").format(
+        key,
+        value,
+      ),
+    );
+  const dns = backendOptionText(raw("action")) === "dns";
+  const used = _("used by the rule");
+  const noEffect = _("has no effect");
+  const domainsAndDevicesOnly = _(
+    "ignored: DNS rules match domains and devices only",
+  );
+  const domainItems = [];
+  let domainLegacy = false;
+
+  ["conditions_text_mode"]
+    .concat(LEGACY_TEXT_CONDITIONS.map(([key]) => `${key}_text_mode`))
+    .forEach((key) => {
+      if (has(key) && !textModeSwitchAgrees(section_id, key)) {
+        blockers.push(
+          _("%s is “%s”: sing-box and the firewall read it differently").format(
+            key,
+            backendOptionText(raw(key)),
+          ),
+        );
+      }
+    });
+
+  found(
+    "conditions_text_mode",
+    backendFlag(section_id, "conditions_text_mode")
+      ? _("turns text mode on for domains, IPs and devices")
+      : noEffect,
+  );
+  drop("conditions_text_mode");
+
+  LEGACY_TEXT_CONDITIONS.forEach(([key, prefix]) => {
+    const textKey = `${key}_text`;
+    const modeKey = `${key}_text_mode`;
+    const value = raw(key);
+    // `option domain` (the combined text), `option ip_cidr` and the device
+    // lists are what the editor writes.
+    const legacyValue =
+      key === "domain" || key === "ip_cidr"
+        ? Array.isArray(value) && value.length > 0
+        : Boolean(prefix) && has(key);
+    const textMode = conditionTextMode(section_id, key);
+    const valueIgnored =
+      textMode && (key === "domain" ? legacyValue : has(key));
+
+    if (!legacyValue && !valueIgnored && !has(textKey) && !has(modeKey)) {
+      return;
+    }
+
+    if (dns && key === "ip_cidr") {
+      if (legacyValue) {
+        found(key, domainsAndDevicesOnly);
+        drop(key);
+      }
+      [textKey, modeKey].forEach((item) => {
+        found(item, domainsAndDevicesOnly);
+        drop(item);
+      });
+      return;
+    }
+
+    const current = backendConditionValues(section_id, key);
+    if (textMode) {
+      found(textKey, _("used by the rule: text mode is on"));
+      if (valueIgnored) {
+        found(key, _("ignored: text mode reads %s instead").format(textKey));
+      }
+    } else {
+      if (legacyValue) {
+        found(key, used);
+      }
+      found(
+        textKey,
+        ["list", "option"].includes(current.source)
+          ? _("ignored: %s is used instead").format(key)
+          : used,
+      );
+    }
+    found(
+      modeKey,
+      backendFlag(section_id, modeKey) ? _("turns text mode on") : noEffect,
+    );
+    drop(textKey);
+    drop(modeKey);
+
+    const values = current.values.map((item) => `${item}`);
+    const source = current.source === "text" ? textKey : key;
+    if (prefix) {
+      // Legacy exact, keyword and regex conditions become full:, keyword:
+      // and regex: items of the combined text, in the generator's order.
+      domainLegacy = true;
+      values.forEach((item) => {
+        if (
+          !isTextListItem(item) ||
+          item.toLowerCase().startsWith(`${prefix}:`)
+        ) {
+          cannotConvert(source, item);
+        }
+        domainItems.push(`${prefix}:${item}`);
+      });
+      drop(key);
+      return;
+    }
+
+    if (key === "ip_cidr") {
+      let text = "";
+      if (current.source === "text") {
+        text = backendOptionText(raw(textKey));
+      } else if (current.source === "list") {
+        values
+          .filter((item) => !isTextListItem(item))
+          .forEach((item) => {
+            cannotConvert(key, item);
+          });
+        text = values.join("\n");
+      } else if (current.source === "option") {
+        text = `${value}`;
+      }
+
+      if (Array.isArray(value) || text !== backendOptionText(value)) {
+        const analysis = analyzeIpCidrText(text);
+        if (!analysis.valid) {
+          blockers.push(`${key}: ${analysis.message.replace(/\n/g, "; ")}`);
+        }
+        changes[key] = text || null;
+      }
+      return;
+    }
+
+    // Device lists: the editor keeps them as lists.
+    if (["text", "none"].includes(current.source)) {
+      if (values.length) {
+        changes[key] = values;
+      } else {
+        drop(key);
+      }
+    }
+  });
+
+  ["domain_suffix", "domain_suffix_text"].forEach((key) => {
+    domainLegacy = domainLegacy || has(key);
+    found(key, used);
+  });
+  domainLegacy = domainLegacy || has("domain_suffix_text_mode");
+  found("domain_suffix_text_mode", noEffect);
+
+  if (domainLegacy) {
+    // routing/rule_conditions.uc combined_domain_source_values(): the
+    // combined text, domain_suffix_text, then the domain_suffix items.
+    const suffixValue = raw("domain_suffix");
+    const suffixItems = (
+      Array.isArray(suffixValue)
+        ? suffixValue.map((item) => `${item}`)
+        : `${suffixValue ?? ""}`.trim().split(" ")
+    ).filter((item) => item !== "");
+    suffixItems
+      .filter((item) => !isTextListItem(item))
+      .forEach((item) => cannotConvert("domain_suffix", item));
+
+    const domainValue = raw("domain");
+    const text = [
+      ...domainItems,
+      ...(typeof domainValue === "string" && domainValue ? [domainValue] : []),
+      ...(has("domain_suffix_text")
+        ? [backendOptionText(raw("domain_suffix_text"))]
+        : []),
+      ...suffixItems,
+    ].join("\n");
+    const analysis = analyzeDomainSuffixText(text);
+    if (!analysis.valid) {
+      blockers.push(`domain: ${analysis.message.replace(/\n/g, "; ")}`);
+    }
+    if (Array.isArray(domainValue) || text !== `${domainValue ?? ""}`) {
+      changes.domain = text || null;
+    } else {
+      delete changes.domain;
+    }
+    ["domain_suffix", "domain_suffix_text", "domain_suffix_text_mode"].forEach(
+      drop,
+    );
+  }
+
+  if (has("ports_text")) {
+    if (dns) {
+      found("ports_text", domainsAndDevicesOnly);
+    } else {
+      found(
+        "ports_text",
+        _("used by the rule together with %s").format("ports"),
+      );
+      // singbox/generator.uc add_port_matchers(): the ports items, then the
+      // ports of ports_text, each value once.
+      const portsValue = raw("ports");
+      const listItems = Array.isArray(portsValue)
+        ? portsValue.map((item) => `${item}`)
+        : `${portsValue ?? ""}`.trim().split(" ");
+      const seen = new Set();
+      const ports = [];
+      listItems
+        .concat(
+          backendTextListValues(raw("ports_text")).filter(backendPortValue),
+        )
+        .forEach((item) => {
+          const trimmed = item.trim();
+          if (trimmed && !seen.has(trimmed)) {
+            seen.add(trimmed);
+            ports.push(trimmed);
+          }
+        });
+      if (!ports.length) {
+        drop("ports");
+      } else if (
+        !Array.isArray(portsValue) ||
+        !stringArraysEqual(portsValue, ports)
+      ) {
+        changes.ports = ports;
+      }
+    }
+    drop("ports_text");
+  }
+
+  found("fully_routed_ips_text", _("ignored: the backend does not read it"));
+  drop("fully_routed_ips_text");
+
+  if (has("interfaces") || has("interface")) {
+    const interfacesValue = raw("interfaces");
+    const names = Array.isArray(interfacesValue)
+      ? interfacesValue.map((item) => `${item}`)
+      : [`${has("interfaces") ? interfacesValue : raw("interface")}`];
+    const connection = isConnectionRuleSection(
+      uci.get(UCI_PACKAGE, section_id),
+    );
+    const withItems =
+      getChildItemIds(section_id, "section_interface").length > 0;
+    let effect = _(
+      "used by the rule; the Network Interface field does not show it",
+    );
+    if (!connection) {
+      effect = _("ignored: only Connection rules use interfaces");
+    } else if (withItems) {
+      effect = _("ignored: the rule has interface items");
+    }
+
+    LEGACY_INTERFACE_OPTIONS.forEach((key) =>
+      found(
+        key,
+        key === "interface" && has("interfaces")
+          ? _("ignored: %s is used instead").format("interfaces")
+          : effect,
+      ),
+    );
+    if (connection && !withItems) {
+      const seen = new Set();
+      names.forEach((name) => {
+        const settings = legacyInterfaceSettings(section_id, name);
+        if (!name.trim() || seen.has(name) || !settings) {
+          cannotConvert("interfaces", name);
+        }
+        seen.add(name);
+        items.push({ name, settings });
+      });
+    }
+    LEGACY_INTERFACE_OPTIONS.forEach(drop);
+  }
+
+  found(
+    "remote_domain_lists",
+    _("downloaded by the list update; the rule matches the domains in them"),
+  );
+  found(
+    "remote_subnet_lists",
+    dns
+      ? _("ignored: DNS rules match domains only")
+      : _(
+          "downloaded by the list update; the rule matches the addresses in them",
+        ),
+  );
+
+  const unsupported = UNSUPPORTED_LEGACY_MATCHERS.filter(has);
+  unsupported.forEach((key) =>
+    found(
+      key,
+      _(
+        "no longer supported: the configuration cannot be applied while the rule is enabled",
+      ),
+    ),
+  );
+
+  if (!findings.length) {
+    return null;
+  }
+
+  const conversion =
+    Object.keys(changes).length || items.length ? { changes, items } : null;
+  return {
+    findings,
+    blockers: conversion ? blockers : [],
+    conversion,
+    unsupported,
+    remote: ["remote_domain_lists", "remote_subnet_lists"].some(has),
+  };
+}
+
+// What a conversion sets, adds and removes, as the preview lists it.
+function legacyConversionPreview(conversion) {
+  const lines = [];
+  const removed = [];
+
+  Object.entries(conversion.changes).forEach(([key, value]) => {
+    if (value === null) {
+      removed.push(key);
+    } else {
+      lines.push(_("set %s: %s").format(key, displayOptionValue(value)));
+    }
+  });
+  conversion.items.forEach(({ name, settings }) => {
+    lines.push(
+      settings.domain_resolver_enabled === "1"
+        ? _("add the interface item %s with the DNS resolver %s %s").format(
+            name,
+            settings.domain_resolver_dns_type,
+            settings.domain_resolver_dns_server,
+          )
+        : _("add the interface item %s").format(name),
+    );
+  });
+  if (removed.length) {
+    lines.push(_("remove %s").format(removed.join(", ")));
+  }
+
+  return lines;
+}
+
+// Staged like any other edit of the rule: Save keeps it, Dismiss restores
+// the rule and drops the added items. Returns the ids of the added items.
+function applyLegacyConditionConversion(section_id, conversion) {
+  Object.entries(conversion.changes).forEach(([key, value]) => {
+    if (value === null) {
+      uci.unset(UCI_PACKAGE, section_id, key);
+    } else {
+      uci.set(UCI_PACKAGE, section_id, key, value);
+    }
+  });
+  return conversion.items.map(({ name, settings }) => {
+    const itemId = uci.add(UCI_PACKAGE, "section_interface");
+    uci.set(UCI_PACKAGE, itemId, "section", section_id);
+    uci.set(UCI_PACKAGE, itemId, "name", name);
+    Object.entries(settings).forEach(([key, value]) => {
+      uci.set(UCI_PACKAGE, itemId, key, value);
+    });
+    return itemId;
+  });
+}
+
+function renderLegacyConditionsNotice(option, section_id) {
+  const node = E("div", { class: "alert-message warning fkp-legacy-settings" });
+
+  // A role that may not change the configuration learns only that legacy
+  // settings exist: downloaded list URLs may carry credentials.
+  if (option.map.readonly) {
+    node.append(
+      E(
+        "p",
+        {},
+        _(
+          "This rule keeps settings in a legacy form from an earlier version. An administrator can review and convert them.",
+        ),
+      ),
+    );
+    return node;
+  }
+
+  const listItems = (lines) =>
+    E(
+      "ul",
+      {},
+      lines.map((line) => E("li", {}, line)),
+    );
+  const actionButton = (label, className, click) =>
+    E(
+      "button",
+      {
+        type: "button",
+        class: ["btn", "cbi-button", className].filter(Boolean).join(" "),
+        click,
+      },
+      label,
+    );
+
+  const render = (message) => {
+    const state = legacyRuleConditions(section_id);
+    const actions = E("div", { class: "fkp-legacy-settings__actions" });
+    const confirm = (question, lines, note, label, className, apply) => {
+      actions.textContent = "";
+      actions.append(
+        E("p", {}, question),
+        lines.length ? listItems(lines) : "",
+        note ? E("p", {}, note) : "",
+        E("div", { class: "fkp-legacy-settings__buttons" }, [
+          actionButton(_("Cancel"), "", () => render(message)),
+          " ",
+          actionButton(label, className, apply),
+        ]),
+      );
+    };
+
+    node.textContent = "";
+    if (message) {
+      node.append(E("p", {}, message));
+    }
+    if (!state) {
+      return;
+    }
+
+    node.append(
+      E(
+        "p",
+        {},
+        _(
+          "This rule keeps settings in a legacy form, from an earlier version, the podkop migration or the command line. The fields show what the rule matches; the legacy options stay as they are until you convert or remove them.",
+        ),
+      ),
+      E(
+        "ul",
+        {},
+        state.findings.map(({ key, value, effect }) =>
+          E("li", {}, [
+            E("code", {}, key),
+            value ? ` = ${value}` : "",
+            ` — ${effect}`,
+          ]),
+        ),
+      ),
+    );
+    if (state.remote) {
+      node.append(
+        E(
+          "p",
+          {},
+          _(
+            "The editor has no field for downloaded lists: they cannot be converted and stay as they are.",
+          ),
+        ),
+      );
+    }
+    if (state.blockers.length) {
+      node.append(
+        E(
+          "p",
+          {},
+          _(
+            "The legacy conditions cannot be converted without changing what the rule matches:",
+          ),
+        ),
+        listItems(state.blockers),
+      );
+    }
+
+    if (state.conversion && !state.blockers.length) {
+      const { conversion } = state;
+      actions.append(
+        actionButton(_("Convert…"), "cbi-button-action", () =>
+          confirm(
+            _(
+              "Convert the legacy settings of this rule? When you save the rule:",
+            ),
+            legacyConversionPreview(conversion),
+            _(
+              "The rule matches the same traffic as before. Closing the window without saving discards the conversion.",
+            ),
+            _("Convert"),
+            "cbi-button-action",
+            () => {
+              const itemIds = applyLegacyConditionConversion(
+                section_id,
+                conversion,
+              );
+              // The Network Interface field lists the items the legacy
+              // list became, so that saving or editing it keeps them.
+              const interfaces = option.section.children.find(
+                (child) => child.option === "interfaces",
+              );
+              const widget =
+                itemIds.length && interfaces
+                  ? interfaces.getUIElement(section_id)
+                  : null;
+              if (widget) {
+                widget.setValue(itemIds);
+              }
+              render(
+                _(
+                  "The legacy settings are converted. Save the rule to keep the change.",
+                ),
+              );
+            },
+          ),
+        ),
+        " ",
+      );
+    }
+    if (state.unsupported.length) {
+      const { unsupported } = state;
+      actions.append(
+        actionButton(_("Remove…"), "cbi-button-negative", () =>
+          confirm(
+            _(
+              "Remove %s from this rule? When you save the rule, it matches without them and the configuration can be applied again. Nothing else in the rule changes.",
+            ).format(unsupported.join(", ")),
+            [],
+            "",
+            _("Remove"),
+            "cbi-button-negative",
+            () => {
+              unsupported.forEach((key) =>
+                uci.unset(UCI_PACKAGE, section_id, key),
+              );
+              render(
+                _(
+                  "The unsupported settings are removed. Save the rule to keep the change.",
+                ),
+              );
+            },
+          ),
+        ),
+      );
+    }
+    node.append(actions);
+  };
+
+  render("");
+  return node;
+}
+
 function stringArraysEqual(left, right) {
   left = normalizeDynamicListItems(left);
   right = normalizeDynamicListItems(right);
@@ -8669,6 +9350,28 @@ function createSectionContent(section) {
     load: backendPortValues,
   });
   dependsOnRoutingAction(portsOption);
+
+  // Legacy forms of the rule's settings, what they do, and their explicit
+  // conversion or removal (D-6 a). Last of the Basics step.
+  o = section.taboption(
+    "basic",
+    form.DummyValue,
+    "_legacy_conditions",
+    _("Legacy settings"),
+  );
+  o.modalonly = true;
+  o.load = function (section_id) {
+    this.legacyStates = Object.assign({}, this.legacyStates, {
+      [section_id]: legacyRuleConditions(section_id),
+    });
+    return Promise.resolve(null);
+  };
+  o.checkDepends = function (section_id) {
+    return Boolean(this.legacyStates && this.legacyStates[section_id]);
+  };
+  o.renderWidget = function (section_id) {
+    return renderLegacyConditionsNotice(this, section_id);
+  };
 }
 
 function loadSectionTableOptions(sectionRef) {

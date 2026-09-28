@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-28 22:07+0000\n"
-"PO-Revision-Date: 2026-09-28 22:07+0000\n"
+"POT-Creation-Date: 2026-09-28 22:20+0000\n"
+"PO-Revision-Date: 2026-09-28 22:20+0000\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -65,11 +65,17 @@ msgstr "%s (провайдер не установлен)"
 msgid "%s (unavailable)"
 msgstr "%s (недоступна)"
 
+msgid "%s is “%s”: sing-box and the firewall read it differently"
+msgstr "%s = «%s»: sing-box и файрвол читают это значение по-разному"
+
 msgid "%s is not applied again before %t"
 msgstr "%s не применяется повторно до %t"
 
 msgid "%s is not installed. Install it in Components or choose another action."
 msgstr "%s не установлен. Установите его в разделе «Компоненты» или выберите другое действие."
+
+msgid "%s: “%s” cannot be written in the current form unchanged"
+msgstr "%s: «%s» нельзя записать в текущем виде без изменения смысла"
 
 msgid "+ Add JSON outbound"
 msgstr "+ Добавить JSON outbound"
@@ -169,6 +175,12 @@ msgstr "Добавлять префикс к узлам"
 
 msgid "Add target"
 msgstr "Добавить цель"
+
+msgid "add the interface item %s"
+msgstr "добавить интерфейс %s"
+
+msgid "add the interface item %s with the DNS resolver %s %s"
+msgstr "добавить интерфейс %s с DNS-резолвером %s %s"
 
 msgid "Add the sites that go through your DPI rules, for example youtube.com."
 msgstr "Добавьте сайты, которые идут через ваши DPI-правила, например youtube.com."
@@ -782,6 +794,15 @@ msgstr "Подключения недоступны"
 msgid "Connectivity probe failed"
 msgstr "Проверка соединения не прошла"
 
+msgid "Convert"
+msgstr "Конвертировать"
+
+msgid "Convert the legacy settings of this rule? When you save the rule:"
+msgstr "Конвертировать устаревшие настройки этого правила? При сохранении правила:"
+
+msgid "Convert…"
+msgstr "Конвертировать…"
+
 msgid "Copied"
 msgstr "Скопировано"
 
@@ -1126,6 +1147,12 @@ msgstr "Скачать отчёт для поддержки"
 
 msgid "Download through"
 msgstr "Скачивать через"
+
+msgid "downloaded by the list update; the rule matches the addresses in them"
+msgstr "загружается при обновлении списков; правило сопоставляет адреса из него"
+
+msgid "downloaded by the list update; the rule matches the domains in them"
+msgstr "загружается при обновлении списков; правило сопоставляет домены из него"
 
 msgid "DPI"
 msgstr "DPI"
@@ -1499,6 +1526,9 @@ msgstr "Получить глобальную проверку"
 msgid "Global check"
 msgstr "Глобальная проверка"
 
+msgid "has no effect"
+msgstr "ни на что не влияет"
+
 msgid "Healthy"
 msgstr "Норма"
 
@@ -1552,6 +1582,27 @@ msgstr "HTTPS-запрос выполняет сам роутер"
 
 msgid "Idle timeout"
 msgstr "Таймаут простоя"
+
+msgid "ignored: %s is used instead"
+msgstr "не используется: вместо него используется %s"
+
+msgid "ignored: DNS rules match domains and devices only"
+msgstr "не используется: DNS-правила сопоставляют только домены и устройства"
+
+msgid "ignored: DNS rules match domains only"
+msgstr "не используется: DNS-правила сопоставляют только домены"
+
+msgid "ignored: only Connection rules use interfaces"
+msgstr "не используется: интерфейсы используют только правила-подключения"
+
+msgid "ignored: text mode reads %s instead"
+msgstr "не используется: в текстовом режиме вместо него читается %s"
+
+msgid "ignored: the backend does not read it"
+msgstr "не используется: бэкенд эту опцию не читает"
+
+msgid "ignored: the rule has interface items"
+msgstr "не используется: у правила есть заданные интерфейсы"
 
 msgid "Import subscription URLTest groups"
 msgstr "Добавлять URLTest группы из подписки"
@@ -1913,6 +1964,9 @@ msgstr "Установлена последняя версия"
 msgid "Latest version:"
 msgstr "Последняя версия:"
 
+msgid "Legacy settings"
+msgstr "Устаревшие настройки"
+
 msgid "Level"
 msgstr "Уровень"
 
@@ -2128,6 +2182,9 @@ msgstr "Событий этого типа нет"
 
 msgid "No events recorded yet"
 msgstr "Событий пока нет"
+
+msgid "no longer supported: the configuration cannot be applied while the rule is enabled"
+msgstr "больше не поддерживается: пока правило включено, конфигурацию применить не удастся"
 
 msgid "No measurements yet."
 msgstr "Измерений пока нет."
@@ -2522,6 +2579,12 @@ msgstr "Удаление не завершено. Подробности в жу
 msgid "Remove"
 msgstr "Удалить"
 
+msgid "remove %s"
+msgstr "удалить %s"
+
+msgid "Remove %s from this rule? When you save the rule, it matches without them and the configuration can be applied again. Nothing else in the rule changes."
+msgstr "Удалить %s из этого правила? При сохранении правило будет работать без них, и конфигурацию снова можно будет применить. Остальное в правиле не изменится."
+
 msgid "Remove %s?"
 msgstr "Удалить %s?"
 
@@ -2842,6 +2905,9 @@ msgstr "Служебные"
 
 msgid "Service start"
 msgstr "Запуск службы"
+
+msgid "set %s: %s"
+msgstr "задать %s: %s"
 
 msgid "Setting"
 msgstr "Параметр"
@@ -3179,6 +3245,9 @@ msgstr "DPI-провайдер выбранной секции не устано
 msgid "The DPI rule that routes it could not be identified safely."
 msgstr "Не удалось надёжно определить DPI-правило, по которому она идёт."
 
+msgid "The editor has no field for downloaded lists: they cannot be converted and stay as they are."
+msgstr "Для загружаемых списков в редакторе нет поля: их нельзя конвертировать, они остаются как есть."
+
 msgid "The last change was rolled back automatically."
 msgstr "Последнее изменение было автоматически откачено."
 
@@ -3196,6 +3265,12 @@ msgstr "Последнее изменение конфигурации не уд
 
 msgid "The last known good snapshot cannot be deleted"
 msgstr "Последнюю рабочую конфигурацию удалить нельзя"
+
+msgid "The legacy conditions cannot be converted without changing what the rule matches:"
+msgstr "Устаревшие условия нельзя конвертировать, не изменив того, что сопоставляет правило:"
+
+msgid "The legacy settings are converted. Save the rule to keep the change."
+msgstr "Устаревшие настройки конвертированы. Сохраните правило, чтобы сохранить изменение."
 
 msgid "The maximum number of targets is reached."
 msgstr "Достигнуто максимальное число целей."
@@ -3253,6 +3328,9 @@ msgstr "правило не может использовать само себ�
 
 msgid "The rule has a custom strategy; Forkop X keeps it."
 msgstr "У правила своя стратегия; Forkop X её не меняет."
+
+msgid "The rule matches the same traffic as before. Closing the window without saving discards the conversion."
+msgstr "Правило сопоставляет тот же трафик, что и раньше. Закрытие окна без сохранения отменяет конвертацию."
 
 msgid "The rule that routes it cannot be determined unambiguously (for example, a remote list comes first)."
 msgstr "Правило, по которому она идёт, нельзя определить однозначно (например, выше стоит удалённый список)."
@@ -3332,6 +3410,9 @@ msgstr "у транзитного правила «%s» действие не «
 msgid "the transit rule “%s” no longer exists"
 msgstr "транзитного правила «%s» больше нет"
 
+msgid "The unsupported settings are removed. Save the rule to keep the change."
+msgstr "Неподдерживаемые настройки удалены. Сохраните правило, чтобы сохранить изменение."
+
 msgid "The value is outside the allowed range."
 msgstr "Значение вне допустимого диапазона."
 
@@ -3391,6 +3472,12 @@ msgstr "у этого правила действие не «Подключен�
 
 msgid "This rule keeps a switched-off cascade setting from an earlier version (transit rule “%s”). It has no effect."
 msgstr "У этого правила сохранилась выключенная настройка каскада из прежней версии (транзитное правило «%s»). Она ни на что не влияет."
+
+msgid "This rule keeps settings in a legacy form from an earlier version. An administrator can review and convert them."
+msgstr "Это правило хранит настройки в устаревшем виде из прежней версии. Администратор может просмотреть и конвертировать их."
+
+msgid "This rule keeps settings in a legacy form, from an earlier version, the podkop migration or the command line. The fields show what the rule matches; the legacy options stay as they are until you convert or remove them."
+msgstr "Это правило хранит настройки в устаревшем виде — из прежней версии, после миграции из podkop или из командной строки. Поля показывают, что сопоставляет правило; устаревшие опции остаются как есть, пока вы их не конвертируете или не удалите."
 
 msgid "This strategy is already active; nothing was changed."
 msgstr "Эта стратегия уже активна; ничего не изменено."
@@ -3463,6 +3550,12 @@ msgstr "Включить"
 
 msgid "Turn on automatic mode?"
 msgstr "Включить автоматический режим?"
+
+msgid "turns text mode on"
+msgstr "включает текстовый режим"
+
+msgid "turns text mode on for domains, IPs and devices"
+msgstr "включает текстовый режим для доменов, IP-адресов и устройств"
 
 msgid "Type"
 msgstr "Тип"
@@ -3598,6 +3691,18 @@ msgstr "Используйте формат длительности sing-box, �
 
 msgid "Use source values"
 msgstr "Использовать исходные значения"
+
+msgid "used by the rule"
+msgstr "используется правилом"
+
+msgid "used by the rule together with %s"
+msgstr "используется правилом вместе с %s"
+
+msgid "used by the rule; the Network Interface field does not show it"
+msgstr "используется правилом; поле «Сетевой интерфейс» его не показывает"
+
+msgid "used by the rule: text mode is on"
+msgstr "используется правилом: включён текстовый режим"
 
 msgid "Username cannot be empty"
 msgstr "Логин не может быть пустым"

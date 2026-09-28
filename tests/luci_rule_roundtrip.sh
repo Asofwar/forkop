@@ -12,7 +12,8 @@ set -euo pipefail
 # refuses to save until the user picks another one (UC-008). Built-in rule
 # sets #2 are hidden for DNS rules; values a DNS rule already has stay visible
 # and the rule is refused until they are removed, never dropped or kept
-# silently (UC-046). A refused save leaves UCI untouched.
+# silently (UC-046). A refused save leaves UCI untouched. Legacy rule forms
+# stay as they are until the user converts them (UC-042, UC-043, D-6 a).
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 node - "$ROOT_DIR/tests/helpers/luci_form_harness.js" <<'NODE'
@@ -65,6 +66,16 @@ const fixtures = {
   zapret2_rule: rule({ action: 'zapret2', ...routed, nfqws2_opt: '--filter-tcp=443 --lua-desync=fake:blob=fake_default_tls',
     community_lists: ['youtube'] }),
   byedpi_rule: rule({ action: 'byedpi', ...routed, byedpi_cmd_opts: '-o 1 -d 1', community_lists: ['youtube'] }),
+  // D-6 (a): legacy forms stay until the user converts them explicitly
+  // (tests/luci_legacy_rule_conversion.sh checks the conversion).
+  legacy_domain_forms: rule({ action: 'block', domain: ['exact.example'], domain_keyword: ['video'],
+    domain_regex_text: '^cdn', domain_suffix_text: 'other.example' }),
+  legacy_text_mode: rule({ action: 'bypass', ip_cidr: ['1.1.1.1'], ip_cidr_text: '8.8.8.8',
+    source_ip_cidr_text: '192.168.1.3', conditions_text_mode: '1', ports_text: '53' }),
+  legacy_interfaces: rule({ action: 'connection', ...routed, domain: 'example.com', interfaces: ['awg0'],
+    interface_settings: '{"awg0":{"domain_resolver_enabled":"1"}}' }),
+  legacy_unsupported: rule({ action: 'block', domain: 'example.com', local_domain_lists: ['/etc/list.lst'],
+    fully_routed_ips_text: '192.168.1.7' }),
 };
 
 // UC-046: DNS rules with Built-in rule sets #2 (only the CLI or an older

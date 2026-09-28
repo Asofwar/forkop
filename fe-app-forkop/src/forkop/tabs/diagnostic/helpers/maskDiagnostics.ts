@@ -276,6 +276,16 @@ export function maskUrlValue(value: string, maskPath = false) {
   const scheme = parts[1] ?? '';
   let authority = parts[2] ?? '';
   let path = parts[3] ?? '';
+
+  // Without a scheme, userinfo can hide in what looks like a path
+  // ("//user@host", "https:/user@host").
+  if (
+    scheme === '' &&
+    (`${value}`.startsWith('//') || `${value}`.includes('@'))
+  ) {
+    return MASKED_VALUE;
+  }
+
   const at = authority.lastIndexOf('@');
 
   if (at >= 0) {
@@ -303,10 +313,12 @@ export function maskHttpUrlValue(value: string) {
 }
 
 // Scans UCI value text from the given quote state: the quote still open at
-// the end (null when closed) and the unquoted value.
+// the end (null when closed), the unquoted value and whether a trailing
+// comment follows it.
 function uciValueScan(text: string, initialQuote: Quote) {
   let quote = initialQuote;
   let value = '';
+  let comment = false;
 
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
@@ -320,11 +332,13 @@ function uciValueScan(text: string, initialQuote: Quote) {
       else value += c;
     } else if (c === "'" || c === '"') quote = c;
     else if (c === '\\' && i + 1 < text.length) value += text[++i];
-    else if (c === '#') break;
-    else if (c !== ' ' && c !== '\t' && c !== '\r') value += c;
+    else if (c === '#') {
+      comment = true;
+      break;
+    } else if (c !== ' ' && c !== '\t' && c !== '\r') value += c;
   }
 
-  return { quote, value };
+  return { quote, value, comment };
 }
 
 function uciOptionSafe(state: UciMaskState, name: string) {
@@ -332,6 +346,11 @@ function uciOptionSafe(state: UciMaskState, name: string) {
     UCI_SAFE_OPTIONS.has(name) ||
     Boolean(UCI_SAFE_SECTION_OPTIONS[state.sectionType]?.has(name))
   );
+}
+
+// The option prefix with a re-quoted value (a trailing comment is dropped).
+function uciQuotedLine(prefix: string, value: string) {
+  return `${prefix}'${value.replace(/'/g, "'\\''")}'`;
 }
 
 // Masks one UCI line; null for a line that is not UCI (and not the
@@ -362,11 +381,11 @@ function maskUciLine(state: UciMaskState, line: string): string | null {
     const scan = uciValueScan(option[5], null);
 
     if (scan.quote === null && uciOptionSafe(state, name)) {
-      return line;
+      return scan.comment ? uciQuotedLine(option[1], scan.value) : line;
     }
 
     if (scan.quote === null && UCI_URL_OPTIONS.has(name)) {
-      return `${option[1]}'${maskHttpUrlValue(scan.value).replace(/'/g, "'\\''")}'`;
+      return uciQuotedLine(option[1], maskHttpUrlValue(scan.value));
     }
 
     state.quote = scan.quote;
@@ -428,15 +447,40 @@ export function formatMaskedSingBoxConfig(value: unknown) {
   return JSON.stringify(maskSingBoxConfigValue(value), null, 2);
 }
 
+const VALIDATION_HEADER = '🧪 Forkop configuration validation';
+const VALIDATION_FAILED = '❌ Forkop configuration validation failed';
+const SECTION_SEPARATOR = /^━+$/;
+
 // The global check text mixes status lines with UCI files (Forkop config,
-// WAN, dnsmasq); only UCI lines and their continuations are masked.
+// WAN, dnsmasq); only UCI lines and their continuations are masked. The raw
+// validator message quotes the rejected value, so like the backend masked
+// mode only the verdict of a failed validation is kept.
 export function maskGlobalCheckText(text: string = '') {
   const state: UciMaskState = { quote: null, sectionType: '' };
+  let inValidation = false;
+  const result: string[] = [];
 
-  return `${text}`
-    .split('\n')
-    .map((line) => maskUciLine(state, line) ?? line)
-    .join('\n');
+  for (const line of `${text}`.split('\n')) {
+    if (line === VALIDATION_HEADER) {
+      inValidation = true;
+      result.push(line);
+      continue;
+    }
+
+    if (inValidation && !SECTION_SEPARATOR.test(line)) {
+      if (line.startsWith('✅')) {
+        result.push(line);
+      } else if (line.startsWith('❌')) {
+        result.push(VALIDATION_FAILED);
+      }
+      continue;
+    }
+
+    inValidation = false;
+    result.push(maskUciLine(state, line) ?? line);
+  }
+
+  return result.join('\n');
 }
 
 export function maskSupportReportText(text: string = '') {

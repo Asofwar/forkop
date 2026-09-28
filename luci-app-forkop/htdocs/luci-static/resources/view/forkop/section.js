@@ -7683,15 +7683,17 @@ function getOptionTextarea(option, section_id) {
     : null;
 }
 
-function rejectInvalidOption(option, section_id, message) {
+function invalidOptionError(option, section_id, message) {
   const title = option.stripTags(option.title).trim();
   const error = message || option.getValidationError(section_id) || "";
 
-  return Promise.reject(
-    new TypeError(
-      `${_('Option "%s" contains an invalid input value.').format(title || option.option)} ${error}`,
-    ),
+  return new TypeError(
+    `${_('Option "%s" contains an invalid input value.').format(title || option.option)} ${error}`,
   );
+}
+
+function rejectInvalidOption(option, section_id, message) {
+  return Promise.reject(invalidOptionError(option, section_id, message));
 }
 
 function parseStrategyWithRemoteValidation(section_id, config) {
@@ -9562,10 +9564,40 @@ function modalFormState(modalMap) {
   return JSON.stringify(state);
 }
 
+// LuCI drops the refusal of a modal Save, and the items of a list are
+// checked only on Save: no field shows such a refusal, so the modal does.
+function clearModalSaveRefusal(modalMap) {
+  const node = modalMap.forkopSaveRefusal;
+
+  if (node && node.parentNode) {
+    node.parentNode.removeChild(node);
+  }
+  delete modalMap.forkopSaveRefusal;
+}
+
+function showModalSaveRefusal(modalMap, error) {
+  clearModalSaveRefusal(modalMap);
+
+  if (!modalMap.root || typeof modalMap.root.appendChild !== "function") {
+    return;
+  }
+
+  modalMap.forkopSaveRefusal = E(
+    "div",
+    { class: "alert-message warning fkp-rule-save-refusal" },
+    [
+      E("strong", {}, [_("Cannot save the rule")]),
+      E("div", {}, [error.message]),
+    ],
+  );
+  modalMap.root.appendChild(modalMap.forkopSaveRefusal);
+}
+
 function refuseInvalidModalSave(modalMap) {
   const parse = modalMap.parse;
 
   modalMap.parse = function (...args) {
+    clearModalSaveRefusal(this);
     forgetUnavailableStrategyValidations();
 
     const { invalid, checks } = inspectModalBeforeSave(this);
@@ -9605,7 +9637,14 @@ function refuseInvalidModalSave(modalMap) {
 
       if (index >= 0) {
         const { option, section_id } = checks[index];
-        return rejectInvalidOption(option, section_id, results[index]);
+        const error = invalidOptionError(option, section_id, results[index]);
+
+        // A strategy field shows its backend verdict itself.
+        if (option.isValid(section_id)) {
+          showModalSaveRefusal(this, error);
+        }
+
+        return Promise.reject(error);
       }
 
       const recheck = inspectModalBeforeSave(this);

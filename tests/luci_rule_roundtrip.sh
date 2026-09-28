@@ -360,6 +360,8 @@ async function check(label, fn) {
       modal.option(strategy).getUIElement('rule').setValue(value);
       await assert.rejects(modal.save(), error);
       assert.deepEqual(env.uci.data, connectionWithSubscription, 'a refused save changed UCI');
+      assert.equal(modal.map.root.querySelector('.fkp-rule-save-refusal'), null,
+        'the strategy field shows the refusal itself');
 
       actionWidget.setValue('connection');
       await modal.save();
@@ -394,9 +396,17 @@ async function check(label, fn) {
       await assert.rejects(modal.save(), error);
       assert.deepEqual(env.uci.data.rule, fixture, 'a refused save changed UCI');
 
+      // LuCI drops the refusal of the modal Save, and no field shows the
+      // items of a list as invalid: the modal says why it was not saved.
+      const refusal = () => modal.map.root.querySelector('.fkp-rule-save-refusal');
+      await modal.saveButton();
+      assert.match(refusal()?.textContent || '', error, 'the refusal must be shown in the modal');
+      assert.deepEqual(env.uci.data.rule, fixture, 'a refused save changed UCI');
+
       actionWidget.setValue('dns');
       await modal.save();
       assert.deepEqual(env.uci.data.rule, fixture, 'switching back changed the rule');
+      assert.equal(refusal(), null, 'a save that passes must clear the refusal');
     });
 
     // The modal stays editable, and Dismiss works, while the backend checks

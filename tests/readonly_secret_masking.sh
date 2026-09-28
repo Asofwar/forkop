@@ -164,7 +164,6 @@ const samples = {
   config_snapshot_diff: snapshotId,
   route_trace: '192.0.2.1 192.0.2.10 TCP 443',
   connectivity_test: 'example.com TCP 443',
-  get_outbound_metadata: 'main-out',
 };
 for (const entry of Object.keys(files)) {
   if (!entry.startsWith(prefix)) continue;
@@ -211,7 +210,6 @@ sb_out="$WORK_DIR/out.show_sing_box_config_masked"
 grep -Fq '"tag": "main-out"' "$sb_out" || fail "masked sing-box config lost outbound tags"
 grep -Fq '"type": "vless"' "$sb_out" || fail "masked sing-box config lost outbound types"
 grep -Fq 'rules.example/r.srs' "$sb_out" || fail "masked sing-box config must keep the rule_set URL path"
-grep -Fq '"tag": "main-out"' "$WORK_DIR/out.check_proxy" || fail "check_proxy did not print the masked config"
 
 # UC-039: the read-only sections carry child display names, never URLs.
 node - "$WORK_DIR/out.get_readonly_config_sections" <<'NODE' || fail "get_readonly_config_sections contract"

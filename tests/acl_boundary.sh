@@ -50,13 +50,31 @@ for (const command of [
 ]) {
   if (allowed(command)) throw Error(`read role may execute ${command}`);
 }
+// UC-034: no read-only page runs these. check_proxy starts extra sing-box
+// instances and fetches through the outbounds, the latency commands probe
+// arbitrary URLs and rewrite the admin's progress file, and check_nft dumps
+// the unmasked nft table.
+for (const command of [
+  'check_proxy', 'check_nft', 'check_sing_box_logs', 'show_sing_box_version',
+  'get_outbound_metadata main', 'autotune_target youtube',
+  'clash_api get_proxy_latency main 5000 http://192.168.1.1/',
+  'clash_api get_proxy_latencies ["main"] 5000 /tmp/run/forkop/ui-state/latency-actions/x.json',
+  'clash_api get_group_latency main 10000',
+]) {
+  if (allowed(RO + ' ' + command)) throw Error(`read role may execute ${command}`);
+}
 for (const command of [
   RO + ' get_status', RO + ' get_ui_state',
   RO + ' get_readonly_config_sections',
   RO + ' get_health_status',
   RO + ' get_history',
   RO + ' autotune_status',
-  RO + ' autotune_target youtube',
+  RO + ' get_ui_capabilities',
+  RO + ' show_version',
+  RO + ' check_nft_rules',
+  RO + ' check_logs',
+  RO + ' clash_api get_proxies',
+  RO + ' clash_api get_connections',
   RO + ' autotune_groups',
   RO + ' autotune_run_status 1_1',
   RO + ' route_trace example.org 192.168.1.1 TCP 443',
@@ -79,6 +97,9 @@ if (!acl.read.ubus?.file?.includes('exec')) throw Error('read role cannot reach 
 if (acl.read.ubus.file.length !== 1) {
   throw Error('read role got extra ubus file methods');
 }
+// UC-034: no Forkop page lists procd services; the list carries every
+// service's command line and environment.
+if ('service' in acl.read.ubus) throw Error('read role may list procd services');
 for (const pattern of Object.keys(grants)) {
   if (!pattern.startsWith(RO + ' ') && !pattern.includes('/run/forkop/')) {
     throw Error(`unexpected read file grant: ${pattern}`);

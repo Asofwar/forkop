@@ -2286,6 +2286,34 @@ function support_report() {
     return 0;
 }
 
+// D-1: the otherwise unmasked support report keeps the Clash API secret out;
+// support never needs it. The report is collected by a child process and the
+// secret is replaced wherever it appears (config file, raw global check, raw
+// sing-box config), plus the option line itself for very short secrets.
+function support_report_without_clash_secret() {
+    let secret = common.clash_api_secret(settings());
+    if (secret == "")
+        return support_report();
+
+    let path = trim(command_output_from_args([ "mktemp" ]));
+    if (path == "")
+        return 1;
+    let status = command_status(command_from_args([
+        "ucode", "-L", LIB_DIR, LIB_DIR + "/diagnostics/runtime.uc", "support-report-unredacted"
+    ]) + " >" + shell_quote(path) + " 2>&1");
+    let text = as_string(fs.readfile(path) || "");
+    fs.unlink(path);
+
+    text = replace(text, /(yacd_secret_key[^\n]*)/g, function(line) {
+        let key = match(line, /^(yacd_secret_key['"]?[ =]*)/);
+        return (key ? key[1] : "yacd_secret_key ") + "'MASKED'";
+    });
+    if (length(secret) >= 4)
+        text = replace(text, secret, "MASKED");
+    print(text);
+    return status;
+}
+
 let mode = ARGV[0] || "";
 
 if (mode == "check-proxy")
@@ -2355,6 +2383,8 @@ else if (mode == "check-dns-available")
 else if (mode == "global-check")
     exit(global_check(ARGV[1] || "", ARGV[2] || ""));
 else if (mode == "support-report")
+    exit(support_report_without_clash_secret());
+else if (mode == "support-report-unredacted")
     exit(support_report());
 else if (mode == "validate-nfqws-strategy-json")
     exit(validate_nfqws_strategy_json(ARGV[1] || ""));

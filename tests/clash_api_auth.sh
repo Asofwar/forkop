@@ -164,6 +164,20 @@ write_state "forkop.settings.yacd_secret_key=   "
 backend clash-api-ready >/dev/null 2>&1 || fail "readiness without a secret must not require one"
 grep -q 'HEADER-FILE\|Authorization' "$WORK_DIR/curl.log" && fail "no Authorization header without a secret"
 
+# --- Support report ------------------------------------------------------------
+
+# The otherwise unmasked support report keeps the Clash secret out: support
+# never needs it (D-1). The config file, the raw global check and the raw
+# sing-box config all carry it.
+write_state "forkop.settings.yacd_secret_key=$SECRET"
+printf "\toption yacd_secret_key '%s'\n\toption config_path '%s'\n" "$SECRET" "$WORK_DIR/sing-box.json" >>"$WORK_DIR/etc/forkop"
+printf 'forkop.settings.config_path=%s\n' "$WORK_DIR/sing-box.json" >>"$WORK_DIR/uci-state"
+printf '{"experimental":{"clash_api":{"external_controller":"127.0.0.1:9090","secret":"%s"}}}\n' "$SECRET" >"$WORK_DIR/sing-box.json"
+backend support-report >"$WORK_DIR/report.txt" 2>&1 </dev/null || true
+grep -Fq 'CONFIDENTIAL SUPPORT REPORT' "$WORK_DIR/report.txt" || fail "the support report was not produced"
+grep -Fq "yacd_secret_key" "$WORK_DIR/report.txt" || fail "the support report must keep the option shape"
+grep -Fq "$SECRET" "$WORK_DIR/report.txt" && fail "the support report must not contain the Clash secret"
+
 # --- Reload signature ------------------------------------------------------------
 
 # A changed secret changes the controller, so it must reload sing-box even

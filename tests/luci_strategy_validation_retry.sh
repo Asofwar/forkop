@@ -54,7 +54,10 @@ function rule(action, option, value) {
         const edited = `${original} ${action === 'byedpi' ? '-d 2' : '--new --filter-udp=443'}`;
         modal.option(option).getUIElement('rule').setValue(edited);
 
-        await assert.rejects(modal.save(), /Backend validation unavailable/);
+        await assert.rejects(modal.save(), (error) => {
+          assert.match(error.message, /Backend validation unavailable: .*[^.]\. Save again to retry\.$/);
+          return true;
+        });
         assert.equal(env.uci.data.rule[option], original, 'a failed validation saved the strategy');
         assert.equal(modal.option(option).isValid('rule'), true,
           'a backend failure must not mark the strategy invalid');

@@ -5204,7 +5204,7 @@ function buildNfqwsRemoteValidationFallback(error) {
     valid: false,
     message: _(
       "Backend validation unavailable: %s. Save again to retry.",
-    ).format(message),
+    ).format(message.replace(/[.\s]+$/, "")),
     needle: "",
     needles: [],
   };
@@ -5651,7 +5651,7 @@ function buildNfqws2RemoteValidationFallback(error) {
     valid: false,
     message: _(
       "Backend validation unavailable: %s. Save again to retry.",
-    ).format(message),
+    ).format(message.replace(/[.\s]+$/, "")),
     needle: "",
     needles: [],
   };
@@ -6065,7 +6065,7 @@ function buildByedpiRemoteValidationFallback(error) {
     valid: false,
     message: _(
       "Backend validation unavailable: %s. Save again to retry.",
-    ).format(message),
+    ).format(message.replace(/[.\s]+$/, "")),
     needle: "",
     needles: [],
   };

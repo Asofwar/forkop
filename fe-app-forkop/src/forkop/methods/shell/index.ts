@@ -242,11 +242,6 @@ export const ForkopShellMethods = {
     callBaseMethod<{ urltestGroups: Record<string, unknown> }>(
       Forkop.AvailableMethods.GET_DASHBOARD_RUNTIME_METADATA,
     ),
-  getOutboundMetadata: async (section: string) =>
-    callBaseMethod<Forkop.GetOutboundMetadata>(
-      Forkop.AvailableMethods.GET_OUTBOUND_METADATA,
-      [section],
-    ),
   getSubscriptionMetadata: async (section: string) =>
     callBaseMethod<Forkop.SubscriptionMetadata | Forkop.SubscriptionMetadata[]>(
       Forkop.AvailableMethods.GET_SUBSCRIPTION_METADATA,
@@ -343,8 +338,6 @@ export const ForkopShellMethods = {
     ]),
   checkLogs: async () =>
     callBaseMethod<unknown>(Forkop.AvailableMethods.CHECK_LOGS),
-  checkSingBoxLogs: async () =>
-    callBaseMethod<unknown>(Forkop.AvailableMethods.CHECK_SING_BOX_LOGS),
   getSystemInfo: async () =>
     callBaseMethod<Forkop.GetSystemInfo>(
       Forkop.AvailableMethods.GET_SYSTEM_INFO,

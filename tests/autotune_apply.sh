@@ -133,7 +133,8 @@ SH
 # Forkop reload: outcomes from $STATE/reload.plan ("0", "1 0", ...); a
 # successful reload restarts the Dpi rule's nfqws with the configured strategy.
 # q is init.d behind a busy reload.lock: status 0, "queued" on stdout and
-# reload.pending from the production writer; m leaves only that marker.
+# reload.pending from the production writer; m leaves only that marker; t
+# only the token (the lock holder already consumed the marker).
 cat > "$WORK/reload" <<'SH'
 #!/usr/bin/env bash
 echo "$*" >> "$STUB_LOG/reload.args"
@@ -145,6 +146,7 @@ if [ "$rc" = q ] || [ "$rc" = m ]; then
   [ "$rc" = m ] || echo queued
   exit 0
 fi
+[ "$rc" != t ] || { echo queued; exit 0; }
 [ -z "${RELOAD_SLEEP:-}" ] || sleep "$RELOAD_SLEEP"
 [ "$rc" = 0 ] || exit "$rc"
 # BREAK_FIRST_RELOAD: the candidate reload leaves an incoherent runtime; the next reload repairs it.
@@ -657,7 +659,10 @@ json 'a.equal(r.status, "failed"); a.equal(r.reason, "reload_queued_recovered");
 { [ "$(chash)" = "$PRE_HASH" ] && [ ! -e "$NFT_STATE/tables/ForkopConfigRestoreDpiGuard" ]; } || fail "queued reload left the candidate"
 [ "$(dpi_args)" = "$ZAPRET_NFQWS_BIN --qnum=4000 --dpi-desync-fwmark=0x40000000 $FAKE " ] || fail "runtime changed by a queued reload"
 [ "$(sort -u "$STUB_LOG/reload.args")" = "reload autotune" ] || fail "apply did not pass its reason to init.d: $(cat "$STUB_LOG/reload.args")"
-for plan in "q q" "m m" "1 q"; do
+reset_apply; plan_ready; echo "t 0" > "$STATE/reload.plan"; at apply "$WORK/plan.json"
+json 'a.equal(r.status, "failed"); a.equal(r.reason, "reload_queued_recovered"); a.equal(r.reload.reason, "target_reload_queued");' "$WORK/out.json"
+[ "$(dpi_args)" = "$ZAPRET_NFQWS_BIN --qnum=4000 --dpi-desync-fwmark=0x40000000 $FAKE " ] || fail "runtime changed by a token-only queued reload"
+for plan in "q q" "m m" "1 q" "t t"; do
   reset_apply; plan_ready; : > "$STUB_LOG/health.log"; echo "$plan" > "$STATE/reload.plan"; at apply "$WORK/plan.json"
   json 'a.equal(r.status, "needs_attention"); a.equal(r.reload.reason, "rollback_reload_queued"); a.equal(r.applied, false);' "$WORK/out.json"
   grep -q 'autotune_apply failure' "$STUB_LOG/health.log" || fail "$plan: queued reload not recorded as a failure"
@@ -665,7 +670,7 @@ for plan in "q q" "m m" "1 q"; do
   [ "$(lkg)" = "$PRE_LKG" ] || fail "$plan: last-known-working moved by a queued reload"
   ! grep -q 'autotune_apply success' "$STUB_LOG/health.log" 2>/dev/null || fail "$plan: queued reload recorded as success"
 done
-ok "queued reload -> config put back and recovered; queued twice (token or same-second marker) -> needs_attention with the guard kept"
+ok "queued reload -> config put back and recovered; queued twice (token, same-second marker or token alone) -> needs_attention with the guard kept"
 
 # Retention: room for the rollback's pre-restore snapshot is reserved.
 reset_apply; plan_ready

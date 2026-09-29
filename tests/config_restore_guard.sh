@@ -50,7 +50,9 @@ STUB
 # Reload outcomes are consumed one per call from $STATE/plan. q answers like
 # init.d when another lifecycle action owns reload.lock: status 0, "queued"
 # on stdout and reload.pending from the production writer; m leaves only the
-# marker, as an init.d that does not acknowledge the queue would.
+# marker, as an init.d that does not acknowledge the queue would; t leaves
+# only the token, as when the lock holder consumed the marker before the
+# caller looked at it.
 cat > "$WORK/reload" <<'STUB'
 #!/bin/sh
 echo "$*" >> "$STATE/reload-args"
@@ -63,6 +65,7 @@ case "$rc" in
     "$REAL_UCODE" -L "$FORKOP_LIB" "$FORKOP_LIB/service/state.uc" mark-pending-reload "$FORKOP_PENDING_RELOAD_FILE" reload_busy
     [ "$rc" = m ] || echo queued
     exit 0 ;;
+  t) echo queued; exit 0 ;;
 esac
 exit "$rc"
 STUB
@@ -190,6 +193,15 @@ rm -f "$FORKOP_PENDING_RELOAD_FILE"
 config bad; restore "$LIB" valid "m m"
 check '{"status":"needs_attention","reason":"rollback_reload_queued","guardField":"active","guard":"valid","config":"bad","lkg":"stale","noRemove":true,"health":"failure"}'
 rm -f "$FORKOP_PENDING_RELOAD_FILE"
+
+# 13. The acknowledgement alone (the holder already drained the marker) is
+#     the main detector: never success, LKG untouched.
+echo "stale" > "$FORKOP_SNAPSHOT_DIR/last-known-working"
+config bad; restore "$LIB" valid "t t"
+check '{"status":"needs_attention","reason":"rollback_reload_queued","guardField":"active","guard":"valid","config":"bad","lkg":"stale","noRemove":true,"health":"failure"}'
+[ ! -e "$FORKOP_PENDING_RELOAD_FILE" ]
+config bad; restore "$LIB" valid "t 0"
+check '{"status":"recovered","reason":"target_reload_queued","guardField":"inactive","guard":"absent","config":"bad","lkgGood":false,"health":"recovered"}'
 
 # Phase 22 shape without any pre-existing guard.
 config bad; restore "$LIB" absent "1 0"

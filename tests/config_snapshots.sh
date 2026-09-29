@@ -115,26 +115,28 @@ assert.equal(result.reason, 'guard_unavailable');
 JS
 test "$FORKOP_SNAPSHOT_LOCK_DIR" != "$FORKOP_SNAPSHOT_DIR/.lock"
 mkdir -p "$WORK/run"
-export FORKOP_TEST_READY="$WORK/lock-ready"
+# shellcheck source=tests/helpers/wait.sh
+. "$ROOT/tests/helpers/wait.sh"
+# The holder keeps the snapshot lock until the test releases it (bounded), so
+# the checks below never race a fixed hold time.
+export FORKOP_TEST_READY="$WORK/lock-ready" FORKOP_TEST_RELEASE="$WORK/lock-release"
 cat > "$WORK/hold-version" <<'STUB'
 #!/bin/sh
 : > "$FORKOP_TEST_READY"
-sleep 3
+n=0
+while [ ! -e "$FORKOP_TEST_RELEASE" ] && [ "$n" -lt 1200 ]; do sleep 0.05; n=$((n + 1)); done
 printf 'test\n'
 STUB
 chmod +x "$WORK/hold-version"
 FORKOP_BIN="$WORK/hold-version" ucode -L "$LIB" "$SCRIPT" create manual > "$WORK/held-create.json" &
 holder=$!
-for n in 1 2 3 4 5 6 7 8 9 10; do
-  [ -f "$FORKOP_TEST_READY" ] && break
-  sleep 0.1
-done
-[ -f "$FORKOP_TEST_READY" ] || exit 1
+wait_until 30 test -f "$FORKOP_TEST_READY" || exit 1
 ls "$FORKOP_SNAPSHOT_LOCK_DIR"/owner.* >/dev/null || exit 1
 if ucode -L "$LIB" "$SCRIPT" create manual > "$WORK/busy.json"; then exit 1; fi
 node -e 'const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
 if (r.status !== "busy" || r.reason !== "snapshot_operation_in_progress") process.exit(1);' "$WORK/busy.json"
 ls "$FORKOP_SNAPSHOT_LOCK_DIR"/owner.* >/dev/null || exit 1
+: > "$FORKOP_TEST_RELEASE"
 wait "$holder"
 [ ! -e "$FORKOP_SNAPSHOT_LOCK_DIR" ] || exit 1
 node - "$LIB" "$SCRIPT" "$WORK" <<'JS'
@@ -281,18 +283,15 @@ no_lock_leftovers
 [ -f "$WORK/symlink-target/keep" ] || exit 1
 
 # Release must not remove a lock that was replaced while the holder ran.
-rm -f "$FORKOP_TEST_READY"
+rm -f "$FORKOP_TEST_READY" "$FORKOP_TEST_RELEASE"
 FORKOP_BIN="$WORK/hold-version" ucode -L "$LIB" "$SCRIPT" create manual >/dev/null &
 holder=$!
-for n in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
-  [ -f "$FORKOP_TEST_READY" ] && break
-  sleep 0.1
-done
-[ -f "$FORKOP_TEST_READY" ] || exit 1
+wait_until 30 test -f "$FORKOP_TEST_READY" || exit 1
 set -- "$LOCK_DIR"/owner.*
 [ "$#" -eq 1 ] && [ -f "$1" ] || exit 1
 mv "$LOCK_DIR" "$WORK/replaced-lock"
 stale_lock "$reused_pid" "$reused_ticks"
+: > "$FORKOP_TEST_RELEASE"
 wait "$holder"
 [ -f "$LOCK_DIR/owner.$reused_pid.$reused_ticks" ] || exit 1
 rm -rf "$WORK/replaced-lock"

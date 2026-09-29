@@ -118,6 +118,7 @@ function overviewInput(): OverviewInput {
     availability: getDashboardServiceAvailability(),
     forkopEnabled: Boolean(services.data.forkopEnabled),
     forkopStoppedByUser: Boolean(services.data.forkopStoppedByUser),
+    forkopStatus: services.data.forkopStatus || '',
     singBoxRunning: Boolean(services.data.singbox),
     groups: state.sectionsWidget.data,
     ruleCount: overviewRuleCount,

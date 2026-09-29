@@ -25,6 +25,9 @@ export interface OverviewInput {
   // Stopped by the user, as opposed to down after a failed start or a
   // crash (D-15).
   forkopStoppedByUser: boolean;
+  // The service status of the UI state: a start, restart or reload in
+  // progress is reported here before the runtime is up.
+  forkopStatus: string;
   singBoxRunning: boolean;
   groups: Forkop.OutboundGroup[];
   ruleCount: number | null;
@@ -128,7 +131,18 @@ export function overviewState(input: OverviewInput): OverviewState {
   let status: SemanticStatus;
   let title: string;
 
-  if (availability === 'stopped' && input.forkopStoppedByUser) {
+  if (
+    availability === 'stopped' &&
+    ['starting', 'restarting', 'reloading'].includes(input.forkopStatus)
+  ) {
+    // Not up yet, and nothing failed so far: a start (boot, Start, the
+    // start half of Restart, the WAN retry) or a reload repairing it.
+    status = 'busy';
+    title =
+      input.forkopStatus === 'reloading'
+        ? _('Applying changes…')
+        : _('Starting…');
+  } else if (availability === 'stopped' && input.forkopStoppedByUser) {
     status = 'off';
     title = _('Stopped by user');
     lines.push({

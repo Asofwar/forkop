@@ -6372,7 +6372,16 @@ function overviewState(input) {
   const lines = [];
   let status2;
   let title;
-  if (availability === "stopped" && input.forkopStoppedByUser) {
+  if (
+    availability === "stopped" &&
+    ["starting", "restarting", "reloading"].includes(input.forkopStatus)
+  ) {
+    status2 = "busy";
+    title =
+      input.forkopStatus === "reloading"
+        ? _("Applying changes\u2026")
+        : _("Starting\u2026");
+  } else if (availability === "stopped" && input.forkopStoppedByUser) {
     status2 = "off";
     title = _("Stopped by user");
     lines.push({
@@ -7503,6 +7512,7 @@ function overviewInput() {
     availability: getDashboardServiceAvailability(),
     forkopEnabled: Boolean(services.data.forkopEnabled),
     forkopStoppedByUser: Boolean(services.data.forkopStoppedByUser),
+    forkopStatus: services.data.forkopStatus || "",
     singBoxRunning: Boolean(services.data.singbox),
     groups: state.sectionsWidget.data,
     ruleCount: overviewRuleCount,

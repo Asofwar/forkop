@@ -22,7 +22,7 @@
     "call": "%d connections now",
     "key": "%d connections now",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:235"
+      "src/forkop/tabs/dashboard/overview.ts:249"
     ]
   },
   {
@@ -65,7 +65,7 @@
     "key": "%d ms",
     "places": [
       "src/forkop/tabs/autotune/model.ts:462",
-      "src/forkop/tabs/dashboard/initController.ts:1055",
+      "src/forkop/tabs/dashboard/initController.ts:1056",
       "src/forkop/tabs/dashboard/partials/renderSections.ts:318",
       "src/forkop/tabs/dashboard/partials/renderSections.ts:487"
     ]
@@ -74,21 +74,21 @@
     "call": "%d node groups",
     "key": "%d node groups",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:228"
+      "src/forkop/tabs/dashboard/overview.ts:242"
     ]
   },
   {
     "call": "%d rules",
     "key": "%d rules",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:226"
+      "src/forkop/tabs/dashboard/overview.ts:240"
     ]
   },
   {
     "call": "%d rules · %d node groups",
     "key": "%d rules · %d node groups",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:222"
+      "src/forkop/tabs/dashboard/overview.ts:236"
     ]
   },
   {
@@ -221,7 +221,7 @@
     "call": "A configuration change was not confirmed. Traffic that needs DPI bypass may be blocked until recovery completes.",
     "key": "A configuration change was not confirmed. Traffic that needs DPI bypass may be blocked until recovery completes.",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:99"
+      "src/forkop/tabs/dashboard/overview.ts:102"
     ]
   },
   {
@@ -639,7 +639,7 @@
     "call": "An interrupted package update is being recovered. Avoid changes until it completes.",
     "key": "An interrupted package update is being recovered. Avoid changes until it completes.",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:108"
+      "src/forkop/tabs/dashboard/overview.ts:111"
     ]
   },
   {
@@ -767,21 +767,22 @@
     "call": "Applying changes…",
     "key": "Applying changes…",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:165"
+      "src/forkop/tabs/dashboard/overview.ts:143",
+      "src/forkop/tabs/dashboard/overview.ts:179"
     ]
   },
   {
     "call": "Applying Forkop configuration…",
     "key": "Applying Forkop configuration…",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1326"
+      "src/forkop/tabs/dashboard/initController.ts:1327"
     ]
   },
   {
     "call": "Applying…",
     "key": "Applying…",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1316"
+      "src/forkop/tabs/dashboard/initController.ts:1317"
     ]
   },
   {
@@ -880,21 +881,21 @@
     "key": "Automatically select the fastest node in the current level",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3301",
-      "src/forkop/tabs/dashboard/initController.ts:1539"
+      "src/forkop/tabs/dashboard/initController.ts:1540"
     ]
   },
   {
     "call": "Autostart is off",
     "key": "Autostart is off",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:194"
+      "src/forkop/tabs/dashboard/overview.ts:208"
     ]
   },
   {
     "call": "Autostart is on",
     "key": "Autostart is on",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:194"
+      "src/forkop/tabs/dashboard/overview.ts:208"
     ]
   },
   {
@@ -1297,7 +1298,7 @@
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:4978",
       "src/forkop/ui/confirmAction.ts:30",
       "src/forkop/tabs/autotune/initController.ts:384",
-      "src/forkop/tabs/dashboard/initController.ts:1399",
+      "src/forkop/tabs/dashboard/initController.ts:1400",
       "src/forkop/tabs/updates/fullUninstall.ts:11",
       "src/forkop/tabs/updates/releaseSelector.ts:50",
       "src/forkop/tabs/updates/releaseSelector.ts:111"
@@ -1445,7 +1446,7 @@
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2789",
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3252",
-      "src/forkop/tabs/dashboard/initController.ts:1526"
+      "src/forkop/tabs/dashboard/initController.ts:1527"
     ]
   },
   {
@@ -1496,7 +1497,7 @@
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2815",
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3239",
-      "src/forkop/tabs/dashboard/initController.ts:1524"
+      "src/forkop/tabs/dashboard/initController.ts:1525"
     ]
   },
   {
@@ -1557,7 +1558,7 @@
       "src/forkop/ui/status.ts:138",
       "src/forkop/tabs/autotune/initController.ts:763",
       "src/forkop/tabs/autotune/initController.ts:903",
-      "src/forkop/tabs/dashboard/overview.ts:159",
+      "src/forkop/tabs/dashboard/overview.ts:173",
       "src/forkop/tabs/diagnostic/connectivityMatrix.ts:104",
       "src/forkop/tabs/diagnostic/dpiPlayground.ts:48",
       "src/forkop/tabs/diagnostic/siteCheck.ts:243",
@@ -1659,8 +1660,8 @@
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3581",
       "src/partials/modal/renderModal.ts:263",
       "src/forkop/tabs/autotune/initController.ts:608",
-      "src/forkop/tabs/dashboard/initController.ts:1280",
-      "src/forkop/tabs/dashboard/initController.ts:1658",
+      "src/forkop/tabs/dashboard/initController.ts:1281",
+      "src/forkop/tabs/dashboard/initController.ts:1659",
       "src/forkop/tabs/history/initController.ts:217",
       "src/forkop/tabs/updates/releaseSelector.ts:121"
     ]
@@ -1985,8 +1986,8 @@
     "call": "Could not change autostart",
     "key": "Could not change autostart",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:163",
-      "src/forkop/tabs/dashboard/initController.ts:166"
+      "src/forkop/tabs/dashboard/initController.ts:164",
+      "src/forkop/tabs/dashboard/initController.ts:167"
     ]
   },
   {
@@ -2346,7 +2347,7 @@
     "call": "Diagnostics has not been run yet",
     "key": "Diagnostics has not been run yet",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:202"
+      "src/forkop/tabs/dashboard/overview.ts:216"
     ]
   },
   {
@@ -2855,7 +2856,7 @@
     "call": "DPI protection is holding traffic",
     "key": "DPI protection is holding traffic",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:98"
+      "src/forkop/tabs/dashboard/overview.ts:101"
     ]
   },
   {
@@ -2905,7 +2906,7 @@
     "call": "Edit",
     "key": "Edit",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1268"
+      "src/forkop/tabs/dashboard/initController.ts:1269"
     ]
   },
   {
@@ -2926,7 +2927,7 @@
     "call": "Edit URLTest",
     "key": "Edit URLTest",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1404"
+      "src/forkop/tabs/dashboard/initController.ts:1405"
     ]
   },
   {
@@ -3300,26 +3301,26 @@
     "call": "Failed to save URLTest settings",
     "key": "Failed to save URLTest settings",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1374"
+      "src/forkop/tabs/dashboard/initController.ts:1375"
     ]
   },
   {
     "call": "Failed to switch the node",
     "key": "Failed to switch the node",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:928",
-      "src/forkop/tabs/dashboard/initController.ts:933"
+      "src/forkop/tabs/dashboard/initController.ts:929",
+      "src/forkop/tabs/dashboard/initController.ts:934"
     ]
   },
   {
     "call": "Failed to update subscriptions",
     "key": "Failed to update subscriptions",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:365",
-      "src/forkop/tabs/dashboard/initController.ts:455",
+      "src/forkop/tabs/dashboard/initController.ts:366",
       "src/forkop/tabs/dashboard/initController.ts:456",
-      "src/forkop/tabs/dashboard/initController.ts:521",
-      "src/forkop/tabs/dashboard/initController.ts:1713"
+      "src/forkop/tabs/dashboard/initController.ts:457",
+      "src/forkop/tabs/dashboard/initController.ts:522",
+      "src/forkop/tabs/dashboard/initController.ts:1714"
     ]
   },
   {
@@ -3363,7 +3364,7 @@
     "key": "Faster server search interval",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3312",
-      "src/forkop/tabs/dashboard/initController.ts:1545"
+      "src/forkop/tabs/dashboard/initController.ts:1546"
     ]
   },
   {
@@ -3511,7 +3512,7 @@
     "call": "Forkop X is running",
     "key": "Forkop X is running",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:171"
+      "src/forkop/tabs/dashboard/overview.ts:185"
     ]
   },
   {
@@ -3532,7 +3533,7 @@
     "call": "Forkop X kept or restored the previous configuration.",
     "key": "Forkop X kept or restored the previous configuration.",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:117"
+      "src/forkop/tabs/dashboard/overview.ts:120"
     ]
   },
   {
@@ -3553,7 +3554,7 @@
     "call": "Forkop X needs attention",
     "key": "Forkop X needs attention",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:168"
+      "src/forkop/tabs/dashboard/overview.ts:182"
     ]
   },
   {
@@ -3582,7 +3583,7 @@
     "call": "Forkop X stays stopped until you start it: reloads, restores and updates do not start it.",
     "key": "Forkop X stays stopped until you start it: reloads, restores and updates do not start it.",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:135"
+      "src/forkop/tabs/dashboard/overview.ts:149"
     ]
   },
   {
@@ -3596,7 +3597,7 @@
     "call": "Forkop X was not stopped by the user: its start failed or it stopped unexpectedly.",
     "key": "Forkop X was not stopped by the user: its start failed or it stopped unexpectedly.",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:148"
+      "src/forkop/tabs/dashboard/overview.ts:162"
     ]
   },
   {
@@ -3775,7 +3776,7 @@
     "key": "Higher-level check interval",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3276",
-      "src/forkop/tabs/dashboard/initController.ts:1531"
+      "src/forkop/tabs/dashboard/initController.ts:1532"
     ]
   },
   {
@@ -3868,8 +3869,8 @@
     "key": "Idle timeout",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2828",
-      "src/forkop/tabs/dashboard/initController.ts:1165",
-      "src/forkop/tabs/dashboard/initController.ts:1410"
+      "src/forkop/tabs/dashboard/initController.ts:1166",
+      "src/forkop/tabs/dashboard/initController.ts:1411"
     ]
   },
   {
@@ -4091,9 +4092,9 @@
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2842",
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3328",
-      "src/forkop/tabs/dashboard/initController.ts:1167",
-      "src/forkop/tabs/dashboard/initController.ts:1411",
-      "src/forkop/tabs/dashboard/initController.ts:1551"
+      "src/forkop/tabs/dashboard/initController.ts:1168",
+      "src/forkop/tabs/dashboard/initController.ts:1412",
+      "src/forkop/tabs/dashboard/initController.ts:1552"
     ]
   },
   {
@@ -4114,8 +4115,8 @@
     "call": "Interval",
     "key": "Interval",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1163",
-      "src/forkop/tabs/dashboard/initController.ts:1408"
+      "src/forkop/tabs/dashboard/initController.ts:1164",
+      "src/forkop/tabs/dashboard/initController.ts:1409"
     ]
   },
   {
@@ -4717,7 +4718,7 @@
     "call": "Last diagnostics: %s",
     "key": "Last diagnostics: %s",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:198"
+      "src/forkop/tabs/dashboard/overview.ts:212"
     ]
   },
   {
@@ -4760,7 +4761,7 @@
     "call": "Last reload: %s",
     "key": "Last reload: %s",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:271"
+      "src/forkop/tabs/dashboard/overview.ts:285"
     ]
   },
   {
@@ -4769,8 +4770,8 @@
     "places": [
       "src/forkop/methods/shell/index.ts:615",
       "src/forkop/methods/shell/index.ts:636",
-      "src/forkop/tabs/dashboard/initController.ts:1008",
-      "src/forkop/tabs/dashboard/initController.ts:1016"
+      "src/forkop/tabs/dashboard/initController.ts:1009",
+      "src/forkop/tabs/dashboard/initController.ts:1017"
     ]
   },
   {
@@ -4806,7 +4807,7 @@
     "call": "Level",
     "key": "Level",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1487"
+      "src/forkop/tabs/dashboard/initController.ts:1488"
     ]
   },
   {
@@ -5223,10 +5224,10 @@
     "call": "No",
     "key": "No",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1031",
-      "src/forkop/tabs/dashboard/initController.ts:1035",
-      "src/forkop/tabs/dashboard/initController.ts:1111",
-      "src/forkop/tabs/dashboard/initController.ts:1442"
+      "src/forkop/tabs/dashboard/initController.ts:1032",
+      "src/forkop/tabs/dashboard/initController.ts:1036",
+      "src/forkop/tabs/dashboard/initController.ts:1112",
+      "src/forkop/tabs/dashboard/initController.ts:1443"
     ]
   },
   {
@@ -5296,7 +5297,7 @@
     "call": "no data",
     "key": "no data",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:251"
+      "src/forkop/tabs/dashboard/overview.ts:265"
     ]
   },
   {
@@ -5371,14 +5372,14 @@
     "call": "No recovery needed",
     "key": "No recovery needed",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:288"
+      "src/forkop/tabs/dashboard/overview.ts:302"
     ]
   },
   {
     "call": "No reload recorded yet",
     "key": "No reload recorded yet",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:278",
+      "src/forkop/tabs/dashboard/overview.ts:292",
       "src/forkop/tabs/history/model.ts:87"
     ]
   },
@@ -5480,16 +5481,16 @@
     "call": "Node list is empty",
     "key": "Node list is empty",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1252",
-      "src/forkop/tabs/dashboard/initController.ts:1643"
+      "src/forkop/tabs/dashboard/initController.ts:1253",
+      "src/forkop/tabs/dashboard/initController.ts:1644"
     ]
   },
   {
     "call": "Nodes",
     "key": "Nodes",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1191",
-      "src/forkop/tabs/dashboard/initController.ts:1575",
+      "src/forkop/tabs/dashboard/initController.ts:1192",
+      "src/forkop/tabs/dashboard/initController.ts:1576",
       "src/forkop/tabs/dashboard/partials/renderSections.ts:335"
     ]
   },
@@ -5602,7 +5603,7 @@
     "call": "Not running",
     "key": "Not running",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:145",
+      "src/forkop/tabs/dashboard/overview.ts:159",
       "src/forkop/tabs/diagnostic/diagnostic.store.ts:131",
       "src/forkop/tabs/diagnostic/initController.ts:106",
       "src/forkop/tabs/diagnostic/initController.ts:330",
@@ -5884,7 +5885,7 @@
     "call": "Package recovery has not finished",
     "key": "Package recovery has not finished",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:107"
+      "src/forkop/tabs/dashboard/overview.ts:110"
     ]
   },
   {
@@ -6132,7 +6133,7 @@
     "call": "Priority details",
     "key": "Priority details",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1670",
+      "src/forkop/tabs/dashboard/initController.ts:1671",
       "src/forkop/tabs/dashboard/partials/renderSections.ts:465",
       "src/forkop/tabs/dashboard/partials/renderSections.ts:466"
     ]
@@ -6141,7 +6142,7 @@
     "call": "Priority details are unavailable",
     "key": "Priority details are unavailable",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1512"
+      "src/forkop/tabs/dashboard/initController.ts:1513"
     ]
   },
   {
@@ -6200,7 +6201,7 @@
     "call": "Protection is active",
     "key": "Protection is active",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:288"
+      "src/forkop/tabs/dashboard/overview.ts:302"
     ]
   },
   {
@@ -6283,7 +6284,7 @@
     "call": "Recovery details",
     "key": "Recovery details",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:93",
+      "src/forkop/tabs/dashboard/overview.ts:96",
       "src/forkop/tabs/dashboard/overviewCards.ts:213"
     ]
   },
@@ -6305,7 +6306,7 @@
     "call": "Refreshing Dashboard…",
     "key": "Refreshing Dashboard…",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1334"
+      "src/forkop/tabs/dashboard/initController.ts:1335"
     ]
   },
   {
@@ -6431,7 +6432,7 @@
     "call": "Removing user settings…",
     "key": "Removing user settings…",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1355"
+      "src/forkop/tabs/dashboard/initController.ts:1356"
     ]
   },
   {
@@ -6681,7 +6682,7 @@
     "call": "Router DNS is not pointed to Forkop X",
     "key": "Router DNS is not pointed to Forkop X",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:188"
+      "src/forkop/tabs/dashboard/overview.ts:202"
     ]
   },
   {
@@ -6702,7 +6703,7 @@
     "call": "Routing is paused while Forkop X is stopped.",
     "key": "Routing is paused while Forkop X is stopped.",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:233"
+      "src/forkop/tabs/dashboard/overview.ts:247"
     ]
   },
   {
@@ -6856,7 +6857,7 @@
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3590",
       "src/forkop/tabs/autotune/initController.ts:483",
       "src/forkop/tabs/autotune/initController.ts:548",
-      "src/forkop/tabs/dashboard/initController.ts:1394"
+      "src/forkop/tabs/dashboard/initController.ts:1395"
     ]
   },
   {
@@ -6870,7 +6871,7 @@
     "call": "Saving URLTest settings…",
     "key": "Saving URLTest settings…",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1338"
+      "src/forkop/tabs/dashboard/initController.ts:1339"
     ]
   },
   {
@@ -7012,7 +7013,7 @@
     "key": "Select the fastest node",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3290",
-      "src/forkop/tabs/dashboard/initController.ts:1535"
+      "src/forkop/tabs/dashboard/initController.ts:1536"
     ]
   },
   {
@@ -7047,8 +7048,8 @@
     "call": "Selected",
     "key": "Selected",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1159",
-      "src/forkop/tabs/dashboard/initController.ts:1521"
+      "src/forkop/tabs/dashboard/initController.ts:1160",
+      "src/forkop/tabs/dashboard/initController.ts:1522"
     ]
   },
   {
@@ -7244,14 +7245,14 @@
     "call": "sing-box is not running",
     "key": "sing-box is not running",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:184"
+      "src/forkop/tabs/dashboard/overview.ts:198"
     ]
   },
   {
     "call": "sing-box is running",
     "key": "sing-box is running",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:183"
+      "src/forkop/tabs/dashboard/overview.ts:197"
     ]
   },
   {
@@ -7329,7 +7330,7 @@
     "call": "Snapshots: %d",
     "key": "Snapshots: %d",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:282"
+      "src/forkop/tabs/dashboard/overview.ts:296"
     ]
   },
   {
@@ -7499,6 +7500,7 @@
     "call": "Starting…",
     "key": "Starting…",
     "places": [
+      "src/forkop/tabs/dashboard/overview.ts:144",
       "src/forkop/tabs/dashboard/overviewCards.ts:103",
       "src/forkop/tabs/shared/startService.ts:28",
       "src/forkop/tabs/shared/startService.ts:40"
@@ -7517,8 +7519,8 @@
     "call": "State unavailable",
     "key": "State unavailable",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:162",
-      "src/forkop/tabs/dashboard/overview.ts:262"
+      "src/forkop/tabs/dashboard/overview.ts:176",
+      "src/forkop/tabs/dashboard/overview.ts:276"
     ]
   },
   {
@@ -7561,7 +7563,7 @@
     "key": "Stopped by user",
     "places": [
       "src/forkop/ui/status.ts:135",
-      "src/forkop/tabs/dashboard/overview.ts:133"
+      "src/forkop/tabs/dashboard/overview.ts:147"
     ]
   },
   {
@@ -7633,7 +7635,7 @@
     "call": "Subscriptions updated",
     "key": "Subscriptions updated",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:481"
+      "src/forkop/tabs/dashboard/initController.ts:482"
     ]
   },
   {
@@ -7828,8 +7830,8 @@
     "call": "Testing URL",
     "key": "Testing URL",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1162",
-      "src/forkop/tabs/dashboard/initController.ts:1407"
+      "src/forkop/tabs/dashboard/initController.ts:1163",
+      "src/forkop/tabs/dashboard/initController.ts:1408"
     ]
   },
   {
@@ -7985,7 +7987,7 @@
     "call": "The last change was rolled back automatically.",
     "key": "The last change was rolled back automatically.",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:174"
+      "src/forkop/tabs/dashboard/overview.ts:188"
     ]
   },
   {
@@ -8014,7 +8016,7 @@
     "call": "The last configuration change failed",
     "key": "The last configuration change failed",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:116"
+      "src/forkop/tabs/dashboard/overview.ts:119"
     ]
   },
   {
@@ -8615,8 +8617,8 @@
     "key": "Tolerance",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2801",
-      "src/forkop/tabs/dashboard/initController.ts:1164",
-      "src/forkop/tabs/dashboard/initController.ts:1409"
+      "src/forkop/tabs/dashboard/initController.ts:1165",
+      "src/forkop/tabs/dashboard/initController.ts:1410"
     ]
   },
   {
@@ -8675,8 +8677,8 @@
     "call": "Traffic goes through the router without Forkop X.",
     "key": "Traffic goes through the router without Forkop X.",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:140",
-      "src/forkop/tabs/dashboard/overview.ts:155"
+      "src/forkop/tabs/dashboard/overview.ts:154",
+      "src/forkop/tabs/dashboard/overview.ts:169"
     ]
   },
   {
@@ -8793,7 +8795,7 @@
     "key": "Unavailability timeout",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3264",
-      "src/forkop/tabs/dashboard/initController.ts:1529"
+      "src/forkop/tabs/dashboard/initController.ts:1530"
     ]
   },
   {
@@ -8844,6 +8846,7 @@
     "call": "unknown",
     "key": "unknown",
     "places": [
+      "src/forkop/helpers/singBoxVariant.ts:28",
       "src/forkop/services/systemInfo.service.ts:10",
       "src/forkop/services/systemInfo.service.ts:11",
       "src/forkop/services/systemInfo.service.ts:12",
@@ -8853,7 +8856,6 @@
       "src/forkop/services/systemInfo.service.ts:22",
       "src/forkop/services/systemInfo.service.ts:33",
       "src/forkop/services/systemInfo.service.ts:34",
-      "src/forkop/helpers/singBoxVariant.ts:28",
       "src/forkop/tabs/diagnostic/initController.ts:735",
       "src/forkop/tabs/updates/initController.ts:333"
     ]
@@ -9023,7 +9025,7 @@
     "call": "URLTest details",
     "key": "URLTest details",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1429",
+      "src/forkop/tabs/dashboard/initController.ts:1430",
       "src/forkop/tabs/dashboard/partials/renderSections.ts:446",
       "src/forkop/tabs/dashboard/partials/renderSections.ts:447"
     ]
@@ -9032,7 +9034,7 @@
     "call": "URLTest details are unavailable",
     "key": "URLTest details are unavailable",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1150"
+      "src/forkop/tabs/dashboard/initController.ts:1151"
     ]
   },
   {
@@ -9047,14 +9049,14 @@
     "call": "URLTest settings reset",
     "key": "URLTest settings reset",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1364"
+      "src/forkop/tabs/dashboard/initController.ts:1365"
     ]
   },
   {
     "call": "URLTest settings saved",
     "key": "URLTest settings saved",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1352"
+      "src/forkop/tabs/dashboard/initController.ts:1353"
     ]
   },
   {
@@ -9092,7 +9094,7 @@
     "call": "Use source values",
     "key": "Use source values",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1385"
+      "src/forkop/tabs/dashboard/initController.ts:1386"
     ]
   },
   {
@@ -9330,7 +9332,7 @@
     "call": "Yes",
     "key": "Yes",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1031"
+      "src/forkop/tabs/dashboard/initController.ts:1032"
     ]
   },
   {

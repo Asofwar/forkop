@@ -93,6 +93,7 @@ function input(patch: Partial<OverviewInput> = {}): OverviewInput {
     availability: 'running',
     forkopEnabled: true,
     forkopStoppedByUser: false,
+    forkopStatus: 'running',
     singBoxRunning: true,
     groups: [
       group('VPN', [
@@ -187,6 +188,31 @@ describe('overview state', () => {
     );
     expect(idle.title).toBe('Not running');
     expect(idle.lines.some((line) => line.tone === 'error')).toBe(false);
+  });
+
+  it('does not call a start in progress a failed one', () => {
+    // Boot, Start, the start half of Restart, the WAN retry: the runtime is
+    // not up yet and no stop holds it down.
+    for (const forkopStatus of ['starting', 'restarting']) {
+      const state = overviewState(
+        input({ availability: 'stopped', forkopStatus }),
+      );
+      expect(state.status).toBe('busy');
+      expect(state.title).toBe('Starting…');
+      expect(state.lines.some((line) => line.tone === 'error')).toBe(false);
+    }
+    // A reload that repairs a runtime that went down.
+    const repair = overviewState(
+      input({ availability: 'stopped', forkopStatus: 'reloading' }),
+    );
+    expect(repair.status).toBe('busy');
+    expect(repair.lines.some((line) => line.tone === 'error')).toBe(false);
+    // Once the start is over and nothing runs, it failed.
+    expect(
+      overviewState(
+        input({ availability: 'stopped', forkopStatus: 'stopped but enabled' }),
+      ).title,
+    ).toBe('Not running');
   });
 
   it('warns about router DNS and an automatic rollback', () => {

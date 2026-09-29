@@ -436,6 +436,11 @@ zapret_providers=(
   "$((ZAPRET2_MARK_BASE + 1)):$ZAPRET2_QUEUE_BASE"
 )
 check production "$WORK_DIR/zapret.json" "$TABLE" "$OUTBOUND_MARK" "$queue_support" "${zapret_providers[@]}"
+if ! supported queue; then
+  # The listing cannot show queue statements the kernel lacks: their numbers
+  # and bypass flags are checked in the batch nft parsed and evaluated.
+  check batch-queues "$WORK_DIR/zapret.nft" "$TABLE" "${zapret_providers[@]}"
+fi
 check set "$WORK_DIR/zapret.json" "$TABLE" forkop_rule_yt_subnets 93.184.219.0/24
 ok "zapret/zapret2 NFQUEUE rules: candidate checked and applied, outbound mark bypass first"
 

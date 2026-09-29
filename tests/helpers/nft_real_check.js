@@ -10,7 +10,9 @@ const fs = require('node:fs');
 const assert = require('node:assert/strict');
 
 const [mode, file, ...args] = process.argv.slice(2);
-const listing = JSON.parse(fs.readFileSync(file, 'utf8')).nftables;
+const input = fs.readFileSync(file, 'utf8');
+// batch-queues reads an nft batch, every other mode a `nft -j list ruleset`.
+const listing = mode === 'batch-queues' ? [] : JSON.parse(input).nftables;
 assert.ok(Array.isArray(listing), 'nft -j output has no nftables array');
 
 const objects = (kind) => listing.filter((o) => o[kind]).map((o) => o[kind]);
@@ -122,6 +124,24 @@ const modes = {
       return [entry, entry];                          // tcp and udp
     });
     assert.deepEqual(found.sort(), expected.sort(), 'provider route marks and queues');
+  },
+
+  // batch-queues <batch> <table> <mark>:<queue>...: the queue statements of a
+  // batch the kernel stage took without them (no nft_queue), as nft parsed
+  // and evaluated them: every provider route mark queues tcp and udp to its
+  // queue with bypass, and no other rule of the table queues.
+  'batch-queues'() {
+    const [table, ...providers] = args;
+    const found = input.split('\n').filter((l) => l.startsWith(`add rule inet ${table} `) && / queue /.test(l)).map((l) => {
+      const m = l.match(/^add rule inet \S+ mangle_output meta mark (0x[0-9a-f]+) meta l4proto (tcp|udp) counter queue num (\d+) bypass$/);
+      assert.ok(m, `unexpected queue rule in the batch: ${l}`);
+      return `${Number(m[1])}:${m[2]}:${m[3]}`;
+    });
+    const expected = providers.flatMap((p) => {
+      const [mark, queue] = p.split(':');
+      return ['tcp', 'udp'].map((proto) => `${Number(mark)}:${proto}:${queue}`);
+    });
+    assert.deepEqual(found.sort(), expected.sort(), 'provider route marks, protocols and queues in the batch');
   },
 
   // set <json> <table> <set> <element>...: the set holds these elements.

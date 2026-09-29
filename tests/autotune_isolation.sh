@@ -9,6 +9,11 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB="$ROOT/forkop/files/usr/lib"
 # shellcheck source=tests/helpers/autotune_stubs.sh
 . "$ROOT/tests/helpers/autotune_stubs.sh"
+# shellcheck source=tests/helpers/wait.sh
+. "$ROOT/tests/helpers/wait.sh"
+# A detached nfqws double is visible to the orphan scan only once it has
+# exec'd; wait for that instead of a fixed delay.
+nfqws_started() { pgrep -f "$1" >/dev/null; }
 
 # --- catalog -------------------------------------------------------------
 reset_state
@@ -202,13 +207,14 @@ iso cleanup; json 'a.equal(r.status, "clean");' "$WORK/out.json"; ok "cleanup id
 # Orphan without pidfile (process exists, table missing): found by identity.
 reset_state
 ( "$ZAPRET_NFQWS_BIN" --qnum=4600 --dpi-desync-fwmark=0x40000000 --filter-tcp=443 >/dev/null 2>&1 & )
-for _ in 1 2 3 4 5 6 7 8 9 10; do pgrep -f "$WORK/bin/nfqws --qnum" >/dev/null && break; sleep 0.1; done
+wait_until 30 nfqws_started "$WORK/bin/nfqws --qnum=4600" || fail "orphan nfqws double did not start"
 iso cleanup
 json 'a.equal(r.status, "clean"); a.ok(r.actions.includes("orphan:stopped"), r.actions);' "$WORK/out.json"
 assert_clean "orphan"; ok "process exists, table missing"
 # A production-like nfqws on another queue is never an orphan.
 ( "$ZAPRET_NFQWS_BIN" --qnum=4000 --dpi-desync-fwmark=0x40000000 >/dev/null 2>&1 & )
-sleep 0.3; iso cleanup
+wait_until 30 nfqws_started "$WORK/bin/nfqws --qnum=4000" || fail "production-queue nfqws double did not start"
+iso cleanup
 pgrep -f "$WORK/bin/nfqws --qnum=4000" >/dev/null || fail "production-queue nfqws was killed"
 pkill -f "$WORK/bin/nfqws --qnum=4000"; ok "production-queue nfqws ignored by orphan scan"
 
@@ -364,7 +370,8 @@ assert_clean "malformed active"
 ok "malformed active.json: target recovered from the table itself"
 reset_state; cp "$ZAPRET_NFQWS_BIN" "$WORK/nfqws-other"
 ( "$WORK/nfqws-other" --qnum=4600 --dpi-desync-fwmark=0x40000000 >/dev/null 2>&1 & )
-sleep 0.3; iso cleanup
+wait_until 30 nfqws_started "$WORK/nfqws-other" || fail "nfqws double with another binary path did not start"
+iso cleanup
 pgrep -f "$WORK/nfqws-other" >/dev/null || fail "an nfqws with another binary path was treated as an orphan"
 pkill -f "$WORK/nfqws-other"; ok "orphan scan requires the exact binary path"
 reset_state; export FORKOP_AUTOTUNE_QUEUE=4001

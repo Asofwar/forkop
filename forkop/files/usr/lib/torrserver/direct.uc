@@ -82,18 +82,22 @@ function active(info) {
     return rule_output_active(command_output([ "nft", "list", "chain", "inet", TABLE, "output" ]), info);
 }
 function remove_rule() { success([ "nft", "delete", "table", "inet", TABLE ]); }
-function apply_rule(info) {
-    if (!info.available) return false;
-    let path = substr(info.cgroup, 1);
+// The nft batch for a dedicated cgroup (an absolute cgroup v2 path).
+function rule_batch(cgroup) {
+    let path = substr(cgroup, 1);
     let parts = split(path, "/");
     // Match the exact dedicated group, not a shared parent of nested services.
     let level = length(parts);
-    remove_rule();
-    let ruleset_path = "/tmp/forkop-torrserver-direct.nft";
-    let ruleset = "add table inet " + TABLE + "\n" +
+    return "add table inet " + TABLE + "\n" +
         "add chain inet " + TABLE + " output { type route hook output priority -151; policy accept; }\n" +
         "add rule inet " + TABLE + " output socket cgroupv2 level " + level + " \"" + path +
         "\" meta mark set " + OUTBOUND_MARK + " counter comment \"Forkop TorrServer Direct\"\n";
+}
+function apply_rule(info) {
+    if (!info.available) return false;
+    remove_rule();
+    let ruleset_path = "/tmp/forkop-torrserver-direct.nft";
+    let ruleset = rule_batch(info.cgroup);
     if (fs.writefile(ruleset_path, ruleset) == null)
         return false;
     let applied = success([ "nft", "-f", ruleset_path ]);
@@ -140,5 +144,11 @@ else if (mode == "worker") worker();
 else if (mode == "rule-output-active") {
     let info = { available: 1, cgroup: ARGV[1] || "" };
     exit(rule_output_active(read("/dev/stdin"), info) ? 0 : 1);
+}
+else if (mode == "batch") {
+    // Prints the batch apply_rule() would submit; changes nothing (tests).
+    let cgroup = ARGV[1] || "";
+    if (!valid_cgroup(cgroup)) exit(1);
+    print(rule_batch(cgroup));
 }
 else exit(1);

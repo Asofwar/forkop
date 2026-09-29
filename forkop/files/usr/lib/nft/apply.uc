@@ -15,6 +15,9 @@ const DNS_SOURCE6_SET = "forkop_dns_sources6";
 const NFT_BATCH_FILE = getenv("FORKOP_NFT_BATCH_FILE") || "";
 // Test-only candidate failure injection. Empty in production.
 const NFT_CANDIDATE_FAIL_PHASE = getenv("FORKOP_NFT_CANDIDATE_FAIL_PHASE") || "";
+// Route table registry; the same override service/package.uc honours. Tests
+// point it into their work directory.
+const RT_TABLES_FILE = getenv("FORKOP_RT_TABLES") || "/etc/iproute2/rt_tables";
 const NFT_TRANSITION_GUARD_CHAIN = "forkop_transition_guard";
 
 let common_read_json_file = common.read_json_file;
@@ -1382,7 +1385,7 @@ function tproxy_route_rule_present(table, mark) {
 }
 
 function ensure_tproxy_route_rule(table, mark, rt_tables_path) {
-    rt_tables_path = as_string(rt_tables_path || "/etc/iproute2/rt_tables");
+    rt_tables_path = as_string(rt_tables_path || RT_TABLES_FILE);
 
     if (!ensure_rt_table_entry(rt_tables_path, "105", table)) {
         log_fatal("Failed to update route table registry. Aborted.");

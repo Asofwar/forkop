@@ -714,9 +714,12 @@ function apply(plan_file, resolver) {
     if (applied.status != "success") {
         // The transaction put the previous configuration and runtime back
         // (recovered) or never replaced them (failed): nothing was applied.
+        // A candidate reload that was only queued behind another lifecycle
+        // action never ran: it is named, not reported as a failed candidate.
         let now_hash = sha_text(fs.readfile(CONFIG_FILE));
         audit.phase = "failed"; audit.status = "failed";
-        audit.reason = applied.status == "recovered" ? "reload_failed_recovered" : "apply_failed:" + as_string(applied.reason);
+        audit.reason = applied.status != "recovered" ? "apply_failed:" + as_string(applied.reason) :
+            applied.reason == "target_reload_queued" ? "reload_queued_recovered" : "reload_failed_recovered";
         audit.config_restored = valid_hash(now_hash) && now_hash == p.config_hash;
         audit.guards = guards_present();
         if (!audit.config_restored || length(audit.guards) > 0 || snapshot_operation_active()) { audit.phase = "needs_attention"; audit.status = "needs_attention"; }

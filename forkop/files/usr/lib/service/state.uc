@@ -243,6 +243,8 @@ function sync_time_if_needed() {
     ]);
 }
 
+// Unique per write, as in service/initd.uc: a caller comparing markers sees a
+// second request even within the same second.
 function mark_pending_reload(path, reason) {
     path = as_string(path || DEFAULT_PENDING_RELOAD_FILE);
     reason = as_string(reason || "pending");
@@ -250,7 +252,9 @@ function mark_pending_reload(path, reason) {
     if (!ensure_parent_dir(path))
         exit(1);
 
-    if (!write_text_file(path, "reason=" + reason + "\nupdated_at=" + current_epoch() + "\n"))
+    let now = clock();
+    let request = sprintf("%s.%d.%09d", as_string(fs.readlink("/proc/self") || "0"), now[0], now[1]);
+    if (!write_text_file(path, "reason=" + reason + "\nupdated_at=" + current_epoch() + "\nrequest=" + request + "\n"))
         exit(1);
 }
 

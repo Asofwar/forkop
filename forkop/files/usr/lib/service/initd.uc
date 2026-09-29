@@ -34,6 +34,10 @@ const START_RUNTIME_LOCK_WAIT_SECONDS = getenv("FORKOP_START_RUNTIME_LOCK_WAIT_S
 const SERVICE_TRIGGER_SYNC_FILE = getenv("FORKOP_SERVICE_TRIGGER_SYNC_FILE") || RUNTIME_STATE_DIR + "/service-triggers.sync";
 const INTERNAL_CONFIG_TRIGGER_GUARD = getenv("FORKOP_INTERNAL_CONFIG_TRIGGER_GUARD") || "/var/run/forkop.internal-config-change";
 const CONFIG_CHANGE_REASON = getenv("FORKOP_CONFIG_CHANGE_REASON") || "on_config_change";
+// Reload reasons of callers that must tell a queued reload from a completed
+// one: the list worker keeps its durable apply marker, a snapshot restore and
+// an autotune apply never confirm a configuration the runtime has not loaded.
+const QUEUE_ACK_REASONS = [ "list-content", "config-restore", "autotune" ];
 
 const DNS_APPLY_UC = LIB_DIR + "/dns/apply.uc";
 const UI_UC = LIB_DIR + "/service/ui.uc";
@@ -239,6 +243,8 @@ function acquire_runtime_dir_lock_wait(lock_dir, owner_pid, timeout) {
     return true;
 }
 
+// Every request rewrites the marker with a unique request id, so a caller
+// comparing markers sees a second request even within the same second.
 function mark_pending_reload(path, reason) {
     path = as_string(path || PENDING_RELOAD_FILE);
     reason = as_string(reason || "pending");
@@ -246,7 +252,9 @@ function mark_pending_reload(path, reason) {
     if (!ensure_parent_dir(path))
         return false;
 
-    return write_text_file(path, "reason=" + reason + "\nupdated_at=" + current_epoch() + "\n");
+    let now = clock();
+    let request = sprintf("%s.%d.%09d", as_string(fs.readlink("/proc/self") || "0"), now[0], now[1]);
+    return write_text_file(path, "reason=" + reason + "\nupdated_at=" + as_string(int(now[0])) + "\nrequest=" + request + "\n");
 }
 
 function mark_start_retry(path, reason) {
@@ -746,11 +754,10 @@ function reload_finish(reason, job_id, status) {
 function reload_service(reason, owner_pid) {
     let plan = reload_begin_value(reason, owner_pid, null, null);
     if (plan.action != "run") {
-        // A list worker must distinguish an accepted queued request from a
-        // completed lifecycle. The init.d shell intentionally ignores this
-        // token for ordinary callers, while the worker retains its durable
-        // list-content apply marker until lifecycle consumes it.
-        if (as_string(reason) == "list-content")
+        // Callers of QUEUE_ACK_REASONS must distinguish an accepted queued
+        // request from a completed lifecycle; for them a skip is always a
+        // queued request. Ordinary callers keep no output and status 0.
+        if (index(QUEUE_ACK_REASONS, as_string(reason)) >= 0)
             print("queued\n");
         return 0;
     }

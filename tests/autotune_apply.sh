@@ -132,12 +132,19 @@ esac
 SH
 # Forkop reload: outcomes from $STATE/reload.plan ("0", "1 0", ...); a
 # successful reload restarts the Dpi rule's nfqws with the configured strategy.
+# q is init.d behind a busy reload.lock: status 0, "queued" on stdout and
+# reload.pending from the production writer; m leaves only that marker.
 cat > "$WORK/reload" <<'SH'
 #!/usr/bin/env bash
+echo "$*" >> "$STUB_LOG/reload.args"
 set -- $(cat "$STATE/reload.plan" 2>/dev/null)
 rc="${1:-0}"; shift || true; echo "$*" > "$STATE/reload.plan"
 echo "reload $rc" >> "$STUB_LOG/reload.log"
-if [ "$rc" = q ]; then echo "reload_busy $(date +%s%N)" > "$FORKOP_PENDING_RELOAD_FILE"; exit 0; fi
+if [ "$rc" = q ] || [ "$rc" = m ]; then
+  "$REAL_UCODE" -L "$FORKOP_LIB" "$FORKOP_LIB/service/state.uc" mark-pending-reload "$FORKOP_PENDING_RELOAD_FILE" reload_busy
+  [ "$rc" = m ] || echo queued
+  exit 0
+fi
 [ -z "${RELOAD_SLEEP:-}" ] || sleep "$RELOAD_SLEEP"
 [ "$rc" = 0 ] || exit "$rc"
 # BREAK_FIRST_RELOAD: the candidate reload leaves an incoherent runtime; the next reload repairs it.
@@ -644,15 +651,21 @@ reset_apply; plan_ready; export CLASH_DOWN=1; at apply "$WORK/plan.json"
 json 'a.equal(r.status, "rolled_back"); a.equal(r.verification.checks.find((x) => x.name === "traffic_rule_path").detail, "clash_api_unreachable");' "$WORK/out.json"
 ok "rule path proven by the tracker: other outbound or no tracker -> rolled_back even with queue counters satisfied"
 
-# A reload that was only queued never counts as applied.
-reset_apply; plan_ready; echo "q 0" > "$STATE/reload.plan"; at apply "$WORK/plan.json"
-json 'a.equal(r.status, "failed"); a.equal(r.reason, "reload_failed_recovered"); a.equal(r.config_restored, true); a.equal(r.verification, null);' "$WORK/out.json"
+# A reload that was only queued never counts as applied (UC-005, UC-047).
+reset_apply; plan_ready; : > "$STUB_LOG/reload.args"; echo "q 0" > "$STATE/reload.plan"; at apply "$WORK/plan.json"
+json 'a.equal(r.status, "failed"); a.equal(r.reason, "reload_queued_recovered"); a.equal(r.reload.reason, "target_reload_queued"); a.equal(r.config_restored, true); a.equal(r.verification, null);' "$WORK/out.json"
 { [ "$(chash)" = "$PRE_HASH" ] && [ ! -e "$NFT_STATE/tables/ForkopConfigRestoreDpiGuard" ]; } || fail "queued reload left the candidate"
 [ "$(dpi_args)" = "$ZAPRET_NFQWS_BIN --qnum=4000 --dpi-desync-fwmark=0x40000000 $FAKE " ] || fail "runtime changed by a queued reload"
-reset_apply; plan_ready; echo "q q" > "$STATE/reload.plan"; at apply "$WORK/plan.json"
-json 'a.equal(r.status, "needs_attention"); a.equal(r.reload.reason, "runtime_rollback_failed");' "$WORK/out.json"
-[ -e "$NFT_STATE/tables/ForkopConfigRestoreDpiGuard" ] || fail "guard released after an unconfirmed reload"
-ok "queued reload -> config put back and recovered; queued twice -> needs_attention with the guard kept"
+[ "$(sort -u "$STUB_LOG/reload.args")" = "reload autotune" ] || fail "apply did not pass its reason to init.d: $(cat "$STUB_LOG/reload.args")"
+for plan in "q q" "m m" "1 q"; do
+  reset_apply; plan_ready; : > "$STUB_LOG/health.log"; echo "$plan" > "$STATE/reload.plan"; at apply "$WORK/plan.json"
+  json 'a.equal(r.status, "needs_attention"); a.equal(r.reload.reason, "rollback_reload_queued"); a.equal(r.applied, false);' "$WORK/out.json"
+  grep -q 'autotune_apply failure' "$STUB_LOG/health.log" || fail "$plan: queued reload not recorded as a failure"
+  [ -e "$NFT_STATE/tables/ForkopConfigRestoreDpiGuard" ] || fail "$plan: guard released after an unconfirmed reload"
+  [ "$(lkg)" = "$PRE_LKG" ] || fail "$plan: last-known-working moved by a queued reload"
+  ! grep -q 'autotune_apply success' "$STUB_LOG/health.log" 2>/dev/null || fail "$plan: queued reload recorded as success"
+done
+ok "queued reload -> config put back and recovered; queued twice (token or same-second marker) -> needs_attention with the guard kept"
 
 # Retention: room for the rollback's pre-restore snapshot is reserved.
 reset_apply; plan_ready

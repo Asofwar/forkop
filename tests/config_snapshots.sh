@@ -11,6 +11,8 @@ export FORKOP_SNAPSHOT_HASH_DIR="$WORK/hash"
 export FORKOP_SNAPSHOT_LOCK_DIR="$WORK/run/config-snapshot.lock"
 export FORKOP_LIB="$LIB"
 export FORKOP_HISTORY_FILE="$WORK/history.jsonl"
+export FORKOP_PENDING_RELOAD_FILE="$WORK/run/reload.pending"
+export FORKOP_RELOAD_LOCK_DIR="$WORK/run/reload.lock"
 cat > "$FORKOP_CONFIG_FILE" <<'UCI'
 config settings 'settings'
  option dns_server '1.1.1.1'

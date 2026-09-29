@@ -17,7 +17,9 @@ export FORKOP_SNAPSHOT_HASH_DIR="$WORK/hash"
 export FORKOP_SNAPSHOT_LOCK_DIR="$WORK/run/config-snapshot.lock"
 export FORKOP_LIB="$LIB"
 export FORKOP_RELOAD_COMMAND="$WORK/reload"
-export STATE="$WORK/state"
+export FORKOP_PENDING_RELOAD_FILE="$WORK/run/reload.pending"
+export FORKOP_RELOAD_LOCK_DIR="$WORK/run/reload.lock"
+export STATE="$WORK/state" REAL_UCODE
 mkdir -p "$WORK/bin" "$WORK/run" "$STATE"
 
 # Guard model: absent | valid | invalid, with the real contracts of
@@ -45,13 +47,23 @@ case "${3:-}" in
 esac
 exit 0
 STUB
-# Reload outcomes are consumed one per call from $STATE/plan.
+# Reload outcomes are consumed one per call from $STATE/plan. q answers like
+# init.d when another lifecycle action owns reload.lock: status 0, "queued"
+# on stdout and reload.pending from the production writer; m leaves only the
+# marker, as an init.d that does not acknowledge the queue would.
 cat > "$WORK/reload" <<'STUB'
 #!/bin/sh
+echo "$*" >> "$STATE/reload-args"
 set -- $(cat "$STATE/plan")
 rc="${1:-0}"; shift || true
 echo "$*" > "$STATE/plan"
 echo "reload:$rc:$(grep -o "marker '[a-z]*'" "$FORKOP_CONFIG_FILE")" >> "$STATE/events"
+case "$rc" in
+  q|m)
+    "$REAL_UCODE" -L "$FORKOP_LIB" "$FORKOP_LIB/service/state.uc" mark-pending-reload "$FORKOP_PENDING_RELOAD_FILE" reload_busy
+    [ "$rc" = m ] || echo queued
+    exit 0 ;;
+esac
 exit "$rc"
 STUB
 chmod +x "$WORK/bin/ucode" "$WORK/reload"
@@ -81,7 +93,9 @@ if (expect.guardField) assert.equal(result.guard, expect.guardField);
 assert.equal(guard, expect.guard, `guard state, events: ${events}`);
 assert.equal(marker, `marker '${expect.config}'`);
 if (expect.lkgGood !== undefined) assert.equal(lkg === goodId, expect.lkgGood);
+if (expect.lkg !== undefined) assert.equal(lkg, expect.lkg);
 if (expect.health) assert.ok(events.includes(`health:restore:${expect.health}`), events.join(' '));
+if (expect.health && expect.health !== 'success') assert.ok(!events.includes('health:restore:success'), events.join(' '));
 // Invariant: a guard is only removed right after a reload that succeeded.
 events.forEach((event, i) => {
   if (event.startsWith('remove-dpi-transition-guard'))
@@ -125,6 +139,43 @@ check '{"status":"success","guard":"absent","config":"good","lkgGood":true}'
 # 7. Unexpected guard state: fail closed, config not replaced, guard not removed.
 config bad; restore "$LIB" invalid "0"
 check '{"status":"failed","reason":"guard_unavailable","guard":"invalid","config":"bad","noReload":true,"noRemove":true}'
+
+# 8. Queued reloads (UC-005): a reload that init.d only queued is not a
+#    completed one. Both queued -> needs_attention, guard kept, LKG untouched.
+echo "stale" > "$FORKOP_SNAPSHOT_DIR/last-known-working"
+: > "$STATE/reload-args"
+config bad; restore "$LIB" valid "q q"
+check '{"status":"needs_attention","reason":"rollback_reload_queued","guardField":"active","guard":"valid","config":"bad","lkg":"stale","noRemove":true,"health":"failure"}'
+[ "$(sort -u "$STATE/reload-args")" = "reload config-restore" ]
+
+# 9. The queued request is still pending: the next restore is refused before
+#    any change (no pre-restore snapshot, no guard, no reload, no history).
+count="$(find "$FORKOP_SNAPSHOT_DIR" -name '*.json' | wc -l)"
+restore "$LIB" valid "0"
+check '{"status":"busy","reason":"reload_pending","guard":"valid","config":"bad","lkg":"stale","noReload":true,"noRemove":true}'
+[ ! -s "$STATE/events" ]
+[ "$(find "$FORKOP_SNAPSHOT_DIR" -name '*.json' | wc -l)" = "$count" ]
+rm -f "$FORKOP_PENDING_RELOAD_FILE"
+
+# 10. Target reload queued, rollback reload ran: recovered with the queue
+#     named; LKG names the reloaded pre-restore configuration, never the target.
+config bad; restore "$LIB" valid "q 0"
+check '{"status":"recovered","reason":"target_reload_queued","guardField":"inactive","guard":"absent","config":"bad","lkgGood":false,"health":"recovered"}'
+lkg_id="$(cat "$FORKOP_SNAPSHOT_DIR/last-known-working")"
+grep -q "marker 'bad'" "$FORKOP_SNAPSHOT_DIR/$lkg_id.json"
+rm -f "$FORKOP_PENDING_RELOAD_FILE"
+
+# 11. Target reload failed, rollback reload queued: needs_attention.
+echo "stale" > "$FORKOP_SNAPSHOT_DIR/last-known-working"
+config bad; restore "$LIB" absent "1 q"
+check '{"status":"needs_attention","reason":"rollback_reload_queued","guardField":"active","guard":"valid","config":"bad","lkg":"stale","noRemove":true,"health":"failure"}'
+rm -f "$FORKOP_PENDING_RELOAD_FILE"
+
+# 12. Without the acknowledgement the unique reload.pending marker still
+#     reveals both queued reloads (same second, same reason).
+config bad; restore "$LIB" valid "m m"
+check '{"status":"needs_attention","reason":"rollback_reload_queued","guardField":"active","guard":"valid","config":"bad","lkg":"stale","noRemove":true,"health":"failure"}'
+rm -f "$FORKOP_PENDING_RELOAD_FILE"
 
 # Phase 22 shape without any pre-existing guard.
 config bad; restore "$LIB" absent "1 0"

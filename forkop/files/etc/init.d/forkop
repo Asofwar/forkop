@@ -78,9 +78,11 @@ reload_service() {
         sync)
             sync_service_triggers
             ;;
-        # Keep the queue acknowledgement visible to the list worker.  It
-        # distinguishes accepted-but-not-applied list-content from a completed
-        # lifecycle and retains its durable local apply marker accordingly.
+        # Keep the queue acknowledgement visible to its callers (list worker,
+        # snapshot restore, autotune apply).  The status stays 0: they tell an
+        # accepted-but-not-applied request from a completed lifecycle by this
+        # token, so the list worker retains its durable apply marker and a
+        # restore never confirms a configuration the runtime has not loaded.
         queued)
             printf '%s\n' queued
             ;;

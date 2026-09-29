@@ -13,6 +13,7 @@ const BIN = getenv("FORKOP_BIN") || "/usr/bin/forkop";
 const RELOAD = getenv("FORKOP_RELOAD_COMMAND") || "/etc/init.d/forkop";
 const MAX_CONFIG = 2 * 1024 * 1024;
 const PENDING_RELOAD = getenv("FORKOP_PENDING_RELOAD_FILE") || "/var/run/forkop/reload.pending";
+const RELOAD_LOCK = getenv("FORKOP_RELOAD_LOCK_DIR") || "/var/run/forkop.reload.lock";
 const RETENTION = 10;
 
 function value(v) { return v == null ? "" : "" + v; }
@@ -300,28 +301,46 @@ function restore_guard(remove) {
     return success([ "ucode", "-L", LIB_DIR, LIB_DIR + "/nft/apply.uc",
         remove ? "remove-dpi-transition-guard" : "ensure-dpi-transition-guard", "ForkopConfigRestore" ]);
 }
-// Replace the configuration with `content` under the restore guard, validate
-// and reload; on failure put `before` back and reload again. The guard also
-// keeps the reload from confirming a last-known-working snapshot, so LKG is
-// only ever moved by the caller. on_success runs after the guard is released.
-// A reload that was only queued (another lifecycle action holds the reload
-// lock) returns success without touching the runtime; it is recognised by the
-// pending-reload marker it leaves.
+// A lifecycle action (list or subscription update, WAN-up reload, start, a
+// pending-reload drain) owns the reload lock, or a reload is already queued:
+// a reload requested now would only be queued behind it.
+function service_action() {
+    let pid = trim(value(fs.readfile(RELOAD_LOCK + "/pid")));
+    if (match(pid, /^[1-9][0-9]*$/) != null && fs.stat("/proc/" + pid) != null) return "service_action_in_progress";
+    if (fs.stat(PENDING_RELOAD) != null) return "reload_pending";
+    return null;
+}
+// A reload that was only queued (another lifecycle action took the reload
+// lock after the check above) exits 0 without touching the runtime. init.d
+// acknowledges it with a "queued" line for this caller's reason; a changed
+// pending-reload marker (unique per request) is the second witness.
 function pending_stamp() {
     let st = fs.stat(PENDING_RELOAD);
     return st == null ? null : sprintf("%d:%d:%s", st.mtime, st.size, value(fs.readfile(PENDING_RELOAD)));
 }
-function reload_ran(detect_queued) {
-    let before = detect_queued ? pending_stamp() : null;
-    if (!success([ RELOAD, "reload" ])) return false;
-    return !detect_queued || pending_stamp() == null || pending_stamp() == before;
+// "ran", "queued" or "failed".
+function reload(reason) {
+    let before = pending_stamp();
+    let pipe = fs.popen(cmd([ RELOAD, "reload", reason ]) + " 2>/dev/null", "r");
+    if (!pipe) return "failed";
+    let output = value(pipe.read("all"));
+    if (pipe.close() != 0) return "failed";
+    for (let line in split(output, "\n"))
+        if (trim(line) == "queued") return "queued";
+    let after = pending_stamp();
+    return after != null && after != before ? "queued" : "ran";
 }
+// Replace the configuration with `content` under the restore guard, validate
+// and reload; on failure put `before` back and reload again. The guard also
+// keeps the reload from confirming a last-known-working snapshot, so LKG is
+// only ever moved by the caller. on_success runs after the guard is released.
+// Only a reload that ran counts: after a queued one the configuration is put
+// back, and when the rollback reload is queued too nothing proves a coherent
+// runtime, so the guard stays and LKG is not touched.
 // apply_mode (autotune apply): the caller proved no guard was active and the
-// snapshot lock keeps restores out, so the guard is this call's own; a
-// queued reload is detected and an edit made while the guard was installed
-// is never overwritten. A restore keeps its established behaviour.
-function guarded_replace(before, content, pre, on_success, apply_mode) {
-    let detect_queued = apply_mode;
+// snapshot lock keeps restores out, so the guard is this call's own; an edit
+// made while the guard was installed is never overwritten.
+function guarded_replace(before, content, pre, on_success, reason, apply_mode) {
     if (!restore_guard(false)) return { status: "failed", reason: "guard_unavailable" };
     if (apply_mode && sha(read_config()) != sha(before)) {
         if (!restore_guard(true)) return { status: "needs_attention", reason: "guard_release_failed", guard: "active" };
@@ -333,18 +352,21 @@ function guarded_replace(before, content, pre, on_success, apply_mode) {
     }
     let result = null;
     let valid = success([ "ucode", "-L", LIB_DIR, LIB_DIR + "/config/validator.uc", "validate-runtime" ]);
-    if (valid && reload_ran(detect_queued)) {
+    let target = valid ? reload(reason) : "invalid";
+    if (target == "ran") {
         if (!restore_guard(true)) result = { status: "needs_attention", reason: "guard_release_failed", guard: "active" };
         else result = on_success();
     }
     else if (!atomic(CONFIG, before))
         result = { status: "needs_attention", reason: "config_rollback_failed", guard: "active" };
-    else if (reload_ran(detect_queued)) {
-        if (!restore_guard(true)) result = { status: "needs_attention", reason: "guard_release_failed", guard: "active" };
+    else {
+        let rollback = reload(reason);
+        if (rollback != "ran")
+            result = { status: "needs_attention", reason: rollback == "queued" ? "rollback_reload_queued" : "runtime_rollback_failed", guard: "active" };
+        else if (!restore_guard(true)) result = { status: "needs_attention", reason: "guard_release_failed", guard: "active" };
         else if (!atomic(LKG, pre.snapshot.id + "\n")) result = { status: "needs_attention", reason: "lkg_update_failed", guard: "inactive" };
-        else result = { status: "recovered", reason: "target_reload_failed", guard: "inactive" };
+        else result = { status: "recovered", reason: target == "queued" ? "target_reload_queued" : "target_reload_failed", guard: "inactive" };
     }
-    else result = { status: "needs_attention", reason: "runtime_rollback_failed", guard: "active" };
     result.started = true;
     return result;
 }
@@ -353,13 +375,16 @@ function do_restore(id) {
     if (target == null) return { status: "failed", reason: "invalid_snapshot" };
     let before = read_config();
     if (before == null) return { status: "failed", reason: "config_unavailable" };
+    // Refused before anything changes while the reload would only be queued.
+    let action = service_action();
+    if (action != null) return { status: "busy", reason: action };
     let pre = create("automatic", "pre-restore", false, [ id ]);
     if (pre.status != "created") return { status: "failed", reason: "pre_restore_snapshot_failed" };
     if (sha(before) != sha(read_config())) return { status: "failed", reason: "concurrent_change" };
     return guarded_replace(before, target.content, pre, () => {
         if (!atomic(LKG, id + "\n")) return { status: "needs_attention", reason: "lkg_update_failed", guard: "inactive" };
         return { status: "success", snapshot: metadata(target), changes: diff(before, target.content) };
-    });
+    }, "config-restore");
 }
 // Apply a candidate configuration prepared elsewhere (DPI autotune stage 5)
 // through the same transaction as a restore. The current configuration must
@@ -374,7 +399,8 @@ function do_apply(candidate_file, expected_hash, keep_id) {
     if (before == null) return { status: "failed", reason: "config_unavailable" };
     if (sha(before) != value(expected_hash)) return { status: "stale", reason: "config_changed" };
     if (content == before) return { status: "no_change", reason: "candidate_equals_config" };
-    if (fs.stat(PENDING_RELOAD) != null) return { status: "stale", reason: "reload_pending" };
+    let action = service_action();
+    if (action != null) return { status: "stale", reason: action };
     // Room for the before-autotune snapshot and for the pre-restore snapshot
     // of a later rollback, which may not remove the before-autotune one. A
     // manual LKG stays protected after the candidate is confirmed, so it
@@ -384,7 +410,7 @@ function do_apply(candidate_file, expected_hash, keep_id) {
     let pre = create("automatic", "before-autotune", false, keep);
     if (pre.status != "created") return { status: "failed", reason: "pre_apply_snapshot_failed" };
     if (sha(before) != sha(read_config())) return { status: "failed", reason: "concurrent_change", pre_snapshot: pre.snapshot.id };
-    let result = guarded_replace(before, content, pre, () => ({ status: "success", changes: diff(before, content) }), true);
+    let result = guarded_replace(before, content, pre, () => ({ status: "success", changes: diff(before, content) }), "autotune", true);
     result.pre_snapshot = pre.snapshot.id;
     return result;
 }
@@ -433,8 +459,10 @@ else if (mode == "delete") {
 }
 else if (mode == "restore") {
     answer = do_restore(value(ARGV[1]));
-    success([ "ucode", "-L", LIB_DIR, LIB_DIR + "/diagnostics/health.uc", "record", "restore",
-        answer.status == "success" ? "success" : answer.status == "recovered" ? "recovered" : "failure" ]);
+    // A busy refusal changed nothing and is not a restore attempt.
+    if (answer.status != "busy")
+        success([ "ucode", "-L", LIB_DIR, LIB_DIR + "/diagnostics/health.uc", "record", "restore",
+            answer.status == "success" ? "success" : answer.status == "recovered" ? "recovered" : "failure" ]);
 }
 else if (mode == "apply") {
     answer = do_apply(ARGV[1], ARGV[2], ARGV[3]);
@@ -451,4 +479,4 @@ else if (mode == "confirm-working") {
 }
 release();
 print(sprintf("%J\n", answer));
-exit(index([ "failed", "needs_attention" ], answer.status) >= 0 ? 1 : 0);
+exit(index([ "failed", "needs_attention", "busy" ], answer.status) >= 0 ? 1 : 0);

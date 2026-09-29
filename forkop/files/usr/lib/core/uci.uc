@@ -5,8 +5,11 @@ let common = require("core.common");
 
 let as_string = common.as_string;
 
-const UCI_STATE_FILE = getenv("FORKOP_UCI_STATE_FILE") || getenv("UCI_STATE") || "";
-const UCI_LOG_FILE = getenv("FORKOP_UCI_LOG_FILE") || getenv("UCI_LOG") || "";
+// Test fixture hooks: a flat state file instead of libuci, and a log of
+// commits. Only these Forkop-namespaced names count; the read-only CLI
+// (/usr/libexec/forkop-ro) runs with a clean environment.
+const UCI_STATE_FILE = getenv("FORKOP_UCI_STATE_FILE") || "";
+const UCI_LOG_FILE = getenv("FORKOP_UCI_LOG_FILE") || "";
 
 let runtime_cursor = false;
 let loaded_packages = {};

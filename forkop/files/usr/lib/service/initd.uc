@@ -643,9 +643,10 @@ function start_result_path(request) {
 // The outcome of this start for the start-and-wait caller that requested it,
 // and for the WAN-up retry (reason "triggered") in the log. Written before a
 // queued reload is drained: that reload waits for procd's lock, which the
-// caller may hold while it waits for this result.
-function report_start_result(reason, status) {
-    if (as_string(reason) == "triggered") {
+// caller may hold while it waits for this result. A start that an explicit
+// stop skipped or overtook is no failed recovery: the stop wins (UC-012).
+function report_start_result(reason, status, stopped) {
+    if (as_string(reason) == "triggered" && !(status != 0 && stopped)) {
         if (status == 0)
             command_success_from_args([ "logger", "-t", SERVICE_NAME, "[info] Forkop recovered automatically after a failed start" ]);
         else
@@ -682,7 +683,7 @@ function start_service(reason, owner_pid) {
     if (stop_requested() && stop_request_value() != stop_request_before) {
         release_runtime_dir_lock(RELOAD_LOCK_DIR, owner_pid);
         command_success_from_args([ "logger", "-t", SERVICE_NAME, "[info] Forkop start skipped: a stop was requested after it" ]);
-        report_start_result(reason, 1);
+        report_start_result(reason, 1, true);
         return 1;
     }
     // An explicit start ends an explicit stop; a stop request seen after
@@ -698,7 +699,7 @@ function start_service(reason, owner_pid) {
 
     let status = command_status_from_args([ BIN_PATH, "start" ]);
     release_runtime_dir_lock(RELOAD_LOCK_DIR, owner_pid);
-    report_start_result(reason, status);
+    report_start_result(reason, status, stop_requested());
     if (status == 0) {
         clear_start_retry(START_RETRY_FILE);
         cancel_scheduled_start_retry(START_RETRY_PID_FILE);

@@ -910,7 +910,7 @@ function start_phase_failed(phase, status) {
 function start_abandoned_for_stop(phase) {
     if (!start_watches_stop_request || fs.stat(STOP_REQUESTED_FILE) == null)
         return false;
-    log_message("Forkop start abandoned before " + phase + ": a stop was requested meanwhile", "warn");
+    log_message("Forkop start abandoned before " + phase + ": a stop was requested meanwhile", "info");
     return true;
 }
 
@@ -2292,7 +2292,11 @@ if (mode == "main")
     status = start_main();
 else if (mode == "start") {
     status = start();
-    module_success(LIB_DIR + "/diagnostics/health.uc", [ "record", "start", status == 0 ? "success" : "failure" ]);
+    // start() ends an earlier explicit stop: a stop request now was made
+    // during this start, and a start it abandoned or cut short did not fail
+    // (UC-012). The stop records nothing either.
+    if (status == 0 || fs.stat(STOP_REQUESTED_FILE) == null)
+        module_success(LIB_DIR + "/diagnostics/health.uc", [ "record", "start", status == 0 ? "success" : "failure" ]);
     if (status == 0)
         module_success(LIB_DIR + "/config/snapshots.uc", [ "confirm-working" ]);
 }

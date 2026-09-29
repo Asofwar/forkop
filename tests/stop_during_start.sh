@@ -319,6 +319,26 @@ printf '1\n' >"$STOP_MARKER"
 initd start-service triggered >/dev/null 2>&1 && fail "the retry's start after an explicit stop succeeded"
 no_event '^forkop start' || fail "the retry's start ran after an explicit stop"
 [ -e "$STOP_MARKER" ] || fail "the retry's start ended the explicit stop"
+# A retry's start that fails because a stop was requested while it ran is
+# not a failed recovery.
+reset_case
+printf '1\n' >"$WORK_DIR/start.status"
+: >"$WORK_DIR/start.gate-armed"
+start_actor sh -c 'exec "$0" -L "$1" "$1/service/initd.uc" start-service triggered >/dev/null 2>&1' "$REAL_UCODE" "$LIB"
+RETRY_START_ACTOR="$LAST_ACTOR"
+wait_until 10 has_event "forkop start" || fail "the retry's start did not run forkop start"
+printf 'stop\n' >"$STOP_MARKER"
+: >"$WORK_DIR/start.gate"
+wait_until 20 process_gone "$RETRY_START_ACTOR" || fail "the retry's start did not finish"
+grep -q 'automatic recovery attempt failed' "$WORK_DIR/syslog" &&
+  fail "a retry's start overtaken by an explicit stop was logged as a failed recovery"
+retry_scheduled && fail "a retry's start overtaken by an explicit stop scheduled another retry"
+# The same retry's start skipped for an earlier stop.
+reset_case
+printf '1\n' >"$STOP_MARKER"
+initd start-service triggered >/dev/null 2>&1 || true
+grep -q 'automatic recovery attempt failed' "$WORK_DIR/syslog" &&
+  fail "a retry's start skipped for an explicit stop was logged as a failed recovery"
 [ "$(initd retry-start-on-wan-up-action 0 1 1 1)" = skip_stopped ] ||
   fail "the retry decision ignores an explicit stop"
 [ "$(initd wan-up-action 0 1 1 0 1)" = skip_stopped ] || fail "the WAN-up decision ignores an explicit stop"
@@ -332,7 +352,8 @@ mkdir -p "$FAKE_LIB"
 printf 'forkop.settings=settings\nforkop.settings.yacd_secret_key=0123456789abcdef\nforkop.settings.dont_touch_dhcp=1\n' >"$WORK_DIR/uci.state"
 
 # Every module the start calls: records "<module> <mode>", can be held at a
-# gate, and succeeds. Locks go to the real service/state.uc.
+# gate, and succeeds unless it is FAKE_FAIL. Locks go to the real
+# service/state.uc.
 fake_module() {
   mkdir -p "$(dirname "$FAKE_LIB/$1")"
   cat >"$FAKE_LIB/$1" <<UC
@@ -346,6 +367,9 @@ if (name == "service/state.uc" && index(mode, "runtime-dir-lock") >= 0) {
         command += " " + q(arg);
     exit(system(command));
 }
+// A health record carries its outcome.
+if (name == "diagnostics/health.uc")
+    mode = join(" ", ARGV);
 system("printf '%s\\\\n' " + q(name + " " + mode) + " >> " + q(getenv("EVENTS")));
 let gate = getenv("FAKE_GATE") || "";
 if (gate != "" && gate == name + " " + mode) {
@@ -353,6 +377,8 @@ if (gate != "" && gate == name + " " + mode) {
     for (let n = 0; fs.stat(getenv("TEST_WORK") + "/fake.gate") == null && n < 1200; n++)
         system("sleep 0.05");
 }
+if ((getenv("FAKE_FAIL") || "") == name + " " + mode)
+    exit(1);
 if (name == "service/state.uc" && (mode == "has-list-update-sources" || mode == "forkop-stably-running" ||
     mode == "sing-box-process-conflict" || mode == "forkop-running"))
     exit(1);
@@ -368,7 +394,7 @@ for module in service/state.uc subscription/cache.uc config/validator.uc nft/app
 done
 
 run_lifecycle_start() {
-  start_actor env FORKOP_LIB="$FAKE_LIB" FAKE_GATE="$1" \
+  start_actor env FORKOP_LIB="$FAKE_LIB" FAKE_GATE="$1" FAKE_FAIL="${FAKE_FAIL:-}" \
     ucode -L "$LIB" "$LIB/service/lifecycle.uc" start
   LIFECYCLE_ACTOR="$LAST_ACTOR"
 }
@@ -392,6 +418,7 @@ printf 'stop\n' >"$STOP_MARKER"
 no_event '^nft/apply.uc nft-rebuild-runtime' || fail "the start built the nftables policy after a stop request"
 no_event '^service/state.uc start-managed-sing-box-runtime' || fail "the start started sing-box after a stop request"
 grep -q 'start abandoned before the nftables policy' "$WORK_DIR/syslog" || fail "the abandoned start was not logged"
+no_event '^diagnostics/health.uc record start failure' || fail "a start abandoned for a stop was recorded as a failed start"
 
 # 6. A stop requested once the nftables policy is in place, before sing-box.
 reset_case
@@ -407,6 +434,7 @@ no_event '^service/state.uc start-managed-sing-box-runtime' || fail "the start s
 no_event '^singbox/priority.uc start-runtime' || fail "the start started Priority after a stop request"
 has_event "service/state.uc stop-managed-sing-box-runtime" || fail "the abandoned start did not clean up its runtime"
 grep -q 'start abandoned before sing-box' "$WORK_DIR/syslog" || fail "the abandoned start was not logged"
+no_event '^diagnostics/health.uc record start failure' || fail "a start abandoned for a stop was recorded as a failed start"
 
 # 6b. A stop requested once sing-box runs: the deferred subscription bootstrap
 #     may download through it for a while, then a stop that no longer waits
@@ -438,7 +466,19 @@ for gate in "subscription/cache.uc run-deferred-bootstrap" "providers/zapret2/ru
   printf '%s\n' "$after_stop" | grep -q '^service/state.uc stop-managed-sing-box-runtime' ||
     fail "a start overtaken by a stop at $gate did not stop the sing-box it started"
   grep -q 'start abandoned before' "$WORK_DIR/syslog" || fail "the start abandoned at $gate was not logged"
+  no_event '^diagnostics/health.uc record start failure' ||
+    fail "a start abandoned for a stop at $gate was recorded as a failed start"
 done
+
+# 6c. Control: a start that fails without a stop request is recorded as a
+#     failed start.
+reset_case
+rm -f "$WORK_DIR/fake.gate"
+FAKE_FAIL="subscription/cache.uc run-deferred-bootstrap"
+run_lifecycle_start ""
+FAKE_FAIL=""
+[ "$(lifecycle_start_status)" != 0 ] || fail "a failing start reported success"
+has_event "diagnostics/health.uc record start failure" || fail "a failed start without a stop request was not recorded"
 
 # 7. Control: without a stop request the same start reaches sing-box, and an
 #    earlier stop request does not hold it back.
@@ -454,6 +494,7 @@ for step in "providers/zapret/runtime.uc start-runtime" "providers/zapret2/runti
 done
 wait_until 20 has_event "service/lifecycle.uc refresh-rulesets-after-start" ||
   fail "a start without a stop request did not start its background workers"
+has_event "diagnostics/health.uc record start success" || fail "a start without a stop request was not recorded"
 [ ! -e "$STOP_MARKER" ] || fail "a start kept an earlier explicit stop"
 
 printf 'stop during start checks passed\n'

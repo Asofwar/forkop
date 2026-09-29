@@ -655,6 +655,10 @@ const STALE_REASONS = [
   'plan_candidate_differs',
 ];
 
+// A service action (list or subscription update, reload, start) owned the
+// reload lock or a reload was queued: the apply was refused unchanged.
+const BUSY_REASONS = ['service_action_in_progress', 'reload_pending'];
+
 export interface ApplyResultView {
   tone: 'success' | 'warning' | 'error' | 'neutral';
   text: string;
@@ -748,8 +752,20 @@ export function applyResultView(
         attention: false,
       };
     case 'stale':
+      // A lifecycle action took the reload lock after the checks: nothing
+      // was changed and the recommendation still stands.
+      if (BUSY_REASONS.includes(reason ?? ''))
+        return { tone: 'warning', text: refusalText(reason), attention: false };
       return stale;
     case 'failed':
+      if (reason === 'reload_queued_recovered')
+        return {
+          tone: 'warning',
+          text: _(
+            'The new strategy was not applied: the service was busy and only queued the reload. The previous configuration is kept.',
+          ),
+          attention: false,
+        };
       if (reason === 'reload_failed_recovered')
         return {
           tone: 'warning',

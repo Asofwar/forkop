@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-28 23:36+0000\n"
-"PO-Revision-Date: 2026-09-28 23:36+0000\n"
+"POT-Creation-Date: 2026-09-29 00:02+0000\n"
+"PO-Revision-Date: 2026-09-29 00:02+0000\n"
 "Last-Translator: Asofwar <7397608+Asofwar@users.noreply.github.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -113,7 +113,7 @@ msgstr ""
 msgid "%s: not moved to the Device filter, the rule has no destination condition and does not use it"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8733
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8739
 msgid "+ Add JSON outbound"
 msgstr ""
 
@@ -121,11 +121,11 @@ msgstr ""
 msgid "+ Add level"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8820
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8826
 msgid "+ Add priority"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8760
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8766
 msgid "+ Add URLTest"
 msgstr ""
 
@@ -179,6 +179,10 @@ msgstr ""
 msgid "A safe isolated check is not possible right now."
 msgstr ""
 
+#: src/forkop/tabs/history/model.ts:240
+msgid "A service reload is queued. Nothing was changed; try again after it runs."
+msgstr ""
+
 #: src/forkop/tabs/autotune/initController.ts:537
 msgid "A site or service checked through the DPI rule that routes it."
 msgstr ""
@@ -191,8 +195,8 @@ msgstr ""
 msgid "A strategy is set for the whole rule, so Forkop X does not change it. You can split the targets into separate rules."
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8309
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8362
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8315
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8368
 msgid "Action"
 msgstr ""
 
@@ -264,19 +268,19 @@ msgstr ""
 msgid "Add the sites that go through your DPI rules, for example youtube.com."
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9361
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9367
 msgid "Add URLs or local paths to .lst lists containing domains and subnets."
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9382
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9388
 msgid "Add URLs or local paths to .lst lists containing domains. IP entries are ignored."
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9336
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9342
 msgid "Add URLs or local paths to .srs / .json lists. Only domain rules are supported."
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9301
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9307
 msgid "Add URLs or local paths to .srs / .json lists. Subnets are ignored by default."
 msgstr ""
 
@@ -312,7 +316,7 @@ msgstr ""
 msgid "Adult sites"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8297
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8303
 msgid "Advanced"
 msgstr ""
 
@@ -363,7 +367,7 @@ msgstr ""
 msgid "All servers"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9426
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9432
 msgid "All traffic from these IP addresses will be routed through the section unconditionally, ignoring all other conditions."
 msgstr ""
 
@@ -399,7 +403,7 @@ msgstr ""
 msgid "An IP address needs no DNS"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:250
+#: src/forkop/tabs/history/initController.ts:246
 msgid "and %d more"
 msgstr ""
 
@@ -408,7 +412,7 @@ msgid "Anime"
 msgstr ""
 
 #: src/forkop/tabs/autotune/initController.ts:301
-#: src/forkop/tabs/autotune/model.ts:701
+#: src/forkop/tabs/autotune/model.ts:705
 msgid "Another autotune operation is running."
 msgstr ""
 
@@ -428,7 +432,7 @@ msgstr ""
 msgid "Another snapshot operation is already in progress. Changes were not applied; try again in a moment."
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:168
+#: src/forkop/tabs/history/model.ts:244
 msgid "Another snapshot operation is already in progress. Try again in a moment."
 msgstr ""
 
@@ -456,7 +460,7 @@ msgstr ""
 msgid "Apply %s?"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9406
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9412
 msgid "Apply section rules only to the specified local IP addresses"
 msgstr ""
 
@@ -517,7 +521,7 @@ msgstr ""
 msgid "Automatic component update checks"
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:790
+#: src/forkop/tabs/autotune/model.ts:806
 msgid "Automatic recovery did not finish."
 msgstr ""
 
@@ -618,7 +622,7 @@ msgstr ""
 msgid "Backend validation unavailable: %s. Save again to retry."
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8293
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8299
 msgid "Basics"
 msgstr ""
 
@@ -678,12 +682,12 @@ msgstr ""
 msgid "Browser is using FakeIP correctly"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9238
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9258
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9244
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9264
 msgid "Built-in rule sets"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8384
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8390
 msgid "Built-in rule sets #2 are not supported for DNS rules. Remove them on the What tab or choose another action."
 msgstr ""
 
@@ -738,7 +742,7 @@ msgstr ""
 msgid "ByeDPI sing-box outbound is not configured"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8569
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8575
 msgid "ByeDPI Strategy"
 msgstr ""
 
@@ -801,17 +805,17 @@ msgstr ""
 msgid "Cannot save settings"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9589
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9595
 msgid "Cannot save the rule"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8853
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8925
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8946
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8859
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8931
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8952
 msgid "Cascade connection"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:380
+#: src/forkop/tabs/history/initController.ts:362
 msgid "Changes"
 msgstr ""
 
@@ -823,7 +827,7 @@ msgstr ""
 msgid "Changes compare a snapshot with the saved configuration. Unsaved form edits are not included."
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:211
+#: src/forkop/tabs/history/initController.ts:207
 msgid "Changes since this snapshot"
 msgstr ""
 
@@ -1002,7 +1006,7 @@ msgstr ""
 #: src/forkop/tabs/autotune/initController.ts:608
 #: src/forkop/tabs/dashboard/initController.ts:1279
 #: src/forkop/tabs/dashboard/initController.ts:1657
-#: src/forkop/tabs/history/initController.ts:221
+#: src/forkop/tabs/history/initController.ts:217
 #: src/forkop/tabs/updates/releaseSelector.ts:121
 msgid "Close"
 msgstr ""
@@ -1056,7 +1060,7 @@ msgstr ""
 msgid "compressed"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8325
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8331
 msgid "Conditions"
 msgstr ""
 
@@ -1084,7 +1088,7 @@ msgstr ""
 msgid "Configuration reload"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:272
+#: src/forkop/tabs/history/model.ts:264
 msgid "Configuration restored and reloaded"
 msgstr ""
 
@@ -1124,7 +1128,7 @@ msgstr ""
 msgid "Conflict"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8896
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8902
 msgid "Connect through"
 msgstr ""
 
@@ -1141,7 +1145,7 @@ msgstr ""
 msgid "Connection refused or host unreachable"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8613
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8619
 msgid "Connection URL"
 msgstr ""
 
@@ -1192,8 +1196,8 @@ msgstr ""
 msgid "Could not change autostart"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:207
-#: src/forkop/tabs/history/initController.ts:261
+#: src/forkop/tabs/history/initController.ts:203
+#: src/forkop/tabs/history/initController.ts:257
 msgid "Could not compare configurations"
 msgstr ""
 
@@ -1205,11 +1209,11 @@ msgstr ""
 msgid "Could not confirm completion. Check the removal log before retrying."
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:312
+#: src/forkop/tabs/history/initController.ts:294
 msgid "Could not create snapshot"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:302
+#: src/forkop/tabs/history/initController.ts:284
 msgid "Could not delete snapshot"
 msgstr ""
 
@@ -1222,7 +1226,7 @@ msgstr ""
 msgid "Could not load available versions"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:341
+#: src/forkop/tabs/history/initController.ts:323
 msgid "Could not load configuration snapshots"
 msgstr ""
 
@@ -1233,7 +1237,7 @@ msgstr ""
 #: src/forkop/tabs/diagnostic/initController.ts:631
 #: src/forkop/tabs/diagnostic/initController.ts:667
 #: src/forkop/tabs/diagnostic/initController.ts:671
-#: src/forkop/tabs/history/initController.ts:235
+#: src/forkop/tabs/history/initController.ts:231
 msgid "Could not load data"
 msgstr ""
 
@@ -1255,7 +1259,7 @@ msgstr ""
 msgid "Could not start the check"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:331
+#: src/forkop/tabs/history/initController.ts:313
 msgid "Create snapshot"
 msgstr ""
 
@@ -1263,7 +1267,7 @@ msgstr ""
 msgid "Creating a snapshot and reloading the service"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8915
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8921
 msgid "Current section cannot be used as its own transit section"
 msgstr ""
 
@@ -1271,7 +1275,7 @@ msgstr ""
 msgid "Current section cannot download its own subscription"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8728
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8734
 msgid "Custom outbound configurations in JSON format"
 msgstr ""
 
@@ -1315,19 +1319,19 @@ msgstr ""
 msgid "Delay value cannot be empty"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:292
+#: src/forkop/tabs/history/initController.ts:274
 msgid "Delete"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:290
+#: src/forkop/tabs/history/initController.ts:272
 msgid "Delete snapshot?"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:291
+#: src/forkop/tabs/history/initController.ts:273
 msgid "Delete this configuration snapshot?"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:394
+#: src/forkop/tabs/history/initController.ts:376
 msgid "Delete…"
 msgstr ""
 
@@ -1371,15 +1375,15 @@ msgstr ""
 msgid "Device"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9405
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9411
 msgid "Device filter"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:7887
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:7893
 msgid "Device or IP"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8337
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8343
 msgid "Devices"
 msgstr ""
 
@@ -1494,7 +1498,7 @@ msgid "DNS over TLS (DoT)"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2738
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8395
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8401
 msgid "DNS protocol"
 msgstr ""
 
@@ -1503,11 +1507,11 @@ msgid "DNS Protocol Type"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2739
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8396
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8402
 msgid "DNS protocol used by the resolver"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8439
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8445
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:405
 msgid "DNS requests through section"
 msgstr ""
@@ -1517,11 +1521,11 @@ msgid "DNS Rewrite TTL"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2748
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8408
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8414
 msgid "DNS server"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8417
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8423
 #: src/validators/validateDns.ts:8
 msgid "DNS server address cannot be empty"
 msgstr ""
@@ -1531,7 +1535,7 @@ msgid "DNS server for checks"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2749
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8409
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8415
 msgid "DNS server used by the resolver"
 msgstr ""
 
@@ -1547,7 +1551,7 @@ msgstr ""
 msgid "DNS through proxy"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8427
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8433
 msgid "DNS through section"
 msgstr ""
 
@@ -1555,7 +1559,7 @@ msgstr ""
 msgid "DNS Unavailability Timeout"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9437
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9443
 msgid "Do not apply this section to the specified local IP addresses; matching continues with the next section."
 msgstr ""
 
@@ -1591,7 +1595,7 @@ msgstr ""
 msgid "Domain"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9360
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9366
 msgid "Domain and IP lists"
 msgstr ""
 
@@ -1599,7 +1603,7 @@ msgstr ""
 msgid "Domain does not exist"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9381
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9387
 msgid "Domain lists"
 msgstr ""
 
@@ -1611,7 +1615,7 @@ msgstr ""
 msgid "Domain Resolver"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9197
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9203
 msgid "Domains"
 msgstr ""
 
@@ -1752,7 +1756,7 @@ msgstr ""
 msgid "Edit…"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8299
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8305
 #: src/forkop/tabs/updates/initController.ts:1084
 #: src/forkop/tabs/updates/initController.ts:1115
 msgid "Enable"
@@ -1774,11 +1778,11 @@ msgstr ""
 msgid "Enable list updates"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9002
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9008
 msgid "Enable Mixed Proxy"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9049
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9055
 msgid "Enable Mixed Proxy Authentication"
 msgstr ""
 
@@ -1836,7 +1840,7 @@ msgstr ""
 msgid "Enter a strategy"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8420
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8426
 msgid "Enter a valid DNS server address"
 msgstr ""
 
@@ -1848,7 +1852,7 @@ msgstr ""
 msgid "Enter an address"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8639
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8645
 msgid "Enter the subscription URL"
 msgstr ""
 
@@ -1886,7 +1890,7 @@ msgstr ""
 msgid "Exclude countries"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9436
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9442
 msgid "Exclude devices"
 msgstr ""
 
@@ -1923,7 +1927,7 @@ msgstr ""
 msgid "Expires"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9003
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9009
 msgid "Expose this section as a local HTTP+SOCKS proxy"
 msgstr ""
 
@@ -2048,11 +2052,11 @@ msgstr ""
 msgid "For recommendations. Automatic apply always requires high confidence."
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8296
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8302
 msgid "For whom"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9425
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9431
 msgid "Forced device routing"
 msgstr ""
 
@@ -2125,11 +2129,11 @@ msgid "Forkop X never turns DPI bypass off by itself; remove the targets from th
 msgstr ""
 
 #: src/forkop/tabs/autotune/model.ts:208
-#: src/forkop/tabs/autotune/model.ts:674
+#: src/forkop/tabs/autotune/model.ts:678
 msgid "Forkop X never turns DPI bypass off by itself."
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:256
+#: src/forkop/tabs/history/initController.ts:252
 msgid "Forkop X reloads the configuration. If the reload fails, the previous configuration is restored automatically."
 msgstr ""
 
@@ -2253,12 +2257,12 @@ msgstr ""
 msgid "History and recovery"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:136
+#: src/forkop/tabs/history/initController.ts:138
 msgid "History is kept in memory until the router restarts."
 msgstr ""
 
 #: src/forkop/tabs/autotune/initController.ts:1099
-#: src/forkop/tabs/history/initController.ts:123
+#: src/forkop/tabs/history/initController.ts:125
 msgid "History is unavailable"
 msgstr ""
 
@@ -2338,7 +2342,7 @@ msgstr ""
 msgid "In progress"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:183
+#: src/forkop/tabs/history/initController.ts:179
 msgid "In snapshot"
 msgstr ""
 
@@ -2447,8 +2451,8 @@ msgstr ""
 msgid "Invalid Bootstrap DNS server port"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8590
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8604
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8596
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8610
 msgid "Invalid ByeDPI strategy"
 msgstr ""
 
@@ -2539,7 +2543,7 @@ msgstr ""
 msgid "Invalid JSON format"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8540
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8546
 msgid "Invalid NFQWS2 strategy"
 msgstr ""
 
@@ -2547,7 +2551,7 @@ msgstr ""
 msgid "Invalid path format. Path must start with \"/\" and contain valid characters"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9042
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9048
 #: src/validators/validateShadowsocksUrl.ts:91
 msgid "Invalid port number. Must be between 1 and 65535"
 msgstr ""
@@ -2666,7 +2670,7 @@ msgstr ""
 msgid "IP address of the DNS server used to resolve upstream DNS and proxies. Hostnames are not supported for Bootstrap DNS. If multiple servers are selected, a timeout switches to a backup."
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9227
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9233
 msgid "IPs"
 msgstr ""
 
@@ -2726,7 +2730,7 @@ msgstr ""
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:1408
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3914
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:4152
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8727
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8733
 msgid "JSON outbound"
 msgstr ""
 
@@ -2797,7 +2801,7 @@ msgstr ""
 msgid "Last important event"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:367
+#: src/forkop/tabs/history/initController.ts:349
 #: src/forkop/tabs/history/model.ts:186
 msgid "Last known good"
 msgstr ""
@@ -2838,7 +2842,7 @@ msgstr ""
 msgid "Latest version:"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9465
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9471
 msgid "Legacy settings"
 msgstr ""
 
@@ -2850,7 +2854,7 @@ msgstr ""
 msgid "Level name"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8190
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8196
 msgid "List must be an HTTP(S) URL or a local .lst path"
 msgstr ""
 
@@ -2929,7 +2933,7 @@ msgstr ""
 msgid "Manual"
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:690
+#: src/forkop/tabs/autotune/model.ts:694
 msgid "Manual apply is available only in \"Recommendations only\" mode."
 msgstr ""
 
@@ -2941,11 +2945,11 @@ msgstr ""
 msgid "manually"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9228
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9234
 msgid "Match destination IPs or subnets"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9452
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9458
 msgid "Match destination ports. Use a single port or a range"
 msgstr ""
 
@@ -2969,15 +2973,15 @@ msgstr ""
 msgid "Minimum latency difference in milliseconds that triggers switching to a faster server."
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9118
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9124
 msgid "Mixed Proxy Password"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9020
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9026
 msgid "Mixed Proxy Port"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9067
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9073
 msgid "Mixed Proxy Username"
 msgstr ""
 
@@ -3041,7 +3045,7 @@ msgid "Network"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2162
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8686
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8692
 msgid "Network Interface"
 msgstr ""
 
@@ -3071,7 +3075,7 @@ msgstr ""
 msgid "NFQUEUE range overlaps with another rule"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8465
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8471
 msgid "NFQWS Strategy"
 msgstr ""
 
@@ -3079,7 +3083,7 @@ msgstr ""
 msgid "NFQWS strategy cannot be empty"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8519
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8525
 msgid "NFQWS2 Strategy"
 msgstr ""
 
@@ -3153,12 +3157,12 @@ msgstr ""
 msgid "No DNS server for measurements: set a plain IPv4 DNS server in Forkop X or on the target."
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:162
+#: src/forkop/tabs/history/initController.ts:164
 msgid "No events of this kind"
 msgstr ""
 
 #: src/forkop/tabs/dashboard/overviewCards.ts:232
-#: src/forkop/tabs/history/initController.ts:161
+#: src/forkop/tabs/history/initController.ts:163
 msgid "No events recorded yet"
 msgstr ""
 
@@ -3209,12 +3213,12 @@ msgstr ""
 msgid "No rules use Zapret2"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:176
-#: src/forkop/tabs/history/initController.ts:260
+#: src/forkop/tabs/history/initController.ts:172
+#: src/forkop/tabs/history/initController.ts:256
 msgid "No saved changes since this snapshot"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:408
+#: src/forkop/tabs/history/initController.ts:390
 msgid "No snapshots yet"
 msgstr ""
 
@@ -3342,7 +3346,7 @@ msgstr ""
 
 #: src/forkop/tabs/autotune/initController.ts:806
 #: src/forkop/tabs/autotune/model.ts:617
-#: src/forkop/tabs/history/initController.ts:184
+#: src/forkop/tabs/history/initController.ts:180
 msgid "Now"
 msgstr ""
 
@@ -3424,7 +3428,7 @@ msgstr ""
 msgid "Operation timed out"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:7691
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:7697
 msgid "Option \"%s\" contains an invalid input value."
 msgstr ""
 
@@ -3510,7 +3514,7 @@ msgstr ""
 msgid "Passed: %d"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9160
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9166
 msgid "Password cannot be empty"
 msgstr ""
 
@@ -3590,11 +3594,11 @@ msgstr ""
 msgid "Port"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9034
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9040
 msgid "Port cannot be empty"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9021
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9027
 msgid "Port for the local mixed proxy of this section"
 msgstr ""
 
@@ -3607,7 +3611,7 @@ msgstr ""
 msgid "Port range start must be less than or equal to end"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9451
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9457
 msgid "Ports"
 msgstr ""
 
@@ -3631,7 +3635,7 @@ msgstr ""
 msgid "Preparing the change"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8814
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8820
 #: src/forkop/tabs/dashboard/partials/renderSections.ts:281
 msgid "Priority"
 msgstr ""
@@ -3732,7 +3736,7 @@ msgstr ""
 msgid "Recovery details"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:78
+#: src/forkop/tabs/history/initController.ts:80
 msgid "Recovery state is unavailable"
 msgstr ""
 
@@ -3819,7 +3823,7 @@ msgstr ""
 msgid "Removing user settings…"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9050
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9056
 msgid "Require a username and password for the local mixed proxy"
 msgstr ""
 
@@ -3828,11 +3832,11 @@ msgstr ""
 msgid "Reset filters"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9171
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9177
 msgid "Resolve domain names before routing so sing-box can use real destination IPs."
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9170
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9176
 msgid "Resolve real IP for routing"
 msgstr ""
 
@@ -3864,19 +3868,23 @@ msgstr ""
 msgid "Restart Forkop X. If another add-on marks traffic, make sure it does not conflict."
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:262
+#: src/forkop/tabs/history/initController.ts:258
 msgid "Restore"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:255
+#: src/forkop/tabs/history/initController.ts:251
 msgid "Restore configuration snapshot?"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:281
+#: src/forkop/tabs/history/model.ts:282
+msgid "Restore did not finish: the service was busy and only queued the reload. The DPI guard stays active; restore again when the service is idle."
+msgstr ""
+
+#: src/forkop/tabs/history/model.ts:291
 msgid "Restore failed; check the recovery state before retrying"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:275
+#: src/forkop/tabs/history/model.ts:275
 msgid "Restore failed; previous configuration and runtime recovered"
 msgstr ""
 
@@ -3884,7 +3892,11 @@ msgstr ""
 msgid "Restore normal mode"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:387
+#: src/forkop/tabs/history/model.ts:272
+msgid "Restore was not applied: the service was busy and only queued the reload. The previous configuration is kept."
+msgstr ""
+
+#: src/forkop/tabs/history/initController.ts:369
 msgid "Restore…"
 msgstr ""
 
@@ -3936,7 +3948,7 @@ msgstr ""
 msgid "Route main DNS requests through the selected section."
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8428
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8434
 msgid "Route requests to this DNS server through another section."
 msgstr ""
 
@@ -3982,7 +3994,7 @@ msgstr ""
 msgid "Rule payload"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8181
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8187
 msgid "Rule set must be an HTTP(S) URL or a local .srs / .json path"
 msgstr ""
 
@@ -3990,8 +4002,8 @@ msgstr ""
 msgid "Rule set settings"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9300
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9335
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9306
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9341
 msgid "Rule sets"
 msgstr ""
 
@@ -4067,7 +4079,7 @@ msgstr ""
 msgid "Secret of the Clash API controller used by YACD and the Forkop pages. Required: it is generated on installation and protects the controller with or without WAN access."
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8349
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8355
 msgid "Section name"
 msgstr ""
 
@@ -4083,19 +4095,19 @@ msgstr ""
 msgid "Seen in an active connection"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8692
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8698
 msgid "Select a network interface"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9239
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9245
 msgid "Select a predefined domain list"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9259
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9265
 msgid "Select a predefined IP rule set from b4geoip-forkop"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8456
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8462
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:168
 msgid "Select a section"
 msgstr ""
@@ -4104,7 +4116,7 @@ msgstr ""
 msgid "Select a section for downloading this subscription"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8897
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8903
 msgid "Select a transit section"
 msgstr ""
 
@@ -4112,7 +4124,7 @@ msgstr ""
 msgid "Select an existing network interface"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8912
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8918
 msgid "Select an intermediate section"
 msgstr ""
 
@@ -4120,7 +4132,7 @@ msgstr ""
 msgid "Select DNS protocol to use"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8687
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8693
 msgid "Select network interface for VPN connection"
 msgstr ""
 
@@ -4171,11 +4183,11 @@ msgstr ""
 msgid "Server filtering"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8755
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8761
 msgid "Server group for automatic lowest-latency selection"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8815
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8821
 msgid "Server group for priority failover"
 msgstr ""
 
@@ -4206,8 +4218,8 @@ msgstr ""
 msgid "Service actions"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9242
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9279
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9248
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9285
 msgid "Service list"
 msgstr ""
 
@@ -4223,7 +4235,7 @@ msgstr ""
 msgid "set %s: %s"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:182
+#: src/forkop/tabs/history/initController.ts:178
 msgid "Setting"
 msgstr ""
 
@@ -4297,7 +4309,7 @@ msgstr ""
 msgid "Site, IP, device or rule"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:385
+#: src/forkop/tabs/history/initController.ts:367
 msgid "Snapshot actions"
 msgstr ""
 
@@ -4306,7 +4318,7 @@ msgid "Snapshot created"
 msgstr ""
 
 #: src/forkop/ui/status.ts:282
-#: src/forkop/tabs/history/initController.ts:301
+#: src/forkop/tabs/history/initController.ts:283
 msgid "Snapshot deleted"
 msgstr ""
 
@@ -4314,7 +4326,7 @@ msgstr ""
 msgid "Snapshot restore"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:311
+#: src/forkop/tabs/history/initController.ts:293
 msgid "Snapshot saved"
 msgstr ""
 
@@ -4330,7 +4342,7 @@ msgstr ""
 msgid "Some connections or nodes do not respond, so sites of their rules may not open."
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8989
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8995
 msgid "Sort by latency"
 msgstr ""
 
@@ -4338,7 +4350,7 @@ msgstr ""
 msgid "Sort connections"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8990
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8996
 msgid "Sorts servers in this section by lowest latency in the dashboard."
 msgstr ""
 
@@ -4458,7 +4470,7 @@ msgstr ""
 msgid "Strategy"
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:733
+#: src/forkop/tabs/autotune/model.ts:737
 msgid "Strategy %s applied and checked."
 msgstr ""
 
@@ -4483,7 +4495,7 @@ msgstr ""
 msgid "Subscription update interval"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8638
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8644
 msgid "Subscription URL"
 msgstr ""
 
@@ -4554,7 +4566,7 @@ msgid "Targets"
 msgstr ""
 
 #: src/forkop/tabs/autotune/model.ts:278
-#: src/forkop/tabs/autotune/model.ts:672
+#: src/forkop/tabs/autotune/model.ts:676
 msgid "Targets of this rule need different strategies."
 msgstr ""
 
@@ -4622,7 +4634,7 @@ msgstr ""
 msgid "The autotune state was restored after damage; automatic apply waits for the cooldown."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:694
+#: src/forkop/tabs/autotune/model.ts:698
 msgid "The autotune state was restored after damage. Run the check again."
 msgstr ""
 
@@ -4658,7 +4670,7 @@ msgstr ""
 msgid "The check was postponed. See the state above."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:678
+#: src/forkop/tabs/autotune/model.ts:682
 msgid "The confidence of the recommendation is below the policy minimum."
 msgstr ""
 
@@ -4717,7 +4729,7 @@ msgstr ""
 msgid "The last configuration change failed"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:395
+#: src/forkop/tabs/history/initController.ts:377
 msgid "The last known good snapshot cannot be deleted"
 msgstr ""
 
@@ -4737,12 +4749,16 @@ msgstr ""
 msgid "The name does not resolve on the router, so no rule can open it. Check the DNS results above."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:739
+#: src/forkop/tabs/autotune/model.ts:743
 msgid "The new strategy did not pass the check. Forkop X restored the previous configuration automatically."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:756
+#: src/forkop/tabs/autotune/model.ts:772
 msgid "The new strategy was not applied: the service reload failed and the previous configuration was restored automatically."
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:764
+msgid "The new strategy was not applied: the service was busy and only queued the reload. The previous configuration is kept."
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:6475
@@ -4755,11 +4771,11 @@ msgid "The package is removed from the router."
 msgstr ""
 
 #: src/forkop/tabs/autotune/model.ts:186
-#: src/forkop/tabs/autotune/model.ts:668
+#: src/forkop/tabs/autotune/model.ts:672
 msgid "The recommendation is not confirmed yet."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:724
+#: src/forkop/tabs/autotune/model.ts:728
 msgid "The recommendation is outdated: the configuration changed after the check. Run the check again."
 msgstr ""
 
@@ -4795,7 +4811,7 @@ msgstr ""
 msgid "The router rejected this check"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9198
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9204
 msgid "The rule applies to the domain and all its subdomains. Use full:, keyword:, or regex: prefixes for exact match, keyword match, or regular expression."
 msgstr ""
 
@@ -4805,7 +4821,7 @@ msgstr ""
 
 #: src/forkop/tabs/autotune/model.ts:190
 #: src/forkop/tabs/autotune/model.ts:367
-#: src/forkop/tabs/autotune/model.ts:686
+#: src/forkop/tabs/autotune/model.ts:690
 msgid "The rule has a custom strategy; Forkop X keeps it."
 msgstr ""
 
@@ -4817,11 +4833,11 @@ msgstr ""
 msgid "The rule that routes it cannot be determined unambiguously (for example, a remote list comes first)."
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9764
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9770
 msgid "The rule was not removed because the page could not be saved: %s"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9623
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9629
 msgid "The rule window was closed before the save finished. Nothing was saved."
 msgstr ""
 
@@ -4852,6 +4868,10 @@ msgstr ""
 msgid "the service is busy"
 msgstr ""
 
+#: src/forkop/tabs/history/model.ts:236
+msgid "The service is busy with another operation (list or subscription update, reload or start). Nothing was changed; try again when it finishes."
+msgstr ""
+
 #: src/forkop/tabs/diagnostic/siteCheck.ts:30
 msgid "the sing-box configuration is not available; is Forkop X running?"
 msgstr ""
@@ -4868,7 +4888,7 @@ msgstr ""
 msgid "The strategy contains an error"
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:764
+#: src/forkop/tabs/autotune/model.ts:780
 msgid "The strategy could not be applied. The previous configuration is kept."
 msgstr ""
 
@@ -4888,9 +4908,9 @@ msgstr ""
 msgid "The strategy of the DPI rule \"%s\" will be changed."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:705
 #: src/forkop/tabs/autotune/model.ts:709
-#: src/forkop/tabs/autotune/model.ts:710
+#: src/forkop/tabs/autotune/model.ts:713
+#: src/forkop/tabs/autotune/model.ts:714
 msgid "The strategy was not applied"
 msgstr ""
 
@@ -4950,7 +4970,7 @@ msgstr ""
 msgid "There are unsaved configuration changes. Save or reset them in Settings first."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:670
+#: src/forkop/tabs/autotune/model.ts:674
 msgid "There is no recommendation to apply."
 msgstr ""
 
@@ -5020,16 +5040,16 @@ msgstr ""
 msgid "This rule keeps settings in a legacy form, from an earlier version, the podkop migration or the command line. The fields show what the rule matches; the legacy options stay as they are until you convert or remove them."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:747
+#: src/forkop/tabs/autotune/model.ts:751
 msgid "This strategy is already active; nothing was changed."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:676
+#: src/forkop/tabs/autotune/model.ts:680
 msgid "This strategy is not supported by the installed Zapret."
 msgstr ""
 
 #: src/forkop/tabs/autotune/model.ts:192
-#: src/forkop/tabs/autotune/model.ts:682
+#: src/forkop/tabs/autotune/model.ts:686
 msgid "This strategy was rolled back recently; it waits for the cooldown."
 msgstr ""
 
@@ -5148,13 +5168,13 @@ msgid "Unable to validate the ByeDPI strategy through the backend parser."
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:6390
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:7796
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8492
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:7802
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8498
 msgid "Unable to validate the NFQWS strategy through the backend parser."
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:6845
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:7805
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:7811
 msgid "Unable to validate the NFQWS2 strategy through the backend parser."
 msgstr ""
 
@@ -5295,7 +5315,7 @@ msgstr ""
 msgid "URL used to test server latency"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8754
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8760
 msgid "URLTest"
 msgstr ""
 
@@ -5322,7 +5342,7 @@ msgstr ""
 msgid "URLTest settings saved"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8854
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8860
 msgid "Use another section as an intermediate hop to connect to servers in this section. Does not apply to network interfaces or JSON outbounds."
 msgstr ""
 
@@ -5364,7 +5384,7 @@ msgstr ""
 msgid "used by the rule: text mode is on"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9108
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9114
 msgid "Username cannot be empty"
 msgstr ""
 
@@ -5410,11 +5430,11 @@ msgstr ""
 msgid "View logs"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8350
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8356
 msgid "Visible name of this section"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8614
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8620
 msgid "vless://, vmess://, ss://, trojan://, socks4/5://, hy2/hysteria2:// links"
 msgstr ""
 
@@ -5441,11 +5461,11 @@ msgstr ""
 msgid "Warnings: %d"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8295
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8301
 msgid "What"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8363
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8369
 msgid "What Forkop should do when this section matches"
 msgstr ""
 
@@ -5465,7 +5485,7 @@ msgstr ""
 msgid "When switching to another level, test every server and select the fastest instead of the first working one."
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8294
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8300
 msgid "Where to"
 msgstr ""
 
@@ -5473,11 +5493,11 @@ msgstr ""
 msgid "Will be"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8975
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8981
 msgid "With another action the rule cannot use its cascade setting: saving the rule removes it, and its servers no longer connect through the rule “%s”."
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8978
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8984
 msgid "With another action the rule cannot use its cascade setting: saving the rule removes the switched-off cascade setting."
 msgstr ""
 

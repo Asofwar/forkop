@@ -18846,6 +18846,64 @@ function diffRows(changes) {
     current: diffValue(change.after),
   }));
 }
+function snapshotBusyText(reason) {
+  switch (reason) {
+    case "service_action_in_progress":
+      return _(
+        "The service is busy with another operation (list or subscription update, reload or start). Nothing was changed; try again when it finishes.",
+      );
+    case "reload_pending":
+      return _(
+        "A service reload is queued. Nothing was changed; try again after it runs.",
+      );
+    default:
+      return _(
+        "Another snapshot operation is already in progress. Try again in a moment.",
+      );
+  }
+}
+function restoreResultToast(result) {
+  switch (result?.status) {
+    case "busy":
+      return {
+        text: snapshotBusyText(result.reason),
+        type: "warning",
+        duration: 6e3,
+      };
+    case "success":
+      return {
+        text: _("Configuration restored and reloaded"),
+        type: "success",
+        duration: 6e3,
+      };
+    case "recovered":
+      return {
+        text:
+          result.reason === "target_reload_queued"
+            ? _(
+                "Restore was not applied: the service was busy and only queued the reload. The previous configuration is kept.",
+              )
+            : _("Restore failed; previous configuration and runtime recovered"),
+        type: "warning",
+        duration: 8e3,
+      };
+    case "needs_attention":
+      if (result.reason === "rollback_reload_queued")
+        return {
+          text: _(
+            "Restore did not finish: the service was busy and only queued the reload. The DPI guard stays active; restore again when the service is idle.",
+          ),
+          type: "error",
+          duration: 1e4,
+        };
+      break;
+  }
+  return {
+    text: _("Restore failed; check the recovery state before retrying"),
+    type: "error",
+    duration: 8e3,
+  };
+}
 
 // src/forkop/tabs/history/initController.ts
 var REFRESH_INTERVAL_MS = 15e3;
@@ -18978,11 +19036,6 @@ function renderHistory() {
         ),
   );
 }
-function snapshotBusyMessage() {
-  return _(
-    "Another snapshot operation is already in progress. Try again in a moment.",
-  );
-}
 function renderDiffTable(changes) {
   const rows = diffRows(changes);
   if (!rows.length) {
@@ -19071,22 +19124,8 @@ async function restoreSnapshot(id, label) {
   if (!confirmed) return;
   await runSnapshotAction(async () => {
     const result = await ForkopShellMethods.snapshotRestore(id);
-    const status2 = result.success ? result.data.status : void 0;
-    if (status2 === "busy") showToast(snapshotBusyMessage(), "warning", 6e3);
-    else if (status2 === "success")
-      showToast(_("Configuration restored and reloaded"), "success", 6e3);
-    else if (status2 === "recovered")
-      showToast(
-        _("Restore failed; previous configuration and runtime recovered"),
-        "warning",
-        8e3,
-      );
-    else
-      showToast(
-        _("Restore failed; check the recovery state before retrying"),
-        "error",
-        8e3,
-      );
+    const toast = restoreResultToast(result.success ? result.data : void 0);
+    showToast(toast.text, toast.type, toast.duration);
   });
 }
 async function deleteSnapshot(id, label) {
@@ -19100,7 +19139,7 @@ async function deleteSnapshot(id, label) {
   await runSnapshotAction(async () => {
     const result = await ForkopShellMethods.snapshotDelete(id);
     const status2 = result.success ? result.data.status : void 0;
-    if (status2 === "busy") showToast(snapshotBusyMessage(), "warning", 6e3);
+    if (status2 === "busy") showToast(snapshotBusyText(), "warning", 6e3);
     else if (status2 === "deleted") showToast(_("Snapshot deleted"), "success");
     else showToast(_("Could not delete snapshot"), "error");
   });
@@ -19109,7 +19148,7 @@ async function createSnapshot() {
   await runSnapshotAction(async () => {
     const result = await ForkopShellMethods.snapshotCreate("manual");
     const status2 = result.success ? result.data.status : void 0;
-    if (status2 === "busy") showToast(snapshotBusyMessage(), "warning", 6e3);
+    if (status2 === "busy") showToast(snapshotBusyText(), "warning", 6e3);
     else if (status2 === "created") showToast(_("Snapshot saved"), "success");
     else showToast(_("Could not create snapshot"), "error");
   });
@@ -19895,6 +19934,7 @@ var STALE_REASONS = [
   "measurement_unavailable",
   "plan_candidate_differs",
 ];
+var BUSY_REASONS = ["service_action_in_progress", "reload_pending"];
 function refusalText(reason) {
   switch (reason) {
     case "not_confirmed":
@@ -19976,8 +20016,18 @@ function applyResultView(result, candidate) {
         attention: false,
       };
     case "stale":
+      if (BUSY_REASONS.includes(reason ?? ""))
+        return { tone: "warning", text: refusalText(reason), attention: false };
       return stale;
     case "failed":
+      if (reason === "reload_queued_recovered")
+        return {
+          tone: "warning",
+          text: _(
+            "The new strategy was not applied: the service was busy and only queued the reload. The previous configuration is kept.",
+          ),
+          attention: false,
+        };
       if (reason === "reload_failed_recovered")
         return {
           tone: "warning",

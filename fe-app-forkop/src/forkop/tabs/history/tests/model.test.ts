@@ -4,6 +4,8 @@ import {
   diffRows,
   historyItems,
   recoveryRows,
+  restoreResultToast,
+  snapshotBusyText,
   snapshotReasonLabel,
   snapshotRows,
 } from '../model';
@@ -222,5 +224,76 @@ describe('snapshots', () => {
       },
       { where: 'youtube · nfqws_opt', snapshot: 'a', current: '—' },
     ]);
+  });
+});
+
+describe('restore result', () => {
+  it('reports restored only for a reload that ran', () => {
+    expect(restoreResultToast({ status: 'success' })).toEqual({
+      text: 'Configuration restored and reloaded',
+      type: 'success',
+      duration: 6000,
+    });
+    expect(
+      restoreResultToast({
+        status: 'recovered',
+        reason: 'target_reload_failed',
+      }).text,
+    ).toBe('Restore failed; previous configuration and runtime recovered');
+  });
+
+  it('names a reload that was only queued', () => {
+    const recovered = restoreResultToast({
+      status: 'recovered',
+      reason: 'target_reload_queued',
+    });
+    expect(recovered.type).toBe('warning');
+    expect(recovered.text).toContain('only queued the reload');
+    expect(recovered.text).toContain('previous configuration is kept');
+
+    const unfinished = restoreResultToast({
+      status: 'needs_attention',
+      reason: 'rollback_reload_queued',
+    });
+    expect(unfinished.type).toBe('error');
+    expect(unfinished.text).toContain('did not finish');
+    expect(unfinished.text).toContain('DPI guard stays active');
+    expect(unfinished.text).not.toContain('restored');
+
+    expect(
+      restoreResultToast({
+        status: 'needs_attention',
+        reason: 'runtime_rollback_failed',
+      }),
+    ).toEqual({
+      text: 'Restore failed; check the recovery state before retrying',
+      type: 'error',
+      duration: 8000,
+    });
+    expect(restoreResultToast(undefined).type).toBe('error');
+  });
+
+  it('explains why a restore was refused unchanged', () => {
+    expect(
+      restoreResultToast({
+        status: 'busy',
+        reason: 'service_action_in_progress',
+      }),
+    ).toEqual({
+      text: snapshotBusyText('service_action_in_progress'),
+      type: 'warning',
+      duration: 6000,
+    });
+    expect(snapshotBusyText('service_action_in_progress')).toContain(
+      'The service is busy',
+    );
+    expect(snapshotBusyText('reload_pending')).toContain(
+      'A service reload is queued',
+    );
+    expect(snapshotBusyText('snapshot_operation_in_progress')).toBe(
+      'Another snapshot operation is already in progress. Try again in a moment.',
+    );
+    for (const reason of ['service_action_in_progress', 'reload_pending'])
+      expect(snapshotBusyText(reason)).toContain('Nothing was changed');
   });
 });

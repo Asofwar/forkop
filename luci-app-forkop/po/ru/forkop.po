@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-28 23:36+0000\n"
-"PO-Revision-Date: 2026-09-28 23:36+0000\n"
+"POT-Creation-Date: 2026-09-29 00:02+0000\n"
+"PO-Revision-Date: 2026-09-29 00:02+0000\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -127,6 +127,9 @@ msgstr "правило слишком сложное для расчёта"
 
 msgid "A safe isolated check is not possible right now."
 msgstr "Безопасная изолированная проверка сейчас невозможна."
+
+msgid "A service reload is queued. Nothing was changed; try again after it runs."
+msgstr "Перезагрузка службы стоит в очереди. Ничего не изменено; повторите после её выполнения."
 
 msgid "A site or service checked through the DPI rule that routes it."
 msgstr "Сайт или сервис, который проверяется через DPI-правило, по которому он идёт."
@@ -2666,6 +2669,9 @@ msgstr "Восстановить"
 msgid "Restore configuration snapshot?"
 msgstr "Восстановить снимок конфигурации?"
 
+msgid "Restore did not finish: the service was busy and only queued the reload. The DPI guard stays active; restore again when the service is idle."
+msgstr "Восстановление не завершено: служба была занята и лишь поставила перезагрузку в очередь. Защита DPI остаётся активной; повторите восстановление, когда служба освободится."
+
 msgid "Restore failed; check the recovery state before retrying"
 msgstr "Восстановление не удалось; проверьте состояние восстановления перед повтором"
 
@@ -2674,6 +2680,9 @@ msgstr "Восстановление не удалось; прежняя кон�
 
 msgid "Restore normal mode"
 msgstr "Вернуть обычный режим"
+
+msgid "Restore was not applied: the service was busy and only queued the reload. The previous configuration is kept."
+msgstr "Восстановление не применено: служба была занята и лишь поставила перезагрузку в очередь. Прежняя конфигурация сохранена."
 
 msgid "Restore…"
 msgstr "Восстановить…"
@@ -3290,6 +3299,9 @@ msgstr "Новая стратегия не прошла проверку. Forkop
 msgid "The new strategy was not applied: the service reload failed and the previous configuration was restored automatically."
 msgstr "Новая стратегия не применена: перезагрузка сервиса не удалась, предыдущая конфигурация восстановлена автоматически."
 
+msgid "The new strategy was not applied: the service was busy and only queued the reload. The previous configuration is kept."
+msgstr "Новая стратегия не применена: служба была занята и лишь поставила перезагрузку в очередь. Прежняя конфигурация сохранена."
+
 msgid "The NFQUEUE number is assigned by Forkop for each rule and must not be overridden here."
 msgstr "Номер NFQUEUE назначается Forkop для каждого правила и не должен переопределяться здесь."
 
@@ -3364,6 +3376,9 @@ msgstr "Выбранной секции больше нет. Выберите д
 
 msgid "the service is busy"
 msgstr "служба занята"
+
+msgid "The service is busy with another operation (list or subscription update, reload or start). Nothing was changed; try again when it finishes."
+msgstr "Служба занята другой операцией (обновление списков или подписки, перезагрузка или запуск). Ничего не изменено; повторите, когда она завершится."
 
 msgid "the sing-box configuration is not available; is Forkop X running?"
 msgstr "конфигурация sing-box недоступна — Forkop X запущен?"

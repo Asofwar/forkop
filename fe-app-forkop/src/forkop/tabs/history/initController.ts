@@ -18,6 +18,8 @@ import {
   historyFilterLabel,
   historyItems,
   recoveryRows,
+  restoreResultToast,
+  snapshotBusyText,
   snapshotRows,
   type HistoryFilter,
 } from './model';
@@ -164,12 +166,6 @@ function renderHistory() {
   );
 }
 
-function snapshotBusyMessage() {
-  return _(
-    'Another snapshot operation is already in progress. Try again in a moment.',
-  );
-}
-
 function renderDiffTable(changes: Forkop.SnapshotChange[]) {
   const rows = diffRows(changes);
   if (!rows.length) {
@@ -266,22 +262,8 @@ async function restoreSnapshot(id: string, label: string) {
 
   await runSnapshotAction(async () => {
     const result = await ForkopShellMethods.snapshotRestore(id);
-    const status = result.success ? result.data.status : undefined;
-    if (status === 'busy') showToast(snapshotBusyMessage(), 'warning', 6000);
-    else if (status === 'success')
-      showToast(_('Configuration restored and reloaded'), 'success', 6000);
-    else if (status === 'recovered')
-      showToast(
-        _('Restore failed; previous configuration and runtime recovered'),
-        'warning',
-        8000,
-      );
-    else
-      showToast(
-        _('Restore failed; check the recovery state before retrying'),
-        'error',
-        8000,
-      );
+    const toast = restoreResultToast(result.success ? result.data : undefined);
+    showToast(toast.text, toast.type, toast.duration);
   });
 }
 
@@ -297,7 +279,7 @@ async function deleteSnapshot(id: string, label: string) {
   await runSnapshotAction(async () => {
     const result = await ForkopShellMethods.snapshotDelete(id);
     const status = result.success ? result.data.status : undefined;
-    if (status === 'busy') showToast(snapshotBusyMessage(), 'warning', 6000);
+    if (status === 'busy') showToast(snapshotBusyText(), 'warning', 6000);
     else if (status === 'deleted') showToast(_('Snapshot deleted'), 'success');
     else showToast(_('Could not delete snapshot'), 'error');
   });
@@ -307,7 +289,7 @@ async function createSnapshot() {
   await runSnapshotAction(async () => {
     const result = await ForkopShellMethods.snapshotCreate('manual');
     const status = result.success ? result.data.status : undefined;
-    if (status === 'busy') showToast(snapshotBusyMessage(), 'warning', 6000);
+    if (status === 'busy') showToast(snapshotBusyText(), 'warning', 6000);
     else if (status === 'created') showToast(_('Snapshot saved'), 'success');
     else showToast(_('Could not create snapshot'), 'error');
   });

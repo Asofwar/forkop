@@ -558,6 +558,23 @@ describe('manual apply', () => {
       tone: 'warning',
       attention: false,
     });
+    // A reload queued behind another service action never ran.
+    expect(view('failed', 'reload_queued_recovered')).toEqual({
+      tone: 'warning',
+      text: 'The new strategy was not applied: the service was busy and only queued the reload. The previous configuration is kept.',
+      attention: false,
+    });
+    expect(view('needs_attention', 'apply_rollback_reload_queued')).toEqual({
+      tone: 'error',
+      text: 'Automatic recovery did not finish.',
+      attention: true,
+    });
+    for (const reason of ['service_action_in_progress', 'reload_pending'])
+      expect(view('stale', reason)).toEqual({
+        tone: 'warning',
+        text: 'The strategy was not applied: the service is busy.',
+        attention: false,
+      });
     expect(view('needs_attention', 'lkg_confirm_failed')).toEqual({
       tone: 'error',
       text: 'Automatic recovery did not finish.',

@@ -222,3 +222,74 @@ export function diffRows(changes: Forkop.SnapshotChange[]) {
     current: diffValue(change.after),
   }));
 }
+
+export interface SnapshotToast {
+  text: string;
+  type: 'success' | 'warning' | 'error';
+  duration: number;
+}
+
+// A snapshot operation refused before it changed anything.
+export function snapshotBusyText(reason?: string) {
+  switch (reason) {
+    case 'service_action_in_progress':
+      return _(
+        'The service is busy with another operation (list or subscription update, reload or start). Nothing was changed; try again when it finishes.',
+      );
+    case 'reload_pending':
+      return _(
+        'A service reload is queued. Nothing was changed; try again after it runs.',
+      );
+    default:
+      return _(
+        'Another snapshot operation is already in progress. Try again in a moment.',
+      );
+  }
+}
+
+// What a finished restore means. A reload that the service only queued
+// behind another operation never ran, so it is never reported as restored.
+export function restoreResultToast(
+  result: Forkop.SnapshotResult | undefined,
+): SnapshotToast {
+  switch (result?.status) {
+    case 'busy':
+      return {
+        text: snapshotBusyText(result.reason),
+        type: 'warning',
+        duration: 6000,
+      };
+    case 'success':
+      return {
+        text: _('Configuration restored and reloaded'),
+        type: 'success',
+        duration: 6000,
+      };
+    case 'recovered':
+      return {
+        text:
+          result.reason === 'target_reload_queued'
+            ? _(
+                'Restore was not applied: the service was busy and only queued the reload. The previous configuration is kept.',
+              )
+            : _('Restore failed; previous configuration and runtime recovered'),
+        type: 'warning',
+        duration: 8000,
+      };
+    case 'needs_attention':
+      if (result.reason === 'rollback_reload_queued')
+        return {
+          text: _(
+            'Restore did not finish: the service was busy and only queued the reload. The DPI guard stays active; restore again when the service is idle.',
+          ),
+          type: 'error',
+          duration: 10000,
+        };
+      break;
+  }
+  return {
+    text: _('Restore failed; check the recovery state before retrying'),
+    type: 'error',
+    duration: 8000,
+  };
+}

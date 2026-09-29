@@ -143,6 +143,31 @@ if sed -n '/^function process_age_seconds(pid) {$/,/^}$/p' "$STATE_UC" | grep -F
   fail "process age must not mix process start ticks with virtualized /proc/uptime"
 fi
 
+# Stable start: the runtime state counts every sing-box executable in /proc
+# and accepts the procd-owned process only as the sole one. Other tests
+# (possibly running in parallel) start sing-box doubles of their own and a
+# developer machine may run a real sing-box, so the checks run together with
+# the fixture's double in a private PID namespace with its own /proc where
+# available; without one, a foreign sing-box is a failed precondition.
+ISOLATE=()
+if unshare --pid --fork --mount-proc true 2>/dev/null; then
+  ISOLATE=(unshare --pid --fork --mount-proc)
+elif unshare --user --map-root-user --pid --fork --mount-proc true 2>/dev/null; then
+  ISOLATE=(unshare --user --map-root-user --pid --fork --mount-proc)
+fi
+foreign_sing_box() {
+  local exe
+  for exe in /proc/[0-9]*/exe; do
+    case "$(readlink "$exe" 2>/dev/null)" in
+      */sing-box | */'sing-box (deleted)') printf '%s\n' "${exe%/exe}"; return 0 ;;
+    esac
+  done
+  return 1
+}
+if [ "${#ISOLATE[@]}" -eq 0 ] && pid_dir="$(foreign_sing_box)"; then
+  fail "precondition: a sing-box process ($pid_dir) is running and no private PID namespace is available"
+fi
+
 mkdir -p "$WORK_DIR/stable-start-bin"
 cp "$(command -v sleep)" "$WORK_DIR/stable-start-bin/sing-box"
 cat >"$WORK_DIR/stable-start-bin/ubus" <<'SH'
@@ -184,48 +209,59 @@ udp        0      0 0.0.0.0:1602            0.0.0.0:*
 udp        0      0 ::1:1602                :::*
 EOF_NETSTAT
 
-"$WORK_DIR/stable-start-bin/sing-box" 30 &
-sing_box_pid=$!
-printf '%s\n' "$sing_box_pid" >"$WORK_DIR/sing-box.pid"
-if ! PATH="$WORK_DIR/stable-start-bin:$PATH" \
-  REAL_UCODE="$UCODE_BIN" \
-  SING_BOX_TEST_PID_FILE="$WORK_DIR/sing-box.pid" \
-  SING_BOX_TEST_NETSTAT_FILE="$WORK_DIR/sing-box.netstat" \
-  state_ucode sing-box-service-running; then
+stable_start_checks() {
+  # shellcheck source=tests/helpers/wait.sh
+  . "$ROOT_DIR/tests/helpers/wait.sh"
+  "$WORK_DIR/stable-start-bin/sing-box" 30 &
+  sing_box_pid=$!
+  # $! is known before the fork has exec'd the double: until then /proc names
+  # the shell, not sing-box.
+  wait_until 10 process_exec_is "$sing_box_pid" sing-box ||
+    fail "stable-start fixture: the sing-box double did not start"
+  printf '%s\n' "$sing_box_pid" >"$WORK_DIR/sing-box.pid"
+  if ! PATH="$WORK_DIR/stable-start-bin:$PATH" \
+    REAL_UCODE="$UCODE_BIN" \
+    SING_BOX_TEST_PID_FILE="$WORK_DIR/sing-box.pid" \
+    SING_BOX_TEST_NETSTAT_FILE="$WORK_DIR/sing-box.netstat" \
+    state_ucode sing-box-service-running; then
+    kill "$sing_box_pid" >/dev/null 2>&1 || true
+    wait "$sing_box_pid" 2>/dev/null || true
+    fail "stable-start fixture must expose a running sing-box process"
+  fi
+  if ! PATH="$WORK_DIR/stable-start-bin:$PATH" \
+    REAL_UCODE="$UCODE_BIN" \
+    SING_BOX_TEST_PID_FILE="$WORK_DIR/sing-box.pid" \
+    SING_BOX_TEST_NETSTAT_FILE="$WORK_DIR/sing-box.netstat" \
+    state_ucode forkop-running forkop ForkopTable 0x00100000; then
+    kill "$sing_box_pid" >/dev/null 2>&1 || true
+    wait "$sing_box_pid" 2>/dev/null || true
+    fail "stable-start fixture must expose configured Forkop networking"
+  fi
+  sed '/127.0.0.42:53/d' "$WORK_DIR/sing-box.netstat" >"$WORK_DIR/sing-box.no-dns.netstat"
+  if PATH="$WORK_DIR/stable-start-bin:$PATH" \
+    REAL_UCODE="$UCODE_BIN" \
+    SING_BOX_TEST_PID_FILE="$WORK_DIR/sing-box.pid" \
+    SING_BOX_TEST_NETSTAT_FILE="$WORK_DIR/sing-box.no-dns.netstat" \
+    state_ucode forkop-running forkop ForkopTable 0x00100000 >/dev/null 2>&1; then
+    kill "$sing_box_pid" >/dev/null 2>&1 || true
+    wait "$sing_box_pid" 2>/dev/null || true
+    fail "runtime state must reject sing-box without the DNS inbound"
+  fi
+  if ! PATH="$WORK_DIR/stable-start-bin:$PATH" \
+    REAL_UCODE="$UCODE_BIN" \
+    SING_BOX_TEST_PID_FILE="$WORK_DIR/sing-box.pid" \
+    SING_BOX_TEST_NETSTAT_FILE="$WORK_DIR/sing-box.netstat" \
+    state_ucode wait-forkop-stable-start forkop ForkopTable 0x00100000 2 2; then
+    kill "$sing_box_pid" >/dev/null 2>&1 || true
+    wait "$sing_box_pid" 2>/dev/null || true
+    fail "stable-start wait must check runtime state after its final sleep"
+  fi
   kill "$sing_box_pid" >/dev/null 2>&1 || true
   wait "$sing_box_pid" 2>/dev/null || true
-  fail "stable-start fixture must expose a running sing-box process"
-fi
-if ! PATH="$WORK_DIR/stable-start-bin:$PATH" \
-  REAL_UCODE="$UCODE_BIN" \
-  SING_BOX_TEST_PID_FILE="$WORK_DIR/sing-box.pid" \
-  SING_BOX_TEST_NETSTAT_FILE="$WORK_DIR/sing-box.netstat" \
-  state_ucode forkop-running forkop ForkopTable 0x00100000; then
-  kill "$sing_box_pid" >/dev/null 2>&1 || true
-  wait "$sing_box_pid" 2>/dev/null || true
-  fail "stable-start fixture must expose configured Forkop networking"
-fi
-sed '/127.0.0.42:53/d' "$WORK_DIR/sing-box.netstat" >"$WORK_DIR/sing-box.no-dns.netstat"
-if PATH="$WORK_DIR/stable-start-bin:$PATH" \
-  REAL_UCODE="$UCODE_BIN" \
-  SING_BOX_TEST_PID_FILE="$WORK_DIR/sing-box.pid" \
-  SING_BOX_TEST_NETSTAT_FILE="$WORK_DIR/sing-box.no-dns.netstat" \
-  state_ucode forkop-running forkop ForkopTable 0x00100000 >/dev/null 2>&1; then
-  kill "$sing_box_pid" >/dev/null 2>&1 || true
-  wait "$sing_box_pid" 2>/dev/null || true
-  fail "runtime state must reject sing-box without the DNS inbound"
-fi
-if ! PATH="$WORK_DIR/stable-start-bin:$PATH" \
-  REAL_UCODE="$UCODE_BIN" \
-  SING_BOX_TEST_PID_FILE="$WORK_DIR/sing-box.pid" \
-  SING_BOX_TEST_NETSTAT_FILE="$WORK_DIR/sing-box.netstat" \
-  state_ucode wait-forkop-stable-start forkop ForkopTable 0x00100000 2 2; then
-  kill "$sing_box_pid" >/dev/null 2>&1 || true
-  wait "$sing_box_pid" 2>/dev/null || true
-  fail "stable-start wait must check runtime state after its final sleep"
-fi
-kill "$sing_box_pid" >/dev/null 2>&1 || true
-wait "$sing_box_pid" 2>/dev/null || true
+}
+export ROOT_DIR WORK_DIR UCODE_BIN FORKOP_LIB STATE_UC
+export -f fail state_ucode stable_start_checks
+"${ISOLATE[@]}" bash -eo pipefail -c stable_start_checks
 
 PENDING_RELOAD_FILE="$WORK_DIR/reload.pending"
 state_ucode mark-pending-reload "$PENDING_RELOAD_FILE" "reload_busy"

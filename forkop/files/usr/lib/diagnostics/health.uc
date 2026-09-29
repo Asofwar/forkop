@@ -16,7 +16,9 @@ const HISTORY_MAX_BYTES = 65536;
 const HISTORY_KEEP = 150;
 const EVENT_KINDS = [ "start", "reload", "restore", "recovery", "autotune_apply", "snapshot_create", "snapshot_delete",
     "autotune_mode", "autotune_recommendation", "autotune_run" ];
-const EVENT_STATUSES = [ "success", "failure", "recovered" ];
+// "not_started": a snapshot restore replaced the configuration while an
+// explicit stop held the runtime down; nothing verified it (D-15, UC-056).
+const EVENT_STATUSES = [ "success", "failure", "recovered", "not_started" ];
 // Autotune applies also carry who started them and the catalog candidate id.
 const EVENT_TRIGGERS = [ "manual", "automatic" ];
 

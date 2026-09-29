@@ -340,10 +340,12 @@ function run_tool(name, args) {
 }
 
 // Whatever makes a measurement now unsafe or meaningless, as the apply tool
-// itself reports it (read-only).
-function blocker() {
+// itself reports it (read-only). for_apply: an apply also waits for an
+// explicit start after an explicit stop (D-15, UC-056); measuring does not.
+function blocker(for_apply) {
     let s = run_tool("apply", [ "status" ]);
     if (s == null) return "apply_status_unavailable";
+    if (for_apply && s.service_stopped === true) return "service_stopped";
     if (length(s.guards || []) > 0) return "dpi_guard_present";
     if (s.snapshot_operation) return "snapshot_operation_active";
     if (s.service_action) return s.service_action;
@@ -418,7 +420,7 @@ function apply_group(name, aggregate, full, dns_resolver, trigger) {
     let manual = trigger == "manual";
     let record = { at: now(), group: name, candidate: aggregate.candidate, representative: aggregate.representative,
         status: "not_applied", reason: null, counted: false, trigger: manual ? "manual" : "automatic" };
-    let reason = blocker();
+    let reason = blocker(true);
     if (reason != null) { record.reason = reason; return record; }
     // The policy is read again: the mode may have been switched off while
     // the targets were measured.
@@ -673,7 +675,7 @@ function manual_apply_locked(name, job) {
     let entry = catalog.find(candidate);
     let checked = entry ? catalog.validate_entry(entry) : null;
     if (checked == null || checked.state != "supported" || checked.protocol != "tcp") return refuse("candidate_unsupported");
-    let reason = blocker();
+    let reason = blocker(true);
     if (reason != null) return refuse(reason);
 
     let begun = begin_run("manual", name, started, policy,

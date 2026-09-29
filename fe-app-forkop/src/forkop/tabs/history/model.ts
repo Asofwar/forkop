@@ -260,6 +260,15 @@ export function restoreResultToast(
         type: 'success',
         duration: 6000,
       };
+    // Forkop X was stopped by the user: only a start brings it back.
+    case 'restored_not_started':
+      return {
+        text: _(
+          'Configuration restored, but Forkop X is stopped: it was not started or checked. The restored configuration takes effect when Forkop X is started.',
+        ),
+        type: 'warning',
+        duration: 10000,
+      };
     case 'recovered':
       return {
         text:
@@ -271,6 +280,21 @@ export function restoreResultToast(
         type: 'warning',
         duration: 8000,
       };
+    case 'failed':
+      if (result.runtime === 'stopped')
+        return {
+          text:
+            result.reason === 'target_invalid'
+              ? _(
+                  'Restore was not applied: the snapshot configuration did not pass validation. The previous configuration is kept; Forkop X stays stopped.',
+                )
+              : _(
+                  'Restore was not applied: Forkop X was stopped during the restore. The previous configuration is kept.',
+                ),
+          type: 'warning',
+          duration: 10000,
+        };
+      break;
     case 'needs_attention':
       if (result.reason === 'rollback_reload_queued')
         return {

@@ -26,6 +26,7 @@ export FORKOP_AUTOTUNE_UCI="$WORK/bin/uci"
 export FORKOP_AUTOTUNE_ZAPRET_RUNTIME="$WORK/zapret-status.uc"
 export FORKOP_AUTOTUNE_SINGBOX_CONFIG="$WORK/sing-box.json"
 export FORKOP_RELOAD_LOCK_DIR="$WORK/run/reload.lock" FORKOP_PENDING_RELOAD_FILE="$WORK/run/reload.pending"
+export FORKOP_STOP_REQUESTED_FILE="$WORK/run/stop.requested"
 export FORKOP_AUTOTUNE_TMPDIR="$WORK/tmp" FORKOP_AUTOTUNE_UCI_SAVEDIR="$WORK/uci-save"
 SECRET='SECRET-TOKEN-7f3a'
 mkdir -p "$STATE" "$WORK/config" "$WORK/etc" "$WORK/run" "$WORK/tmp" "$WORK/uci-save"
@@ -614,6 +615,22 @@ json 'a.equal(r.status, "stale"); a.equal(r.reason, "reload_pending");' "$WORK/o
 rm -f "$FORKOP_PENDING_RELOAD_FILE"; at apply "$WORK/plan.json"
 json 'a.equal(r.status, "applied");' "$WORK/out.json"
 ok "live reload lock or queued reload -> stale; a dead lock owner does not block"
+
+# An explicit stop holds the runtime down until an explicit start (D-15,
+# UC-056): an apply and an operator rollback are refused before any change.
+reset_apply; plan_ready; : > "$FORKOP_STOP_REQUESTED_FILE"
+at apply "$WORK/plan.json"
+json 'a.equal(r.status, "stale"); a.equal(r.reason, "service_stopped");' "$WORK/out.json"
+{ [ "$(chash)" = "$PRE_HASH" ] && [ "$(reloads)" = 0 ] && [ "$(snaps)" = 1 ]; } || fail "applied while stopped by the user"
+at status
+json 'a.equal(r.service_stopped, true);' "$WORK/out.json"
+rm -f "$FORKOP_STOP_REQUESTED_FILE"; at apply "$WORK/plan.json"
+json 'a.equal(r.status, "applied");' "$WORK/out.json"
+applied_hash="$(chash)"; : > "$FORKOP_STOP_REQUESTED_FILE"; at rollback
+json 'a.equal(r.status, "failed"); a.equal(r.reason, "service_stopped");' "$WORK/out.json"
+{ [ "$(chash)" = "$applied_hash" ] && [ "$(reloads)" = 1 ]; } || fail "rolled back while stopped by the user"
+rm -f "$FORKOP_STOP_REQUESTED_FILE"
+ok "stopped by the user -> apply and rollback refused, no mutation"
 
 # The plan file is untrusted input.
 reset_apply; plan_ready

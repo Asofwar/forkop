@@ -575,6 +575,14 @@ describe('manual apply', () => {
         text: 'The strategy was not applied: the service is busy.',
         attention: false,
       });
+    // Forkop stopped by the user: refused before anything changed, never
+    // read as busy or outdated (D-15).
+    for (const outcome of ['stale', 'refused'])
+      expect(view(outcome, 'service_stopped')).toEqual({
+        tone: 'warning',
+        text: 'The strategy was not applied: Forkop X is stopped; start it first.',
+        attention: false,
+      });
     expect(view('needs_attention', 'lkg_confirm_failed')).toEqual({
       tone: 'error',
       text: 'Automatic recovery did not finish.',

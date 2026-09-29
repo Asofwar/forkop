@@ -547,6 +547,8 @@ export function blockerText(reason: string | null | undefined) {
       return _('another check is running');
     case 'apply_unresolved':
       return _('a previous apply is not resolved');
+    case 'service_stopped':
+      return _('Forkop X is stopped; start it first');
     default:
       return reason ? _('the service is busy') : _('unknown reason');
   }
@@ -754,7 +756,7 @@ export function applyResultView(
     case 'stale':
       // A lifecycle action took the reload lock after the checks: nothing
       // was changed and the recommendation still stands.
-      if (BUSY_REASONS.includes(reason ?? ''))
+      if (BUSY_REASONS.includes(reason ?? '') || reason === 'service_stopped')
         return { tone: 'warning', text: refusalText(reason), attention: false };
       return stale;
     case 'failed':

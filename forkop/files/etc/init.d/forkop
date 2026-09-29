@@ -94,6 +94,11 @@ reload_service() {
         queued)
             printf '%s\n' queued
             ;;
+        # An explicit stop holds the runtime down: the reload was skipped
+        # (snapshot restore, autotune apply; D-15, UC-056).
+        stopped)
+            printf '%s\n' stopped
+            ;;
     esac
     return "$status"
 }

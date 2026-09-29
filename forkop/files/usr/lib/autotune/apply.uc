@@ -55,6 +55,10 @@ const CHILD_PID_DIR = getenv("ZAPRET_CHILD_PID_DIR") || constants.ZAPRET_CHILD_P
 const DESYNC_MARK = getenv("ZAPRET_DESYNC_MARK") || constants.ZAPRET_DESYNC_MARK;
 const RELOAD_LOCK = getenv("FORKOP_RELOAD_LOCK_DIR") || "/var/run/forkop.reload.lock";
 const PENDING_RELOAD = getenv("FORKOP_PENDING_RELOAD_FILE") || "/var/run/forkop/reload.pending";
+// An explicit stop (service/initd.uc, service/lifecycle.uc): until an
+// explicit start no reload brings the runtime back (D-15, UC-056).
+const STOP_REQUESTED = getenv("FORKOP_STOP_REQUESTED_FILE") ||
+    (getenv("FORKOP_RUNTIME_STATE_DIR") || "/var/run/forkop") + "/stop.requested";
 const UCI_SAVEDIR = getenv("FORKOP_AUTOTUNE_UCI_SAVEDIR") || "/tmp/.uci";
 const TMP_DIR = getenv("FORKOP_AUTOTUNE_TMPDIR") || "/tmp";
 const HOLD_SECONDS = 5;
@@ -257,6 +261,9 @@ function service_action() {
     if (fs.stat(PENDING_RELOAD) != null) return "reload_pending";
     return null;
 }
+// An apply or rollback never changes a runtime that an explicit stop holds
+// down: its reload would be skipped and nothing could verify the result.
+function service_stopped() { return fs.stat(STOP_REQUESTED) != null; }
 // The last-known-working snapshot, compared by user configuration.
 function lkg_fingerprint() {
     let id = trim(as_string(fs.readfile(SNAPSHOT_DIR + "/last-known-working")));
@@ -568,6 +575,7 @@ function unresolved(s, d) {
 
 // Everything that must still hold for the plan: nothing is changed on failure.
 function stale_reason(p, resolver) {
+    if (service_stopped()) return "service_stopped";
     if (length(guards_present()) > 0) return "restore_guard_active";
     if (snapshot_operation_active()) return "snapshot_operation_in_progress";
     let action = service_action();
@@ -787,6 +795,7 @@ function rollback() {
     if (!(s.phase == "applied" || s.phase == "needs_attention" || (s.phase == "failed" && s.reason == "interrupted_after_apply") || unfinished))
         return { status: "failed", reason: "nothing_to_roll_back", phase: s.phase };
     if (d.diagnosis != "candidate_active") return { status: "failed", reason: "rollback_needs_candidate_config", diagnosis: d.diagnosis };
+    if (service_stopped()) return { status: "failed", reason: "service_stopped" };
     let action = service_action();
     if (action != null) return { status: "failed", reason: action };
     let pre = d.pre_snapshot;
@@ -816,7 +825,7 @@ function status() {
     let text = fs.readfile(CONFIG_FILE);
     let hash = text != null ? sha_text(text) : "";
     let result = { state: s, config_hash: hash, guards: guards_present(), snapshot_operation: snapshot_operation_active(),
-        service_action: service_action(), autotune_lock_held: autotune_lock.held() };
+        service_action: service_action(), service_stopped: service_stopped(), autotune_lock_held: autotune_lock.held() };
     if (type(s) == "object") {
         let d = diagnose(s);
         result.config_is = d.config_is;

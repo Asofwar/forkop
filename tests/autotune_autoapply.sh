@@ -201,4 +201,13 @@ scheduled_youtube blocked
 [ "$(applies)" = "$before" ] || fail "no apply while blocked"
 rm -f "$STUB_APPLY_STATUS"
 
+# ---- Forkop stopped by the user (D-15, UC-056): measured, never applied ------
+confirm_youtube
+printf '{"state":null,"guards":[],"service_stopped":true}\n' >"$STUB_APPLY_STATUS"
+scheduled_youtube stopped
+[ "$(json_get "$WORK/stopped.json" applied.reason)" = '"service_stopped"' ] || fail "stopped: $(cat "$WORK/stopped.json")"
+[ "$(json_get "$WORK/stopped.json" applied.counted)" = false ] || fail "a refused apply counts: $(cat "$WORK/stopped.json")"
+[ "$(applies)" = "$before" ] || fail "no apply while Forkop is stopped by the user"
+rm -f "$STUB_APPLY_STATUS"
+
 echo "autotune autoapply: OK"

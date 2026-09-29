@@ -59,6 +59,10 @@ const CONFIG_CHANGE_REASON = getenv("FORKOP_CONFIG_CHANGE_REASON") || "on_config
 // one: the list worker keeps its durable apply marker, a snapshot restore and
 // an autotune apply never confirm a configuration the runtime has not loaded.
 const QUEUE_ACK_REASONS = [ "list-content", "config-restore", "autotune" ];
+// Reload reasons of the transactions that must also tell a reload that an
+// explicit stop skipped: a snapshot restore and an autotune apply never
+// report a runtime they did not reload (D-15, UC-056).
+const STOP_ACK_REASONS = [ "config-restore", "autotune" ];
 
 const DNS_APPLY_UC = LIB_DIR + "/dns/apply.uc";
 const UI_UC = LIB_DIR + "/service/ui.uc";
@@ -967,19 +971,27 @@ function reload_finish(reason, job_id, status, owner_pid) {
 
 function reload_service(reason, owner_pid) {
     let plan = reload_begin_value(reason, owner_pid, null, null);
+    let stop_ack = index(STOP_ACK_REASONS, as_string(reason)) >= 0;
     if (plan.action != "run") {
         // Callers of QUEUE_ACK_REASONS must distinguish an accepted queued
-        // request from a completed lifecycle; for them a skip is always a
-        // queued request, except after an explicit stop. Ordinary callers
-        // keep no output and status 0.
-        if (!plan.stopped && index(QUEUE_ACK_REASONS, as_string(reason)) >= 0)
+        // request from a completed lifecycle; for them a skip is a queued
+        // request, and for STOP_ACK_REASONS a skip after an explicit stop is
+        // "stopped". Ordinary callers keep no output and status 0.
+        if (plan.stopped && stop_ack)
+            print("stopped\n");
+        else if (!plan.stopped && index(QUEUE_ACK_REASONS, as_string(reason)) >= 0)
             print("queued\n");
         return 0;
     }
 
     let status = command_status(command_from_args([ "env", "FORKOP_UI_ACTION_TRACKED=1", BIN_PATH, "reload", reason ]) + " >/dev/null 2>&1");
     let finish = reload_finish_value(reason, plan.job_id, status, owner_pid || owner_pid_value());
-    if (finish.sync)
+    // A stop requested after the check above: the lifecycle skipped the
+    // reload under reload.lock, or the runtime it reloaded is down again.
+    // Either way no runtime runs the new configuration.
+    if (status == 0 && stop_ack && stop_requested() && !runtime_is_running())
+        print("stopped\n");
+    else if (finish.sync)
         print("sync\n");
     return finish.status;
 }

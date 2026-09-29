@@ -98,6 +98,7 @@ const DOMAIN_MAP: Record<StatusDomain, Record<string, SemanticStatus>> = {
     confirmed: 'healthy',
     no_change: 'healthy',
     recovered: 'warning',
+    restored_not_started: 'warning',
     stale: 'warning',
     busy: 'busy',
     failed: 'error',
@@ -215,6 +216,7 @@ export type EventOutcome =
   | 'failed'
   | 'needs_attention'
   | 'cancelled'
+  | 'not_started'
   | 'unknown';
 
 const EVENT_OUTCOMES: Record<string, EventOutcome> = {
@@ -229,6 +231,8 @@ const EVENT_OUTCOMES: Record<string, EventOutcome> = {
   stale: 'cancelled',
   refused: 'cancelled',
   cancelled: 'cancelled',
+  // A restore while Forkop was stopped by the user (diagnostics/health.uc).
+  not_started: 'not_started',
 };
 
 export function toEventOutcome(raw: unknown): EventOutcome {
@@ -252,6 +256,8 @@ export function eventOutcomeView(outcome: EventOutcome): {
       return { label: _('Needs attention'), tone: 'error' };
     case 'cancelled':
       return { label: _('Cancelled'), tone: 'neutral' };
+    case 'not_started':
+      return { label: _('Saved, service stopped'), tone: 'warning' };
     default:
       return { label: _('Unknown'), tone: 'neutral' };
   }

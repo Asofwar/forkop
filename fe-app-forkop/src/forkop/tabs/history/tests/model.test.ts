@@ -242,6 +242,35 @@ describe('restore result', () => {
     ).toBe('Restore failed; previous configuration and runtime recovered');
   });
 
+  it('never reports a restore while Forkop is stopped as reloaded', () => {
+    const kept = restoreResultToast({
+      status: 'restored_not_started',
+      reason: 'service_stopped',
+    });
+    expect(kept.type).toBe('warning');
+    expect(kept.text).toContain('Forkop X is stopped');
+    expect(kept.text).toContain('when Forkop X is started');
+    expect(kept.text).not.toContain('reloaded');
+
+    const invalid = restoreResultToast({
+      status: 'failed',
+      reason: 'target_invalid',
+      runtime: 'stopped',
+    });
+    expect(invalid.type).toBe('warning');
+    expect(invalid.text).toContain('did not pass validation');
+    expect(invalid.text).toContain('previous configuration is kept');
+
+    const overtaken = restoreResultToast({
+      status: 'failed',
+      reason: 'service_stopped',
+      runtime: 'stopped',
+    });
+    expect(overtaken.text).toContain('stopped during the restore');
+    // Without the stop, a failure still points to the recovery state.
+    expect(restoreResultToast({ status: 'failed' }).type).toBe('error');
+  });
+
   it('names a reload that was only queued', () => {
     const recovered = restoreResultToast({
       status: 'recovered',

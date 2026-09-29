@@ -6217,6 +6217,8 @@ var EVENT_OUTCOMES = {
   stale: "cancelled",
   refused: "cancelled",
   cancelled: "cancelled",
+  // A restore while Forkop was stopped by the user (diagnostics/health.uc).
+  not_started: "not_started",
 };
 function toEventOutcome(raw) {
   return EVENT_OUTCOMES[raw == null ? "" : String(raw)] ?? "unknown";
@@ -6235,6 +6237,8 @@ function eventOutcomeView(outcome) {
       return { label: _("Needs attention"), tone: "error" };
     case "cancelled":
       return { label: _("Cancelled"), tone: "neutral" };
+    case "not_started":
+      return { label: _("Saved, service stopped"), tone: "warning" };
     default:
       return { label: _("Unknown"), tone: "neutral" };
   }
@@ -18869,6 +18873,15 @@ function restoreResultToast(result) {
         type: "success",
         duration: 6e3,
       };
+    // Forkop X was stopped by the user: only a start brings it back.
+    case "restored_not_started":
+      return {
+        text: _(
+          "Configuration restored, but Forkop X is stopped: it was not started or checked. The restored configuration takes effect when Forkop X is started.",
+        ),
+        type: "warning",
+        duration: 1e4,
+      };
     case "recovered":
       return {
         text:
@@ -18880,6 +18893,21 @@ function restoreResultToast(result) {
         type: "warning",
         duration: 8e3,
       };
+    case "failed":
+      if (result.runtime === "stopped")
+        return {
+          text:
+            result.reason === "target_invalid"
+              ? _(
+                  "Restore was not applied: the snapshot configuration did not pass validation. The previous configuration is kept; Forkop X stays stopped.",
+                )
+              : _(
+                  "Restore was not applied: Forkop X was stopped during the restore. The previous configuration is kept.",
+                ),
+          type: "warning",
+          duration: 1e4,
+        };
+      break;
     case "needs_attention":
       if (result.reason === "rollback_reload_queued")
         return {
@@ -19841,6 +19869,8 @@ function blockerText(reason) {
       return _("another check is running");
     case "apply_unresolved":
       return _("a previous apply is not resolved");
+    case "service_stopped":
+      return _("Forkop X is stopped; start it first");
     default:
       return reason ? _("the service is busy") : _("unknown reason");
   }
@@ -20009,7 +20039,7 @@ function applyResultView(result, candidate) {
         attention: false,
       };
     case "stale":
-      if (BUSY_REASONS.includes(reason ?? ""))
+      if (BUSY_REASONS.includes(reason ?? "") || reason === "service_stopped")
         return { tone: "warning", text: refusalText(reason), attention: false };
       return stale;
     case "failed":

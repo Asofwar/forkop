@@ -29,14 +29,14 @@
     "call": "%d d",
     "key": "%d d",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:598"
+      "src/forkop/tabs/autotune/model.ts:600"
     ]
   },
   {
     "call": "%d h",
     "key": "%d h",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:597"
+      "src/forkop/tabs/autotune/model.ts:599"
     ]
   },
   {
@@ -207,7 +207,7 @@
     "places": [
       "src/forkop/tabs/autotune/initController.ts:209",
       "src/forkop/tabs/autotune/initController.ts:332",
-      "src/forkop/tabs/autotune/model.ts:563"
+      "src/forkop/tabs/autotune/model.ts:565"
     ]
   },
   {
@@ -668,7 +668,7 @@
     "key": "Another autotune operation is running.",
     "places": [
       "src/forkop/tabs/autotune/initController.ts:301",
-      "src/forkop/tabs/autotune/model.ts:705"
+      "src/forkop/tabs/autotune/model.ts:707"
     ]
   },
   {
@@ -731,7 +731,7 @@
     "call": "Apply",
     "key": "Apply",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:622"
+      "src/forkop/tabs/autotune/model.ts:624"
     ]
   },
   {
@@ -745,7 +745,7 @@
     "call": "Apply %s?",
     "key": "Apply %s?",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:613"
+      "src/forkop/tabs/autotune/model.ts:615"
     ]
   },
   {
@@ -858,7 +858,7 @@
     "call": "Automatic recovery did not finish.",
     "key": "Automatic recovery did not finish.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:806"
+      "src/forkop/tabs/autotune/model.ts:808"
     ]
   },
   {
@@ -908,7 +908,7 @@
     "call": "Autotune apply",
     "key": "Autotune apply",
     "places": [
-      "src/forkop/ui/status.ts:272"
+      "src/forkop/ui/status.ts:278"
     ]
   },
   {
@@ -936,7 +936,7 @@
     "call": "Autotune mode changed",
     "key": "Autotune mode changed",
     "places": [
-      "src/forkop/ui/status.ts:274",
+      "src/forkop/ui/status.ts:280",
       "src/forkop/tabs/autotune/initController.ts:193"
     ]
   },
@@ -951,14 +951,14 @@
     "call": "Autotune recommendation confirmed",
     "key": "Autotune recommendation confirmed",
     "places": [
-      "src/forkop/ui/status.ts:276"
+      "src/forkop/ui/status.ts:282"
     ]
   },
   {
     "call": "Autotune run",
     "key": "Autotune run",
     "places": [
-      "src/forkop/ui/status.ts:278"
+      "src/forkop/ui/status.ts:284"
     ]
   },
   {
@@ -1279,14 +1279,14 @@
     "call": "Calculated",
     "key": "Calculated",
     "places": [
-      "src/forkop/ui/status.ts:298"
+      "src/forkop/ui/status.ts:304"
     ]
   },
   {
     "call": "Calculated result",
     "key": "Calculated result",
     "places": [
-      "src/forkop/ui/status.ts:311"
+      "src/forkop/ui/status.ts:317"
     ]
   },
   {
@@ -1307,7 +1307,7 @@
     "call": "Cancelled",
     "key": "Cancelled",
     "places": [
-      "src/forkop/ui/status.ts:254"
+      "src/forkop/ui/status.ts:258"
     ]
   },
   {
@@ -1518,21 +1518,21 @@
     "call": "Checking the configuration before the change",
     "key": "Checking the configuration before the change",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:633"
+      "src/forkop/tabs/autotune/model.ts:635"
     ]
   },
   {
     "call": "Checking the real production path",
     "key": "Checking the real production path",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:637"
+      "src/forkop/tabs/autotune/model.ts:639"
     ]
   },
   {
     "call": "Checking the recommendation",
     "key": "Checking the recommendation",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:642"
+      "src/forkop/tabs/autotune/model.ts:644"
     ]
   },
   {
@@ -1554,7 +1554,7 @@
     "call": "Checking…",
     "key": "Checking…",
     "places": [
-      "src/forkop/ui/status.ts:135",
+      "src/forkop/ui/status.ts:136",
       "src/forkop/tabs/autotune/initController.ts:763",
       "src/forkop/tabs/autotune/initController.ts:903",
       "src/forkop/tabs/dashboard/overview.ts:136",
@@ -1793,7 +1793,7 @@
     "call": "Configuration reload",
     "key": "Configuration reload",
     "places": [
-      "src/forkop/ui/status.ts:266"
+      "src/forkop/ui/status.ts:272"
     ]
   },
   {
@@ -1801,6 +1801,13 @@
     "key": "Configuration restored and reloaded",
     "places": [
       "src/forkop/tabs/history/model.ts:259"
+    ]
+  },
+  {
+    "call": "Configuration restored, but Forkop X is stopped: it was not started or checked. The restored configuration takes effect when Forkop X is started.",
+    "key": "Configuration restored, but Forkop X is stopped: it was not started or checked. The restored configuration takes effect when Forkop X is started.",
+    "places": [
+      "src/forkop/tabs/history/model.ts:266"
     ]
   },
   {
@@ -2095,7 +2102,7 @@
     "call": "Creating a snapshot and reloading the service",
     "key": "Creating a snapshot and reloading the service",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:635"
+      "src/forkop/tabs/autotune/model.ts:637"
     ]
   },
   {
@@ -2221,7 +2228,7 @@
     "call": "Derived from configuration",
     "key": "Derived from configuration",
     "places": [
-      "src/forkop/ui/status.ts:309"
+      "src/forkop/ui/status.ts:315"
     ]
   },
   {
@@ -2403,7 +2410,7 @@
     "call": "Disabled",
     "key": "Disabled",
     "places": [
-      "src/forkop/ui/status.ts:167",
+      "src/forkop/ui/status.ts:168",
       "src/forkop/tabs/autotune/model.ts:487",
       "src/forkop/tabs/updates/initController.ts:1071",
       "src/forkop/tabs/updates/initController.ts:1103"
@@ -3038,7 +3045,7 @@
     "call": "Enter a domain name, for example youtube.com.",
     "key": "Enter a domain name, for example youtube.com.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:565"
+      "src/forkop/tabs/autotune/model.ts:567"
     ]
   },
   {
@@ -3103,7 +3110,7 @@
     "key": "Error",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:826",
-      "src/forkop/ui/status.ts:157",
+      "src/forkop/ui/status.ts:158",
       "src/forkop/tabs/diagnostic/statusLabels.ts:26",
       "src/forkop/tabs/diagnostic/statusLabels.ts:58"
     ]
@@ -3242,7 +3249,7 @@
     "call": "Failed",
     "key": "Failed",
     "places": [
-      "src/forkop/ui/status.ts:250",
+      "src/forkop/ui/status.ts:254",
       "src/forkop/tabs/autotune/model.ts:79",
       "src/forkop/tabs/diagnostic/statusLabels.ts:43"
     ]
@@ -3515,6 +3522,13 @@
     ]
   },
   {
+    "call": "Forkop X is stopped; start it first",
+    "key": "Forkop X is stopped; start it first",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:551"
+    ]
+  },
+  {
     "call": "Forkop X is stopped. Start it to run the checks.",
     "key": "Forkop X is stopped. Start it to run the checks.",
     "places": [
@@ -3561,7 +3575,7 @@
     "key": "Forkop X never turns DPI bypass off by itself.",
     "places": [
       "src/forkop/tabs/autotune/model.ts:208",
-      "src/forkop/tabs/autotune/model.ts:678"
+      "src/forkop/tabs/autotune/model.ts:680"
     ]
   },
   {
@@ -3589,7 +3603,7 @@
     "call": "Forkop X will create a configuration snapshot, reload the service and check the real production path. If the check fails, the previous configuration is restored automatically.",
     "key": "Forkop X will create a configuration snapshot, reload the service and check the real production path. If the check fails, the previous configuration is restored automatically.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:618"
+      "src/forkop/tabs/autotune/model.ts:620"
     ]
   },
   {
@@ -3666,7 +3680,7 @@
     "call": "From configuration",
     "key": "From configuration",
     "places": [
-      "src/forkop/ui/status.ts:296"
+      "src/forkop/ui/status.ts:302"
     ]
   },
   {
@@ -3723,7 +3737,7 @@
     "call": "Healthy",
     "key": "Healthy",
     "places": [
-      "src/forkop/ui/status.ts:153",
+      "src/forkop/ui/status.ts:154",
       "src/forkop/tabs/diagnostic/statusLabels.ts:22",
       "src/forkop/tabs/diagnostic/statusLabels.ts:54"
     ]
@@ -3919,7 +3933,7 @@
     "call": "In progress",
     "key": "In progress",
     "places": [
-      "src/forkop/ui/status.ts:161",
+      "src/forkop/ui/status.ts:162",
       "src/forkop/tabs/history/model.ts:69"
     ]
   },
@@ -4926,7 +4940,7 @@
     "call": "Manual apply is available only in \"Recommendations only\" mode.",
     "key": "Manual apply is available only in \"Recommendations only\" mode.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:694"
+      "src/forkop/tabs/autotune/model.ts:696"
     ]
   },
   {
@@ -5097,8 +5111,8 @@
     "call": "Needs attention",
     "key": "Needs attention",
     "places": [
-      "src/forkop/ui/status.ts:159",
-      "src/forkop/ui/status.ts:252",
+      "src/forkop/ui/status.ts:160",
+      "src/forkop/ui/status.ts:256",
       "src/forkop/tabs/diagnostic/statusLabels.ts:24",
       "src/forkop/tabs/diagnostic/statusLabels.ts:45",
       "src/forkop/tabs/diagnostic/statusLabels.ts:56"
@@ -5508,7 +5522,7 @@
     "call": "Not checked",
     "key": "Not checked",
     "places": [
-      "src/forkop/ui/status.ts:163",
+      "src/forkop/ui/status.ts:164",
       "src/forkop/tabs/autotune/model.ts:83",
       "src/forkop/tabs/autotune/model.ts:327",
       "src/forkop/tabs/autotune/model.ts:490",
@@ -5527,8 +5541,8 @@
     "call": "Not determined",
     "key": "Not determined",
     "places": [
-      "src/forkop/ui/status.ts:300",
-      "src/forkop/ui/status.ts:313",
+      "src/forkop/ui/status.ts:306",
+      "src/forkop/ui/status.ts:319",
       "src/forkop/tabs/autotune/model.ts:52"
     ]
   },
@@ -5592,7 +5606,7 @@
     "call": "Not supported",
     "key": "Not supported",
     "places": [
-      "src/forkop/ui/status.ts:165",
+      "src/forkop/ui/status.ts:166",
       "src/forkop/tabs/autotune/model.ts:81"
     ]
   },
@@ -5608,7 +5622,7 @@
     "key": "Now",
     "places": [
       "src/forkop/tabs/autotune/initController.ts:806",
-      "src/forkop/tabs/autotune/model.ts:617",
+      "src/forkop/tabs/autotune/model.ts:619",
       "src/forkop/tabs/history/initController.ts:180"
     ]
   },
@@ -5616,7 +5630,7 @@
     "call": "Observed",
     "key": "Observed",
     "places": [
-      "src/forkop/ui/status.ts:294"
+      "src/forkop/ui/status.ts:300"
     ]
   },
   {
@@ -5798,7 +5812,7 @@
     "call": "Other event",
     "key": "Other event",
     "places": [
-      "src/forkop/ui/status.ts:284"
+      "src/forkop/ui/status.ts:290"
     ]
   },
   {
@@ -6095,7 +6109,7 @@
     "call": "Preparing the change",
     "key": "Preparing the change",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:641"
+      "src/forkop/tabs/autotune/model.ts:643"
     ]
   },
   {
@@ -6243,9 +6257,9 @@
     "call": "Recovered",
     "key": "Recovered",
     "places": [
-      "src/forkop/ui/status.ts:132",
-      "src/forkop/ui/status.ts:138",
-      "src/forkop/ui/status.ts:246",
+      "src/forkop/ui/status.ts:133",
+      "src/forkop/ui/status.ts:139",
+      "src/forkop/ui/status.ts:250",
       "src/forkop/tabs/diagnostic/statusLabels.ts:41"
     ]
   },
@@ -6253,7 +6267,7 @@
     "call": "Recovery",
     "key": "Recovery",
     "places": [
-      "src/forkop/ui/status.ts:270",
+      "src/forkop/ui/status.ts:276",
       "src/forkop/tabs/dashboard/overviewCards.ts:206"
     ]
   },
@@ -6508,21 +6522,21 @@
     "call": "Restore did not finish: the service was busy and only queued the reload. The DPI guard stays active; restore again when the service is idle.",
     "key": "Restore did not finish: the service was busy and only queued the reload. The DPI guard stays active; restore again when the service is idle.",
     "places": [
-      "src/forkop/tabs/history/model.ts:277"
+      "src/forkop/tabs/history/model.ts:301"
     ]
   },
   {
     "call": "Restore failed; check the recovery state before retrying",
     "key": "Restore failed; check the recovery state before retrying",
     "places": [
-      "src/forkop/tabs/history/model.ts:286"
+      "src/forkop/tabs/history/model.ts:310"
     ]
   },
   {
     "call": "Restore failed; previous configuration and runtime recovered",
     "key": "Restore failed; previous configuration and runtime recovered",
     "places": [
-      "src/forkop/tabs/history/model.ts:270"
+      "src/forkop/tabs/history/model.ts:279"
     ]
   },
   {
@@ -6533,10 +6547,24 @@
     ]
   },
   {
+    "call": "Restore was not applied: Forkop X was stopped during the restore. The previous configuration is kept.",
+    "key": "Restore was not applied: Forkop X was stopped during the restore. The previous configuration is kept.",
+    "places": [
+      "src/forkop/tabs/history/model.ts:291"
+    ]
+  },
+  {
     "call": "Restore was not applied: the service was busy and only queued the reload. The previous configuration is kept.",
     "key": "Restore was not applied: the service was busy and only queued the reload. The previous configuration is kept.",
     "places": [
-      "src/forkop/tabs/history/model.ts:267"
+      "src/forkop/tabs/history/model.ts:276"
+    ]
+  },
+  {
+    "call": "Restore was not applied: the snapshot configuration did not pass validation. The previous configuration is kept; Forkop X stays stopped.",
+    "key": "Restore was not applied: the snapshot configuration did not pass validation. The previous configuration is kept; Forkop X stays stopped.",
+    "places": [
+      "src/forkop/tabs/history/model.ts:288"
     ]
   },
   {
@@ -6550,7 +6578,7 @@
     "call": "Restoring the previous configuration",
     "key": "Restoring the previous configuration",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:639"
+      "src/forkop/tabs/autotune/model.ts:641"
     ]
   },
   {
@@ -6607,8 +6635,8 @@
     "call": "Rolled back",
     "key": "Rolled back",
     "places": [
-      "src/forkop/ui/status.ts:141",
-      "src/forkop/ui/status.ts:248"
+      "src/forkop/ui/status.ts:142",
+      "src/forkop/ui/status.ts:252"
     ]
   },
   {
@@ -6824,6 +6852,13 @@
     ]
   },
   {
+    "call": "Saved, service stopped",
+    "key": "Saved, service stopped",
+    "places": [
+      "src/forkop/ui/status.ts:260"
+    ]
+  },
+  {
     "call": "Saving URLTest settings…",
     "key": "Saving URLTest settings…",
     "places": [
@@ -6876,7 +6911,7 @@
     "call": "Seen in an active connection",
     "key": "Seen in an active connection",
     "places": [
-      "src/forkop/ui/status.ts:307"
+      "src/forkop/ui/status.ts:313"
     ]
   },
   {
@@ -7108,7 +7143,7 @@
     "call": "Service start",
     "key": "Service start",
     "places": [
-      "src/forkop/ui/status.ts:264"
+      "src/forkop/ui/status.ts:270"
     ]
   },
   {
@@ -7257,14 +7292,14 @@
     "call": "Snapshot created",
     "key": "Snapshot created",
     "places": [
-      "src/forkop/ui/status.ts:280"
+      "src/forkop/ui/status.ts:286"
     ]
   },
   {
     "call": "Snapshot deleted",
     "key": "Snapshot deleted",
     "places": [
-      "src/forkop/ui/status.ts:282",
+      "src/forkop/ui/status.ts:288",
       "src/forkop/tabs/history/initController.ts:283"
     ]
   },
@@ -7272,7 +7307,7 @@
     "call": "Snapshot restore",
     "key": "Snapshot restore",
     "places": [
-      "src/forkop/ui/status.ts:268"
+      "src/forkop/ui/status.ts:274"
     ]
   },
   {
@@ -7525,7 +7560,7 @@
     "call": "Strategy %s applied and checked.",
     "key": "Strategy %s applied and checked.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:737"
+      "src/forkop/tabs/autotune/model.ts:739"
     ]
   },
   {
@@ -7589,7 +7624,7 @@
     "call": "Succeeded",
     "key": "Succeeded",
     "places": [
-      "src/forkop/ui/status.ts:244",
+      "src/forkop/ui/status.ts:248",
       "src/forkop/tabs/diagnostic/statusLabels.ts:39"
     ]
   },
@@ -7690,7 +7725,7 @@
     "key": "Targets of this rule need different strategies.",
     "places": [
       "src/forkop/tabs/autotune/model.ts:278",
-      "src/forkop/tabs/autotune/model.ts:676"
+      "src/forkop/tabs/autotune/model.ts:678"
     ]
   },
   {
@@ -7806,7 +7841,7 @@
     "call": "The autotune state was restored after damage. Run the check again.",
     "key": "The autotune state was restored after damage. Run the check again.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:698"
+      "src/forkop/tabs/autotune/model.ts:700"
     ]
   },
   {
@@ -7827,14 +7862,14 @@
     "call": "The change affects the whole group:",
     "key": "The change affects the whole group:",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:614"
+      "src/forkop/tabs/autotune/model.ts:616"
     ]
   },
   {
     "call": "The change was not saved.",
     "key": "The change was not saved.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:576"
+      "src/forkop/tabs/autotune/model.ts:578"
     ]
   },
   {
@@ -7869,7 +7904,7 @@
     "call": "The confidence of the recommendation is below the policy minimum.",
     "key": "The confidence of the recommendation is below the policy minimum.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:682"
+      "src/forkop/tabs/autotune/model.ts:684"
     ]
   },
   {
@@ -7905,7 +7940,7 @@
     "call": "The DNS server must be an IPv4 address.",
     "key": "The DNS server must be an IPv4 address.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:567"
+      "src/forkop/tabs/autotune/model.ts:569"
     ]
   },
   {
@@ -7991,7 +8026,7 @@
     "call": "The maximum number of targets is reached.",
     "key": "The maximum number of targets is reached.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:569"
+      "src/forkop/tabs/autotune/model.ts:571"
     ]
   },
   {
@@ -8005,21 +8040,21 @@
     "call": "The new strategy did not pass the check. Forkop X restored the previous configuration automatically.",
     "key": "The new strategy did not pass the check. Forkop X restored the previous configuration automatically.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:743"
+      "src/forkop/tabs/autotune/model.ts:745"
     ]
   },
   {
     "call": "The new strategy was not applied: the service reload failed and the previous configuration was restored automatically.",
     "key": "The new strategy was not applied: the service reload failed and the previous configuration was restored automatically.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:772"
+      "src/forkop/tabs/autotune/model.ts:774"
     ]
   },
   {
     "call": "The new strategy was not applied: the service was busy and only queued the reload. The previous configuration is kept.",
     "key": "The new strategy was not applied: the service was busy and only queued the reload. The previous configuration is kept.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:764"
+      "src/forkop/tabs/autotune/model.ts:766"
     ]
   },
   {
@@ -8042,14 +8077,14 @@
     "key": "The recommendation is not confirmed yet.",
     "places": [
       "src/forkop/tabs/autotune/model.ts:186",
-      "src/forkop/tabs/autotune/model.ts:672"
+      "src/forkop/tabs/autotune/model.ts:674"
     ]
   },
   {
     "call": "The recommendation is outdated: the configuration changed after the check. Run the check again.",
     "key": "The recommendation is outdated: the configuration changed after the check. Run the check again.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:728"
+      "src/forkop/tabs/autotune/model.ts:730"
     ]
   },
   {
@@ -8128,7 +8163,7 @@
     "places": [
       "src/forkop/tabs/autotune/model.ts:190",
       "src/forkop/tabs/autotune/model.ts:367",
-      "src/forkop/tabs/autotune/model.ts:690"
+      "src/forkop/tabs/autotune/model.ts:692"
     ]
   },
   {
@@ -8201,7 +8236,7 @@
     "call": "the service is busy",
     "key": "the service is busy",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:551"
+      "src/forkop/tabs/autotune/model.ts:553"
     ]
   },
   {
@@ -8243,7 +8278,7 @@
     "call": "The strategy could not be applied. The previous configuration is kept.",
     "key": "The strategy could not be applied. The previous configuration is kept.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:780"
+      "src/forkop/tabs/autotune/model.ts:782"
     ]
   },
   {
@@ -8271,16 +8306,16 @@
     "call": "The strategy of the DPI rule \"%s\" will be changed.",
     "key": "The strategy of the DPI rule \"%s\" will be changed.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:614"
+      "src/forkop/tabs/autotune/model.ts:616"
     ]
   },
   {
     "call": "The strategy was not applied",
     "key": "The strategy was not applied",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:709",
-      "src/forkop/tabs/autotune/model.ts:713",
-      "src/forkop/tabs/autotune/model.ts:714"
+      "src/forkop/tabs/autotune/model.ts:711",
+      "src/forkop/tabs/autotune/model.ts:715",
+      "src/forkop/tabs/autotune/model.ts:716"
     ]
   },
   {
@@ -8350,7 +8385,7 @@
     "call": "The value is outside the allowed range.",
     "key": "The value is outside the allowed range.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:574"
+      "src/forkop/tabs/autotune/model.ts:576"
     ]
   },
   {
@@ -8378,14 +8413,14 @@
     "call": "There are unsaved configuration changes. Save or reset them in Settings first.",
     "key": "There are unsaved configuration changes. Save or reset them in Settings first.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:559"
+      "src/forkop/tabs/autotune/model.ts:561"
     ]
   },
   {
     "call": "There is no recommendation to apply.",
     "key": "There is no recommendation to apply.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:674"
+      "src/forkop/tabs/autotune/model.ts:676"
     ]
   },
   {
@@ -8506,14 +8541,14 @@
     "call": "This strategy is already active; nothing was changed.",
     "key": "This strategy is already active; nothing was changed.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:751"
+      "src/forkop/tabs/autotune/model.ts:753"
     ]
   },
   {
     "call": "This strategy is not supported by the installed Zapret.",
     "key": "This strategy is not supported by the installed Zapret.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:680"
+      "src/forkop/tabs/autotune/model.ts:682"
     ]
   },
   {
@@ -8521,7 +8556,7 @@
     "key": "This strategy was rolled back recently; it waits for the cooldown.",
     "places": [
       "src/forkop/tabs/autotune/model.ts:192",
-      "src/forkop/tabs/autotune/model.ts:686"
+      "src/forkop/tabs/autotune/model.ts:688"
     ]
   },
   {
@@ -8810,8 +8845,8 @@
     "call": "Unknown",
     "key": "Unknown",
     "places": [
-      "src/forkop/ui/status.ts:169",
-      "src/forkop/ui/status.ts:256",
+      "src/forkop/ui/status.ts:170",
+      "src/forkop/ui/status.ts:262",
       "src/forkop/tabs/history/model.ts:95"
     ]
   },
@@ -8856,7 +8891,7 @@
     "call": "unknown reason",
     "key": "unknown reason",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:551"
+      "src/forkop/tabs/autotune/model.ts:553"
     ]
   },
   {
@@ -9178,7 +9213,7 @@
     "key": "Warning",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:825",
-      "src/forkop/ui/status.ts:155",
+      "src/forkop/ui/status.ts:156",
       "src/forkop/tabs/autotune/initController.ts:706",
       "src/forkop/tabs/autotune/initController.ts:716"
     ]
@@ -9243,7 +9278,7 @@
     "call": "Will be",
     "key": "Will be",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:617"
+      "src/forkop/tabs/autotune/model.ts:619"
     ]
   },
   {

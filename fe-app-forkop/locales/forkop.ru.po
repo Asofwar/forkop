@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-29 00:47+0000\n"
-"PO-Revision-Date: 2026-09-29 00:47+0000\n"
+"POT-Creation-Date: 2026-09-29 21:46+0000\n"
+"PO-Revision-Date: 2026-09-29 21:46+0000\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -749,6 +749,9 @@ msgstr "Перезагрузка конфигурации"
 msgid "Configuration restored and reloaded"
 msgstr "Конфигурация восстановлена и применена"
 
+msgid "Configuration restored, but Forkop X is stopped: it was not started or checked. The restored configuration takes effect when Forkop X is started."
+msgstr "Конфигурация восстановлена, но Forkop X остановлен: он не запускался и не проверялся. Восстановленная конфигурация вступит в силу при запуске Forkop X."
+
 msgid "Configuration saved. Runtime reload has not been confirmed; check History and recovery."
 msgstr "Конфигурация сохранена. Перезагрузка не подтверждена; проверьте раздел «История и восстановление»."
 
@@ -1447,6 +1450,9 @@ msgstr "Forkop X работает"
 
 msgid "Forkop X is stopped"
 msgstr "Forkop X остановлен"
+
+msgid "Forkop X is stopped; start it first"
+msgstr "Forkop X остановлен; сначала запустите его"
 
 msgid "Forkop X is stopped. Start it to run the checks."
 msgstr "Forkop X остановлен. Запустите его, чтобы выполнить проверки."
@@ -2678,8 +2684,14 @@ msgstr "Восстановление не удалось; прежняя кон�
 msgid "Restore normal mode"
 msgstr "Вернуть обычный режим"
 
+msgid "Restore was not applied: Forkop X was stopped during the restore. The previous configuration is kept."
+msgstr "Восстановление не применено: Forkop X был остановлен во время восстановления. Прежняя конфигурация сохранена."
+
 msgid "Restore was not applied: the service was busy and only queued the reload. The previous configuration is kept."
 msgstr "Восстановление не применено: служба была занята и лишь поставила перезагрузку в очередь. Прежняя конфигурация сохранена."
+
+msgid "Restore was not applied: the snapshot configuration did not pass validation. The previous configuration is kept; Forkop X stays stopped."
+msgstr "Восстановление не применено: конфигурация снимка не прошла проверку. Прежняя конфигурация сохранена; Forkop X остаётся остановленным."
 
 msgid "Restore…"
 msgstr "Восстановить…"
@@ -2797,6 +2809,9 @@ msgstr "Россия: заблокировано внутри"
 
 msgid "Save"
 msgstr "Сохранить"
+
+msgid "Saved, service stopped"
+msgstr "Сохранено, служба остановлена"
 
 msgid "Saving URLTest settings…"
 msgstr "Сохранение настроек URLTest…"

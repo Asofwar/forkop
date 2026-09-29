@@ -156,13 +156,15 @@ state_edit 's.groups.youtube.result.confidence="medium"'
 refused confidence confidence_too_low
 confirm_youtube
 
-# ---- guard, snapshot, service action and unresolved Stage 5 transaction --------
-for case in guard snapshot reload unresolved; do
+# ---- guard, snapshot, service action, unresolved Stage 5 transaction and a -----
+# ---- Forkop stopped by the user (D-15, UC-056) ------------------------------------
+for case in guard snapshot reload unresolved stopped; do
   case "$case" in
     guard) printf '{"state":null,"guards":["ForkopConfigRestoreDpiGuard"]}\n'; want=dpi_guard_present ;;
     snapshot) printf '{"state":null,"guards":[],"snapshot_operation":true}\n'; want=snapshot_operation_active ;;
     reload) printf '{"state":null,"guards":[],"service_action":"reload_pending"}\n'; want=reload_pending ;;
     unresolved) printf '{"state":{"phase":"verifying"},"guards":[],"resolved":false}\n'; want=apply_unresolved ;;
+    stopped) printf '{"state":null,"guards":[],"service_stopped":true}\n'; want=service_stopped ;;
   esac >"$STUB_APPLY_STATUS"
   refused "blocked-$case" "$want"
 done

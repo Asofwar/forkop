@@ -288,10 +288,16 @@ export namespace Forkop {
       // the last-known-good confirmation.
       | 'stale'
       | 'no_change'
-      | 'confirmed';
+      | 'confirmed'
+      // A restore while Forkop is stopped by the user: the configuration is
+      // replaced and validated, the runtime is not started (D-15).
+      | 'restored_not_started';
     snapshot?: SnapshotMetadata;
     changes?: SnapshotChange[];
     reason?: string;
+    // "stopped": an explicit stop held the runtime down; nothing was
+    // reloaded or started.
+    runtime?: 'stopped';
   }
   export interface ConnectivityResult {
     host: string;

@@ -321,7 +321,9 @@ grep -q 'Reload state is unavailable; restarting Forkop runtime' "$WORK_DIR/sysl
 no_event '^start-managed$' || fail "a reload restarted sing-box while a stop was pending"
 
 # 3. init.d: the reload of a stopped runtime is not run, whoever requests
-#    it; the answer stays empty.
+#    it. The transaction callers (snapshot restore, autotune apply) are told
+#    "stopped", never an empty answer that reads as a reload that ran
+#    (tests/config_restore_user_stop.sh); for others the answer stays empty.
 initd_reload() {
   bash "$WORK_DIR/rc" reload "$@" 2>"$WORK_DIR/initd.err"
 }
@@ -330,7 +332,11 @@ for reason in "" list-content some-caller config-restore autotune; do
   runtime_down
   printf 'stop\n' >"$STOP_MARKER"
   output="$(initd_reload "$reason")" || fail "init.d reload '$reason' of a stopped runtime failed: $(cat "$WORK_DIR/initd.err")"
-  [ -z "$output" ] || fail "init.d reload '$reason' of a stopped runtime answered '$output'"
+  case "$reason" in
+    config-restore | autotune) want=stopped ;;
+    *) want='' ;;
+  esac
+  [ "$output" = "$want" ] || fail "init.d reload '$reason' of a stopped runtime answered '$output', not '$want'"
   no_event '^reload ran' || fail "init.d ran reload '$reason' of a stopped runtime"
   [ ! -e "$FORKOP_RELOAD_LOCK_DIR" ] || fail "init.d reload '$reason' of a stopped runtime left reload.lock behind"
   [ -e "$STOP_MARKER" ] || fail "init.d reload '$reason' ended the explicit stop"

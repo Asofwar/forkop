@@ -53,6 +53,7 @@ const REASONS = [
   'interrupted_after_apply',
   'service_action_in_progress',
   'reload_pending',
+  'service_stopped',
   'autotune_worker_running',
   'lkg_confirm_failed',
   'invalid_group',

@@ -164,11 +164,17 @@ describe('event outcomes', () => {
     expect(toEventOutcome('needs_attention')).toBe('needs_attention');
     expect(toEventOutcome('rolled_back')).toBe('rolled_back');
     expect(toEventOutcome('stale')).toBe('cancelled');
+    expect(toEventOutcome('not_started')).toBe('not_started');
     expect(toEventOutcome('???')).toBe('unknown');
   });
 
   it('never shows an unknown outcome as a success', () => {
     expect(eventOutcomeView('unknown').tone).toBe('neutral');
+    // A restore while Forkop was stopped by the user was not verified.
+    expect(eventOutcomeView('not_started')).toEqual({
+      label: 'Saved, service stopped',
+      tone: 'warning',
+    });
     expect(eventOutcomeView('needs_attention').tone).toBe('error');
     expect(eventOutcomeView('rolled_back').tone).toBe('warning');
   });

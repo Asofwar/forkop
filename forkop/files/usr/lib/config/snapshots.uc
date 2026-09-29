@@ -16,6 +16,10 @@ const RELOAD = getenv("FORKOP_RELOAD_COMMAND") || "/etc/init.d/forkop";
 const MAX_CONFIG = 2 * 1024 * 1024;
 const PENDING_RELOAD = getenv("FORKOP_PENDING_RELOAD_FILE") || "/var/run/forkop/reload.pending";
 const RELOAD_LOCK = getenv("FORKOP_RELOAD_LOCK_DIR") || "/var/run/forkop.reload.lock";
+// An explicit stop (service/initd.uc, service/lifecycle.uc): until an
+// explicit start no reload brings the runtime back (D-15, UC-056).
+const STOP_REQUESTED = getenv("FORKOP_STOP_REQUESTED_FILE") ||
+    (getenv("FORKOP_RUNTIME_STATE_DIR") || "/var/run/forkop") + "/stop.requested";
 const RETENTION = 10;
 
 function value(v) { return v == null ? "" : "" + v; }
@@ -330,15 +334,20 @@ function pending_stamp() {
     let st = fs.stat(PENDING_RELOAD);
     return st == null ? null : sprintf("%d:%d:%s", st.mtime, st.size, value(fs.readfile(PENDING_RELOAD)));
 }
-// "ran", "queued" or "failed".
+// "ran", "queued", "stopped" or "failed". "stopped": an explicit stop holds
+// the runtime down, so the reload was skipped (or the runtime it reloaded is
+// down again) and nothing runs the configuration; init.d says so for this
+// caller's reason (D-15, UC-056).
 function reload(reason) {
     let before = pending_stamp();
     let pipe = fs.popen(cmd([ RELOAD, "reload", reason ]) + " 2>/dev/null", "r");
     if (!pipe) return "failed";
     let output = value(pipe.read("all"));
     if (pipe.close() != 0) return "failed";
-    for (let line in split(output, "\n"))
+    for (let line in split(output, "\n")) {
         if (trim(line) == "queued") return "queued";
+        if (trim(line) == "stopped") return "stopped";
+    }
     let after = pending_stamp();
     return after != null && after != before ? "queued" : "ran";
 }
@@ -352,7 +361,14 @@ function reload(reason) {
 // apply_mode (autotune apply): the caller proved no guard was active and the
 // snapshot lock keeps restores out, so the guard is this call's own; an edit
 // made while the guard was installed is never overwritten.
-function guarded_replace(before, content, pre, on_success, reason, apply_mode) {
+// A reload that an explicit stop skipped (D-15, UC-056) proves nothing and
+// starts nothing. on_stopped (a restore) keeps the validated configuration
+// for the next explicit start; otherwise the configuration is put back. LKG
+// is not moved either way. The guard goes, also one inherited from an
+// earlier needs_attention: the stop took down the runtime it protected, and
+// only a start, which builds the runtime from the configuration, brings it
+// back; kept, it would outlive that start with no reload left to remove it.
+function guarded_replace(before, content, pre, on_success, reason, apply_mode, on_stopped) {
     // A guard left by an earlier needs_attention protects a runtime no reload
     // has proved yet: only this call's own guard may go without a reload.
     let inherited = !apply_mode && restore_guard_state() != "absent";
@@ -373,11 +389,20 @@ function guarded_replace(before, content, pre, on_success, reason, apply_mode) {
         if (!restore_guard(true)) result = { status: "needs_attention", reason: "guard_release_failed", guard: "active" };
         else result = on_success();
     }
+    else if (target == "stopped" && on_stopped != null) {
+        if (!restore_guard(true)) result = { status: "needs_attention", reason: "guard_release_failed", guard: "active" };
+        else result = on_stopped();
+    }
     else if (!atomic(CONFIG, before))
         result = { status: "needs_attention", reason: "config_rollback_failed", guard: "active" };
     else {
         let rollback = reload(reason);
-        if (rollback != "ran")
+        if (rollback == "stopped") {
+            if (!restore_guard(true)) result = { status: "needs_attention", reason: "guard_release_failed", guard: "active" };
+            else result = { status: "failed", reason: target == "invalid" ? "target_invalid" : "service_stopped",
+                guard: "inactive", runtime: "stopped" };
+        }
+        else if (rollback != "ran")
             result = { status: "needs_attention", reason: rollback == "queued" ? "rollback_reload_queued" : "runtime_rollback_failed", guard: "active" };
         else if (!restore_guard(true)) result = { status: "needs_attention", reason: "guard_release_failed", guard: "active" };
         else if (!atomic(LKG, pre.snapshot.id + "\n")) result = { status: "needs_attention", reason: "lkg_update_failed", guard: "inactive" };
@@ -401,7 +426,11 @@ function do_restore(id) {
     return guarded_replace(before, target.content, pre, () => {
         if (!atomic(LKG, id + "\n")) return { status: "needs_attention", reason: "lkg_update_failed", guard: "inactive" };
         return { status: "success", snapshot: metadata(target), changes: diff(before, target.content) };
-    }, "config-restore");
+    }, "config-restore", false, () => ({
+        // Replaced and validated; no runtime proved it, so LKG stays.
+        status: "restored_not_started", reason: "service_stopped", guard: "inactive",
+        snapshot: metadata(target), changes: diff(before, target.content)
+    }));
 }
 // Apply a candidate configuration prepared elsewhere (DPI autotune stage 5)
 // through the same transaction as a restore. The current configuration must
@@ -416,6 +445,9 @@ function do_apply(candidate_file, expected_hash, keep_id) {
     if (before == null) return { status: "failed", reason: "config_unavailable" };
     if (sha(before) != value(expected_hash)) return { status: "stale", reason: "config_changed" };
     if (content == before) return { status: "no_change", reason: "candidate_equals_config" };
+    // An apply never changes a runtime that an explicit stop holds down:
+    // nothing could verify the candidate (D-15, UC-056).
+    if (fs.stat(STOP_REQUESTED) != null) return { status: "stale", reason: "service_stopped" };
     // An apply also waits for a queued reload: that request would reload the
     // candidate outside this transaction.
     let action = service_action() || (fs.stat(PENDING_RELOAD) != null ? "reload_pending" : null);
@@ -479,9 +511,12 @@ else if (mode == "delete") {
 else if (mode == "restore") {
     answer = do_restore(value(ARGV[1]));
     // A busy refusal changed nothing and is not a restore attempt.
+    // A restore that an explicit stop kept from starting the runtime is no
+    // success: nothing verified it.
     if (answer.status != "busy")
         success([ "ucode", "-L", LIB_DIR, LIB_DIR + "/diagnostics/health.uc", "record", "restore",
-            answer.status == "success" ? "success" : answer.status == "recovered" ? "recovered" : "failure" ]);
+            answer.status == "success" ? "success" : answer.status == "recovered" ? "recovered" :
+            answer.status == "restored_not_started" ? "not_started" : "failure" ]);
 }
 else if (mode == "apply") {
     answer = do_apply(ARGV[1], ARGV[2], ARGV[3]);

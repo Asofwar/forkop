@@ -99,8 +99,10 @@ function sha_file(path) {
     let m = match(capture([ "sha256sum", path ]).output, /^([0-9a-f]{64})/);
     return m ? m[1] : "";
 }
+// Not forkop-autotune-apply.*: a manager run removes those as the
+// directories of a dead run (autotune/manager.uc, UC-157).
 function sha_text(text) {
-    let path = trim(capture([ "mktemp", TMP_DIR + "/forkop-autotune-apply.XXXXXX" ]).output);
+    let path = trim(capture([ "mktemp", TMP_DIR + "/forkop-autotune-hash.XXXXXX" ]).output);
     if (path == "" || fs.writefile(path, text) == null) { if (path != "") fs.unlink(path); return ""; }
     let hash = sha_file(path);
     fs.unlink(path);

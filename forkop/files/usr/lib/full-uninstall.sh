@@ -161,18 +161,29 @@ case "${1:-}" in
         STATUS="$ROOT/www/$(basename "$JOB").json"
         cp "$0" "$JOB/worker.sh"
         state running
-        sh "$JOB/worker.sh" worker "$JOB" "$STATUS" > "$JOB/output.log" 2>&1 </dev/null 1000>&- &
+        sh "$JOB/worker.sh" worker "$JOB" "$STATUS" "$$" > "$JOB/output.log" 2>&1 </dev/null 1000>&- &
         trap - EXIT
         # The worker writes its own pid only once it runs. Name it now, so the
         # records never name this starter after it exits: a component action
         # would take such a lock as stale and run alongside the removal.
         printf '%s\n' "$!" > "$LOCK/pid" || true
         printf '%s\n' "$!" > "$COMPONENT_LOCK/pid" || true
+        # The worker waits for this mark: a write above after its finish()
+        # had removed a record would leave the removal lock behind.
+        : > "$JOB/started" || true
         printf '{"success":true,"status_url":"/%s.json"}\n' "$(basename "$JOB")"
         ;;
     worker)
         JOB="$2"
         STATUS="$3"
+        # Until the starter ($4) has named this worker in the lock records or
+        # has exited, it may still write them.
+        waited=0
+        while [ -n "${4:-}" ] && [ ! -e "$JOB/started" ] && kill -0 "$4" 2>/dev/null &&
+            [ "$waited" -lt 60 ]; do
+            sleep 1
+            waited=$((waited + 1))
+        done
         printf '%s\n' "$$" > "$LOCK/pid"
         printf '%s\n' "$$" > "$COMPONENT_LOCK/pid"
         run

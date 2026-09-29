@@ -87,7 +87,7 @@ function config_sections() {
 // finishing: the worker crashed or the router rebooted during the run.
 function worker_view(worker) {
     if (type(worker) != "object" || worker.state != "running") return worker;
-    let handle = fs.open(WORKER_LOCK, "r");
+    let handle = fs.open(WORKER_LOCK, "re");
     if (!handle) return { ...worker, state: "crashed" };
     let free = handle.lock("xn");
     if (free) handle.lock("u");
@@ -215,9 +215,12 @@ function ensure_state_dir() {
 
 // An exclusive flock on a file in the runtime directory; released by the
 // kernel when the holder exits, so a crashed worker never leaves it behind.
+// Close-on-exec: the tools a run spawns, and the production daemons an
+// apply's reload restarts from inside them, must not inherit the lock and
+// keep it after the manager died (UC-055).
 function flock(path, wait) {
     if (!ensure_state_dir()) return null;
-    let handle = fs.open(path, "a");
+    let handle = fs.open(path, "ae");
     if (!handle) return null;
     if (!handle.lock(wait ? "x" : "xn")) { handle.close(); return null; }
     return handle;

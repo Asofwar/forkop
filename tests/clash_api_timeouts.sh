@@ -12,6 +12,12 @@ set -euo pipefail
 # never answers (or answers GET /proxies only). Requests run through the real
 # curl behind a recording wrapper, under a watchdog: before the fix they hang
 # until the watchdog kills them.
+#
+# The bounds must not cut an answer sing-box is still going to give. A delay
+# request honours its timeout, except GET /group/<tag>/delay of a URLTest
+# group: sing-box re-tests the members 10 at a time, each with its own 15 s
+# (C.TCPTimeout), whatever the request asked for. A double that answers such a
+# request late, as sing-box does behind a stalled member, must still succeed.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FORKOP_LIB="$ROOT_DIR/forkop/files/usr/lib"
@@ -113,10 +119,16 @@ printf '%s\n' "$clash_connections" | grep -Fq -- '"--connect-timeout"' ||
 # --- Controller doubles --------------------------------------------------------
 
 cat >"$WORK_DIR/controller.uc" <<'UC'
-// ARGV: mode (hang | answer-proxies), port file.
+// ARGV: mode, port file, seconds before a group delay answer (groups mode).
+//   hang            accepts and never answers;
+//   close           accepts and closes at once (a controller that is down);
+//   answer-proxies  answers GET /proxies only;
+//   groups          answers GET /proxies and delay requests; a group delay
+//                   comes after the given seconds, like sing-box for a
+//                   URLTest group with a stalled member.
 let socket = require("socket");
 let fs = require("fs");
-let mode = ARGV[0], port_file = ARGV[1];
+let mode = ARGV[0], port_file = ARGV[1], group_delay = ARGV[2] || "0";
 let srv = socket.listen("127.0.0.1", 0, null, 64);
 if (!srv) {
     warn("listen failed: ", socket.error(), "\n");
@@ -124,18 +136,49 @@ if (!srv) {
 }
 fs.writefile(port_file + ".tmp", srv.sockname().port + "\n");
 fs.rename(port_file + ".tmp", port_file);
+function answer(conn, body) {
+    conn.send(sprintf("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s",
+        length(body), body));
+    conn.close();
+}
+let big = [];
+for (let i = 1; i <= 25; i++)
+    push(big, "member-" + i);
+let maps = {
+    "answer-proxies": {
+        direct: { type: "Direct" },
+        "proxy-a": { type: "VLESS" },
+        "group-a": { type: "Selector", now: "proxy-a", all: [ "proxy-a" ] }
+    },
+    groups: {
+        "proxy-a": { type: "VLESS" },
+        "group-a": { type: "Selector", now: "proxy-a", all: [ "proxy-a" ] },
+        auto: { type: "URLTest", now: "proxy-a", all: [ "proxy-a", "proxy-b", "proxy-c" ] },
+        big: { type: "URLTest", now: "member-1", all: big }
+    }
+};
 let held = [];
 while (true) {
     let conn = srv.accept();
     if (!conn)
         continue;
-    if (mode == "answer-proxies") {
+    if (mode == "close") {
+        conn.close();
+        continue;
+    }
+    if (mode != "hang") {
         let request = conn.recv(8192) || "";
         if (match(request, /^GET \/proxies HTTP/)) {
-            let body = '{"proxies":{"direct":{"type":"Direct"},"proxy-a":{"type":"VLESS"}}}';
-            conn.send(sprintf("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s",
-                length(body), body));
-            conn.close();
+            answer(conn, sprintf("%J", { proxies: maps[mode] }));
+            continue;
+        }
+        if (mode == "groups" && match(request, /^GET \/proxies\/[^ ]+\/delay\?/)) {
+            answer(conn, '{"delay":120}');
+            continue;
+        }
+        if (mode == "groups" && match(request, /^GET \/group\/[^ ]+\/delay\?/)) {
+            system([ "sleep", group_delay ]);
+            answer(conn, '{"proxy-a":120}');
             continue;
         }
     }
@@ -144,21 +187,32 @@ while (true) {
 }
 UC
 
-# start_controller MODE: starts the double in this shell (a command
-# substitution would wait for the listener's stdout) and leaves its port in
-# CONTROLLER_PORT.
+# start_controller NAME MODE [GROUP_DELAY]: starts a double in this shell (a
+# command substitution would wait for the listener's stdout) and leaves its
+# port in CONTROLLER_PORT. A double serves one connection at a time, so a
+# double that answers late serves one case only.
+DOUBLE_PORTS=()
 start_controller() {
-  local mode="$1" port_file="$WORK_DIR/$1.port"
-  "$UCODE_BIN" "$WORK_DIR/controller.uc" "$mode" "$port_file" \
-    </dev/null >"$WORK_DIR/$mode.log" 2>&1 &
+  local name="$1" mode="$2" port_file="$WORK_DIR/$1.port"
+  "$UCODE_BIN" "$WORK_DIR/controller.uc" "$mode" "$port_file" "${3:-0}" \
+    </dev/null >"$WORK_DIR/$name.log" 2>&1 &
   LISTENER_PIDS+=("$!")
-  wait_until 10 file_nonempty "$port_file" || fail "the $mode controller double did not start"
+  wait_until 10 file_nonempty "$port_file" || fail "the $name controller double did not start"
   CONTROLLER_PORT="$(cat "$port_file")"
+  DOUBLE_PORTS+=("$CONTROLLER_PORT")
 }
-start_controller hang
+start_controller hang hang
 HUNG_PORT="$CONTROLLER_PORT"
-start_controller answer-proxies
+start_controller answer-proxies answer-proxies
 PROXIES_PORT="$CONTROLLER_PORT"
+start_controller groups groups 0
+GROUPS_PORT="$CONTROLLER_PORT"
+# A URLTest group answers after 5 s: past timeout + 2 s of a 1000 ms test.
+GROUP_LATE=5
+start_controller late-list groups "$GROUP_LATE"
+LATE_LIST_PORT="$CONTROLLER_PORT"
+start_controller late-group groups "$GROUP_LATE"
+LATE_GROUP_PORT="$CONTROLLER_PORT"
 
 # --- Fixture ---------------------------------------------------------------------
 
@@ -261,10 +315,7 @@ check_bounded() {
         ;;
       *) [ "$max" -le 10 ] || fail "$name: --max-time $max is not a small bound: $line" ;;
     esac
-    case "$line" in
-      *"127.0.0.1:$HUNG_PORT/"* | *"127.0.0.1:$PROXIES_PORT/"*) ;;
-      *) fail "$name: request did not reach the controller double: $line" ;;
-    esac
+    aimed_at_double "$line" || fail "$name: request did not reach the controller double: $line"
     case "$line" in *"$SECRET"*) fail "$name: the Clash secret is on the curl command line" ;; esac
     case "$line" in *" -H @"*) ;; *) fail "$name: request without the Authorization header file: $line" ;; esac
     budget=$((budget + max))
@@ -273,6 +324,50 @@ check_bounded() {
     fail "$name: took ${elapsed} ms, past its bounds (${budget} s + ${SLACK} s)"
   [ -z "$(find "$dir/tmp" -type f)" ] || fail "$name: the Authorization header file was left behind"
   [ "$rc" != 0 ] || fail "$name: a request to a hung controller reported success"
+}
+
+aimed_at_double() {
+  local port
+  for port in "${DOUBLE_PORTS[@]}"; do
+    case "$1" in *"127.0.0.1:$port/"*) return 0 ;; esac
+  done
+  return 1
+}
+
+# check_answered NAME: the requests got their answers and the case succeeded;
+# each curl still carried both bounds, the secret stayed off the command line
+# and the header file was removed.
+check_answered() {
+  local name="$1" dir="$WORK_DIR/case/$1" rc elapsed line
+  read -r rc elapsed <"$dir/result"
+  [ "$rc" = 0 ] || fail "$name: an answered request failed (rc=$rc after ${elapsed} ms): $(cat "$dir/out" "$dir/err")"
+  [ -s "$dir/curl.log" ] || fail "$name: no request reached curl"
+  while IFS= read -r line; do
+    case "$line" in ARGV:*) ;; *) continue ;; esac
+    case "$line" in *" --connect-timeout "*) ;; *) fail "$name: curl without --connect-timeout: $line" ;; esac
+    case "$line" in *" --max-time "*) ;; *) fail "$name: curl without --max-time: $line" ;; esac
+    aimed_at_double "$line" || fail "$name: request did not reach the controller double: $line"
+    case "$line" in *"$SECRET"*) fail "$name: the Clash secret is on the curl command line" ;; esac
+  done <"$dir/curl.log"
+  [ -z "$(find "$dir/tmp" -type f)" ] || fail "$name: the Authorization header file was left behind"
+}
+
+# request_max_time NAME PATH prints --max-time of the request of case NAME
+# to the controller path PATH (a query string may follow).
+request_max_time() {
+  local line
+  line="$(grep -E -- ":[0-9]+/$2( |$)" "$WORK_DIR/case/$1/curl.log" | head -n 1)" || true
+  [ -n "$line" ] || fail "$1: no request to /$2"
+  printf '%s\n' "$line" | sed -n 's/.* --max-time \([0-9][0-9]*\) .*/\1/p'
+}
+
+# expect_max_time_over NAME PATH SECONDS WHY: curl waits longer than SECONDS,
+# the time sing-box may take to answer that request.
+expect_max_time_over() {
+  local max
+  max="$(request_max_time "$1" "$2")"
+  [ -n "$max" ] || fail "$1: the request to /$2 has no --max-time"
+  [ "$max" -gt "$3" ] || fail "$1: --max-time $max of /$2 would cut sing-box's answer: $4 (needs > $3 s)"
 }
 
 # json_value FILE KEY prints KEY of the JSON object in FILE, <none> when it
@@ -300,13 +395,22 @@ run_case ready "$HUNG_PORT" clash-api-ready
 run_case get_proxies "$HUNG_PORT" clash-api get_proxies
 run_case get_connections "$HUNG_PORT" clash-api get_connections
 run_case get_proxy_latency "$HUNG_PORT" clash-api get_proxy_latency proxy-a 1000
-run_case get_group_latency "$HUNG_PORT" clash-api get_group_latency group-a 3000
+run_case get_group_latency "$HUNG_PORT" clash-api get_group_latency group-a 10000
 run_case get_proxy_latencies "$HUNG_PORT" clash-api get_proxy_latencies '["proxy-a"]' 1000
 run_case set_group_proxy "$HUNG_PORT" clash-api set_group_proxy group-a proxy-a
 run_case close_connection "$HUNG_PORT" clash-api close_connection conn-1
 run_case close_all_connections "$HUNG_PORT" clash-api close_all_connections
-# Behind the readiness map, only the delay request hangs.
-run_case latencies_after_map "$PROXIES_PORT" clash-api get_proxy_latencies '["proxy-a"]' 1000
+# Behind the proxy map, only the delay request hangs. The timeouts are above
+# the default bound, so only a bound taken from them passes check_bounded.
+run_case latencies_after_map "$PROXIES_PORT" clash-api get_proxy_latencies '["proxy-a"]' 5000
+run_case group_after_map "$PROXIES_PORT" clash-api get_group_latency group-a 5000
+# A URLTest group answers its group delay late, past timeout + 2 s.
+run_case late_list "$LATE_LIST_PORT" clash-api get_proxy_latencies '["proxy-a","auto"]' 1000
+run_case late_group "$LATE_GROUP_PORT" clash-api get_group_latency auto 1000
+# The bounds of delay requests at the timeouts the UI sends.
+run_case bounds_list "$GROUPS_PORT" clash-api get_proxy_latencies '["proxy-a","group-a","auto","big"]' 5000
+run_case bounds_urltest "$GROUPS_PORT" clash-api get_group_latency big 10000
+run_case bounds_selector "$GROUPS_PORT" clash-api get_group_latency group-a 10000
 wait_cases
 
 check_bounded ready
@@ -315,24 +419,61 @@ for action in get_proxies get_connections set_group_proxy close_connection close
   [ "$(json_value "$WORK_DIR/case/$action/out" error)" = clash_api_timeout ] ||
     fail "$action: a timed-out request must report {\"error\":\"clash_api_timeout\"}, got: $(cat "$WORK_DIR/case/$action/out")"
 done
-# A delay request outlives sing-box's own timeout (1000 ms, 3000 ms).
+# A delay request outlives sing-box's own timeout (1000 ms).
 check_bounded get_proxy_latency 2
-check_bounded get_group_latency 4
-for action in get_proxy_latency get_group_latency; do
-  [ "$(json_value "$WORK_DIR/case/$action/out" error)" = clash_api_timeout ] ||
-    fail "$action: a timed-out delay request must report {\"error\":\"clash_api_timeout\"}, got: $(cat "$WORK_DIR/case/$action/out")"
-done
+[ "$(json_value "$WORK_DIR/case/get_proxy_latency/out" error)" = clash_api_timeout ] ||
+  fail "get_proxy_latency: a timed-out delay request must report {\"error\":\"clash_api_timeout\"}, got: $(cat "$WORK_DIR/case/get_proxy_latency/out")"
+# The bound of a group delay depends on the group's type and members: without
+# the proxy map the request fails once.
+check_bounded get_group_latency
+[ "$(json_value "$WORK_DIR/case/get_group_latency/out" error)" = clash_api_unavailable ] ||
+  fail "get_group_latency: an unanswered proxy map must report {\"error\":\"clash_api_unavailable\"}, got: $(cat "$WORK_DIR/case/get_group_latency/out")"
+[ "$(grep -c '^ARGV:' "$WORK_DIR/case/get_group_latency/curl.log")" = 1 ] ||
+  fail "get_group_latency: a group delay request followed an unanswered proxy map"
 # Without the proxy map the batch fails once instead of waiting out every tag.
 check_bounded get_proxy_latencies
 [ "$(json_value "$WORK_DIR/case/get_proxy_latencies/out" error)" = clash_api_unavailable ] ||
   fail "get_proxy_latencies: an unanswered proxy map must report {\"error\":\"clash_api_unavailable\"}, got: $(cat "$WORK_DIR/case/get_proxy_latencies/out")"
 [ "$(grep -c '^ARGV:' "$WORK_DIR/case/get_proxy_latencies/curl.log")" = 1 ] ||
   fail "get_proxy_latencies: delay requests followed an unanswered proxy map"
-check_bounded latencies_after_map 2
+check_bounded latencies_after_map 6
 [ "$(json_value "$WORK_DIR/case/latencies_after_map/out" failed)" = true ] ||
   fail "latencies_after_map: a timed-out delay request must count as failed, got: $(cat "$WORK_DIR/case/latencies_after_map/out")"
 [ "$(grep -c '^ARGV:' "$WORK_DIR/case/latencies_after_map/curl.log")" = 2 ] ||
   fail "latencies_after_map: expected the proxy map and one delay request"
+check_bounded group_after_map 6
+[ "$(json_value "$WORK_DIR/case/group_after_map/out" error)" = clash_api_timeout ] ||
+  fail "group_after_map: a timed-out group delay must report {\"error\":\"clash_api_timeout\"}, got: $(cat "$WORK_DIR/case/group_after_map/out")"
+[ "$(grep -c '^ARGV:' "$WORK_DIR/case/group_after_map/curl.log")" = 2 ] ||
+  fail "group_after_map: expected the proxy map and one group delay request"
+
+# --- Late answers of URLTest groups are not cut -----------------------------------
+
+# sing-box answers the group delay of a URLTest group only after every member
+# without fresh history was tested, 10 at a time with 15 s each, whatever the
+# request's timeout: a stalled member delays the answer past timeout + 2 s.
+for name in late_list late_group; do
+  check_answered "$name"
+  read -r _ elapsed <"$WORK_DIR/case/$name/result"
+  [ "$elapsed" -ge $((GROUP_LATE * 1000)) ] ||
+    fail "$name: answered after ${elapsed} ms; the double must answer the group delay late"
+done
+[ "$(json_value "$WORK_DIR/case/late_list/out" failed)" = false ] ||
+  fail "late_list: a late URLTest group answer was counted as failed: $(cat "$WORK_DIR/case/late_list/out")"
+grep -q '/group/auto/delay' "$WORK_DIR/case/late_list/curl.log" ||
+  fail "late_list: the URLTest group was not tested through its group delay"
+[ "$(json_value "$WORK_DIR/case/late_group/out" proxy-a)" = 120 ] ||
+  fail "late_group: the late URLTest group answer was lost: $(cat "$WORK_DIR/case/late_group/out")"
+
+for name in bounds_list bounds_urltest bounds_selector; do
+  check_answered "$name"
+done
+expect_max_time_over bounds_list proxies/proxy-a/delay 5 "a proxy honours the 5000 ms timeout"
+expect_max_time_over bounds_list proxies/group-a/delay 5 "a Selector honours the 5000 ms timeout"
+expect_max_time_over bounds_list group/auto/delay 15 "3 URLTest members are tested in one round of 15 s"
+expect_max_time_over bounds_list group/big/delay 45 "25 URLTest members are tested in three rounds of 15 s"
+expect_max_time_over bounds_urltest group/big/delay 45 "25 URLTest members are tested in three rounds of 15 s"
+expect_max_time_over bounds_selector group/group-a/delay 10 "a Selector group honours the 10000 ms timeout"
 
 # --- A lock held around the request is released -----------------------------------
 

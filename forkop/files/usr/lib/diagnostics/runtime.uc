@@ -59,11 +59,19 @@ const AUTOMATIC_LATENCY_CLASH_READY_ATTEMPTS = int(getenv("FORKOP_AUTOMATIC_LATE
 // A controller that accepts connections and never answers (a stopped or
 // wedged sing-box) would otherwise hold UI polls, the readiness probe of
 // start/reload verification (under reload.lock and the transition guard), the
-// Priority worker and latency tests with no time limit. A delay request lasts
-// up to sing-box's own delay timeout, so curl waits that long plus a margin.
+// Priority worker and latency tests with no time limit. curl waits for a delay
+// request as long as sing-box may take to answer it, plus a margin: the
+// requested timeout, except for the group delay of a URLTest group (see
+// clash_delay_max_time).
 const CLASH_API_CONNECT_TIMEOUT = 2;
 const CLASH_API_MAX_TIME = 5;
 const CLASH_API_DELAY_MARGIN = 2;
+// sing-box answers GET /group/<tag>/delay of a URLTest group only after it has
+// re-tested every member without fresh history, SING_BOX_URLTEST_CONCURRENCY
+// at a time, each with its own C.TCPTimeout, whatever timeout the request
+// asked for (protocol/group/urltest.go, constant/timeout.go).
+const SING_BOX_URLTEST_MEMBER_TIMEOUT = 15;
+const SING_BOX_URLTEST_CONCURRENCY = 10;
 
 const STATUS_UC = LIB_DIR + "/diagnostics/status.uc";
 const HELPERS_UC = LIB_DIR + "/core/helpers.uc";
@@ -1594,10 +1602,20 @@ function clash_curl(max_time) {
         "--max-time", as_string(max_time || CLASH_API_MAX_TIME) ];
 }
 
-// --max-time of a delay request that asks sing-box for timeout_ms.
-function clash_delay_max_time(timeout_ms) {
+// --max-time of a delay request that asks sing-box for timeout_ms. A group
+// delay passes the group's entry of GET /proxies: for a URLTest group the
+// answer can take a SING_BOX_URLTEST_MEMBER_TIMEOUT per round of members.
+// (A URLTest tag of a proxy list is tested through its group delay too.)
+function clash_delay_max_time(timeout_ms, group) {
     let ms = arg_number(timeout_ms);
-    return ms > 0 ? int((ms + 999) / 1000) + CLASH_API_DELAY_MARGIN : CLASH_API_MAX_TIME;
+    let max_time = ms > 0 ? int((ms + 999) / 1000) + CLASH_API_DELAY_MARGIN : CLASH_API_MAX_TIME;
+    group = object_or_empty(group);
+    if (lc(as_string(group.type)) != "urltest")
+        return max_time;
+    let members = type(group.all) == "array" ? length(group.all) : 0;
+    let rounds = int((members + SING_BOX_URLTEST_CONCURRENCY - 1) / SING_BOX_URLTEST_CONCURRENCY);
+    let group_time = (rounds > 1 ? rounds : 1) * SING_BOX_URLTEST_MEMBER_TIMEOUT + CLASH_API_DELAY_MARGIN;
+    return group_time > max_time ? group_time : max_time;
 }
 
 // Runs a controller request. A request that got no answer (refused, or a
@@ -1666,7 +1684,9 @@ function clash_json_output(args) {
     return 0;
 }
 
-function clash_proxy_type_map(base_url, auth) {
+// The proxies of GET /proxies by tag, or null when the controller did not
+// list them.
+function clash_proxies(base_url, auth) {
     if (auth == null)
         return null;
     let args = clash_curl();
@@ -1683,11 +1703,19 @@ function clash_proxy_type_map(base_url, auth) {
 
     if (type(value) != "object" || type(value.proxies) != "object")
         return null;
+    return value.proxies;
+}
 
+function clash_proxy_types(proxies) {
     let result = {};
-    for (let tag, proxy in object_or_empty(value.proxies))
+    for (let tag, proxy in object_or_empty(proxies))
         result[tag] = as_string(object_or_empty(proxy).type || "");
     return result;
+}
+
+function clash_proxy_type_map(base_url, auth) {
+    let proxies = clash_proxies(base_url, auth);
+    return proxies == null ? null : clash_proxy_types(proxies);
 }
 
 function clash_api_ready() {
@@ -1874,9 +1902,10 @@ function clash_api_request(action, arg1, arg2, arg3, auth) {
 
         // A controller that cannot list its proxies will not answer delay
         // requests either: fail once instead of waiting out every tag.
-        let proxy_types = clash_proxy_type_map(base_url, auth);
-        if (proxy_types == null)
+        let proxies = clash_proxies(base_url, auth);
+        if (proxies == null)
             return clash_json_error("clash_api_unavailable");
+        let proxy_types = clash_proxy_types(proxies);
         let ordered_proxy_tags = [];
         for (let proxy_tag in proxy_tags)
             if (lc(as_string(proxy_types[proxy_tag])) != "urltest")
@@ -1887,7 +1916,7 @@ function clash_api_request(action, arg1, arg2, arg3, auth) {
 
         let timeout = as_string(arg2 || "5000");
         for (let proxy_tag in ordered_proxy_tags) {
-            let args = clash_curl(clash_delay_max_time(timeout));
+            let args = clash_curl(clash_delay_max_time(timeout, proxies[proxy_tag]));
             push(args, "-G", clash_latency_endpoint(base_url, proxy_tag, proxy_types[proxy_tag]));
             for (let item in auth) push(args, item);
             push(args, "--data-urlencode");
@@ -1909,8 +1938,12 @@ function clash_api_request(action, arg1, arg2, arg3, auth) {
     if (action == "get_group_latency") {
         if (as_string(arg1) == "")
             return clash_json_error("group_tag required");
+        // The bound depends on the group's type and members.
+        let proxies = clash_proxies(base_url, auth);
+        if (proxies == null)
+            return clash_json_error("clash_api_unavailable");
         let timeout = as_string(arg2 || "5000");
-        let args = clash_curl(clash_delay_max_time(timeout));
+        let args = clash_curl(clash_delay_max_time(timeout, proxies[arg1]));
         push(args, "-G", base_url + "/group/" + clash_urlencode(arg1) + "/delay");
         for (let item in auth) push(args, item);
         push(args, "--data-urlencode");

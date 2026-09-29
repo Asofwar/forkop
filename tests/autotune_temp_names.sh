@@ -25,7 +25,7 @@ REAL_SHA256SUM="$(command -v sha256sum)"
 cat >"$WORK/hash-bin/sha256sum" <<SH
 #!/bin/sh
 printf '%s\n' "\$1" >>"$WORK/hashed"
-while [ ! -e "$WORK/hash.gate" ]; do sleep 0.05; done
+while [ ! -e "$WORK/hash.gate" ] && [ -d "$WORK" ]; do sleep 0.05; done
 exec "$REAL_SHA256SUM" "\$@"
 SH
 chmod +x "$WORK/hash-bin/sha256sum"

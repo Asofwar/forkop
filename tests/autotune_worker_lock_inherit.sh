@@ -31,7 +31,7 @@ manager policy-set mode recommend >/dev/null
 # test releases it.
 cat >"$WORK/tune/www.youtube.com.hook" <<SH
 setsid sh -c 'echo \$\$ >"\$0"; exec sleep 300' "$WORK/daemon.pid" </dev/null >/dev/null 2>&1 &
-while [ ! -e "$WORK/hook.release" ]; do sleep 0.05; done
+while [ ! -e "$WORK/hook.release" ] && [ -d "$WORK" ]; do sleep 0.05; done
 SH
 
 ucode -L "$LIB" "$LIB/autotune/manager.uc" run youtube >/dev/null 2>&1 &

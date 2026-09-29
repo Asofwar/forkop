@@ -244,6 +244,47 @@ acquire "$A" || fail "a file in place of the lock blocks it"
 if [ ! -d "$LOCK" ] || [ "$(owner_of)" != "$A" ]; then fail "the lock replacing a file does not name its owner"; fi
 reset_lock
 
+# 4b. Breaking a stale lock never removes a record that appeared after the
+#     lock was inspected. The races above hit that gap only now and then, so
+#     here it is forced: a stand-in core/process_identity runs HOOK the first
+#     time the contender asks whether the dead owner runs, i.e. after it read
+#     the stale lock and before it cleans it up.
+mkdir -p "$WORK_DIR/hook/core"
+cat >"$WORK_DIR/hook/core/process_identity.uc" <<'UC'
+let real = loadfile(getenv("FORKOP_LIB") + "/core/process_identity.uc")();
+let fired = false;
+let hooked = {};
+for (let name in real)
+    hooked[name] = real[name];
+hooked.start_ticks = function(pid) {
+    let ticks = real.start_ticks(pid);
+    if (!fired && "" + pid == getenv("HOOK_PID")) {
+        fired = true;
+        system(getenv("HOOK"));
+    }
+    return ticks;
+};
+return hooked;
+UC
+printf 'let lock = require("core.runtime_lock");\nexit(lock.acquire(ARGV[0], ARGV[1]) ? 0 : 1);\n' \
+  >"$WORK_DIR/hook/acquire.uc"
+hooked_acquire() {
+  HOOK_PID="$DEAD" HOOK="$1" ucode -L "$WORK_DIR/hook" -L "$LIB" "$WORK_DIR/hook/acquire.uc" "$LOCK" "$A"
+}
+# Another contender breaks the same stale lock first and publishes its own.
+reset_lock; mkdir "$LOCK"; : >"$LOCK/owner.$DEAD.$b_ticks"
+! hooked_acquire "ucode -L '$LIB' '$LIB/service/state.uc' acquire-runtime-dir-lock '$LOCK' '$B'" ||
+  fail "a contender took the lock its rival had just published over the stale one"
+[ "$(owner_of)" = "$B" ] || fail "breaking a stale lock removed its successor's record"
+[ "$(ls -A "$LOCK")" = "owner.$B.$b_ticks" ] || fail "the successor's lock was changed: $(ls -A "$LOCK" | tr '\n' ' ')"
+# A previous-version contender (still running during an upgrade) breaks it
+# its own way: rm pid, rmdir, mkdir, then writes its pid under the same name.
+reset_lock; mkdir "$LOCK"; printf '%s\n' "$DEAD" >"$LOCK/pid"
+! hooked_acquire "rm -f '$LOCK/pid'; rmdir '$LOCK'; mkdir '$LOCK'; printf '%s\n' '$B' >'$LOCK/pid'" ||
+  fail "a contender took the lock a previous-version owner had just rewritten"
+[ "$(owner_of)" = "$B" ] || fail "breaking a stale lock removed the previous-version owner's new pid"
+reset_lock
+
 # 5. Readers see the owner through the same helper: a snapshot restore or
 #    apply and an autotune apply wait for a live lifecycle action, including
 #    one still setting up its lock, and a stale lock is none. The UI refuses

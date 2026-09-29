@@ -17,7 +17,12 @@
 // "<pid>\n[<start ticks>\n]" to <lock>/pid. Such a record holds the lock
 // while its owner runs, like an owner record. A lock without any owner record
 // is one whose creator has not written its pid yet: it counts as held for
-// SETUP_GRACE_SECONDS, then as abandoned.
+// SETUP_GRACE_SECONDS, then as abandoned. One window stays open against a
+// previous-version acquirer still running during an upgrade: its mkdir
+// between our inspection and our rename leaves an empty directory that the
+// rename replaces, and it then writes its pid into our lock. Closing it needs
+// a rename that never replaces (renameat2 RENAME_NOREPLACE), which fs.rename
+// does not offer.
 let fs = require("fs");
 let identity = require("core.process_identity");
 
@@ -119,9 +124,15 @@ function acquire(lock_dir, owner_pid) {
             // Not a lock directory; never follow a symlink here.
             fs.unlink(lock_dir);
         else if (current.state == "stale")
-            for (let entry in current.entries)
+            for (let entry in current.entries) {
+                // A previous-version contender rewrites <lock>/pid under the
+                // same name: never remove a record that names a running owner
+                // by now. The rename below then fails on the lock it kept.
+                if (owner_running(record_owner(lock_dir, entry)))
+                    break;
                 if (!fs.unlink(lock_dir + "/" + entry))
                     fs.rmdir(lock_dir + "/" + entry);
+            }
         // rename() refuses a populated lock; an empty one was released or
         // just emptied above.
         acquired = fs.rename(pending, lock_dir);

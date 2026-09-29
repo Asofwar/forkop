@@ -2234,13 +2234,15 @@ function install_forkop_opkg_set(latest_version, backend_file, app_file, i18n_fi
     return "Forkop package-set upgrade failed; previous release restored";
 }
 
+// Loaded on first use: only the sing-box upgrade path reads process start
+// ticks.
+let process_identity = null;
+
 function upgrade_sing_box_ticks(pid) {
-    let stat = read_file("/proc/" + pid + "/stat");
-    let marker = index(stat, ") ");
-    if (marker < 0)
-        return null;
-    let fields = split(trim(substr(stat, marker + 2)), /[ \t\r\n]+/);
-    return length(fields) >= 20 && match(fields[19], /^[0-9]+$/) != null ? fields[19] : null;
+    if (process_identity == null)
+        process_identity = require("core.process_identity");
+    let ticks = process_identity.start_ticks(pid);
+    return ticks != "" ? ticks : null;
 }
 
 function upgrade_sing_box_processes() {

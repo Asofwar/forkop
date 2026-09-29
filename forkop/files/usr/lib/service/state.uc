@@ -5,6 +5,7 @@ let common = require("core.common");
 let uci_core = require("core.uci");
 let netstat = require("core.netstat");
 let runtime_lock = require("core.runtime_lock");
+let process_identity = require("core.process_identity");
 let rule_config = require("config.rule");
 let connections = require("config.connections");
 let zapret_validator = require("providers.zapret.validator");
@@ -479,13 +480,8 @@ function hup_sing_box_runtime() {
 }
 
 function process_start_ticks(stat) {
-    stat = as_string(stat);
-    let marker = index(stat, ") ");
-    if (marker < 0)
-        return null;
-
-    let fields = split(trim(substr(stat, marker + 2)), /[ \t\r\n]+/);
-    if (length(fields) < 20)
+    let fields = process_identity.stat_fields(stat);
+    if (fields == null || length(fields) < 20)
         return null;
 
     let start_ticks = fields[19];

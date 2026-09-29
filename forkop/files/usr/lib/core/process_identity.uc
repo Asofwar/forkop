@@ -10,31 +10,33 @@ function basename(path) {
     return slash < 0 ? path : substr(path, slash + 1);
 }
 
+// The fields of a /proc/<pid>/stat line after the command name, from the
+// state (field 3) on: [0] state, [1] parent pid, [19] start ticks. The
+// command name (prctl, the executable name) may contain spaces and
+// parentheses, so it ends at the last ") " (UC-158). null without one.
+function stat_fields(stat) {
+    if (stat == null)
+        return null;
+    stat = as_string(stat);
+    let marker = rindex(stat, ") ");
+    if (marker < 0)
+        return null;
+    return split(trim(substr(stat, marker + 2)), /[ \t\r\n]+/);
+}
+
 function start_ticks(pid) {
     pid = as_string(pid);
     if (match(pid, /^[1-9][0-9]*$/) == null)
         return "";
-    let stat = fs.readfile("/proc/" + pid + "/stat");
-    if (stat == null)
-        return "";
-    let marker = rindex(stat, ") ");
-    if (marker < 0)
-        return "";
-    let fields = split(trim(substr(stat, marker + 2)), /[ \t\r\n]+/);
-    if (length(fields) < 20 || match(fields[19], /^[0-9]+$/) == null)
+    let fields = stat_fields(fs.readfile("/proc/" + pid + "/stat"));
+    if (fields == null || length(fields) < 20 || match(fields[19], /^[0-9]+$/) == null)
         return "";
     return fields[19];
 }
 
 function parent_pid(pid) {
-    let stat = fs.readfile("/proc/" + as_string(pid) + "/stat");
-    if (stat == null)
-        return "";
-    let marker = rindex(stat, ") ");
-    if (marker < 0)
-        return "";
-    let fields = split(trim(substr(stat, marker + 2)), /[ \t\r\n]+/);
-    return length(fields) > 1 && match(fields[1], /^[1-9][0-9]*$/) != null ? fields[1] : "";
+    let fields = stat_fields(fs.readfile("/proc/" + as_string(pid) + "/stat"));
+    return fields != null && length(fields) > 1 && match(fields[1], /^[1-9][0-9]*$/) != null ? fields[1] : "";
 }
 
 function descendant_of(pid, ancestor) {
@@ -160,4 +162,4 @@ function promote_legacy_child(child_path, supervisor_path, supervisor_argv, chil
     return record(child_path, child_pid);
 }
 
-return { start_ticks, descendant_of, record, read_record, matches, matches_record, signal, signal_record, promote_legacy_child };
+return { stat_fields, start_ticks, parent_pid, descendant_of, record, read_record, matches, matches_record, signal, signal_record, promote_legacy_child };

@@ -38,6 +38,7 @@ let probe_module = require("autotune.probe");
 let select_module = require("autotune.select");
 let autotune_lock = require("autotune.lock");
 let runtime_lock = require("core.runtime_lock");
+let list_worker = require("core.list_worker");
 let resolver = require("routing.resolve");
 
 const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
@@ -245,12 +246,14 @@ function guards_present() {
     return result;
 }
 // A lifecycle action (reload/start, and a stop once its bounded wait got the
-// lock) holds the reload lock, and a reload requested meanwhile is queued:
-// either would run outside this transaction
+// lock) holds the reload lock, a running list update gets every reload
+// queued for it with or without the lock, and a reload requested meanwhile
+// is queued: either would run outside this transaction
 // (a queued reload after the guard is gone would confirm LKG unverified).
-// The lock and its owner record: core/runtime_lock.uc.
+// The lock and its owner record: core/runtime_lock.uc; the list worker:
+// core/list_worker.uc.
 function service_action() {
-    if (runtime_lock.busy(RELOAD_LOCK)) return "service_action_in_progress";
+    if (runtime_lock.busy(RELOAD_LOCK) || list_worker.running(LIB_DIR)) return "service_action_in_progress";
     if (fs.stat(PENDING_RELOAD) != null) return "reload_pending";
     return null;
 }
@@ -605,9 +608,9 @@ function rollback_to(audit, p, why) {
     audit.phase = "rolling_back";
     state_write(audit);
     let restored = snapshots([ "restore", audit.pre_snapshot ]);
-    // A lifecycle action that owns the reload lock (a list update, say, which
-    // also fails verification's no_service_action) refuses the restore
-    // unchanged. An automatic rollback waits for it, bounded, instead of
+    // A lifecycle action that owns the reload lock, or a running list update
+    // (which also fails verification's no_service_action), refuses the
+    // restore unchanged. An automatic rollback waits for it, bounded, instead of
     // leaving the unverified candidate in place without a guard.
     for (let waited = 0; why != "operator_rollback" && restored.status == "busy" &&
         restored.reason == "service_action_in_progress" && waited < ROLLBACK_WAIT_SECONDS && !interrupted; waited++) {

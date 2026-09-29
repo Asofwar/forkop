@@ -3,6 +3,7 @@
 let fs = require("fs");
 let identity = require("core.process_identity");
 let runtime_lock = require("core.runtime_lock");
+let list_worker = require("core.list_worker");
 
 const CONFIG = getenv("FORKOP_CONFIG_FILE") || "/etc/config/forkop";
 const ROOT = getenv("FORKOP_SNAPSHOT_DIR") || "/etc/forkop/config-snapshots";
@@ -307,15 +308,17 @@ function restore_guard_state() {
     return trim(capture([ "ucode", "-L", LIB_DIR, LIB_DIR + "/nft/apply.uc",
         "dpi-transition-guard-state", "ForkopConfigRestore" ]));
 }
-// A lifecycle action (list or subscription update, WAN-up reload, start, a
-// pending-reload drain) owns the reload lock: a reload requested now would
-// only be queued behind it. A queued reload without a live owner is no such
-// action: the next reload takes the free lock and its finish drains that
-// request. A restore relies on this, so recovery stays possible while the
-// current configuration cannot reload and keeps failing to drain the queue.
-// The lock and its owner record: core/runtime_lock.uc.
+// A lifecycle action (subscription update, WAN-up reload, start, a
+// pending-reload drain) owns the reload lock, and a running list update gets
+// every reload queued for it, with or without the lock: a reload requested
+// now would only be queued behind either. A queued reload without a live
+// owner is no such action: the next reload takes the free lock and its
+// finish drains that request. A restore relies on this, so recovery stays
+// possible while the current configuration cannot reload and keeps failing
+// to drain the queue. The lock and its owner record: core/runtime_lock.uc;
+// the list worker: core/list_worker.uc.
 function service_action() {
-    return runtime_lock.busy(RELOAD_LOCK) ? "service_action_in_progress" : null;
+    return runtime_lock.busy(RELOAD_LOCK) || list_worker.running(LIB_DIR) ? "service_action_in_progress" : null;
 }
 // A reload that was only queued (another lifecycle action took the reload
 // lock after the check above) exits 0 without touching the runtime. init.d

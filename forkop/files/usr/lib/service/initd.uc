@@ -5,6 +5,7 @@ let constants = require("core.constants");
 let uci_core = require("core.uci");
 let runtime_lock = require("core.runtime_lock");
 let process_identity = require("core.process_identity");
+let list_worker = require("core.list_worker");
 
 function as_string(value) {
     return value == null ? "" : "" + value;
@@ -27,8 +28,6 @@ const PENDING_RELOAD_FILE = getenv("FORKOP_PENDING_RELOAD_FILE") || RUNTIME_STAT
 const START_RETRY_FILE = getenv("FORKOP_START_RETRY_FILE") || RUNTIME_STATE_DIR + "/start.retry";
 const START_RETRY_PID_FILE = getenv("FORKOP_START_RETRY_PID_FILE") || RUNTIME_STATE_DIR + "/start-retry.pid";
 const START_FAILURE_FILE = getenv("FORKOP_START_FAILURE_FILE") || RUNTIME_STATE_DIR + "/start.failure";
-// Recorded by the list worker (components/updates.uc list_update_pid_begin).
-const LIST_UPDATE_PID_FILE = getenv("FORKOP_LIST_UPDATE_PID_FILE") || "/var/run/forkop_list_update.pid";
 const START_RETRY_DELAY_SECONDS = getenv("FORKOP_START_RETRY_DELAY_SECONDS") || "30";
 // procd.sh holds its lock on fd 1000 for every init.d call, so start_service
 // detaches the start and init.d exits 0 before the start has run (UC-013). A
@@ -350,12 +349,10 @@ function schedule_start_retry(path, delay_seconds) {
 // the changed sources; or it would try to apply the new sources before their
 // generation exists. Reloads that arrive while the list worker runs are
 // queued, as when it held reload.lock for the whole update, and the worker
-// runs them when it ends (finish_list_update). Only the list worker records
-// this file, so any updates.uc process it names is that worker, whatever its
-// mode; a PID that a dead worker left there is not (UC-014).
+// runs them when it ends (finish_list_update). The worker's record:
+// core/list_worker.uc.
 function list_update_worker_running() {
-    return process_identity.matches(LIST_UPDATE_PID_FILE, "ucode",
-        [ "ucode", "-L", LIB_DIR, LIB_DIR + "/components/updates.uc" ], false, false) != "";
+    return list_worker.running(LIB_DIR);
 }
 
 function consume_pending_reload(path) {

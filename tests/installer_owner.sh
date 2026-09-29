@@ -41,7 +41,17 @@ source "$ROOT_DIR/tests/helpers/source_checks.sh"
 source "$ROOT_DIR/tests/helpers/wait.sh"
 
 # Self-check: an unreaped child of a live parent is dead, the parent is alive.
-sh -c 'sleep 0 & printf "%s\n" "$!" >"$1"; exec sleep 30' sh "$WORK_DIR/zombie.pid" &
+# The child exits only after its parent has exec'd sleep, which never reaps:
+# sh reaps a child that exits before the exec (under load the child can run
+# first), and no zombie would be left to observe.
+sh -c 'parent=$$
+  (i=0
+    until [ "$(cat "/proc/$parent/comm" 2>/dev/null)" = sleep ] || [ "$i" -ge 200 ]; do
+      i=$((i + 1))
+      sleep 0.05
+    done) &
+  printf "%s\n" "$!" >"$1"
+  exec sleep 30' sh "$WORK_DIR/zombie.pid" &
 zombie_parent=$!
 fixture_is_zombie() {
   local stat

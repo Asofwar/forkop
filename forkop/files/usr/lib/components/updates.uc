@@ -3823,6 +3823,9 @@ function finish_list_update(status, applied, generation_changed) {
     let ruleset_request = trim(file_first_line_value(RULESET_REFRESH_AFTER_LIST_FILE));
     let ruleset_changed = false;
     remove_file(RULESET_REFRESH_AFTER_LIST_FILE);
+    // The rule-set refresh below downloads; like the other rule-set
+    // refreshes it runs without reload.lock (UC-057).
+    release_runtime_lock(RELOAD_LOCK_DIR);
 
     // When both list families changed, refresh remote sing-box rule sets while
     // the old service proxy is still alive and coalesce everything into the
@@ -3847,7 +3850,6 @@ function finish_list_update(status, applied, generation_changed) {
             log_message("Remote rule-set refresh failed; keeping its last-known-good cache", "warn");
     }
     list_update_pid_end();
-    release_runtime_lock(RELOAD_LOCK_DIR);
 
     // A successful generation reload reads the newest UCI state itself, so it
     // subsumes a queued reload instead of launching pending + list-content as
@@ -3962,27 +3964,38 @@ function dns_probe_passed(proxy_address) {
     return false;
 }
 
+// A start or reload in progress may still be bringing the sing-box service
+// proxy up: downloads through it wait until reload.lock is free once.
+function wait_for_runtime_lock_release() {
+    if (!acquire_runtime_lock(RELOAD_LOCK_DIR, true))
+        return false;
+    release_runtime_lock(RELOAD_LOCK_DIR);
+    return true;
+}
+
 function list_update() {
     log_message("Starting lists update", "info");
     if (!list_update_pid_begin())
         exit(0);
 
-    // Share the same lock as lifecycle reloads.  Waiting here is intentional:
-    // a startup or config reload must settle before this worker opens requests
-    // through the sing-box service proxy.  Conversely, init.d queues reloads
-    // that arrive while this lock is held, and finish_list_update() runs them.
-    if (!list_update_prepare_only && !acquire_runtime_lock(RELOAD_LOCK_DIR, true)) {
-        log_message("Lists update skipped because Forkop reload did not release the runtime lock", "warn");
-        list_update_pid_end();
-        exit(1);
-    }
-
+    // The DNS probe and the downloads run before reload.lock is taken
+    // (UC-057): the probe alone can take a minute on a dead resolver, and
+    // while the lock is held DNS failover cannot switch servers and runtime
+    // recovery waits. The sources go to a private staging directory; only
+    // the transaction that turns them into the active generation runs under
+    // the lock, and the signature check below discards a generation whose
+    // sources changed meanwhile. A startup owns the lock itself and prepares
+    // the generation inside it (list_update_prepare_only).
     list_mirror_download_state = {};
     let settings = uci_settings();
     list_update_signature_at_start = current_list_update_signature();
     if (list_update_signature_at_start == "")
         finish_list_update(1, false);
     let proxy_address = service_proxy_address(settings, "lists");
+    if (proxy_address != "" && !list_update_prepare_only && !wait_for_runtime_lock_release()) {
+        log_message("Lists update skipped because Forkop reload did not release the runtime lock", "warn");
+        finish_list_update(1, false);
+    }
     if (!dns_probe_passed(proxy_address)) {
         finish_list_update(1, false);
     }
@@ -3990,6 +4003,17 @@ function list_update() {
     let sections = uci_sections("section");
     if (!prepare_list_downloads(sections, proxy_address))
         finish_list_update(1, false);
+
+    // Share the same lock as lifecycle reloads for the transaction. init.d
+    // queues reloads that arrive while this lock is held, and
+    // finish_list_update() runs them.
+    if (!list_update_prepare_only && !acquire_runtime_lock(RELOAD_LOCK_DIR, true)) {
+        log_message("Lists update skipped because Forkop reload did not release the runtime lock", "warn");
+        cleanup_list_downloads();
+        list_update_pid_end();
+        exit(1);
+    }
+
     if (!begin_list_ruleset_snapshot()) {
         log_message("Could not snapshot the active rule sets; aborting the list transaction", "error");
         finish_list_update(1, false);

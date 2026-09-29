@@ -301,6 +301,21 @@ function pid_alive(pid) {
     return match(pid, /^[0-9]+$/) != null && command_success_from_args([ "kill", "-0", pid ]);
 }
 
+// Runtime directory locks. Global order: a process that holds more than one
+// takes them in this order and never waits for an earlier one while it holds
+// a later one (UC-054):
+//   1. automatic-latency-test.lock: only ever try-acquired; the automatic
+//      latency test (diagnostics/runtime.uc) holds it while it waits for
+//      reload.lock.
+//   2. reload.lock: start and reload (service/initd.uc, around `forkop
+//      start` and `forkop reload`), the list worker and the subscription
+//      update (components/updates.uc), dns_failover_apply
+//      (service/lifecycle.uc), the automatic latency test.
+//   3. subscription-update.lock: start_main (service/lifecycle.uc), inside
+//      reload.lock for a start and for a reload that restarts the runtime;
+//      the subscription update, after reload.lock; the deferred subscription
+//      bootstrap retry (subscription/cache.uc), which holds nothing else and
+//      releases it before it requests a reload.
 function lock_dir_write_owner(lock_dir, owner_pid) {
     return write_text_file(as_string(lock_dir) + "/pid", as_string(owner_pid) + "\n");
 }

@@ -522,8 +522,11 @@ function validate_staged_list_download(path, format) {
     return ok;
 }
 
+// The lock owner is this ucode process. `sh -c 'echo $PPID'` names it only
+// when /bin/sh execs its last command (busybox ash); dash reports a shell
+// that has already exited, so every lock this worker holds looks stale.
 function owner_pid() {
-    let pid = trim(command_output_from_args([ "sh", "-c", "echo $PPID" ]));
+    let pid = as_string(fs.readlink("/proc/self"));
     return match(pid, /^[0-9]+$/) != null ? pid : "0";
 }
 
@@ -4332,24 +4335,28 @@ function subscription_update_common(force, target_section, target_source_index) 
         exit(1);
 
     force = !!force;
-    if (!acquire_runtime_lock(SUBSCRIPTION_UPDATE_LOCK_DIR, force)) {
-        log_message("Subscription update is already running", "info");
-        if (force)
-            mark_pending_reload("subscription_update_busy");
-        return force ? 1 : 0;
-    }
-
+    // Global lock order (service/state.uc): reload.lock before
+    // subscription-update.lock. A start holds reload.lock around start_main,
+    // which then waits for subscription-update.lock; an update holding that
+    // lock while it waits for reload.lock would wait on the start in turn.
     if (!acquire_runtime_lock(RELOAD_LOCK_DIR, force)) {
-        release_runtime_lock(SUBSCRIPTION_UPDATE_LOCK_DIR);
         log_message("Forkop reload is already running; skipping subscription update", "info");
         if (force)
             mark_pending_reload("reload_busy");
         return force ? 1 : 0;
     }
 
+    if (!acquire_runtime_lock(SUBSCRIPTION_UPDATE_LOCK_DIR, force)) {
+        release_runtime_lock(RELOAD_LOCK_DIR);
+        log_message("Subscription update is already running", "info");
+        if (force)
+            mark_pending_reload("subscription_update_busy");
+        return force ? 1 : 0;
+    }
+
     let ok = subscription_update_common_locked(force, target_section, target_source_index);
-    release_runtime_lock(RELOAD_LOCK_DIR);
     release_runtime_lock(SUBSCRIPTION_UPDATE_LOCK_DIR);
+    release_runtime_lock(RELOAD_LOCK_DIR);
     run_pending_reload_if_requested();
     if (ok && subscription_outbounds_changed)
         module_background([ DIAGNOSTICS_UC, "automatic-latency-test", "new" ]);

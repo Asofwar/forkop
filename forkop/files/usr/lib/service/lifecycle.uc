@@ -653,6 +653,8 @@ function validate_start_config() {
     return 0;
 }
 
+// Taken inside reload.lock, which service/initd.uc holds around `forkop start`
+// and `forkop reload` (global lock order: service/state.uc).
 function acquire_start_subscription_update_lock() {
     if (module_success(STATE_UC, [ "acquire-runtime-dir-lock-wait", SUBSCRIPTION_UPDATE_LOCK_DIR, owner_pid(), "300" ])) {
         start_subscription_update_lock_held = true;

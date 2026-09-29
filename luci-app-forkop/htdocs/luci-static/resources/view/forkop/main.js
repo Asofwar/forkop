@@ -18847,20 +18847,13 @@ function diffRows(changes) {
   }));
 }
 function snapshotBusyText(reason) {
-  switch (reason) {
-    case "service_action_in_progress":
-      return _(
-        "The service is busy with another operation (list or subscription update, reload or start). Nothing was changed; try again when it finishes.",
-      );
-    case "reload_pending":
-      return _(
-        "A service reload is queued. Nothing was changed; try again after it runs.",
-      );
-    default:
-      return _(
-        "Another snapshot operation is already in progress. Try again in a moment.",
-      );
-  }
+  if (reason === "service_action_in_progress")
+    return _(
+      "The service is busy with another operation (list or subscription update, reload or start). Nothing was changed; try again when it finishes.",
+    );
+  return _(
+    "Another snapshot operation is already in progress. Try again in a moment.",
+  );
 }
 function restoreResultToast(result) {
   switch (result?.status) {

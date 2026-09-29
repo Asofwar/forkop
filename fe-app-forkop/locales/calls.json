@@ -274,13 +274,6 @@
     ]
   },
   {
-    "call": "A service reload is queued. Nothing was changed; try again after it runs.",
-    "key": "A service reload is queued. Nothing was changed; try again after it runs.",
-    "places": [
-      "src/forkop/tabs/history/model.ts:240"
-    ]
-  },
-  {
     "call": "A site or service checked through the DPI rule that routes it.",
     "key": "A site or service checked through the DPI rule that routes it.",
     "places": [
@@ -710,7 +703,7 @@
     "call": "Another snapshot operation is already in progress. Try again in a moment.",
     "key": "Another snapshot operation is already in progress. Try again in a moment.",
     "places": [
-      "src/forkop/tabs/history/model.ts:244"
+      "src/forkop/tabs/history/model.ts:240"
     ]
   },
   {
@@ -1807,7 +1800,7 @@
     "call": "Configuration restored and reloaded",
     "key": "Configuration restored and reloaded",
     "places": [
-      "src/forkop/tabs/history/model.ts:264"
+      "src/forkop/tabs/history/model.ts:259"
     ]
   },
   {
@@ -6515,21 +6508,21 @@
     "call": "Restore did not finish: the service was busy and only queued the reload. The DPI guard stays active; restore again when the service is idle.",
     "key": "Restore did not finish: the service was busy and only queued the reload. The DPI guard stays active; restore again when the service is idle.",
     "places": [
-      "src/forkop/tabs/history/model.ts:282"
+      "src/forkop/tabs/history/model.ts:277"
     ]
   },
   {
     "call": "Restore failed; check the recovery state before retrying",
     "key": "Restore failed; check the recovery state before retrying",
     "places": [
-      "src/forkop/tabs/history/model.ts:291"
+      "src/forkop/tabs/history/model.ts:286"
     ]
   },
   {
     "call": "Restore failed; previous configuration and runtime recovered",
     "key": "Restore failed; previous configuration and runtime recovered",
     "places": [
-      "src/forkop/tabs/history/model.ts:275"
+      "src/forkop/tabs/history/model.ts:270"
     ]
   },
   {
@@ -6543,7 +6536,7 @@
     "call": "Restore was not applied: the service was busy and only queued the reload. The previous configuration is kept.",
     "key": "Restore was not applied: the service was busy and only queued the reload. The previous configuration is kept.",
     "places": [
-      "src/forkop/tabs/history/model.ts:272"
+      "src/forkop/tabs/history/model.ts:267"
     ]
   },
   {
@@ -8215,7 +8208,7 @@
     "call": "The service is busy with another operation (list or subscription update, reload or start). Nothing was changed; try again when it finishes.",
     "key": "The service is busy with another operation (list or subscription update, reload or start). Nothing was changed; try again when it finishes.",
     "places": [
-      "src/forkop/tabs/history/model.ts:236"
+      "src/forkop/tabs/history/model.ts:237"
     ]
   },
   {

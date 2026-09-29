@@ -287,13 +287,11 @@ describe('restore result', () => {
     expect(snapshotBusyText('service_action_in_progress')).toContain(
       'The service is busy',
     );
-    expect(snapshotBusyText('reload_pending')).toContain(
-      'A service reload is queued',
+    expect(snapshotBusyText('service_action_in_progress')).toContain(
+      'Nothing was changed',
     );
     expect(snapshotBusyText('snapshot_operation_in_progress')).toBe(
       'Another snapshot operation is already in progress. Try again in a moment.',
     );
-    for (const reason of ['service_action_in_progress', 'reload_pending'])
-      expect(snapshotBusyText(reason)).toContain('Nothing was changed');
   });
 });

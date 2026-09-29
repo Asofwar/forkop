@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-29 00:02+0000\n"
-"PO-Revision-Date: 2026-09-29 00:02+0000\n"
+"POT-Creation-Date: 2026-09-29 00:47+0000\n"
+"PO-Revision-Date: 2026-09-29 00:47+0000\n"
 "Last-Translator: Asofwar <7397608+Asofwar@users.noreply.github.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -177,10 +177,6 @@ msgstr ""
 
 #: src/forkop/tabs/autotune/model.ts:122
 msgid "A safe isolated check is not possible right now."
-msgstr ""
-
-#: src/forkop/tabs/history/model.ts:240
-msgid "A service reload is queued. Nothing was changed; try again after it runs."
 msgstr ""
 
 #: src/forkop/tabs/autotune/initController.ts:537
@@ -432,7 +428,7 @@ msgstr ""
 msgid "Another snapshot operation is already in progress. Changes were not applied; try again in a moment."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:244
+#: src/forkop/tabs/history/model.ts:240
 msgid "Another snapshot operation is already in progress. Try again in a moment."
 msgstr ""
 
@@ -1088,7 +1084,7 @@ msgstr ""
 msgid "Configuration reload"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:264
+#: src/forkop/tabs/history/model.ts:259
 msgid "Configuration restored and reloaded"
 msgstr ""
 
@@ -3876,15 +3872,15 @@ msgstr ""
 msgid "Restore configuration snapshot?"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:282
+#: src/forkop/tabs/history/model.ts:277
 msgid "Restore did not finish: the service was busy and only queued the reload. The DPI guard stays active; restore again when the service is idle."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:291
+#: src/forkop/tabs/history/model.ts:286
 msgid "Restore failed; check the recovery state before retrying"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:275
+#: src/forkop/tabs/history/model.ts:270
 msgid "Restore failed; previous configuration and runtime recovered"
 msgstr ""
 
@@ -3892,7 +3888,7 @@ msgstr ""
 msgid "Restore normal mode"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:272
+#: src/forkop/tabs/history/model.ts:267
 msgid "Restore was not applied: the service was busy and only queued the reload. The previous configuration is kept."
 msgstr ""
 
@@ -4868,7 +4864,7 @@ msgstr ""
 msgid "the service is busy"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:236
+#: src/forkop/tabs/history/model.ts:237
 msgid "The service is busy with another operation (list or subscription update, reload or start). Nothing was changed; try again when it finishes."
 msgstr ""
 

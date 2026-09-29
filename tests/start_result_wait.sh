@@ -36,6 +36,12 @@ kill_retry_workers() {
 }
 
 cleanup() {
+  local owner
+  # A detached start worker that still runs (a slow start when a check
+  # failed) would schedule its retry once its `forkop start` is killed: stop
+  # it first by the reload.lock it holds.
+  owner="$("$REAL_UCODE" -L "$LIB" "$LIB/service/state.uc" runtime-dir-lock-owner "$FORKOP_RELOAD_LOCK_DIR" 2>/dev/null || true)"
+  [ -z "$owner" ] || kill -KILL "$owner" 2>/dev/null || true
   # Scheduled retries, detached start workers and UI waiters.
   kill_retry_workers
   pkill -KILL -f "$WORK_DIR" 2>/dev/null || true

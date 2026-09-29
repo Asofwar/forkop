@@ -227,7 +227,9 @@ no_reload_health_event() {
 }
 
 reset_case() {
-  pkill -KILL -f "$LIB/service/ui.uc service-action" 2>/dev/null || true
+  # Waiters that service/ui.uc left for this test's jobs (never another
+  # test's processes: their commands name its own job directory).
+  pkill -KILL -f "$FORKOP_UI_SERVICE_ACTION_DIR/" 2>/dev/null || true
   rm -rf "$FORKOP_UI_STATE_DIR" "$STATE_DIR/health-events.json" "$FORKOP_HISTORY_FILE" \
     "$FORKOP_PENDING_RELOAD_FILE" "$WORK_DIR/runtime.up"
   printf 'stop\n' >"$STOP_MARKER"

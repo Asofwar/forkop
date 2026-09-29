@@ -282,14 +282,16 @@ manager status >"$WORK/after-job.json"
 # ---- a crash during a manual apply ---------------------------------------------
 confirm_youtube
 before_events="$(apply_events)"; before_applies="$(applies)"
-STUB_APPLY_SLEEP=10 ucode -L "$LIB" "$LIB/autotune/manager.uc" apply youtube >/dev/null &
+# The worker leads a process group of its own, so the crash kills exactly its
+# tree: the manager, the Stage 5 stand-in and the stand-in's sleep, which
+# inherited the worker lock as a real apply would. Never a process matched by
+# name, which may belong to another test or to the host.
+STUB_APPLY_SLEEP=10 setsid ucode -L "$LIB" "$LIB/autotune/manager.uc" apply youtube >/dev/null &
 pid=$!
 for _ in $(seq 100); do [ "$(applies)" != "$before_applies" ] && break; sleep 0.1; done
 [ "$(json_get "$FORKOP_AUTOTUNE_STATE_FILE" worker.phase)" = '"applying"' ] || fail "the apply is marked applying"
-pkill -9 -P "$pid" 2>/dev/null || true; kill -9 "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true
-pkill -9 -f "$LIB/autotune/apply.uc" 2>/dev/null || true
-# The stand-in's sleep inherited the worker lock, as a real apply would.
-pkill -9 -x -f "sleep 10" 2>/dev/null || true
+[ "$(cut -d' ' -f5 "/proc/$pid/stat")" = "$pid" ] || fail "fixture: the worker leads its own process group"
+kill -9 -- "-$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true
 for _ in $(seq 50); do flock -n "$FORKOP_AUTOTUNE_STATE_DIR/worker.lock" true && break; sleep 0.1; done
 manager run youtube >"$WORK/after-crash.json"
 node -e 'const s=require(process.argv[1]);const a=s.applies[s.applies.length-1];

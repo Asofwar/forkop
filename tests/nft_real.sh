@@ -33,35 +33,57 @@ if [ "${1:-}" != "--in-namespace" ]; then
   if ! probe="$("${NAMESPACE[@]}" nft list ruleset 2>&1)"; then
     skip "nftables is unavailable in an unprivileged network namespace: $probe"
   fi
-  # TorrServer Direct matches a cgroup path that nft resolves under
-  # /sys/fs/cgroup; the namespace gets a private, empty hierarchy there.
-  if ! probe="$("${NAMESPACE[@]}" mount -t tmpfs forkop-nft-real /sys/fs/cgroup 2>&1)"; then
-    skip "a private /sys/fs/cgroup cannot be mounted in the namespace: $probe"
-  fi
   FORKOP_NFT_REAL_HOST_NAMESPACES="$(namespaces)" exec "${NAMESPACE[@]}" bash "$0" --in-namespace
 fi
 
 # ---- inside the namespace ---------------------------------------------------
 
-# Never touch the caller's ruleset or mounts: both namespaces must be new.
+refuse() {
+  printf 'FAIL: --in-namespace is only for the private namespace this test creates (%s)\n' "$1" >&2
+  exit 1
+}
+# Never touch the caller's ruleset or mounts. The environment can be forged,
+# the user namespace cannot: only one that maps nothing but root, as
+# `unshare --map-root-user` creates it, is accepted, never the initial one
+# (identity map) or a container's (id ranges). Root here has no privilege
+# over the network and mount namespaces those own, so at worst a forged call
+# reaches another throwaway namespace of the same kind.
+mapfile -t uid_map </proc/self/uid_map
+read -r map_inside _ map_count <<<"${uid_map[0]:-}"
+if [ "${#uid_map[@]}" != 1 ] || [ "$map_inside" != 0 ] || [ "$map_count" != 1 ]; then
+  refuse "not a user namespace mapping only root: ${uid_map[*]:-}"
+fi
+# Both namespaces must also be new, not inherited from the caller.
 read -r host_net host_mnt <<<"${FORKOP_NFT_REAL_HOST_NAMESPACES:-}"
 read -r own_net own_mnt <<<"$(namespaces)"
 if [ -z "${host_net:-}" ] || [ "$own_net" = "$host_net" ] || [ "$own_mnt" = "${host_mnt:-}" ]; then
-  printf 'FAIL: --in-namespace is only for the private namespace this test creates\n' >&2
-  exit 1
+  refuse "the network or mount namespace is not new"
 fi
-
-WORK_DIR="$(mktemp -d)"
-trap 'rm -rf "$WORK_DIR"' EXIT
-mkdir -p "$WORK_DIR/bin" "$WORK_DIR/tmp" "$WORK_DIR/proc_net"
-export TMPDIR="$WORK_DIR/tmp"
-mount -t tmpfs forkop-nft-real /sys/fs/cgroup
-mkdir -p /sys/fs/cgroup/services/torrserver
 
 [ -z "$(nft list ruleset)" ] || {
   printf 'FAIL: the namespace does not start with an empty ruleset\n' >&2
   exit 1
 }
+
+WORK_DIR="$(mktemp -d)"
+CGROUP_MOUNTED=0
+cleanup() {
+  [ "$CGROUP_MOUNTED" = 0 ] || umount /sys/fs/cgroup || true
+  rm -rf "$WORK_DIR"
+}
+trap cleanup EXIT
+mkdir -p "$WORK_DIR/bin" "$WORK_DIR/tmp" "$WORK_DIR/proc_net"
+export TMPDIR="$WORK_DIR/tmp"
+# TorrServer Direct matches a cgroup path that nft resolves under
+# /sys/fs/cgroup; the namespace gets a private, empty hierarchy there. Only
+# that section needs it.
+if cgroup_error="$(mount -t tmpfs forkop-nft-real /sys/fs/cgroup 2>&1)"; then
+  CGROUP_MOUNTED=1
+  mkdir -p /sys/fs/cgroup/services/torrserver
+else
+  printf 'NOTE: a private /sys/fs/cgroup cannot be mounted in the namespace, TorrServer Direct is not checked: %s\n' \
+    "$cgroup_error"
+fi
 
 fail() {
   printf 'FAIL: %s\n' "$1" >&2
@@ -144,7 +166,10 @@ probe_feature() {
 probe_feature queue 'type filter hook output priority 0; policy accept;' 'queue num 1 bypass'
 probe_feature tproxy 'type filter hook prerouting priority 0; policy accept;' 'meta l4proto tcp tproxy ip to :1'
 probe_feature redirect 'type nat hook prerouting priority 0; policy accept;' 'tcp dport 53 redirect to :1'
-probe_feature socket 'type route hook output priority 0; policy accept;' 'socket cgroupv2 level 2 "services/torrserver"'
+# The socket probe resolves the TorrServer cgroup, which only exists (and is
+# only needed) with the private hierarchy.
+[ "$CGROUP_MOUNTED" = 0 ] ||
+  probe_feature socket 'type route hook output priority 0; policy accept;' 'socket cgroupv2 level 2 "services/torrserver"'
 [ -z "$(nft list ruleset)" ] || fail "kernel probes left state behind"
 supported() { [[ " ${MISSING[*]:-} " != *" $1 "* ]]; }
 
@@ -521,22 +546,25 @@ ok "transition guard: applied, refused twice, removed"
 
 # ---- TorrServer Direct --------------------------------------------------------------
 
-ucode -L "$FORKOP_LIB" "$FORKOP_LIB/torrserver/direct.uc" batch /services/torrserver >"$WORK_DIR/torrserver.nft" ||
-  fail "torrserver/direct.uc did not render its batch"
-check_batch "$WORK_DIR/torrserver.nft" "TorrServer Direct"
-commit_batch "$WORK_DIR/torrserver.json" "TorrServer Direct"
-torrserver_cgroup=-
-supported socket && torrserver_cgroup=services/torrserver
-check torrserver "$WORK_DIR/torrserver.json" ForkopTorrServerDirect "$(hex_to_dec "$OUTBOUND_MARK")" "$torrserver_cgroup"
-if supported socket; then
-  nft list chain inet ForkopTorrServerDirect output |
-    ucode -L "$FORKOP_LIB" "$FORKOP_LIB/torrserver/direct.uc" rule-output-active /services/torrserver ||
-    fail "torrserver/direct.uc does not recognise its rule as listed by nft"
+# Without a private cgroup hierarchy (NOTE above) nft cannot resolve the path.
+if [ "$CGROUP_MOUNTED" = 1 ]; then
+  ucode -L "$FORKOP_LIB" "$FORKOP_LIB/torrserver/direct.uc" batch /services/torrserver >"$WORK_DIR/torrserver.nft" ||
+    fail "torrserver/direct.uc did not render its batch"
+  check_batch "$WORK_DIR/torrserver.nft" "TorrServer Direct"
+  commit_batch "$WORK_DIR/torrserver.json" "TorrServer Direct"
+  torrserver_cgroup=-
+  supported socket && torrserver_cgroup=services/torrserver
+  check torrserver "$WORK_DIR/torrserver.json" ForkopTorrServerDirect "$(hex_to_dec "$OUTBOUND_MARK")" "$torrserver_cgroup"
+  if supported socket; then
+    nft list chain inet ForkopTorrServerDirect output |
+      ucode -L "$FORKOP_LIB" "$FORKOP_LIB/torrserver/direct.uc" rule-output-active /services/torrserver ||
+      fail "torrserver/direct.uc does not recognise its rule as listed by nft"
+  fi
+  ucode -L "$FORKOP_LIB" "$FORKOP_LIB/torrserver/direct.uc" remove
+  nft -j list ruleset >"$WORK_DIR/torrserver-removed.json"
+  check tables "$WORK_DIR/torrserver-removed.json" "$TABLE"
+  ok "TorrServer Direct: batch checked, applied, recognised and removed"
 fi
-ucode -L "$FORKOP_LIB" "$FORKOP_LIB/torrserver/direct.uc" remove
-nft -j list ruleset >"$WORK_DIR/torrserver-removed.json"
-check tables "$WORK_DIR/torrserver-removed.json" "$TABLE"
-ok "TorrServer Direct: batch checked, applied, recognised and removed"
 
 # ---- autotune isolation ----------------------------------------------------------------
 

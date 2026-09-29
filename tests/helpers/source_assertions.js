@@ -18,7 +18,9 @@
 //     both anchors of a sed /start/,/end/ range match;
 //   - every /regex/ an awk program uses to open or close a region matches a
 //     line of the file (an awk that looks for a pattern inside a renamed
-//     function otherwise reports "not found" and a negative check passes).
+//     function otherwise reports "not found" and a negative check passes);
+//   - no grep -A/-B/-C window of fixed size feeds a negative check: code
+//     added past the window would never be read.
 //
 // Usage: source_assertions.js [--root DIR] [--inventory] TEST.sh...
 // Exit status: 0 when every check holds, 1 with one line per problem.
@@ -581,9 +583,9 @@ function checkScript(file, root, inventory) {
   const entries = [];
   const rel = path.relative(root, file);
   const nextOf = new Map();
-  for (let k = 0; k < commands.length - 1; k++) nextOf.set(commands[k], commands[k + 1]);
   const all = [];
   const collect = (list) => {
+    for (let k = 0; k < list.length - 1; k++) nextOf.set(list[k], list[k + 1]);
     for (const cmd of list) {
       all.push(cmd);
       for (const w of cmd.words) for (const p of w.parts) if (p.t === "sub") collect(p.commands);
@@ -597,6 +599,17 @@ function checkScript(file, root, inventory) {
   all.sort((a, b) => a.line - b.line);
 
   const flow = { inCond: false };
+  // A command's status decides a negative check when it is the condition of
+  // an if/while, when `! cmd || fail`, or when `cmd && fail`.
+  const decidesNegative = (cmd) => {
+    const next = nextOf.get(cmd);
+    const negated = cmd.pipeline.negated;
+    return (cmd.inCond && !negated) || (negated && cmd.sepAfter === "||") ||
+      (!cmd.inCond && cmd.sepAfter === "&&" && next !== undefined && litText(next.words[0]) === "fail");
+  };
+  // grep -A/-B/-C windows piped on; judged once every command of the
+  // pipeline was seen.
+  const windows = [];
   for (const cmd of all) {
     const words = commandWords(cmd, vars, root, flow);
     if (!words.length) continue;
@@ -617,10 +630,7 @@ function checkScript(file, root, inventory) {
 
     const prodFiles = files.filter((f) => f.text !== null && !f.glob && isProductionPath(f.text, root));
     if (!prodFiles.length) continue;
-    const negated = cmd.pipeline.negated;
-    const next = nextOf.get(cmd);
-    const negative = (cmd.inCond && !negated) || (negated && cmd.sepAfter === "||") ||
-      (!cmd.inCond && cmd.sepAfter === "&&" && next !== undefined && litText(next.words[0]) === "fail");
+    const negative = decidesNegative(cmd);
     entries.push({ where, name, kind: stdoutUsed ? "extract" : negative ? "negative" : "positive",
       targets: prodFiles.map((f) => path.relative(root, f.text)) });
 
@@ -642,6 +652,9 @@ function checkScript(file, root, inventory) {
           report(path.relative(root, f.text), "named on the command line but skipped by --include/--exclude, never read");
       }
     }
+
+    if (parsed && parsed.context && cmd.sepAfter === "|")
+      windows.push({ cmd, report, target: prodFiles.map((f) => path.relative(root, f.text)).join(" ") });
 
     const resolvedFiles = files.every((f) => f.text !== null && !f.glob);
     if (name === "grep" && parsed.context && stdoutUsed && parsed.pattern !== null && resolvedFiles) {
@@ -680,6 +693,16 @@ function checkScript(file, root, inventory) {
         if (out.stdout === "") report(fileArgs.map((f) => path.relative(root, f)).join(" "), "extraction prints nothing");
       }
     }
+  }
+  // A fixed window cut out of a function reads only its first lines: once
+  // the function grows, a forbidden call added past the window goes unseen
+  // and the negative check still passes. A positive check fails loudly.
+  for (const w of windows) {
+    let end = w.cmd;
+    while (end.sepAfter === "|" && nextOf.has(end)) end = nextOf.get(end);
+    if (decidesNegative(end))
+      w.report(w.target, "a fixed -A/-B/-C window feeds a negative check, code past the window is never read " +
+        "(use source_function or source_between)");
   }
   if (inventory) for (const e of entries) inventory.push(e);
   return problems;

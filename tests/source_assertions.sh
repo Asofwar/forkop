@@ -63,6 +63,11 @@ text="$(cat <<'EOF'
 grep -q x "$ROOT_DIR/lib/in-heredoc.uc"
 EOF
 )"
+grep -A1 'function beta' "$MODULE" | grep -Fq 'rm' && fail "window"
+grep -n 'alpha' -A 2 "$MODULE" |
+  sed -n '/function alpha/,/^[0-9]*.function /p' |
+  grep -qE 'kill' &&
+  fail "window across lines"
 SH
 
 cat >"$REPO/tests/good.sh" <<'SH'
@@ -74,6 +79,8 @@ grep -Fq 'alpha' "$MODULE" || fail "y"
 if sed -n '/^function beta(/,/^}/p' "$MODULE" | grep -Fq 'rm'; then fail "z"; fi
 if awk '/^function beta\(/ { active = 1 } active && /rm/ { found = 1 } END { exit found ? 0 : 1 }' "$MODULE"; then fail "w"; fi
 for file in "$ROOT_DIR/lib/module.uc" "$ROOT_DIR/lib/other.uc"; do grep -q x "$file" || true; done
+grep -A1 'function alpha' "$MODULE" | grep -q return || fail "v"
+if ! grep -A1 'function alpha' "$MODULE" | grep -q return; then fail "u"; fi
 cat <<'EOF'
 grep -q x "$ROOT_DIR/lib/in-heredoc.uc"
 EOF
@@ -104,10 +111,14 @@ expect_problem 'tests/bad.sh:16: awk lib/module.uc: region anchor /^function ren
 expect_problem 'tests/bad.sh:19: awk lib/module.uc: region anchor /^function omega\(/ matches nothing'
 expect_problem 'tests/bad.sh:19: awk lib/module.uc: extraction prints nothing'
 expect_problem 'tests/bad.sh:20: grep lib/module.uc: extraction /function gamma/ matches nothing'
+window='a fixed -A/-B/-C window feeds a negative check, code past the window is never read (use source_function or source_between)'
+expect_problem "tests/bad.sh:20: grep lib/module.uc: $window"
+expect_problem "tests/bad.sh:25: grep lib/module.uc: $window"
+expect_problem "tests/bad.sh:26: grep lib/module.uc: $window"
 if grep -Fq 'in-heredoc' "$WORK/bad.out"; then
   fail "the meta-check read a heredoc body as commands"
 fi
-[ "$(wc -l <"$WORK/bad.out")" -eq 11 ] || {
+[ "$(wc -l <"$WORK/bad.out")" -eq 14 ] || {
   cat "$WORK/bad.out" >&2
   fail "the meta-check reported unexpected problems"
 }

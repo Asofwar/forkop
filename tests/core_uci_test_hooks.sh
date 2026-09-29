@@ -74,10 +74,21 @@ grep -Fxq 'forkop.settings.written=1' "$WORK/state" || fail "fixture write missi
 ok "FORKOP_UCI_STATE_FILE and FORKOP_UCI_LOG_FILE keep the fixture mode"
 
 # ---- no production code reads a generic UCI_* variable ---------------------------
-names="$(grep -rhoE 'getenv\("[^"]*"\)' "$LIB" "$ROOT_DIR/forkop/files/usr/bin/forkop" | sed -E 's/getenv\("(.*)"\)/\1/' | LC_ALL=C sort -u)"
+# Production: the router tree and the LuCI app's root (rpcd ACLs, uci-defaults).
+PROD=("$ROOT_DIR/forkop/files" "$ROOT_DIR/luci-app-forkop/root")
+# getenv() with a literal name, in either quote style.
+names="$(grep -rIhoE "getenv\\([\"'][^\"']*[\"']\\)" "${PROD[@]}" |
+  sed -E "s/getenv\\([\"']([^\"']*)[\"']\\)/\\1/" | LC_ALL=C sort -u)"
 [ -n "$names" ] || fail "no getenv() calls found: the guard lost its anchor"
 generic="$(printf '%s\n' "$names" | grep -E '^UCI_' || true)"
 [ -z "$generic" ] || fail "production code reads generic UCI_* variables: $generic"
-hooks="$(grep -oE 'getenv\("[^"]*"\)' "$LIB/core/uci.uc" | sed -E 's/getenv\("(.*)"\)/\1/' | LC_ALL=C sort -u | tr '\n' ' ')"
-[ "$hooks" = "FORKOP_UCI_LOG_FILE FORKOP_UCI_STATE_FILE " ] || fail "core/uci.uc reads other variables: $hooks"
-ok "core/uci.uc reads only FORKOP_UCI_* hooks"
+# The generic names in any other form: a helper's argument (env("UCI_STATE")),
+# shell $UCI_STATE or ${UCI_LOG}, a name kept in a variable. Whole words only,
+# so FORKOP_UCI_STATE_FILE and the UCI_STATE_FILE constant do not count.
+hits="$(grep -rInwE 'UCI_(STATE|LOG)' "${PROD[@]}" || true)"
+[ -z "$hits" ] || fail "production code names the generic UCI_STATE/UCI_LOG: $hits"
+# Every getenv() in core/uci.uc names one of its two hooks literally.
+hooks="$(grep -oE 'getenv\([^)]*\)' "$LIB/core/uci.uc" | tr "'" '"' | LC_ALL=C sort -u | tr '\n' ' ')"
+[ "$hooks" = 'getenv("FORKOP_UCI_LOG_FILE") getenv("FORKOP_UCI_STATE_FILE") ' ] ||
+  fail "core/uci.uc reads other variables: $hooks"
+ok "core/uci.uc reads only FORKOP_UCI_* hooks, and no production code names UCI_STATE/UCI_LOG"

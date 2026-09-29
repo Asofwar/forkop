@@ -7,6 +7,8 @@ INITD_UC="$FORKOP_LIB/service/initd.uc"
 STATE_UC="$FORKOP_LIB/service/state.uc"
 INITD="$ROOT_DIR/forkop/files/etc/init.d/forkop"
 WORK_DIR="$(mktemp -d)"
+# Not the host's explicit stop: it holds reloads off (UC-056).
+export FORKOP_STOP_REQUESTED_FILE="$WORK_DIR/stop.requested"
 
 cleanup() {
   rm -rf "$WORK_DIR"

@@ -18,6 +18,9 @@ set -euo pipefail
 # group: sing-box re-tests the members 10 at a time, each with its own 15 s
 # (C.TCPTimeout), whatever the request asked for. A double that answers such a
 # request late, as sing-box does behind a stalled member, must still succeed.
+#
+# The automatic latency test waits for the Clash API under reload.lock. That
+# wait lasts about its attempt count in seconds, not attempts x probe bound.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FORKOP_LIB="$ROOT_DIR/forkop/files/usr/lib"
@@ -205,6 +208,8 @@ start_controller hang hang
 HUNG_PORT="$CONTROLLER_PORT"
 start_controller answer-proxies answer-proxies
 PROXIES_PORT="$CONTROLLER_PORT"
+start_controller closed close
+CLOSED_PORT="$CONTROLLER_PORT"
 start_controller groups groups 0
 GROUPS_PORT="$CONTROLLER_PORT"
 # A URLTest group answers after 5 s: past timeout + 2 s of a 1000 ms test.
@@ -497,8 +502,9 @@ UC
 SIGNATURE="$(env FORKOP_LIB="$FORKOP_LIB" "$UCODE_BIN" -L "$FORKOP_LIB" "$RUNTIME_UC" proxy-outbounds-signature "$WORK_DIR/sing-box.json")"
 [ -n "$SIGNATURE" ] || fail "the proxy signature of the fixture was not produced"
 
+# run_locked_case NAME PORT [READY_ATTEMPTS]
 run_locked_case() {
-  local name="$1" port="$2" dir="$WORK_DIR/case/$1"
+  local name="$1" port="$2" attempts="${3:-1}" dir="$WORK_DIR/case/$1"
   mkdir -p "$dir"
   printf '{"format":"1","signature":"%s","scheduled_at":1,"failures":0,"retry_after":0}\n' "$SIGNATURE" >"$dir/pending"
   CASE_ENV=(
@@ -506,7 +512,7 @@ run_locked_case() {
     FORKOP_AUTOMATIC_LATENCY_PENDING_FILE="$dir/pending"
     FORKOP_AUTOMATIC_LATENCY_TEST_LOCK_DIR="$dir/latency.lock"
     FORKOP_RELOAD_LOCK_DIR="$dir/reload.lock"
-    FORKOP_AUTOMATIC_LATENCY_CLASH_READY_ATTEMPTS=1
+    FORKOP_AUTOMATIC_LATENCY_CLASH_READY_ATTEMPTS="$attempts"
     FORKOP_AUTOMATIC_LATENCY_RETRY_BASE_SECONDS=300
   )
   run_case "$name" "$port" automatic-latency-test new
@@ -514,10 +520,12 @@ run_locked_case() {
 }
 lock_dir_present() { [ -d "$1" ]; }
 
-# The readiness map hangs; then the delay request hangs behind a map.
-run_locked_case locked_map "$HUNG_PORT"
+# The readiness map hangs; then the delay request hangs behind a map. A
+# controller that is down (closes at once) is probed again within the wait.
+run_locked_case locked_map "$HUNG_PORT" 3
 run_locked_case locked_delay "$PROXIES_PORT"
-for name in locked_map locked_delay; do
+run_locked_case locked_closed "$CLOSED_PORT" 3
+for name in locked_map locked_delay locked_closed; do
   wait_until 10 lock_dir_present "$WORK_DIR/case/$name/reload.lock" ||
     fail "$name: the automatic latency test did not take reload.lock before the request"
 done
@@ -525,7 +533,8 @@ wait_cases
 
 check_bounded locked_map
 check_bounded locked_delay 6
-for name in locked_map locked_delay; do
+check_bounded locked_closed
+for name in locked_map locked_delay locked_closed; do
   dir="$WORK_DIR/case/$name"
   [ ! -e "$dir/reload.lock" ] || fail "$name: reload.lock is still held after the bounded request"
   [ ! -e "$dir/latency.lock" ] || fail "$name: the automatic latency test lock is still held"
@@ -534,5 +543,14 @@ for name in locked_map locked_delay; do
 done
 grep -q '/delay' "$WORK_DIR/case/locked_delay/curl.log" ||
   fail "locked_delay: the delay request was not reached"
+# 3 attempts wait about 3 s for the Clash API. The first probe of a hung
+# controller runs out that time: no probe follows it under reload.lock.
+probes="$(grep -c '^ARGV:' "$WORK_DIR/case/locked_map/curl.log")"
+[ "$probes" = 1 ] ||
+  fail "locked_map: $probes readiness probes of a hung controller under reload.lock; the wait must end after about 3 s"
+# Probes that fail at once are still repeated within that time.
+probes="$(grep -c '^ARGV:' "$WORK_DIR/case/locked_closed/curl.log")"
+[ "$probes" -ge 2 ] ||
+  fail "locked_closed: a controller that is down was probed $probes time(s); it must be probed again within the wait"
 
 printf 'Clash API requests are bounded; a hung controller releases held locks\n'

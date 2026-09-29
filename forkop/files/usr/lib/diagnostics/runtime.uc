@@ -97,6 +97,11 @@ function arg_number(value) {
     return value == "" || match(value, /[^0-9-]/) != null ? 0 : int(value, 10);
 }
 
+function monotonic_seconds() {
+    let now = clock(true);
+    return now[0] + now[1] / 1000000000.0;
+}
+
 function arg_bool(value) {
     value = lc(as_string(value));
     return value == "1" || value == "true" || value == "yes" || value == "on";
@@ -2075,10 +2080,15 @@ function automatic_latency_test(start_kind) {
     let sing_box_pid_before = trim(module_output(SERVICE_STATE_UC, [ "sing-box-service-runtime-pid" ]));
     let proxy_types = null;
     let readiness_attempts = AUTOMATIC_LATENCY_CLASH_READY_ATTEMPTS > 0 ? AUTOMATIC_LATENCY_CLASH_READY_ATTEMPTS : 15;
+    // The attempts are a second apart, so the wait lasts about that many
+    // seconds. A probe of a controller that accepts and never answers runs
+    // out its CLASH_API_MAX_TIME, so elapsed time ends the wait as well:
+    // reload.lock is held throughout (UC-016).
+    let readiness_deadline = monotonic_seconds() + readiness_attempts;
     for (let readiness_attempt = 0; readiness_attempt < readiness_attempts; readiness_attempt++) {
         proxy_types = clash_proxy_type_map(clash_api_url(), clash_auth_args());
         clash_auth_close();
-        if (proxy_types != null)
+        if (proxy_types != null || monotonic_seconds() >= readiness_deadline)
             break;
         if (readiness_attempt + 1 < readiness_attempts)
             command_success_from_args([ "sleep", "1" ]);

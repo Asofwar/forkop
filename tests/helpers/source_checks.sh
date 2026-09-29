@@ -98,28 +98,37 @@ source_between() {
     ' "$1" || source_check_fail "no region from /$2/ to /$3/ in $1"
 }
 
-# source_shell_scripts ROOT...
-# Prints the shell scripts among the ROOTs (files or directories searched
-# recursively): files named *.sh and files whose first line is a sh, ash,
-# dash or bash interpreter line, such as init scripts, uci-defaults and the
-# libexec wrappers. An explicit file that is not a shell script is skipped;
-# `grep --include='*.sh'` would skip init scripts and never read them.
-source_shell_scripts() {
+# source_shell_targets ROOT...
+# Prints the files a shell-symbol check reads. A ROOT that is a file is
+# printed as named, whatever its language: a file named to be checked is never
+# skipped, and the ucode entrypoint that replaced a shell script must not bring
+# its retired symbols back. In a ROOT that is a directory only the shell
+# scripts are printed: files named *.sh and files whose first line is a sh,
+# ash, dash or bash interpreter line, such as init scripts, uci-defaults and
+# the libexec wrappers; the ucode modules beside them are left out.
+source_shell_targets() {
     source_require "$@"
-    find "$@" -type f -exec awk '
-        FNR == 1 && (FILENAME ~ /\.sh$/ || $0 ~ /^#![^[:space:]]*\/(env[[:space:]]+)?(ba|da|a)?sh([[:space:]]|$)/) { print FILENAME }
-    ' {} +
+    for source_shell_targets_root in "$@"; do
+        if [ -f "$source_shell_targets_root" ]; then
+            printf '%s\n' "$source_shell_targets_root"
+        else
+            find "$source_shell_targets_root" -type f -exec awk '
+                FNR == 1 && (FILENAME ~ /\.sh$/ || $0 ~ /^#![^[:space:]]*\/(env[[:space:]]+)?(ba|da|a)?sh([[:space:]]|$)/) { print FILENAME }
+            ' {} + || source_check_fail "cannot list the shell scripts in $source_shell_targets_root"
+        fi
+    done
 }
 
 # source_refute_shell MESSAGE GREP_FLAGS PATTERN ROOT...
-# source_refute over every shell script among the ROOTs; fails when the ROOTs
-# hold no shell script at all.
+# source_refute over the files source_shell_targets prints for the ROOTs:
+# every ROOT named as a file and the shell scripts in the ROOT directories.
+# Fails when there is nothing to read.
 source_refute_shell() {
     source_refute_shell_message=$1
     source_refute_shell_flags=$2
     source_refute_shell_pattern=$3
     shift 3
-    source_refute_shell_list="$(source_shell_scripts "$@")" || exit 1
+    source_refute_shell_list="$(source_shell_targets "$@")" || exit 1
     [ -n "$source_refute_shell_list" ] ||
         source_check_fail "$source_refute_shell_message: no shell script found in $*"
     set --

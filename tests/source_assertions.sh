@@ -35,6 +35,7 @@ UC
 : >"$REPO/lib/empty.uc"
 printf '#!/bin/sh /etc/rc.common\nstart() {\n    legacy_symbol\n}\n' >"$REPO/etc/init.d/service"
 printf '#!/usr/bin/ucode\nprint("ok");\n' >"$REPO/bin/tool"
+printf '#!/usr/bin/ucode\nsystem(". /lib/legacy.sh; legacy_symbol");\n' >"$REPO/bin/legacy-tool"
 printf '#!/bin/sh\necho ok\n' >"$REPO/lib/helper.sh"
 
 cat >"$REPO/tests/bad.sh" <<'SH'
@@ -171,15 +172,25 @@ expect_helper_failure "a region with a match" "FAIL: must not spawn mkdir" \
   source_refute_text "must not spawn mkdir" -F 'mkdir' 'command("mkdir")'
 helper "$WORK/helper.out" source_refute_text "no match" -F 'mkdir' 'return 1;' || fail "refute_text failed without a match"
 
-helper "$WORK/helper.out" source_shell_scripts "$REPO/bin/tool" "$REPO/lib" "$REPO/etc" || fail "shell script listing failed"
-[ "$(sort "$WORK/helper.out")" = "$(printf '%s\n' "$REPO/etc/init.d/service" "$REPO/lib/helper.sh" | sort)" ] || {
+# A file named to a shell-symbol check is read whatever its language: the
+# ucode entrypoint once was a shell script and must not bring the retired
+# symbols back. Only inside directories are the ucode modules left out.
+expect_helper_failure "a legacy symbol in a named ucode file" "FAIL: legacy shell symbols must not remain" \
+  source_refute_shell "legacy shell symbols must not remain" -F 'legacy_symbol' "$REPO/bin/legacy-tool" "$REPO/lib"
+grep -Fq "$REPO/bin/legacy-tool:2:" "$WORK/helper.out" || fail "refute_shell did not print the match in the named file"
+helper "$WORK/helper.out" source_shell_targets "$REPO/bin/tool" "$REPO/lib" "$REPO/etc" || fail "shell target listing failed"
+[ "$(sort "$WORK/helper.out")" = "$(printf '%s\n' "$REPO/bin/tool" "$REPO/etc/init.d/service" "$REPO/lib/helper.sh" | sort)" ] || {
   cat "$WORK/helper.out" >&2
-  fail "shell scripts are the *.sh files and the sh interpreter files, not the ucode ones"
+  fail "shell targets are the named files and, in directories, the *.sh files and the sh interpreter files, not the ucode modules"
 }
 expect_helper_failure "a legacy symbol in an init script" "FAIL: legacy shell symbols must not remain" \
   source_refute_shell "legacy shell symbols must not remain" -F 'legacy_symbol' "$REPO/bin/tool" "$REPO/etc"
+helper "$WORK/helper.out" source_refute_shell "shell must not spawn mkdir" -F 'mkdir' "$REPO/lib" || {
+  cat "$WORK/helper.out" >&2
+  fail "a ucode module found in a directory was read as a shell script"
+}
 expect_helper_failure "no shell script at all" "no shell script found" \
-  source_refute_shell "legacy shell symbols must not remain" -F 'legacy_symbol' "$REPO/bin/tool"
+  source_refute_shell "legacy shell symbols must not remain" -F 'legacy_symbol' "$REPO/bin"
 
 # --- The test suite ----------------------------------------------------------
 node "$CHECK" "$ROOT_DIR"/tests/*.sh || fail "source-text assertions above can pass without reading their target"

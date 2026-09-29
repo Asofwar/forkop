@@ -67,6 +67,7 @@ export FORKOP_PENDING_RELOAD_FILE="$WORK_DIR/run/forkop/reload.pending"
 export FORKOP_UCI_STATE_FILE="$WORK_DIR/uci.state"
 export FORKOP_START_RETRY_DELAY_SECONDS=300
 export FORKOP_START_WAIT_TIMEOUT_SECONDS=20
+export FORKOP_START_SETTLE_SECONDS=6
 export FORKOP_UI_ACTION_TRACKED=1
 
 # Nothing here may reach the host's syslog, nftables or init scripts.
@@ -82,6 +83,11 @@ case "$1" in
     printf 'start\n' >>"$TEST_WORK/starts"
     status="$(cat "$TEST_WORK/start.status" 2>/dev/null || echo 0)"
     [ "$status" != 0 ] || [ ! -e "$TEST_WORK/runtime.comes-up" ] || : >"$TEST_WORK/runtime.up"
+    # A reload drained right after the start takes the runtime out of
+    # "stably running" for a moment.
+    if [ "$status" = 0 ] && [ -e "$TEST_WORK/runtime.comes-up-later" ]; then
+      (sleep 2; : >"$TEST_WORK/runtime.up") </dev/null >/dev/null 2>&1 &
+    fi
     exit "$status"
     ;;
   stop) rm -f "$TEST_WORK/runtime.up" ;;
@@ -139,7 +145,7 @@ initd() { "$REAL_UCODE" -L "$LIB" "$LIB/service/initd.uc" "$@"; }
 
 reset_case() {
   kill_retry_workers
-  rm -f "$WORK_DIR/runtime.up" "$WORK_DIR/runtime.comes-up" "$WORK_DIR/start.status" \
+  rm -f "$WORK_DIR/runtime.up" "$WORK_DIR/runtime.comes-up" "$WORK_DIR/runtime.comes-up-later" "$WORK_DIR/start.status" \
     "$FORKOP_RUNTIME_STATE_DIR"/start.retry "$FORKOP_RUNTIME_STATE_DIR"/stop.requested
   : >"$WORK_DIR/syslog"
 }
@@ -196,6 +202,24 @@ timed_wait start || fail "a successful start was reported as failed: $(cat "$WOR
 reset_case
 printf '0\n' >"$WORK_DIR/start.status"
 timed_wait start && fail "a start that left no running runtime was reported as successful"
+# ... but only briefly after its result: the runtime is given time to settle.
+reset_case
+printf '0\n' >"$WORK_DIR/start.status"
+: >"$WORK_DIR/runtime.comes-up-later"
+timed_wait start || fail "a start whose runtime settled shortly after its result was reported as failed"
+
+# 3b. A result that its caller no longer waits for (the wait timed out) does
+#     not stay in the runtime state directory for good: the next wait removes
+#     results older than the wait timeout, and leaves recent ones alone.
+reset_case
+start_succeeds
+printf 'status=0\n' >"$FORKOP_RUNTIME_STATE_DIR/start-result.gone.1"
+touch -d '1 hour ago' "$FORKOP_RUNTIME_STATE_DIR/start-result.gone.1"
+printf 'status=0\n' >"$FORKOP_RUNTIME_STATE_DIR/start-result.recent.1"
+timed_wait start || fail "a successful start was reported as failed: $(cat "$WORK_DIR/wait.out")"
+[ ! -e "$FORKOP_RUNTIME_STATE_DIR/start-result.gone.1" ] || fail "a start result nobody waits for was left behind"
+[ -e "$FORKOP_RUNTIME_STATE_DIR/start-result.recent.1" ] || fail "a recent start result was removed"
+rm -f "$FORKOP_RUNTIME_STATE_DIR/start-result.recent.1"
 
 # 4. restart: stop, then the detached start.
 reset_case

@@ -33,6 +33,10 @@ const START_RETRY_DELAY_SECONDS = getenv("FORKOP_START_RETRY_DELAY_SECONDS") || 
 // (FORKOP_START_REQUEST) through init.d, and the start worker writes its
 // status to start-result.<id> in RUNTIME_STATE_DIR.
 const START_WAIT_TIMEOUT_SECONDS = getenv("FORKOP_START_WAIT_TIMEOUT_SECONDS") || "300";
+// Right after its result the start worker drains a reload queued during the
+// start; a reload that restarts sing-box briefly takes the runtime out of
+// "stably running".
+const START_SETTLE_SECONDS = getenv("FORKOP_START_SETTLE_SECONDS") || "30";
 // A package upgrade can start Forkop while the previous process is still
 // completing a list-content reload.  Use the same inter-process lock as
 // reload_service() so that start never classifies that expected transient as
@@ -725,6 +729,20 @@ function read_start_result(path) {
     return matched != null ? int(matched[1], 10) : null;
 }
 
+// A start reports its result also when its caller has stopped waiting; any
+// waiter reads its result within a second, so an older one has no reader.
+function remove_stale_start_results() {
+    let oldest = int(current_epoch(), 10) - int(START_WAIT_TIMEOUT_SECONDS, 10);
+    for (let name in (fs.lsdir(RUNTIME_STATE_DIR) || [])) {
+        if (index(name, "start-result.") != 0)
+            continue;
+        let path = RUNTIME_STATE_DIR + "/" + name;
+        let info = fs.lstat(path);
+        if (info != null && info.type == "file" && int(info.mtime) < oldest)
+            unlink_file(path);
+    }
+}
+
 // Runs `init.d start|restart` and waits (bounded) for the start worker's
 // result, then checks that the runtime runs: init.d under procd returns 0
 // before the start has run. For callers that act on the outcome (component
@@ -737,6 +755,7 @@ function start_and_wait(action, reason, timeout) {
     timeout = as_string(timeout);
     timeout = numeric_text(timeout) ? int(timeout, 10) : int(START_WAIT_TIMEOUT_SECONDS, 10);
 
+    remove_stale_start_results();
     let now = clock();
     let request = sprintf("%s.%d.%09d", owner_pid_value(), now[0], now[1]);
     let path = start_result_path(request);
@@ -763,7 +782,14 @@ function start_and_wait(action, reason, timeout) {
     }
     if (result != 0)
         return result;
-    return runtime_is_running() ? 0 : 1;
+    let settle = numeric_text(START_SETTLE_SECONDS) ? int(START_SETTLE_SECONDS, 10) : 30;
+    let settle_deadline = int(current_epoch(), 10) + settle;
+    while (!runtime_is_running()) {
+        if (int(current_epoch(), 10) >= settle_deadline)
+            return 1;
+        command_success_from_args([ "sleep", "1" ]);
+    }
+    return 0;
 }
 
 function stop_plan(owner_pid, bin_ok) {

@@ -163,6 +163,11 @@ case "${1:-}" in
         state running
         sh "$JOB/worker.sh" worker "$JOB" "$STATUS" > "$JOB/output.log" 2>&1 </dev/null 1000>&- &
         trap - EXIT
+        # The worker writes its own pid only once it runs. Name it now, so the
+        # records never name this starter after it exits: a component action
+        # would take such a lock as stale and run alongside the removal.
+        printf '%s\n' "$!" > "$LOCK/pid" || true
+        printf '%s\n' "$!" > "$COMPONENT_LOCK/pid" || true
         printf '{"success":true,"status_url":"/%s.json"}\n' "$(basename "$JOB")"
         ;;
     worker)

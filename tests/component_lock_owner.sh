@@ -16,6 +16,11 @@ set -euo pipefail
 #
 # The action is the real components/action.uc with an unknown component: it
 # takes the lock, then fails with "Unknown component action" and releases it.
+#
+# full-uninstall.sh start records its own pid, starts its worker in the
+# background and exits; the worker records its pid once it runs. Until then
+# the record must name the worker, not the starter that has exited, or a
+# component action takes the lock and runs alongside the removal.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB="$ROOT_DIR/forkop/files/usr/lib"
@@ -53,7 +58,7 @@ SH
 chmod +x "$WORK/bin/"*
 
 action() {
-  PATH="$WORK/bin:$PATH" FORKOP_RUNTIME_STATE_DIR="$WORK/run" UPDATES_LOCK_DIR="$LOCK" \
+  PATH="$WORK/bin:$PATH" FORKOP_RUNTIME_STATE_DIR="$WORK/run" UPDATES_LOCK_DIR="${ACTION_LOCK:-$LOCK}" \
     FORKOP_BIN="$WORK/no-forkop" FORKOP_SERVICE_INIT="$WORK/no-init" FORKOP_OPKG_RECOVERY_DIR="$WORK/recovery" \
     FORKOP_MANAGED_UPGRADE_SING_BOX_MARKER="$WORK/managed-upgrade" \
     ucode -L "$LIB" "$LIB/components/action.uc" component-action bogus nothing 2>/dev/null || true
@@ -114,5 +119,35 @@ wait_until 20 process_gone "$first" || fail "the component action did not finish
 wait "$first" 2>/dev/null || true
 grep -q 'Unknown component action' "$WORK/first.out" || fail "the held component action did not complete"
 [ ! -e "$LOCK" ] || fail "the component action left its lock behind"
+
+# 6. full-uninstall.sh start hands the lock to its worker before it exits.
+UROOT="$WORK/root"
+ACTION_LOCK="$UROOT/var/run/forkop/component-action.lock"
+mkdir -p "$UROOT"
+: >"$WORK/worker.hold"
+# The worker is started as `sh <job>/worker.sh worker ...`; it waits here,
+# before it runs a line of the script, until worker.hold is removed.
+cat >"$WORK/bin/sh" <<SH
+#!/bin/sh
+case "\${1:-}" in
+  */worker.sh)
+    : >"$WORK/worker.started"
+    while [ -e "$WORK/worker.hold" ] && [ -d "$WORK" ]; do sleep 0.05; done
+    exit 0 ;;
+esac
+exec /bin/sh "\$@"
+SH
+chmod +x "$WORK/bin/sh"
+PATH="$WORK/bin:$PATH" FORKOP_UNINSTALL_ROOT="$UROOT" FORKOP_MIRROR_BASE_URL="http://mirror.test" \
+  /bin/sh "$LIB/full-uninstall.sh" start >"$WORK/uninstall.out" </dev/null ||
+  fail "full-uninstall.sh start failed: $(cat "$WORK/uninstall.out")"
+wait_until 20 test -e "$WORK/worker.started" || fail "full-uninstall.sh did not start its worker"
+record="$(cat "$ACTION_LOCK/pid")"
+process_running "$record" || fail "the removal's lock names a process that has exited ($record)"
+refused || fail "a component action ran while a full removal was handing its lock to its worker"
+[ "$(cat "$ACTION_LOCK/pid")" = "$record" ] || fail "a refused component action changed the removal's lock"
+rm -f "$WORK/worker.hold"
+wait_until 20 process_gone "$record" || fail "the held removal worker did not exit"
+unset ACTION_LOCK
 
 printf 'component lock owner checks passed\n'

@@ -301,6 +301,11 @@ function restore_guard(remove) {
     return success([ "ucode", "-L", LIB_DIR, LIB_DIR + "/nft/apply.uc",
         remove ? "remove-dpi-transition-guard" : "ensure-dpi-transition-guard", "ForkopConfigRestore" ]);
 }
+// "absent", "valid" or "invalid"; empty when the state is unknown.
+function restore_guard_state() {
+    return trim(capture([ "ucode", "-L", LIB_DIR, LIB_DIR + "/nft/apply.uc",
+        "dpi-transition-guard-state", "ForkopConfigRestore" ]));
+}
 // A lifecycle action (list or subscription update, WAN-up reload, start, a
 // pending-reload drain) owns the reload lock: a reload requested now would
 // only be queued behind it. A queued reload without a live owner is no such
@@ -344,12 +349,16 @@ function reload(reason) {
 // snapshot lock keeps restores out, so the guard is this call's own; an edit
 // made while the guard was installed is never overwritten.
 function guarded_replace(before, content, pre, on_success, reason, apply_mode) {
+    // A guard left by an earlier needs_attention protects a runtime no reload
+    // has proved yet: only this call's own guard may go without a reload.
+    let inherited = !apply_mode && restore_guard_state() != "absent";
     if (!restore_guard(false)) return { status: "failed", reason: "guard_unavailable" };
     if (apply_mode && sha(read_config()) != sha(before)) {
         if (!restore_guard(true)) return { status: "needs_attention", reason: "guard_release_failed", guard: "active" };
         return { status: "failed", reason: "concurrent_change" };
     }
     if (!atomic(CONFIG, content)) {
+        if (inherited) return { status: "failed", reason: "replace_failed", guard: "active" };
         if (!restore_guard(true)) return { status: "needs_attention", reason: "replace_failed", guard: "active" };
         return { status: "failed", reason: "replace_failed" };
     }

@@ -18,8 +18,16 @@ fail() {
 # matters most during a package upgrade. Waiting is safe; signalling the
 # reported PID is not, because it may already have been reused.
 #
-# The CI runner has no sing-box in /proc, so the process count is genuinely 0
-# and only the procd side needs a double.
+# The scenario needs a genuine process count of 0, so only the procd side gets
+# a double. Other tests (possibly running in parallel) start sing-box doubles
+# of their own, so the stop runs in a private PID namespace with its own /proc
+# where available; without one, a foreign sing-box is a failed precondition.
+ISOLATE=()
+if unshare --pid --fork --mount-proc true 2>/dev/null; then
+  ISOLATE=(unshare --pid --fork --mount-proc)
+elif unshare --user --map-root-user --pid --fork --mount-proc true 2>/dev/null; then
+  ISOLATE=(unshare --user --map-root-user --pid --fork --mount-proc)
+fi
 
 mkdir -p "$WORK_DIR/bin"
 cat >"$WORK_DIR/bin/ubus" <<'SH'
@@ -46,9 +54,23 @@ chmod 0755 "$WORK_DIR/bin/"*
 export PATH="$WORK_DIR/bin:$PATH"
 export STALE_PID_MARKER="$WORK_DIR/stale" SLEEP_LOG="$WORK_DIR/sleep.log" LOGGER_LOG="$WORK_DIR/logger.log"
 
+foreign_sing_box() {
+  local exe
+  for exe in /proc/[0-9]*/exe; do
+    case "$(readlink "$exe" 2>/dev/null)" in
+      */sing-box | */'sing-box (deleted)') printf '%s\n' "${exe%/exe}"; return 0 ;;
+    esac
+  done
+  return 1
+}
+
+if [ "${#ISOLATE[@]}" -eq 0 ] && pid_dir="$(foreign_sing_box)"; then
+  fail "precondition: a sing-box process ($pid_dir) is running and no private PID namespace is available"
+fi
+
 run_stop() {
   : >"$SLEEP_LOG"; : >"$LOGGER_LOG"
-  ucode -L "$FORKOP_LIB" "$STATE_UC" stop-managed-sing-box-runtime "${1:-3}"
+  "${ISOLATE[@]}" ucode -L "$FORKOP_LIB" "$STATE_UC" stop-managed-sing-box-runtime "${1:-3}"
 }
 
 # 1. procd keeps reporting a PID that never clears: fail closed after the

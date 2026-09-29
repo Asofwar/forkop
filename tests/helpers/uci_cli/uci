@@ -1,0 +1,6 @@
+#!/bin/sh
+# Test-only stand-in for the OpenWrt uci CLI (UC-009); the implementation
+# and its scope are described in uci.uc. "--" keeps ucode from reading the
+# uci options (-c, -t, -q) as its own.
+case "$0" in */*) dir="${0%/*}" ;; *) dir=. ;; esac
+exec ucode -- "$dir/uci.uc" "$@"

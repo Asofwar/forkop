@@ -1,0 +1,465 @@
+$ uci -c c -t s get pk.settings.dns_server
+[rc=0]
+  out| tls://dns.example 192.0.2.1$
+$ uci -c c -t s get pk.settings.esc
+[rc=0]
+  out| it's$
+$ uci -c c -t s get pk.settings.dq
+[rc=0]
+  out| a"b\\ctd$
+$ uci -c c -t s get pk.settings.hash
+[rc=0]
+  out| a$
+$ uci -c c -t s get pk.settings.qhash
+[rc=0]
+  out| x$
+$ uci -c c -t s get pk.settings.empty
+[rc=1]
+  err| uci: Entry not found$
+$ uci -c c -t s get pk.settings.spaced
+[rc=0]
+  out| a b$
+$ uci -c c -t s get pk.settings.multi
+[rc=0]
+  out| line one$
+  out| line two$
+$ uci -c c -t s get pk.youtube
+[rc=0]
+  out| section$
+$ uci -c c -t s get pk.youtube.extra
+[rc=0]
+  out| merged$
+$ uci -c c -t s get pk.youtube.tags
+[rc=0]
+  out| one 'two words'$
+$ uci -c c -t s get pk
+[rc=0]
+$ uci -c c -t s get pk.nosec
+[rc=1]
+  err| uci: Entry not found$
+$ uci -c c -t s get pk.settings.plain=x
+[rc=1]
+$ uci -q -c c -t s get pk.nope
+[rc=1]
+$ uci -c c -t s show pk
+[rc=0]
+  out| pk.settings=settings$
+  out| pk.settings.dns_server='tls://dns.example' '192.0.2.1'$
+  out| pk.settings.plain='value'$
+  out| pk.settings.esc='it'\\''s'$
+  out| pk.settings.dq='a"b\\ctd'$
+  out| pk.settings.hash='a'$
+  out| pk.settings.qhash='x'$
+  out| pk.settings.spaced='a b'$
+  out| pk.settings.multi='line one$
+  out| line two'$
+  out| pk.@section[0]=section$
+  out| pk.@section[0].action='zapret'$
+  out| pk.youtube=section$
+  out| pk.youtube.label='You Tube'$
+  out| pk.youtube.tags='one' 'two words'$
+  out| pk.youtube.extra='merged'$
+  out| pk.yt=autotune_target$
+  out| pk.yt.host='www.youtube.com'$
+  out| pk.yt.resolver='192.0.2.53'$
+$ uci -c c -t s show pk.youtube
+[rc=0]
+  out| pk.youtube=section$
+  out| pk.youtube.label='You Tube'$
+  out| pk.youtube.tags='one' 'two words'$
+  out| pk.youtube.extra='merged'$
+$ uci -c c -t s show pk.youtube.tags
+[rc=0]
+  out| pk.youtube.tags='one' 'two words'$
+$ uci -c c -t s show pk.nosec
+[rc=1]
+  err| uci: Entry not found$
+$ uci -c c -t s set pk.autotune=autotune
+[rc=0]
+$ uci -c c -t s set pk.autotune.mode=auto
+[rc=0]
+$ uci -c c -t s set pk.autotune.confirmations=4
+[rc=0]
+$ uci -c c -t s set pk.yt=autotune_target
+[rc=0]
+$ uci -c c -t s set pk.yt.host=m.youtube.com
+[rc=0]
+$ uci -c c -t s set pk.yt.enabled=1
+[rc=0]
+$ uci -c c -t s delete pk.yt.resolver
+[rc=0]
+$ uci -c c -t s set pk.extra=autotune_target
+[rc=0]
+$ uci -c c -t s set pk.extra.host=extra.example.com
+[rc=0]
+$ uci -c c -t s set pk.extra.enabled=0
+[rc=0]
+$ uci -c c -t s delete pk.extra
+[rc=0]
+# c/pk (mode 640)
+  | # a comment$
+  | package pk$
+  | $
+  | config settings 'settings'$
+  | \tlist dns_server 'tls://dns.example'$
+  | \tlist dns_server "192.0.2.1"$
+  | \toption  plain value$
+  | \toption esc 'it'\\''s'$
+  | \toption dq "a\\"b\\\\c\\td"$
+  | \toption hash a#b$
+  | \toption qhash 'x'#tail$
+  | \toption empty ''$
+  | \toption spaced a\\ b$
+  | \toption multi 'line one$
+  | line two'$
+  | config section$
+  | \toption action 'zapret'$
+  | c section 'youtube' # trailing comment$
+  | \to label 'You Tube'$
+  | \tl tags one$
+  | \tl tags 'two words'$
+  | config section 'youtube'$
+  | \toption extra 'merged'$
+  | config autotune_target 'yt'$
+  | \toption host 'www.youtube.com'$
+  | \toption resolver '192.0.2.53'$
+# s/pk
+  | pk.autotune='autotune'$
+  | pk.autotune.mode='auto'$
+  | pk.autotune.confirmations='4'$
+  | pk.yt.host='m.youtube.com'$
+  | pk.yt.enabled='1'$
+  | -pk.yt.resolver$
+  | pk.extra='autotune_target'$
+  | pk.extra.host='extra.example.com'$
+  | pk.extra.enabled='0'$
+  | -pk.extra$
+$ uci -c c -t s get pk.autotune.mode
+[rc=0]
+  out| auto$
+$ uci -c c -t s show pk.yt
+[rc=0]
+  out| pk.yt=autotune_target$
+  out| pk.yt.host='m.youtube.com'$
+  out| pk.yt.enabled='1'$
+$ uci -c c -t s set pk.autotune.mode=auto
+[rc=0]
+$ uci -c c -t s set pk.autotune=autotune
+[rc=0]
+$ uci -c c -t s delete pk.yt.resolver
+[rc=1]
+  err| uci: Entry not found$
+$ uci -c c -t s delete pk.nosec
+[rc=1]
+  err| uci: Entry not found$
+$ uci -c c -t s set pk.nosec.opt=1
+[rc=1]
+  err| uci: Invalid argument$
+$ uci -c c -t s set pk.youtube.bad-opt=1
+[rc=1]
+  err| uci: Parse error$
+$ uci -c c -t s set pk.bad-name=x
+[rc=1]
+  err| uci: Invalid argument$
+$ uci -c c -t s set pk.newsec=bad type
+[rc=1]
+  err| uci: Invalid argument$
+$ uci -c c -t s set pk.youtube.label
+[rc=1]
+  err| uci: Invalid argument$
+$ uci -c c -t s add_list pk.nosec.l=1
+[rc=1]
+  err| uci: Invalid argument$
+$ uci -c c -t s set pk.settings.dns_server=single
+[rc=0]
+$ uci -c c -t s add_list pk.settings.plain=second
+[rc=0]
+$ uci -c c -t s add_list pk.autotune.targets=yt
+[rc=0]
+$ uci -c c -t s del_list pk.youtube.tags=one
+[rc=0]
+$ uci -c c -t s del_list pk.youtube.tags=nothere
+[rc=0]
+$ uci -c c -t s del_list pk.youtube.label=You Tube
+[rc=0]
+$ uci -c c -t s del_list pk.youtube.nothing=x
+[rc=0]
+$ uci -c c -t s set pk.settings.spaced=
+[rc=0]
+$ uci -c c -t s set pk.settings.never=
+[rc=0]
+$ uci -c c -t s set pk.youtube=other_type
+[rc=0]
+$ uci -c c -t s set pk.settings.quote=it's "q" #x
+[rc=0]
+$ uci -c c -t s set pk.settings.nfqws=--filter-tcp=443 --dpi-desync=fake
+[rc=0]
+$ uci -c c -t s set pk.settings.lines=one
+two
+[rc=0]
+# c/pk (mode 640)
+  | # a comment$
+  | package pk$
+  | $
+  | config settings 'settings'$
+  | \tlist dns_server 'tls://dns.example'$
+  | \tlist dns_server "192.0.2.1"$
+  | \toption  plain value$
+  | \toption esc 'it'\\''s'$
+  | \toption dq "a\\"b\\\\c\\td"$
+  | \toption hash a#b$
+  | \toption qhash 'x'#tail$
+  | \toption empty ''$
+  | \toption spaced a\\ b$
+  | \toption multi 'line one$
+  | line two'$
+  | config section$
+  | \toption action 'zapret'$
+  | c section 'youtube' # trailing comment$
+  | \to label 'You Tube'$
+  | \tl tags one$
+  | \tl tags 'two words'$
+  | config section 'youtube'$
+  | \toption extra 'merged'$
+  | config autotune_target 'yt'$
+  | \toption host 'www.youtube.com'$
+  | \toption resolver '192.0.2.53'$
+# s/pk
+  | pk.autotune='autotune'$
+  | pk.autotune.mode='auto'$
+  | pk.autotune.confirmations='4'$
+  | pk.yt.host='m.youtube.com'$
+  | pk.yt.enabled='1'$
+  | -pk.yt.resolver$
+  | pk.extra='autotune_target'$
+  | pk.extra.host='extra.example.com'$
+  | pk.extra.enabled='0'$
+  | -pk.extra$
+  | pk.settings.dns_server='single'$
+  | |pk.settings.plain='second'$
+  | |pk.autotune.targets='yt'$
+  | ~pk.youtube.tags='one'$
+  | ~pk.youtube.tags='nothere'$
+  | -pk.settings.spaced$
+  | pk.youtube='other_type'$
+  | pk.settings.quote='it'\\''s "q" #x'$
+  | pk.settings.nfqws='--filter-tcp=443 --dpi-desync=fake'$
+  | pk.settings.lines='one$
+  | two'$
+$ uci -c c -t s get pk.settings.lines
+[rc=0]
+  out| one$
+  out| two$
+$ uci -c c -t s commit pk
+[rc=0]
+# c/pk (mode 640)
+  | $
+  | config settings 'settings'$
+  | \toption dns_server 'single'$
+  | \tlist plain 'value'$
+  | \tlist plain 'second'$
+  | \toption esc 'it'\\''s'$
+  | \toption dq 'a"b\\ctd'$
+  | \toption hash 'a'$
+  | \toption qhash 'x'$
+  | \toption multi 'line one$
+  | line two'$
+  | \toption quote 'it'\\''s "q" #x'$
+  | \toption nfqws '--filter-tcp=443 --dpi-desync=fake'$
+  | \toption lines 'one$
+  | two'$
+  | $
+  | config section$
+  | \toption action 'zapret'$
+  | $
+  | config other_type 'youtube'$
+  | \toption label 'You Tube'$
+  | \tlist tags 'two words'$
+  | \toption extra 'merged'$
+  | $
+  | config autotune_target 'yt'$
+  | \toption host 'm.youtube.com'$
+  | \toption enabled '1'$
+  | $
+  | config autotune 'autotune'$
+  | \toption mode 'auto'$
+  | \toption confirmations '4'$
+  | \tlist targets 'yt'$
+  | $
+# s/pk
+$ uci -c c -t s show pk
+[rc=0]
+  out| pk.settings=settings$
+  out| pk.settings.dns_server='single'$
+  out| pk.settings.plain='value' 'second'$
+  out| pk.settings.esc='it'\\''s'$
+  out| pk.settings.dq='a"b\\ctd'$
+  out| pk.settings.hash='a'$
+  out| pk.settings.qhash='x'$
+  out| pk.settings.multi='line one$
+  out| line two'$
+  out| pk.settings.quote='it'\\''s "q" #x'$
+  out| pk.settings.nfqws='--filter-tcp=443 --dpi-desync=fake'$
+  out| pk.settings.lines='one$
+  out| two'$
+  out| pk.@section[0]=section$
+  out| pk.@section[0].action='zapret'$
+  out| pk.youtube=other_type$
+  out| pk.youtube.label='You Tube'$
+  out| pk.youtube.tags='two words'$
+  out| pk.youtube.extra='merged'$
+  out| pk.yt=autotune_target$
+  out| pk.yt.host='m.youtube.com'$
+  out| pk.yt.enabled='1'$
+  out| pk.autotune=autotune$
+  out| pk.autotune.mode='auto'$
+  out| pk.autotune.confirmations='4'$
+  out| pk.autotune.targets='yt'$
+$ uci -c c -t s commit pk
+[rc=0]
+# c/pk (mode 640)
+  | $
+  | config settings 'settings'$
+  | \toption dns_server 'single'$
+  | \tlist plain 'value'$
+  | \tlist plain 'second'$
+  | \toption esc 'it'\\''s'$
+  | \toption dq 'a"b\\ctd'$
+  | \toption hash 'a'$
+  | \toption qhash 'x'$
+  | \toption multi 'line one$
+  | line two'$
+  | \toption quote 'it'\\''s "q" #x'$
+  | \toption nfqws '--filter-tcp=443 --dpi-desync=fake'$
+  | \toption lines 'one$
+  | two'$
+  | $
+  | config section$
+  | \toption action 'zapret'$
+  | $
+  | config other_type 'youtube'$
+  | \toption label 'You Tube'$
+  | \tlist tags 'two words'$
+  | \toption extra 'merged'$
+  | $
+  | config autotune_target 'yt'$
+  | \toption host 'm.youtube.com'$
+  | \toption enabled '1'$
+  | $
+  | config autotune 'autotune'$
+  | \toption mode 'auto'$
+  | \toption confirmations '4'$
+  | \tlist targets 'yt'$
+  | $
+# s/pk
+$ uci -c c -t s commit nosuch
+[rc=1]
+  err| uci: Entry not found$
+$ uci -c c -t s get nosuch.a
+[rc=1]
+  err| uci: Entry not found$
+$ uci -c cand -t cand/save set cand.youtube.nfqws_opt=--filter-tcp=443 --dpi-desync=multisplit
+[rc=0]
+$ uci -c cand -t cand/save commit cand
+[rc=0]
+$ uci -c cand -t cand/save get cand.youtube.nfqws_opt
+[rc=0]
+  out| --filter-tcp=443 --dpi-desync=multisplit$
+  | $
+  | config settings 'settings'$
+  | \toption dns_server 'single'$
+  | \tlist plain 'value'$
+  | \tlist plain 'second'$
+  | \toption esc 'it'\\''s'$
+  | \toption dq 'a"b\\ctd'$
+  | \toption hash 'a'$
+  | \toption qhash 'x'$
+  | \toption multi 'line one$
+  | line two'$
+  | \toption quote 'it'\\''s "q" #x'$
+  | \toption nfqws '--filter-tcp=443 --dpi-desync=fake'$
+  | \toption lines 'one$
+  | two'$
+  | $
+  | config section$
+  | \toption action 'zapret'$
+  | $
+  | config other_type 'youtube'$
+  | \toption label 'You Tube'$
+  | \tlist tags 'two words'$
+  | \toption extra 'merged'$
+  | \toption nfqws_opt '--filter-tcp=443 --dpi-desync=multisplit'$
+  | $
+  | config autotune_target 'yt'$
+  | \toption host 'm.youtube.com'$
+  | \toption enabled '1'$
+  | $
+  | config autotune 'autotune'$
+  | \toption mode 'auto'$
+  | \toption confirmations '4'$
+  | \tlist targets 'yt'$
+  | $
+$ uci -c c -t s commit keep
+[rc=0]
+$ uci -c c -t s commit keep
+[rc=0]
+$ uci -c c -t s commit keep
+[rc=0]
+# c/keep (mode 644)
+  | # keep me$
+  | config a 'x'$
+  | \toption o '1'$
+# s/keep
+  | keep.nosec.o='skipped'$
+$ uci -c c -t s show pd
+[rc=0]
+  out| pd.x=a$
+  out| pd.x.l='q' 'added'$
+  out| pd.x.o='from delta'$
+  out| pd.x.m='multi$
+  out| line'$
+  out| pd.x.q='it'\\''s'$
+$ uci -c c -t s commit pd
+[rc=0]
+# c/pd (mode 644)
+  | $
+  | config a 'x'$
+  | \tlist l 'q'$
+  | \tlist l 'added'$
+  | \toption o 'from delta'$
+  | \toption m 'multi$
+  | line'$
+  | \toption q 'it'\\''s'$
+  | $
+# s/pd
+$ uci -c c -t s show anon
+[rc=0]
+  out| anon.n=b$
+  out| anon.@b[1]=b$
+  out| anon.@b[1].k='v'$
+  out| anon.@c[0]=c$
+  out| anon.@b[2]=b$
+$ uci -c c -t s show p1
+[rc=1]
+  err| uci: Parse error (section of different type overwrites prior section with same name)$
+$ uci -c c -t s show p2
+[rc=1]
+  err| uci: Parse error (option/list command found before the first section)$
+$ uci -c c -t s show p3
+[rc=1]
+  err| uci: Parse error (too many arguments)$
+$ uci -c c -t s show p4
+[rc=1]
+  err| uci: Parse error (EOF with unterminated ')$
+$ uci -c c -t s show p5
+[rc=1]
+  err| uci: Parse error (invalid character in name field)$
+$ uci -c c -t s show p6
+[rc=1]
+  err| uci: Parse error (invalid command)$
+$ uci -c c -t s show p7
+[rc=1]
+  err| uci: Parse error (invalid character in type field)$
+$ uci -c c -t s show p8
+[rc=1]
+  err| uci: Parse error (invalid command)$

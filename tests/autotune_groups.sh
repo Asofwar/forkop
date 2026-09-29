@@ -10,7 +10,10 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB="$ROOT_DIR/forkop/files/usr/lib"
 WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT HUP INT TERM
+trap 'uci_cli_report; rm -rf "$WORK"' EXIT HUP INT TERM
+# Policy and targets are written through the uci CLI (UC-009).
+# shellcheck source=tests/helpers/uci_cli/select.sh
+source "$ROOT_DIR/tests/helpers/uci_cli/select.sh"
 export FORKOP_LIB="$LIB"
 export FORKOP_AUTOTUNE_STATE_FILE="$WORK/etc/autotune/state.json"
 export FORKOP_AUTOTUNE_LAST_DIR="$WORK/run/last"

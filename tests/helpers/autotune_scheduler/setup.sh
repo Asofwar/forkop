@@ -9,10 +9,14 @@ WORK="$(mktemp -d)"
 BG_PIDS=()
 cleanup() {
   for pid in "${BG_PIDS[@]}"; do kill -9 "$pid" 2>/dev/null || true; done
+  uci_cli_report
   rm -rf "$WORK"
 }
 trap cleanup EXIT HUP INT TERM
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
+# The manager writes policy and targets through the uci CLI (UC-009).
+# shellcheck source=tests/helpers/uci_cli/select.sh
+source "$ROOT_DIR/tests/helpers/uci_cli/select.sh"
 
 # A library tree with the real modules and the two stand-ins.
 LIB="$WORK/lib"

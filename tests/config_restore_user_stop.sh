@@ -239,8 +239,11 @@ expect failed service_stopped "autotune apply overtaken by a stop"
 { [ "$(cat "$STATE/guard")" = absent ] && [ "$(lkg)" = "$base_lkg" ]; } || fail "apply overtaken by a stop: guard or LKG"
 [ "$(cat "$STATE/runtime")" = down ] || fail "apply overtaken by a stop started the runtime"
 
-# 8. Control: a runtime that is down without a stop (it crashed) is repaired
-#    by the restore's reload, as before.
+# 8. Control: a runtime that is down without a stop is repaired by the
+#    restore's reload, as before: one that crashed, and equally one that was
+#    not started since a reboot with autostart disabled (here: no
+#    /etc/rc.d/S99forkop), since the stop marker lives in /var/run and ends
+#    with the reboot (service/state.uc STOP_REQUESTED_FILE).
 rm -f "$STOP_MARKER"; echo down > "$STATE/runtime"; config bad; snap confirm-working > /dev/null
 run restore "$good_id"
 expect success "" "restore of a crashed runtime"

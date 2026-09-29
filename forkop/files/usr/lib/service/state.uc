@@ -26,9 +26,14 @@ const DIAGNOSTICS_RUNTIME_UC = LIB_DIR + "/diagnostics/runtime.uc";
 // Written by an explicit stop (service/initd.uc before it waits for
 // reload.lock, service/lifecycle.uc `forkop stop`) and removed only by an
 // explicit start or restart (service/initd.uc, service/lifecycle.uc): no
-// reload brings back the runtime it took down (D-15, UC-056). It lives in
-// runtime state and ends with a reboot, whose start at boot (autostart) is an
-// explicit start anyway.
+// reload brings back the runtime it took down (D-15, UC-056). Its second
+// line names who asked for the stop (service/initd.uc stop_request_source).
+// It lives in runtime state (no flash writes) and ends with a reboot. With
+// autostart enabled the start at boot is an explicit start anyway. With
+// autostart disabled nothing marks Forkop stopped after a reboot: a runtime
+// that was not started since boot is not told apart from one that went down,
+// and a reload (a manual one, a snapshot restore, a list update) repairs it
+// by starting it, as before; boot itself is unchanged.
 const STOP_REQUESTED_FILE = getenv("FORKOP_STOP_REQUESTED_FILE") ||
     (getenv("FORKOP_RUNTIME_STATE_DIR") || "/var/run/forkop") + "/stop.requested";
 

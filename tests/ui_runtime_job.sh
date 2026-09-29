@@ -23,6 +23,9 @@ ui_ucode() {
   ucode -L "$FORKOP_FILES/usr/lib" "$UI_UC" "$@"
 }
 
+# shellcheck source=tests/helpers/wait.sh
+source "$ROOT_DIR/tests/helpers/wait.sh"
+
 assert_eq() {
   local expected="$1"
   local actual="$2"
@@ -285,10 +288,9 @@ FORKOP_LIB="$FORKOP_FILES/usr/lib" \
   ui_ucode service-action-finish-after-command reload "$job_id" 0 >/dev/null ||
   fail "service-action-finish-after-command should spawn waiter without ucode declaration-order failure"
 
-sleep 2
-if grep -q '"running"[[:space:]]*:[[:space:]]*true' "$service_state"; then
+service_action_settled() { ! grep -q '"running"[[:space:]]*:[[:space:]]*true' "$service_state"; }
+wait_until 30 service_action_settled ||
   fail "service-action-finish-after-command waiter should finish the running service action"
-fi
 
 ui_ucode service-action-finish "$job_id" true done 0 >/dev/null ||
   fail "service-action-finish should finish running job"

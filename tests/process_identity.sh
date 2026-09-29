@@ -5,8 +5,16 @@ ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 LIB_DIR="$ROOT_DIR/forkop/files/usr/lib"
 CLI="$ROOT_DIR/tests/fixtures/process_identity_cli.uc"
 STATE_DIR="$(mktemp -d)"
+# shellcheck source=tests/helpers/wait.sh
+. "$ROOT_DIR/tests/helpers/wait.sh"
+# $! is known before the background job execs its command; identity checks
+# need the exec'd executable and argv.
+started() {
+    wait_until 30 process_exec_is "$1" "$2" || { echo "background $2 did not start" >&2; exit 1; }
+}
 sleep 300 &
 foreign_pid=$!
+started "$foreign_pid" sleep
 cleanup() {
     kill "$foreign_pid" 2>/dev/null || true
     if [ -n "${owned_pid:-}" ]; then
@@ -59,6 +67,7 @@ reject_record_signal "$foreign_pid" "$ticks" sleep 301
 reject_record_signal "$foreign_pid" '' sleep 300
 sleep 300 &
 owned_pid=$!
+started "$owned_pid" sleep
 ucode -L "$LIB_DIR" "$CLI" record "$STATE_DIR/owned.pid" "$owned_pid"
 owned_ticks="$(sed -n '2p' "$STATE_DIR/owned.pid")"
 ucode -L "$LIB_DIR" "$CLI" record-signal "$owned_pid" "$owned_ticks" sleep 300 TERM
@@ -78,6 +87,7 @@ WORKER="$STATE_DIR/worker.uc"
 printf '%s\n' 'while (true) system("sleep 1");' > "$WORKER"
 ucode -L "$LIB_DIR" "$WORKER" worker >/dev/null 2>&1 &
 worker_pid=$!
+started "$worker_pid" ucode
 ucode -L "$LIB_DIR" "$CLI" record "$PID_FILE" "$worker_pid"
 ucode -L "$LIB_DIR" "$CLI" worker-signal "$PID_FILE" "$LIB_DIR" "$WORKER" TERM
 wait "$worker_pid" 2>/dev/null || true
@@ -86,6 +96,7 @@ if kill -0 "$worker_pid" 2>/dev/null; then
 fi
 ucode -L "$LIB_DIR" "$WORKER" worker >/dev/null 2>&1 &
 worker_pid=$!
+started "$worker_pid" ucode
 ucode -L "$LIB_DIR" "$CLI" record "$PID_FILE" "$worker_pid"
 ucode -L "$LIB_DIR" "$CLI" worker-signal "$PID_FILE" "$LIB_DIR" "$WORKER" KILL
 wait "$worker_pid" 2>/dev/null || true
@@ -97,8 +108,7 @@ SUPERVISOR="$ROOT_DIR/tests/fixtures/dpi_snapshot_supervisor.uc"
 ucode -L "$LIB_DIR" "$SUPERVISOR" supervisor example 4000 old "$STATE_DIR/legacy-child.pid" >/dev/null 2>&1 &
 supervisor_pid=$!
 printf '%s\n' "$supervisor_pid" > "$STATE_DIR/legacy-supervisor.pid"
-sleep 1
-[ -s "$STATE_DIR/legacy-child.pid" ] || exit 1
+wait_until 30 file_nonempty "$STATE_DIR/legacy-child.pid" || exit 1
 ucode -L "$LIB_DIR" "$CLI" promote-child "$STATE_DIR/legacy-child.pid" "$STATE_DIR/legacy-supervisor.pid" "$LIB_DIR" "$SUPERVISOR"
 [ "$(wc -l < "$STATE_DIR/legacy-child.pid")" -eq 2 ] || exit 1
 child_pid="$(head -n 1 "$STATE_DIR/legacy-child.pid")"

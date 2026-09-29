@@ -22,6 +22,9 @@ initd_ucode() {
   ucode -L "$FORKOP_LIB" "$INITD_UC" "$@"
 }
 
+# shellcheck source=tests/helpers/wait.sh
+source "$ROOT_DIR/tests/helpers/wait.sh"
+
 config_file="$WORK_DIR/forkop"
 guard_file="$WORK_DIR/internal-config-change"
 sync_file="$WORK_DIR/service-triggers.sync"
@@ -146,10 +149,7 @@ FORKOP_SERVICE_INIT="$retry_service" \
   fail "failed start should schedule an automatic retry"
 [ -s "$retry_pid_file" ] ||
   fail "scheduled automatic retry should record its worker pid"
-for _ in 1 2 3 4 5; do
-  [ -s "$retry_call_file" ] && break
-  sleep 1
-done
+wait_until 30 file_nonempty "$retry_call_file" || true
 grep -Fxq 'retry_start_on_wan_up' "$retry_call_file" ||
   fail "scheduled automatic retry should call the marker-gated retry action"
 [ ! -e "$retry_pid_file" ] ||

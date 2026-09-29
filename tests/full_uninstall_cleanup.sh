@@ -4,6 +4,8 @@ REPO="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 SCRIPT="$REPO/forkop/files/usr/lib/full-uninstall.sh"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
+# shellcheck source=tests/helpers/wait.sh
+. "$REPO/tests/helpers/wait.sh"
 
 fixture() {
     ROOT="$WORK/$1"
@@ -40,16 +42,15 @@ SH
     chmod +x "$ROOT/usr/bin/forkop" "$ROOT/bin/opkg"
 }
 
+worker_settled() {
+    status="$(cat "$ROOT"/www/forkop-uninstall.*.json)"
+    case "$status" in *'"state":"complete"'*|*'"state":"failed"'*) return 0;; esac
+    return 1
+}
+
 run_case() {
     FORKOP_UNINSTALL_ROOT="$ROOT" PATH="$ROOT/bin:$PATH" sh "$SCRIPT" start > "$ROOT/response"
-    count=0
-    while :; do
-        status="$(cat "$ROOT"/www/forkop-uninstall.*.json)"
-        case "$status" in *'"state":"complete"'*|*'"state":"failed"'*) break;; esac
-        count=$((count+1))
-        [ "$count" -lt 20 ] || { echo 'worker timed out'; exit 1; }
-        sleep 1
-    done
+    wait_until 60 worker_settled || { echo 'worker timed out'; exit 1; }
     printf '%s\n' "$status" | grep -q "\"state\":\"$1\""
 }
 

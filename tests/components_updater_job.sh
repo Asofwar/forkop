@@ -383,6 +383,18 @@ if ((ARGV[0] || "") == "component-action") {
 exit(1);
 UCODE
 
+# shellcheck source=tests/helpers/wait.sh
+source "$ROOT_DIR/tests/helpers/wait.sh"
+# Poll the async job every 50 ms (bounded) instead of in 1 s steps.
+component_action_settled() {
+  status_json="$(FORKOP_LIB="$fake_lib" UPDATES_JOB_DIR="$component_actions_dir" \
+    ucode -L "$FORKOP_LIB" "$UPDATES_UC" component-action-status "$1")"
+  JSON_VALUE="$status_json" node - <<'NODE'
+const value = JSON.parse(process.env.JSON_VALUE);
+process.exit(value.running === false && value.success === true ? 0 : 1);
+NODE
+}
+
 start_json="$(FORKOP_LIB="$fake_lib" UPDATES_JOB_DIR="$component_actions_dir" \
   ucode -L "$FORKOP_LIB" "$UPDATES_UC" component-action-async sing_box check_update)"
 job_id="$(JSON_VALUE="$start_json" node - <<'NODE'
@@ -396,15 +408,7 @@ NODE
 [ -n "$job_id" ] || fail "component action async should return a job id"
 
 status_json=""
-for _ in 1 2 3 4 5; do
-  status_json="$(FORKOP_LIB="$fake_lib" UPDATES_JOB_DIR="$component_actions_dir" \
-    ucode -L "$FORKOP_LIB" "$UPDATES_UC" component-action-status "$job_id")"
-  JSON_VALUE="$status_json" node - <<'NODE' && break || true
-const value = JSON.parse(process.env.JSON_VALUE);
-process.exit(value.running === false && value.success === true ? 0 : 1);
-NODE
-  sleep 1
-done
+wait_until 30 component_action_settled "$job_id" || true
 
 JSON_VALUE="$status_json" node - <<'NODE'
 const value = JSON.parse(process.env.JSON_VALUE);
@@ -428,15 +432,7 @@ NODE
 [ -n "$job_id" ] || fail "component action async should accept sing-box public name"
 
 status_json=""
-for _ in 1 2 3 4 5; do
-  status_json="$(FORKOP_LIB="$fake_lib" UPDATES_JOB_DIR="$component_actions_dir" \
-    ucode -L "$FORKOP_LIB" "$UPDATES_UC" component-action-status "$job_id")"
-  JSON_VALUE="$status_json" node - <<'NODE' && break || true
-const value = JSON.parse(process.env.JSON_VALUE);
-process.exit(value.running === false && value.success === true ? 0 : 1);
-NODE
-  sleep 1
-done
+wait_until 30 component_action_settled "$job_id" || true
 
 JSON_VALUE="$status_json" node - <<'NODE'
 const value = JSON.parse(process.env.JSON_VALUE);

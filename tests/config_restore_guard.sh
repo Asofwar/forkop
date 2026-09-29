@@ -148,14 +148,28 @@ config bad; restore "$LIB" valid "q q"
 check '{"status":"needs_attention","reason":"rollback_reload_queued","guardField":"active","guard":"valid","config":"bad","lkg":"stale","noRemove":true,"health":"failure"}'
 [ "$(sort -u "$STATE/reload-args")" = "reload config-restore" ]
 
-# 9. The queued request is still pending: the next restore is refused before
+# 9. A lifecycle action owns reload.lock: the next restore is refused before
 #    any change (no pre-restore snapshot, no guard, no reload, no history).
 count="$(find "$FORKOP_SNAPSHOT_DIR" -name '*.json' | wc -l)"
+mkdir "$FORKOP_RELOAD_LOCK_DIR"
+sleep 300 >/dev/null 2>&1 </dev/null &
+holder=$!
+echo "$holder" > "$FORKOP_RELOAD_LOCK_DIR/pid"
 restore "$LIB" valid "0"
-check '{"status":"busy","reason":"reload_pending","guard":"valid","config":"bad","lkg":"stale","noReload":true,"noRemove":true}'
+kill "$holder" 2>/dev/null || true
+rm -f "$FORKOP_RELOAD_LOCK_DIR/pid"; rmdir "$FORKOP_RELOAD_LOCK_DIR"
+check '{"status":"busy","reason":"service_action_in_progress","guard":"valid","config":"bad","lkg":"stale","noReload":true,"noRemove":true}'
 [ ! -s "$STATE/events" ]
 [ "$(find "$FORKOP_SNAPSHOT_DIR" -name '*.json' | wc -l)" = "$count" ]
+
+# 9a. The queued request is still pending but nobody owns the lock: it is no
+#     refusal (the restore's own reload takes the lock and drains it), so the
+#     recovery restore reuses the guard and completes.
+[ -e "$FORKOP_PENDING_RELOAD_FILE" ]
+restore "$LIB" valid "0"
+check '{"status":"success","guard":"absent","config":"good","lkgGood":true,"health":"success"}'
 rm -f "$FORKOP_PENDING_RELOAD_FILE"
+echo "stale" > "$FORKOP_SNAPSHOT_DIR/last-known-working"
 
 # 10. Target reload queued, rollback reload ran: recovered with the queue
 #     named; LKG names the reloaded pre-restore configuration, never the target.

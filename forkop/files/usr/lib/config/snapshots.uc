@@ -302,18 +302,21 @@ function restore_guard(remove) {
         remove ? "remove-dpi-transition-guard" : "ensure-dpi-transition-guard", "ForkopConfigRestore" ]);
 }
 // A lifecycle action (list or subscription update, WAN-up reload, start, a
-// pending-reload drain) owns the reload lock, or a reload is already queued:
-// a reload requested now would only be queued behind it.
+// pending-reload drain) owns the reload lock: a reload requested now would
+// only be queued behind it. A queued reload without a live owner is no such
+// action: the next reload takes the free lock and its finish drains that
+// request. A restore relies on this, so recovery stays possible while the
+// current configuration cannot reload and keeps failing to drain the queue.
 function service_action() {
     let pid = trim(value(fs.readfile(RELOAD_LOCK + "/pid")));
-    if (match(pid, /^[1-9][0-9]*$/) != null && fs.stat("/proc/" + pid) != null) return "service_action_in_progress";
-    if (fs.stat(PENDING_RELOAD) != null) return "reload_pending";
-    return null;
+    return match(pid, /^[1-9][0-9]*$/) != null && fs.stat("/proc/" + pid) != null ? "service_action_in_progress" : null;
 }
 // A reload that was only queued (another lifecycle action took the reload
 // lock after the check above) exits 0 without touching the runtime. init.d
 // acknowledges it with a "queued" line for this caller's reason; a changed
-// pending-reload marker (unique per request) is the second witness.
+// pending-reload marker (unique per request) is the second witness. A request
+// queued before the call is drained by a reload that ran (the marker is
+// gone); a drain that failed rewrites it and so never counts as ran.
 function pending_stamp() {
     let st = fs.stat(PENDING_RELOAD);
     return st == null ? null : sprintf("%d:%d:%s", st.mtime, st.size, value(fs.readfile(PENDING_RELOAD)));
@@ -375,7 +378,8 @@ function do_restore(id) {
     if (target == null) return { status: "failed", reason: "invalid_snapshot" };
     let before = read_config();
     if (before == null) return { status: "failed", reason: "config_unavailable" };
-    // Refused before anything changes while the reload would only be queued.
+    // Refused before anything changes while the reload would only be queued
+    // behind a live lifecycle action.
     let action = service_action();
     if (action != null) return { status: "busy", reason: action };
     let pre = create("automatic", "pre-restore", false, [ id ]);
@@ -399,7 +403,9 @@ function do_apply(candidate_file, expected_hash, keep_id) {
     if (before == null) return { status: "failed", reason: "config_unavailable" };
     if (sha(before) != value(expected_hash)) return { status: "stale", reason: "config_changed" };
     if (content == before) return { status: "no_change", reason: "candidate_equals_config" };
-    let action = service_action();
+    // An apply also waits for a queued reload: that request would reload the
+    // candidate outside this transaction.
+    let action = service_action() || (fs.stat(PENDING_RELOAD) != null ? "reload_pending" : null);
     if (action != null) return { status: "stale", reason: action };
     // Room for the before-autotune snapshot and for the pre-restore snapshot
     // of a later rollback, which may not remove the before-autotune one. A

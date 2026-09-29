@@ -305,11 +305,38 @@ function updates_response(success, component, action, message, current_version, 
     });
 }
 
+function forkop_status_running_with_timeout() {
+    init_tmp_dir();
+    let output_file = make_tmp_file("forkop-status");
+    if (output_file == "")
+        return false;
+
+    let command = command_from_args([ BIN_PATH, "get_status" ]) + " >" + shell_quote(output_file) + " 2>/dev/null & pid=$!; " +
+        "( sleep 6; kill $pid 2>/dev/null || true ) & watcher=$!; " +
+        "wait $pid 2>/dev/null; rc=$?; kill $watcher 2>/dev/null || true; wait $watcher 2>/dev/null || true; exit $rc";
+    let ok = command_status("sh -c " + shell_quote(command)) == 0 &&
+        match(read_file(output_file), /"running"[ \t]*:[ \t]*1/) != null;
+    remove_file(output_file);
+    return ok;
+}
+
 // `init.d start|restart` exits 0 under procd before the detached start has
 // run; service/initd.uc start-and-wait waits for the start's own result and
-// then checks the runtime (UC-013).
+// then checks the runtime (UC-013). An older release that this action has
+// just installed has no start-and-wait: then the runtime is polled after
+// init.d, as restore_forkop_opkg_service does.
 function forkop_start_and_wait(action) {
-    return module_success([ LIB_DIR + "/service/initd.uc", "start-and-wait", action ]);
+    let initd_module = LIB_DIR + "/service/initd.uc";
+    if (index(read_file(initd_module), '"start-and-wait"') >= 0)
+        return module_success([ initd_module, "start-and-wait", action ]);
+    if (!command_success_from_args([ SERVICE_INIT, action ]))
+        return false;
+    for (let attempt = 0; attempt < 45; attempt++) {
+        command_success_from_args([ "sleep", "4" ]);
+        if (forkop_status_running_with_timeout())
+            return true;
+    }
+    return false;
 }
 
 function restart_forkop_after_failed_sing_box_change() {
@@ -903,21 +930,6 @@ function prepare_sing_box_service_disabled() {
 function prepare_sing_box_package_service_install() {
     prepare_sing_box_service_disabled();
     remove_managed_sing_box_service_script();
-}
-
-function forkop_status_running_with_timeout() {
-    init_tmp_dir();
-    let output_file = make_tmp_file("forkop-status");
-    if (output_file == "")
-        return false;
-
-    let command = command_from_args([ BIN_PATH, "get_status" ]) + " >" + shell_quote(output_file) + " 2>/dev/null & pid=$!; " +
-        "( sleep 6; kill $pid 2>/dev/null || true ) & watcher=$!; " +
-        "wait $pid 2>/dev/null; rc=$?; kill $watcher 2>/dev/null || true; wait $watcher 2>/dev/null || true; exit $rc";
-    let ok = command_status("sh -c " + shell_quote(command)) == 0 &&
-        match(read_file(output_file), /"running"[ \t]*:[ \t]*1/) != null;
-    remove_file(output_file);
-    return ok;
 }
 
 function capture_forkop_running_state() {
@@ -2530,7 +2542,11 @@ function set_direct_proxy(action) {
         !uci_core.commit(CONFIG_NAME))
         action_fail("direct_proxy", action, "Failed to save Direct Proxy settings", current_enabled, target_enabled);
 
-    if (!forkop_start_and_wait("restart")) {
+    // A setting change does not start a Forkop that is not running (D-15);
+    // the setting applies at its next start.
+    if (!forkop_was_running)
+        updates_log("Forkop is not running; the Direct Proxy setting applies at its next start");
+    else if (!forkop_start_and_wait("restart")) {
         uci_core.set(enabled_path, current_enabled);
         if (current_port != "")
             uci_core.set(port_path, current_port);

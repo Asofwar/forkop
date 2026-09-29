@@ -337,6 +337,10 @@ let uci = {};
 let calls = [];
 let results = [];
 let outcome = null;
+// The initd.uc on disk: an older release (installed by this very action)
+// has no start-and-wait mode.
+let initd_source = 'else if (mode == "start-and-wait")';
+let status_results = [];
 function as_string(value) { return value == null ? "" : "" + value; }
 function die_check(message) { warn("FAIL: " + message + "\n"); exit(1); }
 function check(condition, message) { if (!condition) die_check(message); }
@@ -357,8 +361,18 @@ function command_from_args(args) { return join(" ", args); }
 function updates_log(message, level) { push(calls, "log:" + as_string(level || "info")); }
 function prepare_sing_box_service_disabled() { push(calls, "disable-sing-box"); }
 function next_result() { return length(results) > 0 ? shift(results) : true; }
+function read_file(path) {
+    check(path == LIB_DIR + "/service/initd.uc", "unexpected read of " + path);
+    return initd_source;
+}
+function forkop_status_running_with_timeout() {
+    push(calls, "status");
+    return length(status_results) > 0 ? shift(status_results) : false;
+}
 // The init script accepts every request at once, as under procd.
 function command_success_from_args(args) {
+    if (args[0] == "sleep")
+        return true;
     check(args[0] == SERVICE_INIT, "unexpected command " + join(" ", args));
     push(calls, "init:" + args[1]);
     return true;
@@ -390,6 +404,7 @@ function reset(values) {
     uci = { "forkop.settings.direct_proxy_enabled": "0", "forkop.settings.direct_proxy_port": "2080" };
     calls = []; results = values; outcome = null;
     forkop_was_running = true; forkop_stopped_for_sing_box_change = false;
+    initd_source = 'else if (mode == "start-and-wait")'; status_results = [];
 }
 function run(fn) {
     try { fn(); }
@@ -431,6 +446,28 @@ reset([ false, true ]);
 forkop_stopped_for_sing_box_change = true;
 restart_forkop_after_failed_sing_box_change();
 check(join(",", calls) == "log:info,wait:start,wait:restart", "a failed start after a failed sing-box change had no restart fallback: " + join(",", calls));
+// Direct Proxy of a stopped Forkop: the setting is saved and applies at its
+// next start; a setting change does not start it (D-15).
+reset([]);
+forkop_was_running = false;
+run(function() { set_direct_proxy("enable"); });
+check(outcome != null && outcome.success, "Direct Proxy of a stopped Forkop was not saved");
+check(uci["forkop.settings.direct_proxy_enabled"] == "1", "Direct Proxy of a stopped Forkop was rolled back");
+check(index(join(",", calls), "wait:") < 0 && index(join(",", calls), "init:") < 0,
+    "a Direct Proxy change started a stopped Forkop: " + join(",", calls));
+
+// An older release installed by the action has no start-and-wait: the
+// restart goes through init.d and the runtime is polled instead.
+reset([]);
+initd_source = 'else if (mode == "start-service")';
+status_results = [ false, true ];
+check(restart_forkop_after_successful_change() === true, "a restart through an older initd.uc was reported as failed");
+check(index(join(",", calls), "wait:") < 0, "start-and-wait was used with an initd.uc that has no such mode");
+check(index(join(",", calls), "init:restart,status,status") >= 0,
+    "an older initd.uc was not restarted through init.d and polled: " + join(",", calls));
+reset([]);
+initd_source = 'else if (mode == "start-service")';
+check(restart_forkop_after_successful_change() === false, "an older release that did not start was reported as started");
 print("component start outcome checks passed\n");
 '''
 

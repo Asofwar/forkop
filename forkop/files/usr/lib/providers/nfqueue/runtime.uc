@@ -328,16 +328,26 @@ function legacy_runtime_path_present(cfg) {
     return fs.stat(cfg.legacy_runtime_base) != null;
 }
 
+// The legacy runtime ran its own copy of nfqws as `<legacy base>/nfq/nfqws
+// --qnum=<queue> ...`. Only a process that executes that very file with that
+// command line is stopped: one whose command line merely mentions the path
+// (a tail of its log, an editor, a support script) is not (UC-058).
 function stop_legacy_runtime_processes(cfg) {
     if (cfg.legacy_runtime_base == "")
         return;
-    let needle = cfg.legacy_runtime_base + "/nfq/nfqws";
-    for (let line in split(command_output_from_args([ "ps", "w" ]), "\n")) {
-        if (index(line, needle) < 0)
+    let binary = cfg.legacy_runtime_base + "/nfq/nfqws";
+    for (let pid in fs.lsdir("/proc") || []) {
+        if (match(pid, /^[1-9][0-9]*$/) == null)
             continue;
-        let fields = split(trim(as_string(line)), /[ \t\r\n]+/);
-        if (length(fields) > 0)
-            command_success_from_args([ "kill", fields[0] ]);
+        // The legacy runtime directory may already be gone.
+        if (replace(as_string(fs.readlink("/proc/" + pid + "/exe")), / \(deleted\)$/, "") != binary)
+            continue;
+        let argv = split(as_string(fs.readfile("/proc/" + pid + "/cmdline")), "\0");
+        if (argv[0] != binary || match(as_string(argv[1]), /^--qnum=[0-9]+$/) == null)
+            continue;
+        let ticks = process_identity.start_ticks(pid);
+        if (ticks != "")
+            process_identity.signal_record({ pid, ticks }, binary, [ binary, argv[1] ], false, "TERM");
     }
 }
 

@@ -245,14 +245,6 @@ function mkdir_p(paths) {
     return length(args) <= 2 || run_args(args);
 }
 
-function safe_rm_rf(path) {
-    path = as_string(path);
-    if (path == "" || substr(path, 0, length("/var/run/forkop/")) != "/var/run/forkop/")
-        return true;
-
-    return run_args([ "rm", "-rf", path ]);
-}
-
 function first_line_field_from_text(data, field_index) {
     let newline = index(as_string(data), "\n");
     let line = newline >= 0 ? substr(data, 0, newline) : data;
@@ -1793,7 +1785,6 @@ function context_from_runtime() {
         sing_box_variant_state_file: constant_value(constants, "SB_VARIANT_STATE_FILE"),
         sing_box_version_state_file: constant_value(constants, "SB_VERSION_STATE_FILE"),
         sing_box_managed_service_marker: constant_value(constants, "SB_MANAGED_SERVICE_MARKER"),
-        zapret_legacy_runtime_base_dir: constant_value(constants, "ZAPRET_LEGACY_RUNTIME_BASE_DIR"),
         zapret_state_dir: constant_value(constants, "ZAPRET_STATE_DIR"),
         zapret_pid_dir: constant_value(constants, "ZAPRET_PID_DIR"),
         zapret_child_pid_dir: constant_value(constants, "ZAPRET_CHILD_PID_DIR"),
@@ -1978,25 +1969,6 @@ function has_enabled_rule_action(action) {
     return false;
 }
 
-function cleanup_legacy_zapret_runtime(ctx) {
-    let base = as_string(ctx.zapret_legacy_runtime_base_dir);
-    if (base == "")
-        return;
-
-    let needle = base + "/nfq/nfqws";
-    for (let line in split(command_output_from_args([ "ps", "w" ]), "\n")) {
-        if (index(as_string(line), needle) < 0)
-            continue;
-
-        let fields = split(trim(as_string(line)), /[ \t]+/);
-        let pid = length(fields) > 0 ? as_string(fields[0]) : "";
-        if (match(pid, /^[0-9]+$/) != null)
-            run_args([ "kill", pid ]);
-    }
-
-    safe_rm_rf(base);
-}
-
 function check_provider_requirement(action, display_name, bin_path, dirs, missing_message, prepare_failure_message) {
     if (!has_enabled_rule_action(action))
         return;
@@ -2010,9 +1982,9 @@ function check_provider_requirement(action, display_name, bin_path, dirs, missin
         fail_requirement(prepare_failure_message, "fatal");
 }
 
+// The legacy zapret runtime has one owner: the zapret start-runtime of
+// providers/nfqueue/runtime.uc (UC-058).
 function check_provider_requirements(ctx) {
-    cleanup_legacy_zapret_runtime(ctx);
-
     check_provider_requirement(
         "zapret",
         "Zapret",

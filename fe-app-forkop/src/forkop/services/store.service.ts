@@ -167,6 +167,8 @@ export interface StoreType {
       forkopRunning: number;
       forkopEnabled: number;
       forkopStatus: string;
+      // Stopped by the user, as opposed to down after a failure (D-15).
+      forkopStoppedByUser: number;
     };
   };
   sectionsWidget: {
@@ -288,6 +290,7 @@ const initialStore: StoreType = {
       forkopRunning: 0,
       forkopEnabled: 0,
       forkopStatus: '',
+      forkopStoppedByUser: 0,
     },
   },
   sectionsWidget: {

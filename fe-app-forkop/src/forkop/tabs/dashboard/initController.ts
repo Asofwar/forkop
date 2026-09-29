@@ -117,6 +117,7 @@ function overviewInput(): OverviewInput {
     health: overviewHealth,
     availability: getDashboardServiceAvailability(),
     forkopEnabled: Boolean(services.data.forkopEnabled),
+    forkopStoppedByUser: Boolean(services.data.forkopStoppedByUser),
     singBoxRunning: Boolean(services.data.singbox),
     groups: state.sectionsWidget.data,
     ruleCount: overviewRuleCount,

@@ -153,6 +153,12 @@ describe('labels and tones', () => {
     );
     expect(describeStatus('check', 'loading').label).toBe('Checking…');
     expect(describeStatus('health', 'ok').label).toBe('Healthy');
+    // Stopped by the user is not a failure (D-15).
+    expect(describeStatus('health', 'stopped')).toEqual({
+      status: 'off',
+      label: 'Stopped by user',
+      tone: 'muted',
+    });
   });
 });
 

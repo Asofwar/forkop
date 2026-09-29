@@ -27,6 +27,8 @@ export namespace Forkop {
     | 'error'
     | 'transitioning'
     | 'recovered'
+    // Forkop stopped by the user (diagnostics/health.uc; D-15).
+    | 'stopped'
     | 'unknown';
 
   export interface HealthStatus {
@@ -712,6 +714,8 @@ export namespace Forkop {
     enabled: number;
     status: string;
     dns_configured?: number;
+    // 1 while an explicit stop holds Forkop down (D-15): not a failure.
+    stopped_by_user?: number;
   }
 
   export interface GetOutboundMetadata {

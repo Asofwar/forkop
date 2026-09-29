@@ -15,7 +15,8 @@ const UI_UC = LIB_DIR + "/service/ui.uc";
 const STATE_DIR = getenv("FORKOP_UI_STATE_DIR") || "/var/run/forkop/ui-state";
 const PENDING_RELOAD_FILE = getenv("FORKOP_PENDING_RELOAD_FILE") || "/var/run/forkop/reload.pending";
 const START_IN_PROGRESS_FILE = getenv("FORKOP_START_IN_PROGRESS_FILE") || "/var/run/forkop/start.in-progress";
-// An explicit stop (service/initd.uc, service/lifecycle.uc; UC-012).
+// An explicit stop (service/initd.uc, service/lifecycle.uc; UC-012): until an
+// explicit start the runtime stays down (D-15, UC-056).
 const STOP_REQUESTED_FILE = getenv("FORKOP_STOP_REQUESTED_FILE") ||
     (getenv("FORKOP_RUNTIME_STATE_DIR") || "/var/run/forkop") + "/stop.requested";
 const SERVICE_ACTION_DIR = getenv("FORKOP_UI_SERVICE_ACTION_DIR") || STATE_DIR + "/service-actions";
@@ -1074,6 +1075,12 @@ function ui_capabilities_json() {
     write_json(capability_flags());
 }
 
+// An explicit stop that holds the runtime down (D-15, UC-056), told apart
+// from a runtime that is down without one (a failed start, a crash).
+function stopped_by_user(running) {
+    return !running && fs.stat(STOP_REQUESTED_FILE) != null;
+}
+
 function current_ui_state_json() {
     refresh_action_dirs();
 
@@ -1104,7 +1111,8 @@ function current_ui_state_json() {
                 running: forkop_is_running,
                 enabled: forkop_is_enabled,
                 status: forkop_status,
-                dns_configured: dns_configured() ? 1 : 0
+                dns_configured: dns_configured() ? 1 : 0,
+                stopped_by_user: stopped_by_user(forkop_is_running) ? 1 : 0
             },
             sing_box: {
                 running: sing_box_is_running,

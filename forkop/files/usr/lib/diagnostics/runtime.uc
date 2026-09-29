@@ -18,6 +18,9 @@ const FORKOP_RELEASE_REPO = getenv("FORKOP_RELEASE_REPO") || constants.FORKOP_RE
 const FORKOP_LUCI_VIEW_DIR = getenv("FORKOP_LUCI_VIEW_DIR") || constants.FORKOP_LUCI_VIEW_DIR || "/www/luci-static/resources/view/forkop";
 const RUNTIME_STATE_DIR = getenv("FORKOP_RUNTIME_STATE_DIR") || "/var/run/forkop";
 const SYSTEM_INFO_CACHE_FILE = getenv("FORKOP_SYSTEM_INFO_CACHE_FILE") || RUNTIME_STATE_DIR + "/system-info.json";
+// An explicit stop (service/initd.uc, service/lifecycle.uc): until an
+// explicit start the runtime stays down (D-15, UC-056).
+const STOP_REQUESTED_FILE = getenv("FORKOP_STOP_REQUESTED_FILE") || RUNTIME_STATE_DIR + "/stop.requested";
 const SYSTEM_INFO_CACHE_TTL = int(getenv("FORKOP_SYSTEM_INFO_CACHE_TTL") || "3600");
 const TMP_SING_BOX_FOLDER = getenv("TMP_SING_BOX_FOLDER") || constants.TMP_SING_BOX_FOLDER || "/tmp/sing-box";
 const TMP_RULESET_FOLDER = getenv("TMP_RULESET_FOLDER") || constants.TMP_RULESET_FOLDER || TMP_SING_BOX_FOLDER + "/rulesets";
@@ -1179,12 +1182,13 @@ function service_status_label(running, enabled) {
     return arg_number(enabled) == 1 ? "stopped but enabled" : "stopped & disabled";
 }
 
-function write_service_status(running, enabled, dns_configured) {
+function write_service_status(running, enabled, dns_configured, extra) {
     write_json({
         running,
         enabled,
         status: service_status_label(running, enabled),
-        dns_configured
+        dns_configured,
+        ...(extra || {})
     });
 }
 
@@ -1209,7 +1213,11 @@ function get_status() {
     ]) ? 1 : 0;
     let enabled = file_executable("/etc/rc.d/S99" + FORKOP_SERVICE_NAME) ? 1 : 0;
     let dns_configured = dnsmasq_has_forkop_dns() ? 1 : 0;
-    write_service_status(running, enabled, dns_configured);
+    // Down because an explicit stop holds it down, not a failed start or a
+    // crash (D-15, UC-056).
+    write_service_status(running, enabled, dns_configured, {
+        stopped_by_user: running == 0 && fs.stat(STOP_REQUESTED_FILE) != null ? 1 : 0
+    });
     return 0;
 }
 

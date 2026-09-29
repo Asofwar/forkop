@@ -92,6 +92,7 @@ function input(patch: Partial<OverviewInput> = {}): OverviewInput {
     health: health(),
     availability: 'running',
     forkopEnabled: true,
+    forkopStoppedByUser: false,
     singBoxRunning: true,
     groups: [
       group('VPN', [
@@ -159,6 +160,33 @@ describe('overview state', () => {
     );
     expect(off.status).toBe('off');
     expect(off.stopped).toBe(true);
+  });
+
+  it('tells a stop by the user from a runtime that is down (D-15)', () => {
+    const byUser = overviewState(
+      input({ availability: 'stopped', forkopStoppedByUser: true }),
+    );
+    expect(byUser.status).toBe('off');
+    expect(byUser.title).toBe('Stopped by user');
+    expect(byUser.stopped).toBe(true);
+    expect(byUser.lines.map((line) => line.text)).toContain(
+      'Forkop X stays stopped until you start it: reloads, restores and updates do not start it.',
+    );
+    expect(byUser.lines.some((line) => line.tone === 'error')).toBe(false);
+
+    const down = overviewState(input({ availability: 'stopped' }));
+    expect(down.status).toBe('error');
+    expect(down.title).toBe('Not running');
+    expect(down.lines).toContainEqual({
+      text: 'Forkop X was not stopped by the user: its start failed or it stopped unexpectedly.',
+      tone: 'error',
+    });
+    // Autostart off and nobody stopped it: not running, no failure claimed.
+    const idle = overviewState(
+      input({ availability: 'stopped', forkopEnabled: false }),
+    );
+    expect(idle.title).toBe('Not running');
+    expect(idle.lines.some((line) => line.tone === 'error')).toBe(false);
   });
 
   it('warns about router DNS and an automatic rollback', () => {
@@ -288,7 +316,7 @@ describe('overview cards', () => {
       readonly: true,
     });
 
-    expect(text(node)).toContain('Forkop X is stopped');
+    expect(text(node)).toContain('Not running');
     expect(text(node)).not.toContain('Start Forkop X');
     expect(labels(node)).not.toContain('Service actions');
     expect(text(node)).not.toContain('Rules');

@@ -5077,6 +5077,7 @@ var initialStore = {
       forkopRunning: 0,
       forkopEnabled: 0,
       forkopStatus: "",
+      forkopStoppedByUser: 0,
     },
   },
   sectionsWidget: {
@@ -5499,6 +5500,7 @@ function applyServiceState(uiState) {
         forkopRunning: uiState.service.forkop.running,
         forkopEnabled: uiState.service.forkop.enabled,
         forkopStatus: uiState.service.forkop.status,
+        forkopStoppedByUser: uiState.service.forkop.stopped_by_user ?? 0,
       },
     },
     diagnosticsSystemInfo: normalizeSingBoxVariantFields(nextSystemInfo),
@@ -6125,6 +6127,9 @@ async function fetchServicesInfo() {
         forkopStatus: forkop.success
           ? forkop.data.status
           : previousData.forkopStatus,
+        forkopStoppedByUser: forkop.success
+          ? (forkop.data.stopped_by_user ?? 0)
+          : previousData.forkopStoppedByUser,
       },
     },
   });
@@ -6367,9 +6372,28 @@ function overviewState(input) {
   const lines = [];
   let status2;
   let title;
-  if (availability === "stopped") {
+  if (availability === "stopped" && input.forkopStoppedByUser) {
+    status2 = "off";
+    title = _("Stopped by user");
+    lines.push({
+      text: _(
+        "Forkop X stays stopped until you start it: reloads, restores and updates do not start it.",
+      ),
+    });
+    lines.push({
+      text: _("Traffic goes through the router without Forkop X."),
+    });
+  } else if (availability === "stopped") {
     status2 = input.forkopEnabled ? "error" : "off";
-    title = _("Forkop X is stopped");
+    title = _("Not running");
+    if (input.forkopEnabled) {
+      lines.push({
+        text: _(
+          "Forkop X was not stopped by the user: its start failed or it stopped unexpectedly.",
+        ),
+        tone: "error",
+      });
+    }
     lines.push({
       text: _("Traffic goes through the router without Forkop X."),
     });
@@ -7478,6 +7502,7 @@ function overviewInput() {
     health: overviewHealth,
     availability: getDashboardServiceAvailability(),
     forkopEnabled: Boolean(services.data.forkopEnabled),
+    forkopStoppedByUser: Boolean(services.data.forkopStoppedByUser),
     singBoxRunning: Boolean(services.data.singbox),
     groups: state.sectionsWidget.data,
     ruleCount: overviewRuleCount,

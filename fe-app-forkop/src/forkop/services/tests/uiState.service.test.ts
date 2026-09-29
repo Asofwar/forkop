@@ -54,6 +54,22 @@ describe('applyUiStateToStore', () => {
     store.reset();
   });
 
+  it('keeps a stop by the user apart from a runtime that is down (D-15)', () => {
+    const stopped = createUiState();
+    stopped.service.forkop = {
+      running: 0,
+      enabled: 1,
+      status: 'stopped but enabled',
+      stopped_by_user: 1,
+    };
+    applyUiStateToStore(stopped);
+    expect(store.get().servicesInfoWidget.data.forkopStoppedByUser).toBe(1);
+
+    // An older backend does not report it: never read as stopped by the user.
+    applyUiStateToStore(createUiState());
+    expect(store.get().servicesInfoWidget.data.forkopStoppedByUser).toBe(0);
+  });
+
   it('applies service, capability, and running action state before first render', () => {
     applyUiStateToStore(
       createUiState({

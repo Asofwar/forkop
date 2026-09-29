@@ -22,6 +22,9 @@ export interface OverviewInput {
   health: Forkop.HealthStatus | null;
   availability: 'loading' | 'running' | 'stopped' | 'unavailable';
   forkopEnabled: boolean;
+  // Stopped by the user, as opposed to down after a failed start or a
+  // crash (D-15).
+  forkopStoppedByUser: boolean;
   singBoxRunning: boolean;
   groups: Forkop.OutboundGroup[];
   ruleCount: number | null;
@@ -125,9 +128,29 @@ export function overviewState(input: OverviewInput): OverviewState {
   let status: SemanticStatus;
   let title: string;
 
-  if (availability === 'stopped') {
+  if (availability === 'stopped' && input.forkopStoppedByUser) {
+    status = 'off';
+    title = _('Stopped by user');
+    lines.push({
+      text: _(
+        'Forkop X stays stopped until you start it: reloads, restores and updates do not start it.',
+      ),
+    });
+    lines.push({
+      text: _('Traffic goes through the router without Forkop X.'),
+    });
+  } else if (availability === 'stopped') {
+    // Nobody stopped it: a start failed or the runtime went down.
     status = input.forkopEnabled ? 'error' : 'off';
-    title = _('Forkop X is stopped');
+    title = _('Not running');
+    if (input.forkopEnabled) {
+      lines.push({
+        text: _(
+          'Forkop X was not stopped by the user: its start failed or it stopped unexpectedly.',
+        ),
+        tone: 'error',
+      });
+    }
     lines.push({
       text: _('Traffic goes through the router without Forkop X.'),
     });

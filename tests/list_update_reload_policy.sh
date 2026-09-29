@@ -108,7 +108,7 @@ grep -Fq 'LIST_UPDATE_RUNTIME_STATE_FILE' "$UPDATES_UC" ||
   fail "a RAM-only successful update must suppress duplicate downloads during the same boot"
 grep -Fq 'runtime-list-cache-active' "$LIFECYCLE_UC" ||
   fail "service reload must preserve a newer RAM-only list generation"
-grep -Fq 'function prepare_list_downloads(sections, proxy_address)' "$UPDATES_UC" ||
+grep -Fq 'function prepare_list_downloads(sections, proxy_address, unlocked)' "$UPDATES_UC" ||
   fail "all remote list sources must pass preflight before active state changes"
 grep -Fq 'function restore_list_nft_snapshot()' "$UPDATES_UC" ||
   fail "an aborted list transaction must restore the active nftables table"

@@ -109,6 +109,9 @@ let list_download_staging_dir = "";
 let list_download_cache = {};
 let list_download_metadata = [];
 let list_download_sequence = 0;
+// Sources whose download through the service proxy failed before reload.lock
+// was taken: { url, format, path }.
+let list_download_retry = [];
 let list_update_signature_at_start = "";
 let subscription_outbounds_changed = false;
 let runtime_generation_commit_changed = false;
@@ -3098,9 +3101,24 @@ function list_preflight_entries(sections) {
     return entries;
 }
 
-function prepare_list_downloads(sections, proxy_address) {
+function abandon_list_downloads(url) {
+    log_message("Failed to preflight list source " + safe_remote_source_identity(url) + "; keeping the active generation", "error");
+    command_success_from_args([ "rm", "-rf", list_download_staging_dir ]);
+    list_download_staging_dir = "";
+    list_download_cache = {};
+    list_download_retry = [];
+    return false;
+}
+
+// unlocked: the downloads run before reload.lock is taken (UC-057). A DNS
+// failover switch or a subscription update may then be restarting the
+// service proxy; a source that failed through it is downloaded again under
+// the lock (retry_list_downloads). A direct download does not depend on the
+// proxy, and its failure fails the update at once.
+function prepare_list_downloads(sections, proxy_address, unlocked) {
     list_download_cache = {};
     list_download_metadata = [];
+    list_download_retry = [];
     list_download_sequence = 0;
     list_download_staging_dir = temp_path();
     if (list_download_staging_dir != "")
@@ -3113,15 +3131,15 @@ function prepare_list_downloads(sections, proxy_address) {
     for (let entry in list_preflight_entries(sections)) {
         list_download_sequence++;
         let path = list_download_staging_dir + "/source-" + as_string(list_download_sequence);
-        if (!download_to_file_network(entry.url, path, proxy_address) ||
-            !validate_staged_list_download(path, entry.format)) {
-            log_message("Failed to preflight list source " + safe_remote_source_identity(entry.url) + "; keeping the active generation", "error");
-            command_success_from_args([ "rm", "-rf", list_download_staging_dir ]);
-            list_download_staging_dir = "";
-            list_download_cache = {};
-            return false;
+        let downloaded = download_to_file_network(entry.url, path, proxy_address);
+        if (!downloaded && unlocked && as_string(proxy_address) != "") {
+            log_message("List source " + safe_remote_source_identity(entry.url) + " failed through the service proxy; retrying it once the runtime lock is free", "warn");
+            push(list_download_retry, { url: entry.url, format: entry.format, path });
         }
-        list_download_cache[entry.url] = path;
+        else if (!downloaded || !validate_staged_list_download(path, entry.format))
+            return abandon_list_downloads(entry.url);
+        else
+            list_download_cache[entry.url] = path;
         push(list_download_metadata, {
             name: "source-" + as_string(list_download_sequence),
             url: entry.url,
@@ -3131,12 +3149,25 @@ function prepare_list_downloads(sections, proxy_address) {
     return true;
 }
 
+// Under reload.lock: nothing restarts the service proxy now.
+function retry_list_downloads(proxy_address) {
+    for (let entry in list_download_retry) {
+        if (!download_to_file_network(entry.url, entry.path, proxy_address) ||
+            !validate_staged_list_download(entry.path, entry.format))
+            return abandon_list_downloads(entry.url);
+        list_download_cache[entry.url] = entry.path;
+    }
+    list_download_retry = [];
+    return true;
+}
+
 function cleanup_list_downloads() {
     if (list_download_staging_dir != "")
         command_success_from_args([ "rm", "-rf", list_download_staging_dir ]);
     list_download_staging_dir = "";
     list_download_cache = {};
     list_download_metadata = [];
+    list_download_retry = [];
 }
 
 function load_persistent_list_sources() {
@@ -4001,7 +4032,7 @@ function list_update() {
     }
     log_message("Downloading and processing lists", "info");
     let sections = uci_sections("section");
-    if (!prepare_list_downloads(sections, proxy_address))
+    if (!prepare_list_downloads(sections, proxy_address, !list_update_prepare_only))
         finish_list_update(1, false);
 
     // Share the same lock as lifecycle reloads for the transaction. init.d
@@ -4013,6 +4044,8 @@ function list_update() {
         // Runs the reloads queued during the downloads as well.
         finish_list_update(1, false);
     }
+    if (!retry_list_downloads(proxy_address))
+        finish_list_update(1, false);
 
     if (!begin_list_ruleset_snapshot()) {
         log_message("Could not snapshot the active rule sets; aborting the list transaction", "error");

@@ -81,6 +81,9 @@ cat >"$WORK_DIR/bin/forkop" <<'SH'
 case "$1" in
   start)
     printf 'start\n' >>"$TEST_WORK/starts"
+    # A slow cold start runs until start.slow is removed.
+    n=0
+    while [ -e "$TEST_WORK/start.slow" ] && [ "$n" -lt 600 ]; do n=$((n + 1)); sleep 0.1; done
     status="$(cat "$TEST_WORK/start.status" 2>/dev/null || echo 0)"
     [ "$status" != 0 ] || [ ! -e "$TEST_WORK/runtime.comes-up" ] || : >"$TEST_WORK/runtime.up"
     # A reload drained right after the start takes the runtime out of
@@ -292,6 +295,7 @@ unset FORKOP_UI_ACTION_TRACKED
 #    consumed either way, so such a re-run neither waits for the runtime that
 #    came up meanwhile nor starts a Forkop that was stopped since.
 postinst() {
+  FORKOP_POSTINST_START_WAIT_SECONDS="${POSTINST_WAIT:-15}" \
   FORKOP_INIT="$FORKOP_SERVICE_INIT" \
   FORKOP_CONFIG_PATH="$WORK_DIR/forkop.conf" \
   FORKOP_DEFAULT_CONFIG_PATH="$WORK_DIR/forkop.conf" \
@@ -331,6 +335,25 @@ printf '1\n' >"$WORK_DIR/was-running"
 postinst || fail "postinst failed for a start that succeeded: $(cat "$WORK_DIR/postinst.out")"
 [ ! -e "$WORK_DIR/was-running" ] || fail "postinst kept the upgrade hand-off after a successful start"
 [ -e "$WORK_DIR/runtime.up" ] || fail "postinst did not start Forkop"
+# A slow cold start runs inside the package manager's transaction (it holds
+# its lock): the postinst waits for it only for its own, shorter bound, then
+# says that the start carries on instead of reporting a failure.
+reset_case
+rm -f "$WORK_DIR/starts"
+start_succeeds
+: >"$WORK_DIR/start.slow"
+printf '1\n' >"$WORK_DIR/was-running"
+began="$(date +%s)"
+POSTINST_WAIT=2 postinst || fail "postinst failed for a slow start: $(cat "$WORK_DIR/postinst.out")"
+[ "$(($(date +%s) - began))" -lt 10 ] || fail "postinst waited for a slow start beyond its own bound"
+grep -q 'still starting after the package upgrade' "$WORK_DIR/postinst.out" ||
+  fail "postinst did not say that the slow start carries on: $(cat "$WORK_DIR/postinst.out")"
+if grep -q 'did not start after the package upgrade' "$WORK_DIR/postinst.out"; then
+  fail "postinst reported a slow start as failed"
+fi
+[ ! -e "$WORK_DIR/was-running" ] || fail "postinst kept the upgrade hand-off of a slow start"
+rm -f "$WORK_DIR/start.slow"
+wait_until 20 test -e "$WORK_DIR/runtime.up" || fail "the slow start did not finish after the postinst"
 
 # 9. Component actions act on the real outcome (components/action.uc).
 python3 - "$ROOT_DIR" "$WORK_DIR/action-probe.uc" <<'PY'

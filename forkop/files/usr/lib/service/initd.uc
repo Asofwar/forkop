@@ -786,6 +786,9 @@ function start_and_wait(action, reason, timeout) {
         return status;
     if (result == null) {
         command_success_from_args([ "logger", "-t", SERVICE_NAME, "[warn] Forkop " + action + " did not report its result within " + as_string(timeout) + " s" ]);
+        // The start may still be at work: a caller with a shorter bound (the
+        // package postinst) tells this from a failed start.
+        print("pending\n");
         return 1;
     }
     if (result != 0)

@@ -26,6 +26,11 @@ const SING_BOX_CRONET = env("FORKOP_SING_BOX_CRONET", "/usr/lib/libcronet.so");
 const SING_BOX_MANAGED_MARKER = env("SB_MANAGED_SERVICE_MARKER", "Forkop managed sing-box service for binary variants");
 const PACKAGE_UPGRADE_STATE = env("FORKOP_PACKAGE_UPGRADE_STATE", "/tmp/forkop-package-was-running");
 const UPGRADE_SING_BOX_WAIT_SECONDS = int(env("FORKOP_UPGRADE_SING_BOX_WAIT_SECONDS", "15"));
+// The start after an upgrade runs while the package manager holds its lock;
+// a slow cold start must not hold the package operation up for the start's
+// full timeout. The start carries on after this bound, logs its outcome and
+// schedules its own retry.
+const POSTINST_START_WAIT_SECONDS = env("FORKOP_POSTINST_START_WAIT_SECONDS", "60");
 const PROC_DIR = env("FORKOP_PROC_DIR", "/proc");
 const COMPONENT_UPDATE_CHECK_CACHE_DIR = env("FORKOP_COMPONENT_UPDATE_CHECK_CACHE_DIR", "/var/run/forkop/component-update-checks");
 const COMPONENT_UPDATE_CHECK_STATE_FILE = env("FORKOP_COMPONENT_UPDATE_CHECK_STATE_FILE", "/var/run/forkop/component-update-check.timestamp");
@@ -49,6 +54,15 @@ function normalize_status(status) {
 
 function command_success_from_args(args) {
     return normalize_status(system(command_from_args(args) + " >/dev/null 2>&1")) == 0;
+}
+
+// Status and standard output (stderr discarded).
+function command_capture_from_args(args) {
+    let pipe = fs.popen(command_from_args(args) + " 2>/dev/null", "r");
+    if (!pipe)
+        return { status: 1, output: "" };
+    let output = as_string(pipe.read("all"));
+    return { status: normalize_status(pipe.close()), output };
 }
 
 function path_exists(path) {
@@ -239,8 +253,12 @@ function postinst_restore() {
     // report a failure. It does not fail the package operation, as with
     // OpenWrt's default postinst: a failed start schedules its own retry,
     // and the in-app upgrade checks the runtime itself.
-    if (!command_success_from_args([ "env", "FORKOP_SERVICE_INIT=" + INIT_PATH,
-        "ucode", "-L", LIB_DIR, LIB_DIR + "/service/initd.uc", "start-and-wait", "start" ]))
+    let started = command_capture_from_args([ "env", "FORKOP_SERVICE_INIT=" + INIT_PATH,
+        "ucode", "-L", LIB_DIR, LIB_DIR + "/service/initd.uc", "start-and-wait", "start", "",
+        POSTINST_START_WAIT_SECONDS ]);
+    if (started.status != 0 && match(started.output, /(^|\n)pending\n/) != null)
+        warn("Forkop is still starting after the package upgrade; see the Forkop log for its outcome.\n");
+    else if (started.status != 0)
         warn("Forkop did not start after the package upgrade; see the Forkop log.\n");
     return true;
 }

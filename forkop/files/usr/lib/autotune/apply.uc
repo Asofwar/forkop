@@ -244,8 +244,10 @@ function guards_present() {
 // A lifecycle action (reload/start/stop) holds the reload lock, and a reload
 // requested meanwhile is queued: either would run outside this transaction
 // (a queued reload after the guard is gone would confirm LKG unverified).
+// The owner record names the pid on its first line; service/initd.uc adds
+// the owner's start ticks on a second one.
 function service_action() {
-    let pid = trim(as_string(fs.readfile(RELOAD_LOCK + "/pid")));
+    let pid = trim(split(as_string(fs.readfile(RELOAD_LOCK + "/pid")), "\n")[0]);
     if (match(pid, /^[1-9][0-9]*$/) != null && fs.stat("/proc/" + pid) != null) return "service_action_in_progress";
     if (fs.stat(PENDING_RELOAD) != null) return "reload_pending";
     return null;

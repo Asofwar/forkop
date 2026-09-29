@@ -34,9 +34,11 @@ start_service() {
     # verifies the separate sing-box procd service, so doing the full workflow
     # inside that transaction deadlocks nested service control until procd's
     # timeout. Detach the tracked worker and let rcS continue; LuCI reports the
-    # action as "starting" until service/initd.uc completes it.
+    # action as "starting" until service/initd.uc completes it. This shell
+    # exits as soon as start_service returns, so the worker owns reload.lock
+    # and the UI job under its own identity, not under $$.
     if [ -e "/proc/$$/fd/1000" ]; then
-        initd_ucode start-service "$1" "$$" </dev/null >/dev/null 2>&1 1000>&- &
+        initd_ucode start-service "$1" </dev/null >/dev/null 2>&1 1000>&- &
         FORKOP_LAST_START_STATUS=0
         return 0
     fi

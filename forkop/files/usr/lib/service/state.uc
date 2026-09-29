@@ -4,6 +4,7 @@ let fs = require("fs");
 let common = require("core.common");
 let uci_core = require("core.uci");
 let netstat = require("core.netstat");
+let process_identity = require("core.process_identity");
 let rule_config = require("config.rule");
 let connections = require("config.connections");
 let zapret_validator = require("providers.zapret.validator");
@@ -320,6 +321,16 @@ function lock_dir_write_owner(lock_dir, owner_pid) {
     return write_text_file(as_string(lock_dir) + "/pid", as_string(owner_pid) + "\n");
 }
 
+// An owner record may carry the owner's start ticks on a second line
+// (service/initd.uc writes them for a start or reload): the lock is then held
+// only while that very process runs, not by a process that reused its pid.
+function lock_dir_owner_alive(lock_dir) {
+    let lines = split(as_string(fs.readfile(as_string(lock_dir) + "/pid")), "\n");
+    let pid = trim(as_string(lines[0]));
+    let ticks = trim(as_string(lines[1]));
+    return pid_alive(pid) && (ticks == "" || process_identity.start_ticks(pid) == ticks);
+}
+
 function release_runtime_dir_lock(lock_dir) {
     lock_dir = as_string(lock_dir);
     if (lock_dir == "")
@@ -342,7 +353,7 @@ function acquire_runtime_dir_lock(lock_dir, owner_pid) {
         return false;
     }
 
-    if (pid_alive(first_line_value(lock_dir + "/pid")))
+    if (lock_dir_owner_alive(lock_dir))
         return false;
 
     command_success_from_args([ "rm", "-f", lock_dir + "/pid" ]);

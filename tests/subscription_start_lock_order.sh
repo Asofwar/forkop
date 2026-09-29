@@ -17,7 +17,9 @@ set -euo pipefail
 # runs in its own process group under a deadline, so a deadlock fails the
 # test within seconds instead of hanging it. Both orders are checked: the
 # update arriving while the start holds reload.lock, and the start arriving
-# while the update holds its locks.
+# while the update holds its locks. Each order runs with a start that waits
+# in its rc.common shell and with the detached start that rcS and procd get
+# (fd 1000 open), whose worker holds reload.lock itself (UC-010).
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REAL_LIB="$ROOT_DIR/forkop/files/usr/lib"
@@ -65,6 +67,7 @@ export FORKOP_RUNTIME_STATE_DIR="$WORK_DIR/run/forkop"
 export FORKOP_PENDING_RELOAD_FILE="$WORK_DIR/run/forkop/reload.pending"
 export FORKOP_SERVICE_INIT="$WORK_DIR/bin/no-init"
 export FORKOP_UCI_STATE_FILE="$WORK_DIR/uci.state"
+export A_OWNER_FILE="$WORK_DIR/a.owner"
 
 # Nothing here may reach the host's syslog or init scripts.
 printf '#!/bin/sh\nexit 0\n' >"$WORK_DIR/bin/logger"
@@ -79,6 +82,7 @@ ev() { printf '%s\n' "$1" >>"$EVENTS"; }
 state() { ucode -L "$REAL_LIB" "$REAL_LIB/service/state.uc" "$@"; }
 case "$1" in
   start)
+    sed -n 1p "$RELOAD_LOCK/pid" >"$A_OWNER_FILE"
     ev "A start begin"
     if [ -n "${A_GATE:-}" ]; then
       n=0
@@ -103,7 +107,9 @@ SH
 
 # rc.common stand-in: `rc <action> [args]` sources the real init script and
 # runs its handler. Without RC_PROCD_LOCK the start runs synchronously and
-# the waiting rc.common shell ($$) is a live reload.lock owner.
+# the waiting rc.common shell ($$) is a live reload.lock owner. With it, fd
+# 1000 is open as under procd.sh and start_service detaches its worker; bash
+# runs the stand-in then, since dash has no file descriptors above 9.
 cat >"$WORK_DIR/rc" <<'SH'
 #!/bin/sh
 action="$1"
@@ -179,11 +185,26 @@ start_actor() {
   actors+=("$LAST_ACTOR")
 }
 
+RC_MODE=sync
 launch_start() {
+  local shell=sh procd_lock=""
+  if [ "$RC_MODE" = detached ]; then
+    shell=bash
+    procd_lock="$WORK_DIR/procd_forkop.lock"
+  fi
   start_actor env FORKOP_UI_ACTION_TRACKED=1 FORKOP_BIN="$WORK_DIR/bin/forkop" \
     FORKOP_START_RUNTIME_LOCK_WAIT_SECONDS=20 FORKOP_START_RETRY_DELAY_SECONDS=300 \
-    A_GATE="${A_GATE:-}" sh "$WORK_DIR/rc" start manual >"$WORK_DIR/a.out" 2>&1
+    RC_PROCD_LOCK="$procd_lock" A_GATE="${A_GATE:-}" "$shell" "$WORK_DIR/rc" start manual >"$WORK_DIR/a.out" 2>&1
   A_PID="$LAST_ACTOR"
+}
+
+# The synchronous start is over when its rc.common shell returns. The detached
+# one returns at once; its worker, the reload.lock owner the backend saw, runs
+# until it has released the lock.
+start_done() {
+  process_gone "$A_PID" || return 1
+  [ "$RC_MODE" = detached ] || return 0
+  has_event '^A start end$' && [ -s "$A_OWNER_FILE" ] && process_gone "$(cat "$A_OWNER_FILE")"
 }
 
 launch_update() {
@@ -196,7 +217,7 @@ has_event() { grep -q "$1" "$EVENTS" 2>/dev/null; }
 
 reset_case() {
   : >"$EVENTS"
-  rm -f "$WORK_DIR/a.gate" "$WORK_DIR/b.gate" "$FORKOP_PENDING_RELOAD_FILE"
+  rm -f "$WORK_DIR/a.gate" "$WORK_DIR/b.gate" "$FORKOP_PENDING_RELOAD_FILE" "$A_OWNER_FILE"
   [ ! -e "$RELOAD_LOCK" ] || fail "reload.lock leaked from the previous case"
   [ ! -e "$SUB_LOCK" ] || fail "subscription-update.lock leaked from the previous case"
 }
@@ -205,7 +226,7 @@ reset_case() {
 # other is the deadlock.
 finish_case() {
   local label="$1" status
-  if ! wait_until "$DEADLINE_SECONDS" process_gone "$A_PID" ||
+  if ! wait_until "$DEADLINE_SECONDS" start_done ||
     ! wait_until "$DEADLINE_SECONDS" process_gone "$B_PID"; then
     fail "$label: start and subscription update deadlocked on reload.lock/subscription-update.lock"
   fi
@@ -224,14 +245,23 @@ finish_case() {
 }
 
 # The start (inside reload.lock) and the update's cache request (inside both
-# locks) never overlap, and nobody takes subscription-update.lock while the
-# other one holds it.
+# locks) never overlap, and nobody takes reload.lock or
+# subscription-update.lock while the other one holds it.
 exclusive() {
   awk -v label="$1" '
     /^B update begin$/ { if (a_in) bad = "the update ran inside the start"; b_in = 1 }
     /^B update end$/ { b_in = 0 }
-    /^A start begin$/ { if (b_in) bad = "the start ran inside the update"; a_in = 1 }
+    /^A start begin$/ {
+      if (b_in) bad = "the start ran inside the update"
+      if (b_reload) bad = "the start took reload.lock from the update"
+      a_in = 1
+    }
     /^A start end$/ { a_in = 0 }
+    /^B acquire-runtime-dir-lock(-wait)? reload rc=0$/ {
+      if (a_in) bad = "the update took reload.lock from the start"
+      b_reload = 1
+    }
+    /^B call release-runtime-dir-lock reload$/ { b_reload = 0 }
     /^B acquire-runtime-dir-lock(-wait)? sub rc=0$/ {
       if (holder == "A") bad = "the update took subscription-update.lock from the start"
       holder = "B"
@@ -254,32 +284,34 @@ before() {
   ' "$EVENTS"
 }
 
-# 1. The start holds reload.lock and has not reached subscription-update.lock
-#    yet when a forced update arrives. The update must wait for reload.lock
-#    without holding subscription-update.lock; the start then completes and
-#    the update runs after it.
-reset_case
-A_GATE="$WORK_DIR/a.gate" launch_start
-wait_until 10 has_event '^A start begin$' || fail "start did not reach its backend: $(cat "$WORK_DIR/a.out")"
-[ -d "$RELOAD_LOCK" ] || fail "start backend runs without reload.lock"
-B_GATE="" launch_update
-wait_until 10 has_event '^B call acquire-runtime-dir-lock-wait reload$' ||
-  fail "update did not reach its reload.lock wait: $(cat "$WORK_DIR/b.out")"
-touch "$WORK_DIR/a.gate"
-finish_case "update during start"
-before "A start end" "B update begin" || fail "update during start: the update did not wait for the start"
+for RC_MODE in sync detached; do
+  # 1. The start holds reload.lock and has not reached subscription-update.lock
+  #    yet when a forced update arrives. The update must wait for reload.lock
+  #    without holding subscription-update.lock; the start then completes and
+  #    the update runs after it.
+  reset_case
+  A_GATE="$WORK_DIR/a.gate" launch_start
+  wait_until 10 has_event '^A start begin$' || fail "$RC_MODE start did not reach its backend: $(cat "$WORK_DIR/a.out")"
+  [ -d "$RELOAD_LOCK" ] || fail "$RC_MODE start backend runs without reload.lock"
+  B_GATE="" launch_update
+  wait_until 10 has_event '^B call acquire-runtime-dir-lock-wait reload$' ||
+    fail "update did not reach its reload.lock wait: $(cat "$WORK_DIR/b.out")"
+  touch "$WORK_DIR/a.gate"
+  finish_case "update during $RC_MODE start"
+  before "A start end" "B update begin" || fail "update during $RC_MODE start: the update did not wait for the start"
 
-# 2. The update holds its locks when the start arrives. The start waits for
-#    reload.lock (START_RUNTIME_LOCK_WAIT_SECONDS) and runs after the update.
-reset_case
-B_GATE="$WORK_DIR/b.gate" launch_update
-wait_until 10 has_event '^B update begin$' || fail "update did not reach its cache request: $(cat "$WORK_DIR/b.out")"
-A_GATE="" launch_start
-# Let the start make its first reload.lock attempts while the update holds it.
-sleep 1
-has_event '^A start begin$' && fail "start ran its backend while the update held reload.lock"
-touch "$WORK_DIR/b.gate"
-finish_case "start during update"
-before "B update end" "A start begin" || fail "start during update: the start did not wait for the update"
+  # 2. The update holds its locks when the start arrives. The start waits for
+  #    reload.lock (START_RUNTIME_LOCK_WAIT_SECONDS) and runs after the update.
+  reset_case
+  B_GATE="$WORK_DIR/b.gate" launch_update
+  wait_until 10 has_event '^B update begin$' || fail "update did not reach its cache request: $(cat "$WORK_DIR/b.out")"
+  A_GATE="" launch_start
+  # Let the start make its first reload.lock attempts while the update holds it.
+  sleep 1
+  has_event '^A start begin$' && fail "$RC_MODE start ran its backend while the update held reload.lock"
+  touch "$WORK_DIR/b.gate"
+  finish_case "$RC_MODE start during update"
+  before "B update end" "A start begin" || fail "$RC_MODE start during update: the start did not wait for the update"
+done
 
 printf 'subscription/start lock order checks passed\n'

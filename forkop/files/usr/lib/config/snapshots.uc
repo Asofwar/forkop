@@ -312,8 +312,10 @@ function restore_guard_state() {
 // action: the next reload takes the free lock and its finish drains that
 // request. A restore relies on this, so recovery stays possible while the
 // current configuration cannot reload and keeps failing to drain the queue.
+// The owner record names the pid on its first line; service/initd.uc adds
+// the owner's start ticks on a second one.
 function service_action() {
-    let pid = trim(value(fs.readfile(RELOAD_LOCK + "/pid")));
+    let pid = trim(split(value(fs.readfile(RELOAD_LOCK + "/pid")), "\n")[0]);
     return match(pid, /^[1-9][0-9]*$/) != null && fs.stat("/proc/" + pid) != null ? "service_action_in_progress" : null;
 }
 // A reload that was only queued (another lifecycle action took the reload

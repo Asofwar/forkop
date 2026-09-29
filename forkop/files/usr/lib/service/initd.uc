@@ -3,6 +3,7 @@
 let fs = require("fs");
 let constants = require("core.constants");
 let uci_core = require("core.uci");
+let process_identity = require("core.process_identity");
 
 function as_string(value) {
     return value == null ? "" : "" + value;
@@ -187,8 +188,21 @@ function pid_alive(pid) {
     return match(pid, /^[0-9]+$/) != null && command_success_from_args([ "kill", "-0", pid ]);
 }
 
+// The owner record is the owner's pid and, when it can be read, its start
+// ticks on a second line (the core/process_identity record format): a pid
+// reused by another process does not keep the lock alive. Global lock
+// order: service/state.uc.
 function lock_dir_write_owner(lock_dir, owner_pid) {
-    return write_text_file(as_string(lock_dir) + "/pid", as_string(owner_pid) + "\n");
+    owner_pid = as_string(owner_pid);
+    let ticks = process_identity.start_ticks(owner_pid);
+    return write_text_file(as_string(lock_dir) + "/pid", owner_pid + "\n" + (ticks != "" ? ticks + "\n" : ""));
+}
+
+function lock_dir_owner_alive(lock_dir) {
+    let lines = split(as_string(fs.readfile(as_string(lock_dir) + "/pid")), "\n");
+    let pid = trim(lines[0]);
+    let ticks = trim(length(lines) > 1 ? lines[1] : "");
+    return pid_alive(pid) && (ticks == "" || process_identity.start_ticks(pid) == ticks);
 }
 
 function release_runtime_dir_lock(lock_dir) {
@@ -198,6 +212,12 @@ function release_runtime_dir_lock(lock_dir) {
 
     command_success_from_args([ "rm", "-f", lock_dir + "/pid" ]);
     command_success_from_args([ "rmdir", lock_dir ]);
+}
+
+// A holder whose lock was taken over must not delete the new owner's lock.
+function release_runtime_dir_lock_owned(lock_dir, owner_pid) {
+    if (first_line_value(as_string(lock_dir) + "/pid") == as_string(owner_pid))
+        release_runtime_dir_lock(lock_dir);
 }
 
 function acquire_runtime_dir_lock(lock_dir, owner_pid) {
@@ -213,7 +233,7 @@ function acquire_runtime_dir_lock(lock_dir, owner_pid) {
         return false;
     }
 
-    if (pid_alive(first_line_value(lock_dir + "/pid")))
+    if (lock_dir_owner_alive(lock_dir))
         return false;
 
     command_success_from_args([ "rm", "-f", lock_dir + "/pid" ]);
@@ -439,8 +459,10 @@ function restore_dnsmasq_failsafe() {
     return module_status(DNS_APPLY_UC, [ "failsafe-restore" ]);
 }
 
+// This ucode process. `sh -c 'echo $PPID'` names it only when /bin/sh execs
+// its last command (busybox ash); dash reports a shell that has exited.
 function owner_pid_value() {
-    let pid = trim(command_output_from_args([ "sh", "-c", "echo $PPID" ]));
+    let pid = as_string(fs.readlink("/proc/self"));
     return match(pid, /^[0-9]+$/) != null ? pid : "0";
 }
 
@@ -606,25 +628,34 @@ function start_plan(reason, owner_pid, settings, bin_ok) {
     shell_assignment("INITD_BIN_OK", plan.bin_ok ? "1" : "0");
 }
 
+// Without an owner (the detached init.d start, whose rc.common shell exits
+// at once) this process owns reload.lock and the UI job: it runs `forkop
+// start` and releases the lock itself, so the owner lives for the whole
+// start (UC-010).
 function start_service(reason, owner_pid) {
     print("Start Forkop\n");
-    let runtime_lock_owner = owner_pid || owner_pid_value();
-    if (!acquire_runtime_dir_lock_wait(RELOAD_LOCK_DIR, runtime_lock_owner, START_RUNTIME_LOCK_WAIT_SECONDS)) {
+    owner_pid = as_string(owner_pid) || owner_pid_value();
+    if (!acquire_runtime_dir_lock_wait(RELOAD_LOCK_DIR, owner_pid, START_RUNTIME_LOCK_WAIT_SECONDS)) {
         command_success_from_args([ "logger", "-t", SERVICE_NAME, "[warn] Forkop start deferred because a runtime reload did not finish in time" ]);
         return 1;
     }
 
     let plan = start_plan_value(reason, owner_pid, uci_settings(), null);
     if (!plan.bin_ok) {
-        release_runtime_dir_lock(RELOAD_LOCK_DIR);
+        release_runtime_dir_lock_owned(RELOAD_LOCK_DIR, owner_pid);
         return 1;
     }
 
     let status = command_status_from_args([ BIN_PATH, "start" ]);
-    release_runtime_dir_lock(RELOAD_LOCK_DIR);
+    release_runtime_dir_lock_owned(RELOAD_LOCK_DIR, owner_pid);
     if (status == 0) {
         clear_start_retry(START_RETRY_FILE);
         cancel_scheduled_start_retry(START_RETRY_PID_FILE);
+        // A reload requested during the start was queued behind reload.lock.
+        // A service action drains the queue when it finishes; without one,
+        // the start is the last holder and applies it, as a reload does.
+        if (file_exists(PENDING_RELOAD_FILE) && active_service_action_value() == "")
+            run_pending_reload_if_requested(PENDING_RELOAD_FILE, SERVICE_INIT);
     }
     else if (start_failure_blocks_retry(START_FAILURE_FILE)) {
         clear_start_retry(START_RETRY_FILE);

@@ -927,12 +927,15 @@ function trigger_plan(settings) {
     print("config\tconfig.change\t", CONFIG_NAME, "\t", SERVICE_INIT, "\treload\t", CONFIG_CHANGE_REASON, "\n");
     print("interface\tinterface.*.up\twan\t", SERVICE_INIT, "\thandle_wan_up\t\n");
 
+    // The reload for a monitored interface coming up carries the same reason
+    // as the one for wan (handle_wan_up): a reload that procd requests on its
+    // own does not start a runtime that was explicitly stopped (UC-012).
     if (badwan_enabled) {
         for (let iface in badwan_interfaces) {
             iface = trim(iface);
             if (iface == "" || iface == "wan")
                 continue;
-            print("interface\tinterface.*.up\t", iface, "\t", SERVICE_INIT, "\treload\t\n");
+            print("interface\tinterface.*.up\t", iface, "\t", SERVICE_INIT, "\treload\tbadwan_interface_up\n");
         }
     }
 }

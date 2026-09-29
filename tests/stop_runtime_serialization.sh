@@ -519,7 +519,7 @@ run_reload() {
   env FORKOP_LIB="$WORK_DIR/fake-lib" FAKE_CONFLICT="${FAKE_CONFLICT:-}" \
     ucode -L "$REAL_LIB" "$REAL_LIB/service/lifecycle.uc" reload "$1" >"$WORK_DIR/reload.out" 2>&1
 }
-for reason in list-content ruleset-cache pending subscription_deferred_recovery; do
+for reason in list-content ruleset-cache pending subscription_deferred_recovery on_config_change badwan_interface_up; do
   reset_case
   runtime_down
   printf '1\n' >"$STOP_MARKER"
@@ -527,6 +527,14 @@ for reason in list-content ruleset-cache pending subscription_deferred_recovery;
   [ ! -s "$EVENTS" ] || fail "background reload '$reason' touched the stopped runtime"
   grep -q "Reload '$reason' skipped" "$WORK_DIR/syslog" || fail "skipped background reload '$reason' was not logged"
 done
+# procd's reload for a monitored interface other than wan coming up is such
+# a background reload too, not a manual one.
+printf '{"settings":{"enable_badwan_interface_monitoring":"1","badwan_monitored_interfaces":"wan vpn0"}}\n' \
+  >"$WORK_DIR/trigger-settings.json"
+ucode -L "$REAL_LIB" "$REAL_LIB/service/initd.uc" trigger-plan-fixture "$WORK_DIR/trigger-settings.json" \
+  >"$WORK_DIR/trigger-plan" || fail "the procd trigger plan could not be built"
+grep -q "^interface	interface\.\*\.up	vpn0	.*	reload	badwan_interface_up\$" "$WORK_DIR/trigger-plan" ||
+  fail "the reload for a monitored interface coming up is not marked as a background reload: $(cat "$WORK_DIR/trigger-plan")"
 # Without an explicit stop, or for a manual reload, the gate stays open (the
 # refused ownership check stands in for the rest of the reload).
 reset_case

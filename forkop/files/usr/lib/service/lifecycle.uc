@@ -2296,9 +2296,10 @@ function disable_service() {
 let mode = ARGV[0] || "";
 let status = 1;
 
-if (mode == "main")
-    status = start_main();
-else if (mode == "start") {
+// "main" is kept as a compatibility alias of start. It must take the same
+// gated path: start_main() alone rebuilds the live nftables policy without
+// the ownership and failed-transition checks of start_inner() (UC-015).
+if (mode == "start" || mode == "main") {
     status = start();
     // start() ends an earlier explicit stop: a stop request now was made
     // during this start, and a start it abandoned or cut short did not fail

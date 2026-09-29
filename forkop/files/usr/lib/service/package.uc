@@ -228,16 +228,20 @@ function postinst_restore() {
         return false;
     }
 
-    // init.d exits 0 under procd before the detached start has run; the
-    // hand-off is consumed only once the start reported success and the
-    // runtime runs (service/initd.uc start-and-wait, UC-013).
-    if (!command_success_from_args([ "env", "FORKOP_SERVICE_INIT=" + INIT_PATH,
-        "ucode", "-L", LIB_DIR, LIB_DIR + "/service/initd.uc", "start-and-wait", "start" ])) {
-        warn("Forkop did not start after the package upgrade; see the Forkop log.\n");
-        return false;
-    }
-
+    // The hand-off is consumed before the start, whatever its outcome: opkg
+    // configures a package whose postinst failed again on every later
+    // install, and such a re-run must neither wait for the runtime that came
+    // up meanwhile nor start a Forkop that was stopped since.
     unlink_if_exists(PACKAGE_UPGRADE_STATE);
+
+    // init.d exits 0 under procd before the detached start has run: wait for
+    // the start's own result (service/initd.uc start-and-wait, UC-013) to
+    // report a failure. It does not fail the package operation, as with
+    // OpenWrt's default postinst: a failed start schedules its own retry,
+    // and the in-app upgrade checks the runtime itself.
+    if (!command_success_from_args([ "env", "FORKOP_SERVICE_INIT=" + INIT_PATH,
+        "ucode", "-L", LIB_DIR, LIB_DIR + "/service/initd.uc", "start-and-wait", "start" ]))
+        warn("Forkop did not start after the package upgrade; see the Forkop log.\n");
     return true;
 }
 

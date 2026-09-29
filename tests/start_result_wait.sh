@@ -79,6 +79,7 @@ cat >"$WORK_DIR/bin/forkop" <<'SH'
 #!/bin/sh
 case "$1" in
   start)
+    printf 'start\n' >>"$TEST_WORK/starts"
     status="$(cat "$TEST_WORK/start.status" 2>/dev/null || echo 0)"
     [ "$status" != 0 ] || [ ! -e "$TEST_WORK/runtime.comes-up" ] || : >"$TEST_WORK/runtime.up"
     exit "$status"
@@ -261,9 +262,12 @@ grep -q '"success": *true' "$UI_JOB" || fail "a successful UI start did not fini
 unset FORKOP_UI_ACTION_TRACKED
 
 # 8. The package postinst restores the pre-upgrade service and reports a
-#    start that did not come up; the upgrade hand-off is kept for it.
+#    start that did not come up, without failing the package operation: the
+#    failed start schedules its own retry, and opkg configures a package whose
+#    postinst failed again on every later install. The upgrade hand-off is
+#    consumed either way, so such a re-run neither waits for the runtime that
+#    came up meanwhile nor starts a Forkop that was stopped since.
 postinst() {
-  printf '1\n' >"$WORK_DIR/was-running"
   FORKOP_INIT="$FORKOP_SERVICE_INIT" \
   FORKOP_CONFIG_PATH="$WORK_DIR/forkop.conf" \
   FORKOP_DEFAULT_CONFIG_PATH="$WORK_DIR/forkop.conf" \
@@ -272,14 +276,37 @@ postinst() {
   FORKOP_UPGRADE_SING_BOX_WAIT_SECONDS=1 \
     "$REAL_UCODE" -L "$LIB" "$LIB/service/package.uc" postinst >"$WORK_DIR/postinst.out" 2>&1
 }
+starts() { grep -c '^start$' "$WORK_DIR/starts" 2>/dev/null || true; }
 reset_case
+rm -f "$WORK_DIR/starts"
 start_fails
-postinst && fail "postinst reported success for a start that failed"
-[ -e "$WORK_DIR/was-running" ] || fail "postinst consumed the upgrade hand-off of a failed start"
+printf '1\n' >"$WORK_DIR/was-running"
+postinst || fail "postinst failed the package operation for a start that failed: $(cat "$WORK_DIR/postinst.out")"
+grep -q 'did not start after the package upgrade' "$WORK_DIR/postinst.out" ||
+  fail "postinst did not report the start that failed: $(cat "$WORK_DIR/postinst.out")"
+[ ! -e "$WORK_DIR/was-running" ] || fail "postinst kept the upgrade hand-off of a failed start"
+[ "$(starts)" = 1 ] || fail "postinst did not attempt the start exactly once"
+# The retry brought Forkop up (a sing-box runs); opkg configures the package
+# again during an unrelated install.
+kill_retry_workers
+mkdir -p "$WORK_DIR/proc/4242"
+ln -s /usr/bin/sing-box "$WORK_DIR/proc/4242/exe"
+began="$(date +%s)"
+postinst || fail "a postinst re-run with Forkop running failed: $(cat "$WORK_DIR/postinst.out")"
+[ "$(($(date +%s) - began))" -lt 5 ] || fail "a postinst re-run waited for the running sing-box"
+[ "$(starts)" = 1 ] || fail "a postinst re-run started Forkop again"
+rm -rf "$WORK_DIR/proc/4242"
+# The user has stopped Forkop since; a re-run does not start it.
+start_succeeds
+postinst || fail "a postinst re-run with Forkop stopped failed: $(cat "$WORK_DIR/postinst.out")"
+[ "$(starts)" = 1 ] || fail "a postinst re-run started a Forkop that was stopped"
+[ ! -e "$WORK_DIR/runtime.up" ] || fail "a postinst re-run brought a stopped Forkop up"
 reset_case
 start_succeeds
+printf '1\n' >"$WORK_DIR/was-running"
 postinst || fail "postinst failed for a start that succeeded: $(cat "$WORK_DIR/postinst.out")"
 [ ! -e "$WORK_DIR/was-running" ] || fail "postinst kept the upgrade hand-off after a successful start"
+[ -e "$WORK_DIR/runtime.up" ] || fail "postinst did not start Forkop"
 
 # 9. Component actions act on the real outcome (components/action.uc).
 python3 - "$ROOT_DIR" "$WORK_DIR/action-probe.uc" <<'PY'

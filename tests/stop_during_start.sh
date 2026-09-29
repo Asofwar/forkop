@@ -408,6 +408,38 @@ no_event '^singbox/priority.uc start-runtime' || fail "the start started Priorit
 has_event "service/state.uc stop-managed-sing-box-runtime" || fail "the abandoned start did not clean up its runtime"
 grep -q 'start abandoned before sing-box' "$WORK_DIR/syslog" || fail "the abandoned start was not logged"
 
+# 6b. A stop requested once sing-box runs: the deferred subscription bootstrap
+#     may download through it for a while, then a stop that no longer waits
+#     for reload.lock tears the runtime down. The start brings up nothing
+#     more (no DPI providers, no dnsmasq change, no DNS-failover or background
+#     workers) and cleans up what it started. The same holds for a stop
+#     requested while the DPI providers start and before the DNS-failover
+#     worker.
+for gate in "subscription/cache.uc run-deferred-bootstrap" "providers/zapret2/runtime.uc start-runtime" \
+  "service/state.uc write-current-reload-state-clean"; do
+  reset_case
+  rm -f "$WORK_DIR/fake.gate"
+  run_lifecycle_start "$gate"
+  wait_until 20 has_event "held $gate" || fail "the lifecycle start did not reach $gate"
+  printf 'stop\n' >"$STOP_MARKER"
+  printf '%s\n' "-- stop requested" >>"$EVENTS"
+  : >"$WORK_DIR/fake.gate"
+  [ "$(lifecycle_start_status)" != 0 ] || fail "a start overtaken by a stop at $gate reported success"
+  has_event "service/state.uc start-managed-sing-box-runtime" || fail "the start did not reach sing-box before $gate"
+  after_stop="$(sed -n '/^-- stop requested$/,$p' "$EVENTS")"
+  for step in "providers/zapret/runtime.uc start-runtime" "providers/zapret2/runtime.uc start-runtime" \
+    "dns/apply.uc configure" "dns/apply.uc restore" "singbox/dns_failover.uc start-runtime" \
+    "components/updates.uc list-update-after-start" "service/lifecycle.uc refresh-rulesets-after-start" \
+    "diagnostics/runtime.uc automatic-latency-test"; do
+    if printf '%s\n' "$after_stop" | grep -q "^$step"; then
+      fail "a start overtaken by a stop at $gate still ran $step"
+    fi
+  done
+  printf '%s\n' "$after_stop" | grep -q '^service/state.uc stop-managed-sing-box-runtime' ||
+    fail "a start overtaken by a stop at $gate did not stop the sing-box it started"
+  grep -q 'start abandoned before' "$WORK_DIR/syslog" || fail "the start abandoned at $gate was not logged"
+done
+
 # 7. Control: without a stop request the same start reaches sing-box, and an
 #    earlier stop request does not hold it back.
 reset_case
@@ -416,6 +448,12 @@ printf 'earlier\n' >"$STOP_MARKER"
 run_lifecycle_start ""
 lifecycle_start_status >/dev/null
 has_event "service/state.uc start-managed-sing-box-runtime" || fail "a start without a stop request did not start sing-box"
+for step in "providers/zapret/runtime.uc start-runtime" "providers/zapret2/runtime.uc start-runtime" \
+  "dns/apply.uc restore" "singbox/dns_failover.uc start-runtime"; do
+  has_event "$step" || fail "a start without a stop request did not run $step"
+done
+wait_until 20 has_event "service/lifecycle.uc refresh-rulesets-after-start" ||
+  fail "a start without a stop request did not start its background workers"
 [ ! -e "$STOP_MARKER" ] || fail "a start kept an earlier explicit stop"
 
 printf 'stop during start checks passed\n'

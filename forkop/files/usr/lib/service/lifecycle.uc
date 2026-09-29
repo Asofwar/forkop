@@ -1028,6 +1028,10 @@ function start_main() {
     if (status != 0)
         return status;
 
+    // The deferred bootstrap can download through sing-box for a while.
+    if (start_abandoned_for_stop("the DPI providers"))
+        return 1;
+
     release_start_subscription_update_lock();
     module_success(ZAPRET_UC, [ "start-runtime" ]);
     module_success(ZAPRET2_UC, [ "start-runtime" ]);
@@ -1060,6 +1064,9 @@ function start_impl() {
     if (status != 0)
         return status;
 
+    if (start_abandoned_for_stop("dnsmasq"))
+        return 1;
+
     if (!setting_bool("dont_touch_dhcp", false)) {
         status = dnsmasq_configure(false);
         if (status != 0)
@@ -1086,6 +1093,9 @@ function start_impl() {
     ]);
     if (status != 0)
         return status;
+
+    if (start_abandoned_for_stop("the DNS-failover and background workers"))
+        return 1;
 
     status = module_status(DNS_FAILOVER_UC, [ "start-runtime" ]);
     if (status != 0) {

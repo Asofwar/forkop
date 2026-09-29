@@ -1679,9 +1679,15 @@ function wait_dns_failover_state(candidate_state_path, attempts) {
     return 1;
 }
 
-// Checked under reload.lock right before sing-box is started (UC-012).
+// Checked under reload.lock before the apply takes sing-box down (UC-012).
 function runtime_apply_allowed() {
     return module_success(STATE_UC, [ "runtime-apply-allowed", NFT_TABLE_NAME ]);
+}
+
+// Once the apply holds sing-box stopped under reload.lock, only a stop
+// request keeps it down; a transient nft error must not.
+function stop_requested() {
+    return fs.stat(STOP_REQUESTED_FILE) != null;
 }
 
 // Runs as a child of the DNS-failover worker; a stop TERMs only the worker, so
@@ -1712,7 +1718,7 @@ function dns_failover_apply(candidate_state_path) {
 
     let patch_result = module_capture(SINGBOX_UC, [ "patch-dns-config", candidate_state_path ]);
     if (patch_result.status != 0) {
-        if (runtime_apply_allowed())
+        if (!stop_requested())
             module_success(STATE_UC, [ "start-managed-sing-box-runtime", transition_timeout ]);
         release_reload_lock();
         return patch_result.status;
@@ -1722,7 +1728,7 @@ function dns_failover_apply(candidate_state_path) {
     let changed = as_string(fields[0]) == "1";
     let backup_path = length(fields) > 1 ? as_string(fields[1]) : "";
     let status = 0;
-    let stopping = !runtime_apply_allowed();
+    let stopping = stop_requested();
 
     if (stopping) {
         log_message("Forkop is stopping; the DNS failover switch was abandoned and sing-box stays stopped", "info");
@@ -1745,7 +1751,7 @@ function dns_failover_apply(candidate_state_path) {
             log_message("DNS failover apply failed; restoring the previous sing-box configuration", "error");
         if (module_success(STATE_UC, [ "stop-managed-sing-box-runtime", transition_timeout ]) &&
             module_success(SINGBOX_UC, [ "restore-dns-config", backup_path ]) &&
-            runtime_apply_allowed())
+            !stop_requested())
             module_success(STATE_UC, [ "start-managed-sing-box-runtime", transition_timeout ]);
     }
 

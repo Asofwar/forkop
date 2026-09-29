@@ -61,6 +61,7 @@ export EVENTS REAL_LIB REAL_INITD
 export RELOAD_LOCK="$WORK_DIR/run/forkop.reload.lock"
 export SING_BOX_STATE="$WORK_DIR/singbox.state"
 export NFT_TABLE_FILE="$WORK_DIR/nft.table"
+export NFT_LOG="$WORK_DIR/nft.log"
 export STOP_MARKER="$WORK_DIR/run/forkop/stop.requested"
 export FORKOP_RELOAD_LOCK_DIR="$RELOAD_LOCK"
 export FORKOP_SUBSCRIPTION_UPDATE_LOCK_DIR="$WORK_DIR/run/forkop/subscription-update.lock"
@@ -79,10 +80,14 @@ export FORKOP_SING_BOX_RELOAD_PID_TIMEOUT=2
 printf '#!/bin/sh\nprintf "%%s\\n" "$*" >>"%s"\n' "$WORK_DIR/syslog" >"$WORK_DIR/bin/logger"
 printf '#!/bin/sh\nexit 0\n' >"$WORK_DIR/bin/no-init"
 printf '#!/bin/sh\nexit 0\n' >"$WORK_DIR/bin/ip"
-# The production table exists while the modelled runtime is up.
+# The production table exists while the modelled runtime is up; listing it
+# fails while nft.list-fails exists (a transient nft error).
 cat >"$WORK_DIR/bin/nft" <<'SH'
 #!/bin/sh
+printf '%s\n' "$*" >>"$NFT_LOG"
+[ "$1" != -t ] || shift
 if [ "$1 $2 $3" = "list table inet" ]; then
+  [ ! -e "$NFT_TABLE_FILE.list-fails" ] || exit 1
   [ -e "$NFT_TABLE_FILE" ]
   exit $?
 fi
@@ -149,7 +154,7 @@ let mode = "" + (ARGV[0] ?? "");
 # reload.lock.
 cat >"$WORK_DIR/fake-lib/service/state.uc" <<UC
 $fake_header
-if (index(mode, "runtime-dir-lock") >= 0 || mode == "runtime-apply-allowed") {
+if (index(mode, "runtime-dir-lock") >= 0 || mode == "runtime-apply-allowed" || mode == "stop-requested") {
     let command = "ucode -L " + q(getenv("REAL_LIB")) + " " + q(getenv("REAL_LIB") + "/service/state.uc");
     for (let arg in ARGV)
         command += " " + q(arg);
@@ -158,8 +163,29 @@ if (index(mode, "runtime-dir-lock") >= 0 || mode == "runtime-apply-allowed") {
         ev("runtime-apply-allowed rc=" + status);
     exit(status);
 }
+// Armed failures: a stop request can arrive while the step runs (it is then
+// recorded before the step fails), and a stop-managed can leave nft listing
+// broken for a while.
+function armed(name) {
+    let path = getenv("SING_BOX_STATE") + "." + name;
+    if (fs.stat(path) == null)
+        return false;
+    fs.unlink(path);
+    return true;
+}
+function stop_requested_meanwhile() {
+    if (armed("stop-meanwhile"))
+        fs.writefile(getenv("STOP_MARKER"), "stop\n");
+}
 if (mode == "stop-managed-sing-box-runtime") {
     ev("stop-managed");
+    if (armed("nft-list-fails"))
+        fs.writefile(getenv("NFT_TABLE_FILE") + ".list-fails", "1\n");
+    if (armed("stop-fails")) {
+        stop_requested_meanwhile();
+        ev("stop-managed failed");
+        exit(1);
+    }
     if (fs.stat(getenv("SING_BOX_STATE") + ".gate-armed") != null) {
         fs.unlink(getenv("SING_BOX_STATE") + ".gate-armed");
         ev("stop-managed held");
@@ -170,6 +196,11 @@ if (mode == "stop-managed-sing-box-runtime") {
 }
 if (mode == "start-managed-sing-box-runtime") {
     ev("start-managed");
+    if (armed("start-fails")) {
+        stop_requested_meanwhile();
+        ev("start-managed failed");
+        exit(1);
+    }
     fs.writefile(getenv("SING_BOX_STATE"), "running\n");
     if (fs.stat(getenv("SING_BOX_STATE") + ".start-gate-armed") != null) {
         fs.unlink(getenv("SING_BOX_STATE") + ".start-gate-armed");
@@ -208,6 +239,12 @@ $fake_header
 ev("singbox " + mode);
 if (mode == "commit-config-stage" && ("" + (ARGV[2] ?? "")) != "")
     fs.writefile(ARGV[2], "backup\n");
+if (mode == "patch-dns-config" && fs.stat(getenv("SING_BOX_STATE") + ".patch-fails") != null) {
+    fs.unlink(getenv("SING_BOX_STATE") + ".patch-fails");
+    fs.writefile(getenv("STOP_MARKER"), "stop\n");
+    ev("singbox patch-dns-config failed");
+    exit(1);
+}
 if (mode == "patch-dns-config") {
     let backup = getenv("TMPDIR") + "/dns-backup.json";
     fs.writefile(backup, "{}\n");
@@ -257,7 +294,8 @@ reset_case() {
   : >"$EVENTS"
   : >"$WORK_DIR/syslog"
   rm -f "$WORK_DIR/update.gate" "$WORK_DIR/stop-managed.gate" "$WORK_DIR/start-managed.gate" \
-    "$SING_BOX_STATE.gate-armed" "$SING_BOX_STATE.start-gate-armed" "$STOP_MARKER"
+    "$SING_BOX_STATE.gate-armed" "$SING_BOX_STATE.start-gate-armed" "$STOP_MARKER" \
+    "$SING_BOX_STATE".*-fails "$SING_BOX_STATE.stop-meanwhile" "$NFT_TABLE_FILE.list-fails" "$NFT_LOG"
   [ ! -e "$RELOAD_LOCK" ] || fail "reload.lock leaked from the previous case"
 }
 
@@ -382,6 +420,49 @@ before "stop-managed" "start-managed" || fail "a running Forkop did not get the 
 has_event '^dns_failover start-runtime$' || fail "a running Forkop lost its DNS failover worker"
 [ "$(cat "$SING_BOX_STATE")" = running ] || fail "the update left a running Forkop without sing-box"
 
+# 4b. A stop requested while the update's new sing-box fails to start: the
+#     rollback to the previous configuration does not start sing-box either.
+reset_case
+runtime_up
+: >"$SING_BOX_STATE.start-fails"
+: >"$SING_BOX_STATE.stop-meanwhile"
+UPDATE_GATE="" launch_update
+wait_until 40 process_gone "$UPDATE_PID" || fail "subscription update did not finish"
+has_event '^start-managed failed$' || fail "the modelled sing-box start did not fail"
+has_event '^singbox restore-config-stage$' || fail "the failed update did not restore the previous configuration"
+[ "$(grep -c '^start-managed$' "$EVENTS")" = 1 ] || fail "the rollback started sing-box after the stop request"
+no_event '^priority start-runtime$' || fail "the rollback started Priority after the stop request"
+no_event '^dns_failover start-runtime$' || fail "the rollback started DNS failover after the stop request"
+
+# 4c. A stop requested while the previous sing-box refuses to stop: the
+#     update's auxiliary workers are not started again.
+reset_case
+runtime_up
+: >"$SING_BOX_STATE.stop-fails"
+: >"$SING_BOX_STATE.stop-meanwhile"
+UPDATE_GATE="" launch_update
+wait_until 40 process_gone "$UPDATE_PID" || fail "subscription update did not finish"
+has_event '^stop-managed failed$' || fail "the modelled sing-box stop did not fail"
+no_event '^priority start-runtime$' || fail "a refused update started Priority after the stop request"
+no_event '^dns_failover start-runtime$' || fail "a refused update started DNS failover after the stop request"
+
+# 4d. Once the update has checked Forkop and holds sing-box stopped under
+#     reload.lock, only a stop request keeps sing-box down: a transient nft
+#     listing failure does not leave the dataplane without sing-box. The
+#     table check itself omits the (possibly huge) set contents.
+reset_case
+runtime_up
+: >"$SING_BOX_STATE.nft-list-fails"
+UPDATE_GATE="" launch_update
+finish "subscription update with a transient nft error" "$UPDATE_PID" "$WORK_DIR/update.out"
+has_event '^start-managed$' || fail "a transient nft error left sing-box stopped after the update"
+has_event '^dns_failover start-runtime$' || fail "a transient nft error left the update without DNS failover"
+[ "$(cat "$SING_BOX_STATE")" = running ] || fail "the update left a running Forkop without sing-box"
+grep -q '^-t list table inet ' "$NFT_LOG" || fail "the runtime check lists the table with its set contents"
+if grep -q '^list table inet ' "$NFT_LOG"; then
+  fail "the runtime check lists the table with its set contents: $(cat "$NFT_LOG")"
+fi
+
 # 5. Stop while `forkop dns_failover_apply` (whose worker a stop TERMs,
 #    leaving the apply itself alive) holds reload.lock between stopping and
 #    starting sing-box: the apply does not start sing-box after the stop.
@@ -417,6 +498,19 @@ no_event '^stop-managed$' || fail "a DNS failover apply after a stop stopped sin
 no_event '^singbox patch-dns-config$' || fail "a DNS failover apply after a stop patched the sing-box configuration"
 no_event '^start-managed$' || fail "a DNS failover apply after a stop started sing-box"
 [ ! -e "$RELOAD_LOCK" ] || fail "a skipped DNS failover apply left reload.lock behind"
+
+# 5c. A stop requested while the apply patches the configuration, and the
+#     patch fails: sing-box is not started again.
+reset_case
+runtime_up
+: >"$SING_BOX_STATE.patch-fails"
+status=0
+env FORKOP_LIB="$WORK_DIR/fake-lib" \
+  ucode -L "$REAL_LIB" "$REAL_LIB/service/lifecycle.uc" dns-failover-apply "$WORK_DIR/candidate.json" >"$WORK_DIR/apply.out" 2>&1 || status=$?
+[ "$status" != 0 ] || fail "a failed DNS failover patch was reported as applied"
+has_event '^singbox patch-dns-config failed$' || fail "the modelled patch did not fail"
+no_event '^start-managed$' || fail "a failed DNS failover patch started sing-box after the stop request"
+[ ! -e "$RELOAD_LOCK" ] || fail "a failed DNS failover patch left reload.lock behind"
 
 # 6. A reload that background work requests after an explicit stop (the list
 #    worker's final apply, the rule-set refresh, a queued request, the

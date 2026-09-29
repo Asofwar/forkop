@@ -929,17 +929,23 @@ function forkop_stably_running(rt_table, nft_table, mark, min_age) {
         forkop_runtime_network_configured(rt_table, nft_table, mark);
 }
 
+function stop_requested() {
+    return fs.stat(STOP_REQUESTED_FILE) != null;
+}
+
 // Whether work that holds reload.lock (a subscription update, a DNS-failover
 // apply) may still start sing-box and its workers (UC-012). Not after an
 // explicit stop: the stop waits for reload.lock only for a bounded time, and
 // the holder must not bring the runtime back once it is released. Not while
 // Forkop is down either: start and reload hold reload.lock, so under it a
 // missing production nft table means a stopped or failed runtime, and a lone
-// sing-box without it is no Forkop runtime.
+// sing-box without it is no Forkop runtime. The listing omits set contents,
+// which can be large. Once the holder has taken sing-box down, only a stop
+// request can take the runtime away under the lock: it checks stop-requested.
 function runtime_apply_allowed(nft_table) {
-    if (fs.stat(STOP_REQUESTED_FILE) != null)
+    if (stop_requested())
         return false;
-    return command_success_from_args([ "nft", "list", "table", "inet", as_string(nft_table || "ForkopTable") ]);
+    return command_success_from_args([ "nft", "-t", "list", "table", "inet", as_string(nft_table || "ForkopTable") ]);
 }
 
 function wait_forkop_stable_start(rt_table, nft_table, mark, min_age, timeout) {
@@ -2144,6 +2150,8 @@ else if (mode == "wait-forkop-stable-start")
     exit(wait_forkop_stable_start(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5]) ? 0 : 1);
 else if (mode == "runtime-apply-allowed")
     exit(runtime_apply_allowed(ARGV[1]) ? 0 : 1);
+else if (mode == "stop-requested")
+    exit(stop_requested() ? 0 : 1);
 else if (mode == "list-has-remote-references" || mode == "list-has-remote-sing-box-rulesets")
     exit(list_has_remote_references(ARGV[1]) ? 0 : 1);
 else if (mode == "community-service-has-subnet-list")

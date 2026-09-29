@@ -40,7 +40,7 @@
 
 ## 4. Точные правки
 
-Применяются из корня репозитория командой `git apply` (проверено `git apply --check` на текущем HEAD).
+Применяются из корня репозитория командой `git apply` (проверено `git apply --check` и `patch --dry-run -p1` на текущем HEAD). Пустые строки контекста в диффах записаны без ведущего пробела: оба инструмента принимают их как контекст, а в документе не остаётся хвостовых пробелов.
 
 ```diff
 --- a/.github/workflows/backend-ci.yml
@@ -66,7 +66,7 @@
 @@ -55,6 +59,29 @@
            command -v ucode
            ucode -e 'print("ucode ready\n")'
- 
+
 +      - name: Build OpenWrt uci CLI
 +        shell: bash
 +        run: |
@@ -94,7 +94,7 @@
          shell: bash
          run: |
 @@ -63,6 +90,10 @@
- 
+
        - name: Run backend tests
          shell: bash
 +        env:
@@ -131,7 +131,7 @@
        - 'tests/**/*.sh'
 +      - 'tests/helpers/uci_cli/uci'
        - '.github/workflows/shellcheck.yml'
- 
+
  permissions:
 @@ -51,7 +57,22 @@
              find . -type f \

@@ -378,17 +378,22 @@ seed_ruleset_manifest() {
     >"$FORKOP_RULESET_CACHE_MANIFEST"
 }
 
-# 4a. Control: without a stop the workers finish their downloads and
-#     request their reload.
-reset_case
-runtime_up
-seed_ruleset_manifest
-launch_refresh_workers
-wait_until 20 downloads_begun 2 || fail "the refresh workers did not start downloading"
-: >"$DOWNLOAD_GATE"
-wait_until 40 process_gone "$AFTER_START_PID" || fail "the post-start refresh worker did not finish"
-wait_until 40 process_gone "$AND_RELOAD_PID" || fail "the refresh-and-reload worker did not finish"
-wait_until 20 has_event '^init reload ruleset-cache$' || fail "the refresh workers did not request their reload"
+# 4a. Control: without a stop each worker finishes its downloads and
+#     requests its reload. One at a time: two workers that share the cache
+#     race, and the later one finds nothing changed. (A worker's detached
+#     request may carry a stray "1000" from its `1000>&-` under dash.)
+for worker in refresh-rulesets-after-start refresh-and-reload; do
+  reset_case
+  runtime_up
+  seed_ruleset_manifest
+  : >"$DOWNLOAD_GATE"
+  case "$worker" in
+    refresh-rulesets-after-start) start_actor ucode -L "$LIB" "$LIB/service/lifecycle.uc" "$worker" ;;
+    *) start_actor ucode -L "$LIB" "$LIB/singbox/ruleset_cache.uc" "$worker" "" ;;
+  esac
+  wait_until 40 process_gone "$LAST_ACTOR" || fail "the $worker worker did not finish"
+  wait_until 20 has_event '^init reload ruleset-cache' || fail "the $worker worker did not request its reload"
+done
 
 # 4b. A stop while both download: they are terminated, their reload is never
 #     requested, and a process that holds a worker's recorded pid but is no

@@ -4,6 +4,8 @@ let fs = require("fs");
 let constants = require("core.constants");
 let uci_core = require("core.uci");
 let netstat = require("core.netstat");
+let runtime_lock = require("core.runtime_lock");
+let process_identity = require("core.process_identity");
 
 const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
 const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || constants.FORKOP_CONFIG_NAME || "forkop";
@@ -143,11 +145,6 @@ function owner_pid() {
     return match(pid, /^[0-9]+$/) != null ? pid : "0";
 }
 
-function pid_running(pid) {
-    pid = as_string(pid);
-    return match(pid, /^[0-9]+$/) != null && command_success_from_args([ "kill", "-0", pid ]);
-}
-
 function log_message(message, level) {
     level = as_string(level || "info");
     command_success_from_args([ "logger", "-t", "forkop", "[" + level + "] " + as_string(message) ]);
@@ -255,33 +252,27 @@ function cleanup_tmp_dir() {
     cleanup_stale_tmp_files();
 }
 
+// The lock protocol and the owner record: core/runtime_lock.uc (UC-157).
+// full-uninstall.sh takes the same lock in the previous format (mkdir, then
+// <lock>/pid): it runs while the packages are removed and cannot load Forkop
+// modules; runtime_lock counts such a record as the owner while it runs.
+// The owner is this process: owner_pid() can name the short-lived shell
+// that popen() starts to run `echo $PPID`.
+function component_lock_owner() {
+    let pid = as_string(fs.readlink("/proc/self"));
+    return match(pid, /^[1-9][0-9]*$/) != null ? pid : "";
+}
+
 function acquire_component_lock() {
     ensure_dir(RUNTIME_STATE_DIR);
-    if (command_success_from_args([ "mkdir", COMPONENT_LOCK_DIR ])) {
-        write_file(COMPONENT_LOCK_DIR + "/pid", owner_pid() + "\n");
-        lock_held = true;
-        return true;
-    }
-
-    let current_owner = trim(read_file(COMPONENT_LOCK_DIR + "/pid"));
-    if (current_owner != "" && pid_running(current_owner))
-        return false;
-
-    remove_file(COMPONENT_LOCK_DIR + "/pid");
-    command_success_from_args([ "rmdir", COMPONENT_LOCK_DIR ]);
-    if (!command_success_from_args([ "mkdir", COMPONENT_LOCK_DIR ]))
-        return false;
-
-    write_file(COMPONENT_LOCK_DIR + "/pid", owner_pid() + "\n");
-    lock_held = true;
-    return true;
+    lock_held = runtime_lock.acquire(COMPONENT_LOCK_DIR, component_lock_owner());
+    return lock_held;
 }
 
 function release_component_lock() {
     if (!lock_held)
         return;
-    remove_file(COMPONENT_LOCK_DIR + "/pid");
-    command_success_from_args([ "rmdir", COMPONENT_LOCK_DIR ]);
+    runtime_lock.release(COMPONENT_LOCK_DIR, component_lock_owner());
     lock_held = false;
 }
 
@@ -2234,13 +2225,7 @@ function install_forkop_opkg_set(latest_version, backend_file, app_file, i18n_fi
     return "Forkop package-set upgrade failed; previous release restored";
 }
 
-// Loaded on first use: only the sing-box upgrade path reads process start
-// ticks.
-let process_identity = null;
-
 function upgrade_sing_box_ticks(pid) {
-    if (process_identity == null)
-        process_identity = require("core.process_identity");
     let ticks = process_identity.start_ticks(pid);
     return ticks != "" ? ticks : null;
 }

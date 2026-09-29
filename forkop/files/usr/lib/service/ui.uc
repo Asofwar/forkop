@@ -813,44 +813,13 @@ function action_state_from_dirs() {
     };
 }
 
+// Held by this process for the length of one call: see core/runtime_lock.
 function release_dir_lock(lock_dir) {
-    remove_file(as_string(lock_dir) + "/pid");
-    command_success_from_args([ "rmdir", lock_dir ]);
+    runtime_lock.release(lock_dir, current_pid());
 }
 
 function acquire_dir_lock(lock_dir) {
-    lock_dir = as_string(lock_dir);
-    let owner_pid = current_pid();
-    if (!job_pid_valid(owner_pid))
-        return false;
-
-    if (command_success_from_args([ "mkdir", lock_dir ])) {
-        if (write_file(lock_dir + "/pid", owner_pid + "\n"))
-            return true;
-        release_dir_lock(lock_dir);
-        return false;
-    }
-
-    let current_owner_pid = first_line(lock_dir + "/pid");
-    if (pid_running(current_owner_pid))
-        return false;
-
-    let lock_stat = fs.stat(lock_dir);
-    if (current_owner_pid == "" && lock_stat != null) {
-        let lock_age = now_seconds() - int(lock_stat.mtime || 0);
-        if (lock_age >= 0 && lock_age < 5)
-            return false;
-    }
-
-    remove_file(lock_dir + "/pid");
-    command_success_from_args([ "rmdir", lock_dir ]);
-    if (!command_success_from_args([ "mkdir", lock_dir ]))
-        return false;
-
-    if (write_file(lock_dir + "/pid", owner_pid + "\n"))
-        return true;
-    release_dir_lock(lock_dir);
-    return false;
+    return runtime_lock.acquire(lock_dir, current_pid());
 }
 
 function service_enabled() {

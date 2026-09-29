@@ -4348,6 +4348,10 @@ function subscription_update_common(force, target_section, target_source_index) 
 
     if (!acquire_runtime_lock(SUBSCRIPTION_UPDATE_LOCK_DIR, force)) {
         release_runtime_lock(RELOAD_LOCK_DIR);
+        // Reloads that arrived while this update held reload.lock were only
+        // queued; apply them now, before leaving this update's own request
+        // for the subscription-update.lock holder.
+        run_pending_reload_if_requested();
         log_message("Subscription update is already running", "info");
         if (force)
             mark_pending_reload("subscription_update_busy");

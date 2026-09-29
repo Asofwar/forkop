@@ -24,8 +24,8 @@ WORK_DIR="$(mktemp -d)"
 # shellcheck source=tests/helpers/wait.sh
 . "$ROOT_DIR/tests/helpers/wait.sh"
 
-# A failed start schedules a delayed retry: `sh -c 'sleep N; rm -f
-# .../start-retry.pid; exec init retry_start_on_wan_up'`.
+# A failed start schedules a delayed retry: `/bin/sh -c 'sleep "$1"; rm -f
+# .../start-retry.pid; exec init retry_start_on_wan_up' sh N`.
 kill_retry_workers() {
   local pid
   for pid in $(pgrep -f "$WORK_DIR/run/forkop/start-retry.pid" 2>/dev/null); do
@@ -191,7 +191,7 @@ timed_wait start && fail "a failed start was reported as successful to a waiting
 # caller waited for and must not report under its request.
 retry_sleep() {
   local shell_pid child
-  shell_pid="$(cat "$FORKOP_RUNTIME_STATE_DIR/start-retry.pid" 2>/dev/null)" || return 1
+  shell_pid="$(head -n 1 "$FORKOP_RUNTIME_STATE_DIR/start-retry.pid" 2>/dev/null)" || return 1
   for child in $(pgrep -P "$shell_pid" 2>/dev/null); do
     process_exec_is "$child" sleep && { printf '%s\n' "$child"; return 0; }
   done

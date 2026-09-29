@@ -356,7 +356,9 @@ done
 sh -c 'trap "" TERM; while :; do sleep 30; done' \
   "$WORK_DIR/hanging-init" retry_start_on_wan_up &
 RETRY_PID=$!
-printf '%s\n' "$RETRY_PID" > "$WORK_DIR/start-retry.pid"
+# The retry's record: pid and start ticks (core/process_identity.uc).
+RETRY_TICKS="$(sed 's/.*) //' "/proc/$RETRY_PID/stat" | cut -d' ' -f20)"
+printf '%s\n%s\n' "$RETRY_PID" "$RETRY_TICKS" > "$WORK_DIR/start-retry.pid"
 printf '%s\n' pending > "$WORK_DIR/start.retry"
 
 hanging_started="$(date +%s)"
@@ -398,6 +400,7 @@ done
 if [ -e "$WORK_DIR/start.retry" ] || [ -e "$WORK_DIR/start-retry.pid" ]; then
   fail "installer cleanup left scheduled retry state behind"
 fi
+wait_until 10 process_gone "$RETRY_PID" || fail "installer cleanup left the scheduled retry running"
 wait "$RETRY_PID" 2>/dev/null || true
 RETRY_PID=""
 if process_running "$ORPHAN_PROBE_PID"; then

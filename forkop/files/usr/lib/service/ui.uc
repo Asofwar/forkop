@@ -3,6 +3,7 @@
 let fs = require("fs");
 let uci_core = require("core.uci");
 let runtime_lock = require("core.runtime_lock");
+let process_identity = require("core.process_identity");
 
 const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || "forkop";
 const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
@@ -688,6 +689,7 @@ function set_running_job_pid_file(path, pid) {
     let value = object_or_empty(read_json_file(path));
     if (value.running === true) {
         value.pid = pid;
+        value.pid_ticks = process_identity.start_ticks(pid);
         return write_state_file(path, value);
     }
 
@@ -702,13 +704,25 @@ function write_stale_action_state(path, message) {
     return write_state_file(path, stale_action_state_value(path, message, now_seconds()));
 }
 
-function pid_running(pid) {
-    pid = as_string(pid);
-    return job_pid_valid(pid) && command_success_from_args([ "kill", "-0", pid ]);
+// A job names its worker by pid and start ticks, so a PID that a dead worker
+// left behind and another process now holds does not keep the job running
+// (UC-014). A job written before start ticks were recorded has the pid only.
+function job_worker_running(value) {
+    value = object_or_empty(value);
+    let pid = as_string(value.pid || "");
+    if (!job_pid_valid(pid))
+        return false;
+    if (value.pid_ticks == null)
+        return command_success_from_args([ "kill", "-0", pid ]);
+    let ticks = as_string(value.pid_ticks);
+    return ticks != "" && process_identity.start_ticks(pid) == ticks;
 }
 
+// The lifecycle worker of a start records itself (pid + start ticks) in
+// START_IN_PROGRESS_FILE; a marker it left behind names another process.
 function start_worker_running() {
-    return pid_running(trim(as_string(fs.readfile(START_IN_PROGRESS_FILE))));
+    return process_identity.matches(START_IN_PROGRESS_FILE, "ucode",
+        [ "ucode", "-L", LIB_DIR, LIB_DIR + "/service/lifecycle.uc" ], false, false) != "";
 }
 
 function current_pid() {
@@ -724,9 +738,8 @@ function refresh_pid_job_state(path, stale_message) {
 
     let now = now_seconds();
     let within_grace = job_started_at_within_grace(value.started_at, now, ACTION_STALE_GRACE_SECONDS);
-    let pid = as_string(value.pid || "");
 
-    if (job_pid_valid(pid) && pid_running(pid))
+    if (job_worker_running(value))
         return;
 
     if (!within_grace)

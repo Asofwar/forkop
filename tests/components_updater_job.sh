@@ -374,6 +374,7 @@ cp "$FORKOP_LIB/core/common.uc" "$fake_lib/core/common.uc"
 cp "$FORKOP_LIB/core/constants.uc" "$fake_lib/core/constants.uc"
 cp "$FORKOP_LIB/core/ip.uc" "$fake_lib/core/ip.uc"
 cp "$FORKOP_LIB/core/url.uc" "$fake_lib/core/url.uc"
+cp "$FORKOP_LIB/core/process_identity.uc" "$fake_lib/core/process_identity.uc"
 cat >"$fake_lib/components/action.uc" <<'UCODE'
 #!/usr/bin/env ucode
 if ((ARGV[0] || "") == "component-action") {

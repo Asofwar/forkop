@@ -4,6 +4,7 @@ let fs = require("fs");
 let constants = require("core.constants");
 let uci_core = require("core.uci");
 let runtime_lock = require("core.runtime_lock");
+let process_identity = require("core.process_identity");
 
 function as_string(value) {
     return value == null ? "" : "" + value;
@@ -208,11 +209,6 @@ function config_file_hash(path) {
     return length(fields) > 0 ? as_string(fields[0]) : "";
 }
 
-function pid_alive(pid) {
-    pid = as_string(pid);
-    return match(pid, /^[0-9]+$/) != null && command_success_from_args([ "kill", "-0", pid ]);
-}
-
 // The lock protocol and the owner record: core/runtime_lock.uc. Global lock
 // order: service/state.uc. Only the owner releases its lock: a holder whose
 // lock was taken over must not delete the new owner's lock.
@@ -296,11 +292,28 @@ function start_failure_blocks_retry(path) {
     return file_exists(as_string(path || START_FAILURE_FILE));
 }
 
+// The scheduled retry is `/bin/sh -c <script> sh <delay>`, recorded by pid
+// and start ticks and recognized by that command line
+// (core/process_identity.uc). A PID that a killed retry left in its pidfile
+// and another process now holds is neither signalled nor taken for a
+// scheduled retry (UC-014).
+const START_RETRY_SHELL = "/bin/sh";
+
+function start_retry_argv(path) {
+    // The retry is not the start a start-and-wait caller waits for.
+    return [ START_RETRY_SHELL, "-c", "unset FORKOP_START_REQUEST; sleep \"$1\"; " +
+        command_from_args([ "rm", "-f", path ]) + "; exec " + command_from_args([ SERVICE_INIT, "retry_start_on_wan_up" ]) ];
+}
+
+// The executable of the retry is what /bin/sh resolves to (busybox on
+// OpenWrt).
+function start_retry_executable() {
+    return as_string(fs.realpath(START_RETRY_SHELL)) || START_RETRY_SHELL;
+}
+
 function cancel_scheduled_start_retry(path) {
     path = as_string(path || START_RETRY_PID_FILE);
-    let pid = first_line_value(path);
-    if (pid_alive(pid))
-        command_success_from_args([ "kill", pid ]);
+    process_identity.signal(path, start_retry_executable(), start_retry_argv(path), false, "TERM");
     if (file_exists(path))
         unlink_file(path);
 }
@@ -311,24 +324,21 @@ function schedule_start_retry(path, delay_seconds) {
     if (!numeric_text(delay_seconds))
         delay_seconds = "30";
 
-    let scheduled_pid = first_line_value(path);
-    if (pid_alive(scheduled_pid))
+    if (process_identity.matches(path, start_retry_executable(), start_retry_argv(path), false, false) != "")
         return true;
     if (file_exists(path))
         unlink_file(path);
     if (!ensure_parent_dir(path))
         return false;
 
-    // The retry is not the start a start-and-wait caller waits for.
-    let worker = "unset FORKOP_START_REQUEST; " + command_from_args([ "sleep", delay_seconds ]) +
-        "; " + command_from_args([ "rm", "-f", path ]) +
-        "; exec " + command_from_args([ SERVICE_INIT, "retry_start_on_wan_up" ]);
-    let result = command_capture(command_from_args([ "sh", "-c", worker ]) + " >/dev/null 2>&1 & echo $!");
+    let worker = start_retry_argv(path);
+    push(worker, "sh", delay_seconds);
+    let result = command_capture(command_from_args(worker) + " >/dev/null 2>&1 & echo $!");
     let pid = trim(result.output);
     if (result.status != 0 || !numeric_text(pid))
         return false;
 
-    return write_text_file(path, pid + "\n");
+    return process_identity.record(path, pid);
 }
 
 function consume_pending_reload(path) {

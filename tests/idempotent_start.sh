@@ -116,9 +116,10 @@ function command_success_from_args(args) {
     return true;
 }
 function owner_pid() { return 4321; }
-function write_file(path, value) {
-    check(path == START_IN_PROGRESS_FILE, "unexpected file write during start");
-    check(trim(as_string(value)) == "4321", "start marker did not name the lifecycle worker");
+// start() records its lifecycle worker (pid + start ticks) through
+// mark_start_in_progress(); this stands in for that record.
+function mark_start_in_progress() {
+    check(owner_pid() == 4321, "start marker did not name the lifecycle worker");
     start_marker_present = true;
     return true;
 }

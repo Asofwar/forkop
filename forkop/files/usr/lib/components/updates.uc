@@ -5,6 +5,7 @@ let uci_core = require("core.uci");
 let connections = require("config.connections");
 let core_ip = require("core.ip");
 let core_url = require("core.url");
+let process_identity = require("core.process_identity");
 const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || "forkop";
 const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
 const STATE_UC = getenv("FORKOP_STATE_UC") || LIB_DIR + "/service/state.uc";
@@ -1109,11 +1110,6 @@ function remove_files(paths) {
             remove_file(path);
 }
 
-function runtime_pid_running(pid) {
-    pid = as_string(pid);
-    return match(pid, /^[0-9]+$/) != null && command_success_from_args([ "kill", "-0", pid ]);
-}
-
 function whitespace_items(value) {
     let result = [];
     if (type(value) == "array") {
@@ -1805,6 +1801,7 @@ function set_subscription_running_job_pid(path, pid) {
     let value = object_or_empty(read_json_file(path));
     if (value.running === true) {
         value.pid = pid;
+        value.pid_ticks = process_identity.start_ticks(pid);
         return write_state_file(path, value);
     }
 
@@ -1973,9 +1970,18 @@ function subscription_cleanup_jobs() {
     }
 }
 
-function pid_running(pid) {
-    pid = as_string(pid);
-    return job_pid_valid(pid) && command_success_from_args([ "kill", "-0", pid ]);
+// A job names its worker by pid and start ticks, so a PID that a dead worker
+// left behind and another process now holds does not keep the job running
+// (UC-014). A job written before start ticks were recorded has the pid only.
+function job_worker_running(value) {
+    value = object_or_empty(value);
+    let pid = as_string(value.pid || "");
+    if (!job_pid_valid(pid))
+        return false;
+    if (value.pid_ticks == null)
+        return command_success_from_args([ "kill", "-0", pid ]);
+    let ticks = as_string(value.pid_ticks);
+    return ticks != "" && process_identity.start_ticks(pid) == ticks;
 }
 
 function write_subscription_stale_job_state(path) {
@@ -2003,7 +2009,7 @@ function refresh_subscription_running_job_state(path) {
         return;
     }
 
-    if (pid_running(pid))
+    if (job_worker_running(value))
         return;
     if (within_grace)
         return;
@@ -2012,7 +2018,7 @@ function refresh_subscription_running_job_state(path) {
     value = read_json_file(path);
     if (type(value) != "object" || value.running !== true)
         return;
-    if (pid_running(pid))
+    if (job_worker_running(value))
         return;
 
     write_subscription_stale_job_state(path);
@@ -2391,14 +2397,14 @@ function refresh_component_running_job_state(path) {
         return;
     }
 
-    if (pid_running(pid) || within_grace)
+    if (job_worker_running(value) || within_grace)
         return;
 
     command_success_from_args([ "sleep", "1" ]);
     value = read_json_file(path);
     if (type(value) != "object" || value.running !== true)
         return;
-    if (pid_running(pid))
+    if (job_worker_running(value))
         return;
 
     write_component_stale_job_state(path);
@@ -2475,6 +2481,7 @@ function set_component_running_job_pid(path, pid) {
     let value = object_or_empty(read_json_file(path));
     if (value.running === true) {
         value.pid = pid;
+        value.pid_ticks = process_identity.start_ticks(pid);
         return write_state_file(path, value);
     }
 
@@ -3605,16 +3612,36 @@ function import_subnets_from_remote_subnet_lists(section, settings) {
     return ok;
 }
 
+// The modes that run list_update() and so own LIST_UPDATE_PID_FILE.
+const LIST_UPDATE_WORKER_MODES = [ "list-update", "list-update-if-due", "list-update-after-start", "prepare-list-cache" ];
+
+function list_update_worker_argv(mode) {
+    return [ "ucode", "-L", LIB_DIR, LIB_DIR + "/components/updates.uc", mode ];
+}
+
+// The list worker is recorded by pid and start ticks and recognized by its
+// command line (core/process_identity.uc). A PID that a killed worker left
+// in the pidfile and another process now holds is not a running worker: it
+// neither skips list updates nor gets signalled on stop (UC-014).
+function list_update_worker_pid() {
+    for (let mode in LIST_UPDATE_WORKER_MODES) {
+        let pid = process_identity.matches(LIST_UPDATE_PID_FILE, "ucode", list_update_worker_argv(mode), true, false);
+        if (pid != "")
+            return pid;
+    }
+    return "";
+}
+
 function list_update_pid_begin() {
-    let existing_pid = trim(as_string(fs.readfile(LIST_UPDATE_PID_FILE) || ""));
+    let existing_pid = list_update_worker_pid();
     let current_pid = owner_pid();
-    if (existing_pid != "" && existing_pid != current_pid && runtime_pid_running(existing_pid)) {
+    if (existing_pid != "" && existing_pid != current_pid) {
         log_message("Another lists update is already running, skipping", "info");
         return false;
     }
 
     ensure_parent_dir(LIST_UPDATE_PID_FILE);
-    write_file(LIST_UPDATE_PID_FILE, current_pid + "\n");
+    process_identity.record(LIST_UPDATE_PID_FILE, current_pid);
     return true;
 }
 
@@ -4064,10 +4091,11 @@ function list_update_if_due() {
 }
 
 function stop_list_update() {
-    let pid = trim(as_string(fs.readfile(LIST_UPDATE_PID_FILE) || ""));
-    if (pid != "" && runtime_pid_running(pid)) {
-        command_success_from_args([ "kill", pid ]);
-        log_message("Stopped list_update", "info");
+    for (let mode in LIST_UPDATE_WORKER_MODES) {
+        if (process_identity.signal(LIST_UPDATE_PID_FILE, "ucode", list_update_worker_argv(mode), true, "TERM")) {
+            log_message("Stopped list_update", "info");
+            break;
+        }
     }
     remove_file(LIST_UPDATE_PID_FILE);
 }

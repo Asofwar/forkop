@@ -4,6 +4,7 @@ let fs = require("fs");
 let constants = require("core.constants");
 let uci_core = require("core.uci");
 let common = require("core.common");
+let process_identity = require("core.process_identity");
 
 function as_string(value) {
     return value == null ? "" : "" + value;
@@ -1514,10 +1515,17 @@ function start_inner() {
     return 0;
 }
 
+// pid + start ticks (core/process_identity.uc): a marker that a killed start
+// left behind does not make the UI report a start that is not running
+// (UC-014).
+function mark_start_in_progress() {
+    return process_identity.record(START_IN_PROGRESS_FILE, owner_pid());
+}
+
 function start() {
     // The init.d UI action can fail to register when a stop has only just
     // completed. Track the actual lifecycle worker independently of UI jobs.
-    write_file(START_IN_PROGRESS_FILE, owner_pid() + "\n");
+    mark_start_in_progress();
     // An explicit start ends an explicit stop, also when it finds the
     // runtime already running and does not start it again.
     remove_file(STOP_REQUESTED_FILE);

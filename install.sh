@@ -987,8 +987,12 @@ function installer_kill_process_tree(pid) {
 }
 
 function installer_cancel_stale_start_retry() {
-    let pid = trim(read_text_file(INSTALLER_START_RETRY_PID_FILE));
-    if (match(pid, /^[0-9]+$/)) {
+    // The pidfile is "<pid>\n<start ticks>\n" (core/process_identity.uc) or,
+    // from releases before it, the bare pid.
+    let record = split(trim(read_text_file(INSTALLER_START_RETRY_PID_FILE)), "\n");
+    let pid = trim(record[0] || "");
+    let ticks = trim(record[1] || "");
+    if (match(pid, /^[0-9]+$/) && (ticks == "" || ticks == installer_process_starttime(pid))) {
         let args = installer_process_args(pid);
         if (installer_args_contain(args, INSTALLER_FORKOP_INIT) &&
             installer_args_contain(args, "retry_start_on_wan_up"))

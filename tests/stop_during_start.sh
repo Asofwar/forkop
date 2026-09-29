@@ -194,28 +194,33 @@ launch_stop() {
   STOP_ACTOR="$LAST_ACTOR"
 }
 
-# A stand-in for the scheduled start retry: start-retry.pid names a waiting
-# worker and start.retry marks the retry as pending.
+# A scheduled start retry, waiting out its delay: start-retry.pid records the
+# worker (pid and start ticks) and start.retry marks the retry as pending.
 fake_scheduled_retry() {
-  start_actor sleep 300
-  RETRY_WORKER="$LAST_ACTOR"
-  printf '%s\n' "$RETRY_WORKER" >"$STATE_DIR/start-retry.pid"
+  local child
+  initd schedule-start-retry "$STATE_DIR/start-retry.pid" 300 || fail "the start retry was not scheduled"
+  RETRY_WORKER="$(head -n 1 "$STATE_DIR/start-retry.pid")"
+  actors+=("$RETRY_WORKER")
+  # Its sleep outlives a cancelled retry.
+  wait_until 10 pgrep -P "$RETRY_WORKER" >/dev/null || fail "the scheduled retry did not start waiting"
+  for child in $(pgrep -P "$RETRY_WORKER"); do actors+=("$child"); done
   printf 'reason=start_failed\n' >"$STATE_DIR/start.retry"
 }
 
 retry_scheduled() {
   local pid
   [ ! -e "$STATE_DIR/start.retry" ] || return 0
-  pid="$(cat "$STATE_DIR/start-retry.pid" 2>/dev/null)" || return 1
+  pid="$(head -n 1 "$STATE_DIR/start-retry.pid" 2>/dev/null)" || return 1
   [ -n "$pid" ] && process_running "$pid"
 }
 
 reset_case() {
   local pid
-  for pid in $(cat "$STATE_DIR/start-retry.pid" 2>/dev/null); do
+  pid="$(head -n 1 "$STATE_DIR/start-retry.pid" 2>/dev/null || true)"
+  if [ -n "$pid" ]; then
     pkill -KILL -P "$pid" 2>/dev/null || true
     kill -KILL "$pid" 2>/dev/null || true
-  done
+  fi
   rm -f "$WORK_DIR"/runtime.up "$WORK_DIR"/start.status "$WORK_DIR"/start.gate "$WORK_DIR"/start.gate-armed \
     "$WORK_DIR"/hold.gate "$WORK_DIR"/hold.acquired \
     "$STATE_DIR"/start.retry "$STATE_DIR"/start-retry.pid "$STOP_MARKER"

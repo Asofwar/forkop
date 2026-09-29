@@ -8,6 +8,7 @@ let subscription_share_link = require("subscription.share_link");
 let filter_identity = require("subscription.filter_identity");
 let core_ip = require("core.ip");
 let core_url = require("core.url");
+let process_identity = require("core.process_identity");
 
 const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || "forkop";
 const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
@@ -2349,11 +2350,6 @@ function current_pid() {
     return as_string(fs.readlink("/proc/self"));
 }
 
-function pid_running(pid) {
-    pid = as_string(pid);
-    return match(pid, /^[0-9]+$/) != null && command_success_from_args([ "kill", "-0", pid ]);
-}
-
 function state_ucode_status(args) {
     return command_status_from_args(command_args_with([ "ucode", "-L", LIB_DIR, LIB_DIR + "/service/state.uc" ], args)) == 0;
 }
@@ -2443,30 +2439,37 @@ function launch_self_worker(args) {
     return trim(command_output("sh -c " + shell_quote(command)));
 }
 
+// The retry worker is recorded by pid and start ticks and recognized by its
+// command line (core/process_identity.uc). A PID that a killed worker left in
+// the pidfile and another process now holds is not the worker: it neither
+// keeps a new worker from starting nor gets signalled on stop (UC-014).
+function deferred_bootstrap_worker_argv() {
+    return [ "ucode", "-L", LIB_DIR, LIB_DIR + "/subscription/cache.uc", "deferred-bootstrap-worker" ];
+}
+
 function start_deferred_subscription_bootstrap_retry_worker(deferred_sections) {
     deferred_sections = trim(as_string(deferred_sections));
     if (deferred_sections == "")
         return;
 
     ensure_runtime_dirs();
-    let existing_pid = trim(file_first_line_value(FORKOP_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE));
-    if (pid_running(existing_pid)) {
+    let existing_pid = process_identity.matches(FORKOP_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE, "ucode",
+        deferred_bootstrap_worker_argv(), false, false);
+    if (existing_pid != "") {
         log_message("Subscription bootstrap retry worker is already running with PID " + existing_pid, "debug");
         return;
     }
 
     let pid = launch_self_worker([ "deferred-bootstrap-worker", deferred_sections ]);
     if (pid != "")
-        write_file(FORKOP_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE, pid + "\n");
+        process_identity.record(FORKOP_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE, pid);
     log_message("Started subscription bootstrap retry worker for rule(s): " + deferred_sections, "info");
 }
 
 function stop_deferred_subscription_bootstrap_retry_worker() {
-    let pid = trim(file_first_line_value(FORKOP_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE));
-    if (pid_running(pid)) {
-        command_success_from_args([ "kill", pid ]);
+    if (process_identity.signal(FORKOP_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE, "ucode",
+        deferred_bootstrap_worker_argv(), false, "TERM"))
         log_message("Stopped subscription bootstrap retry worker", "info");
-    }
     unlink_path(FORKOP_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE);
 }
 

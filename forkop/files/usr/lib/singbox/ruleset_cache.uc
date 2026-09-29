@@ -7,6 +7,7 @@ let rulesets = require("singbox.rulesets");
 let uci_core = require("core.uci");
 let core_ip = require("core.ip");
 let core_url = require("core.url");
+let refresh_worker = require("core.refresh_worker");
 
 const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || "forkop";
 const CACHE_DIR = getenv("FORKOP_RULESET_CACHE_DIR") || "/etc/forkop/ruleset-cache";
@@ -703,10 +704,16 @@ else if (mode == "refresh")
     exit(refresh_manifest(ARGV[1], false));
 else if (mode == "refresh-if-due")
     exit(refresh_manifest(ARGV[1], true));
-else if (mode == "refresh-and-reload")
-    refresh_and_reload(ARGV[1]);
-else if (mode == "refresh-if-due-and-reload")
-    refresh_if_due_and_reload(ARGV[1]);
+// Background workers (service/lifecycle.uc, components/updates.uc); an
+// explicit stop terminates them (core/refresh_worker.uc).
+else if (mode == "refresh-and-reload" || mode == "refresh-if-due-and-reload") {
+    refresh_worker.register();
+    if (mode == "refresh-and-reload")
+        refresh_and_reload(ARGV[1]);
+    else
+        refresh_if_due_and_reload(ARGV[1]);
+    refresh_worker.unregister();
+}
 else if (mode == "fallback-urls")
     for (let url in fallback_urls(ARGV[1]))
         print(url, "\n");

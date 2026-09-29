@@ -5,6 +5,7 @@ let constants = require("core.constants");
 let uci_core = require("core.uci");
 let common = require("core.common");
 let process_identity = require("core.process_identity");
+let refresh_worker = require("core.refresh_worker");
 
 function as_string(value) {
     return value == null ? "" : "" + value;
@@ -33,7 +34,9 @@ const LIST_UPDATE_RELOAD_FILE = getenv("FORKOP_LIST_UPDATE_RELOAD_FILE") || RUNT
 const RULESET_REFRESH_AFTER_LIST_FILE = getenv("FORKOP_RULESET_REFRESH_AFTER_LIST_FILE") || RUNTIME_STATE_DIR + "/ruleset-refresh-after-list";
 const START_IN_PROGRESS_FILE = getenv("FORKOP_START_IN_PROGRESS_FILE") || RUNTIME_STATE_DIR + "/start.in-progress";
 const START_FAILURE_FILE = getenv("FORKOP_START_FAILURE_FILE") || RUNTIME_STATE_DIR + "/start.failure";
-// An explicit stop (service/state.uc runtime-apply-allowed; UC-012).
+// An explicit stop (service/state.uc runtime-apply-allowed; UC-012). It stays
+// in effect until an explicit start or restart: no reload brings back the
+// runtime it took down (reload_skipped_after_stop; D-15, UC-056).
 const STOP_REQUESTED_FILE = getenv("FORKOP_STOP_REQUESTED_FILE") || RUNTIME_STATE_DIR + "/stop.requested";
 const MANAGED_UPGRADE_SING_BOX_MARKER = getenv("FORKOP_MANAGED_UPGRADE_SING_BOX_MARKER") || "/tmp/forkop-managed-upgrade-sing-box";
 const MANAGED_UPGRADE_SING_BOX_WAIT_SECONDS = int(getenv("FORKOP_MANAGED_UPGRADE_SING_BOX_WAIT_SECONDS") || "15");
@@ -56,16 +59,6 @@ const DNS_FAILOVER_PID_FILE = getenv("FORKOP_DNS_FAILOVER_PID_FILE") || RUNTIME_
 const SUBSCRIPTION_UPDATE_LOCK_DIR = getenv("FORKOP_SUBSCRIPTION_UPDATE_LOCK_DIR") || RUNTIME_STATE_DIR + "/subscription-update.lock";
 const RELOAD_LOCK_DIR = getenv("FORKOP_RELOAD_LOCK_DIR") || "/var/run/forkop.reload.lock";
 const INTERNAL_CONFIG_TRIGGER_GUARD = getenv("FORKOP_INTERNAL_CONFIG_TRIGGER_GUARD") || "/var/run/forkop.internal-config-change";
-// Reloads that background work requests on its own: the list worker's final
-// apply, the rule-set refresh, the deferred subscription recovery, a queued
-// request, procd triggers. After an explicit stop they do not bring the
-// runtime back (UC-012). A manual reload, a snapshot restore and an autotune
-// apply still restart a stopped runtime (D-15, UC-056).
-const BACKGROUND_RELOAD_REASONS = [
-    "list-content", "ruleset-cache", "subscription_deferred_recovery", "pending",
-    "on_config_change", "badwan_interface_up"
-];
-
 const LIST_UPDATE_CRON_MARKER = getenv("FORKOP_LIST_UPDATE_CRON_MARKER") || "# forkop-list-update";
 const SUBSCRIPTION_UPDATE_CRON_MARKER = getenv("FORKOP_SUBSCRIPTION_UPDATE_CRON_MARKER") || "# forkop-subscription-update";
 const COMPONENT_UPDATE_CHECK_CRON_MARKER = getenv("FORKOP_COMPONENT_UPDATE_CHECK_CRON_MARKER") || "# forkop-component-update-check";
@@ -1040,7 +1033,10 @@ function start_main() {
     return 0;
 }
 
+// A worker of its own (start_impl); an explicit stop terminates it
+// (core/refresh_worker.uc).
 function refresh_rulesets_after_start() {
+    refresh_worker.register();
     let proxy_address = setting_bool("download_lists_via_proxy", false)
         ? SB_SERVICE_MIXED_INBOUND_ADDRESS + ":" + as_string(SB_SERVICE_MIXED_INBOUND_PORT)
         : "";
@@ -1049,17 +1045,18 @@ function refresh_rulesets_after_start() {
     if (status == 0) {
         log_message("Rule-set cache changed; reloading Forkop", "info");
         command_status_from_args([ SERVICE_INIT, "reload", "ruleset-cache" ]);
-        return;
     }
-
-    if (status != 1)
+    else if (status != 1)
         log_message("Rule-set cache refresh failed", "warn");
+    refresh_worker.unregister();
 }
 
+// An explicit start or restart has ended an earlier explicit stop before
+// this runs (start(), restart()). A reload that restarts the runtime
+// (restart_runtime_for_reload) ends none (D-15, UC-056): a stop request seen
+// from here on keeps the runtime down, also one that waited for reload.lock
+// while the reload held it.
 function start_impl() {
-    // The runtime is being started again: an earlier explicit stop no longer
-    // holds back the work that applies changes to it.
-    remove_file(STOP_REQUESTED_FILE);
     start_watches_stop_request = true;
     let status = start_main();
     if (status != 0)
@@ -1569,12 +1566,21 @@ function stop_impl() {
 }
 
 // Also recorded by service/initd.uc before it waits for reload.lock; here for
-// a `forkop stop` that does not come through init.d.
+// a `forkop stop` that does not come through init.d. The stop also revokes
+// what would otherwise bring the runtime back or change it later: the
+// rule-set refresh workers, whose final reload is such a trigger, and the
+// reloads queued for the runtime it takes down (the next start applies the
+// whole configuration). Reloads requested from now on are skipped
+// (reload_skipped_after_stop; D-15, UC-056).
 function stop() {
     ensure_dir(RUNTIME_STATE_DIR);
     let now = clock();
     write_file(STOP_REQUESTED_FILE, sprintf("%d.%09d.%s\n", now[0], now[1], owner_pid()));
-    return stop_impl();
+    if (refresh_worker.stop_all(LIB_DIR) > 0)
+        log_message("Stopped the rule-set refresh", "info");
+    let status = stop_impl();
+    remove_file(PENDING_RELOAD_FILE);
+    return status;
 }
 
 function restart_runtime_for_reload() {
@@ -1779,14 +1785,17 @@ function dns_failover_apply(candidate_state_path) {
     return status;
 }
 
-// Work that began before an explicit stop requests these reloads after it;
-// they must not start the stopped runtime again (UC-012). A stop still
-// waiting for reload.lock leaves the runtime up until it runs. service/initd.uc
-// decides the same before it opens a UI job; this is the check under
-// reload.lock.
+// A reload never starts a runtime that an explicit stop took down, whoever
+// requests it: background work that began before the stop (UC-012), a manual
+// reload, a snapshot restore, an autotune apply. Only an explicit start
+// brings it back (D-15, UC-056). A runtime that is down without a stop (it
+// crashed, its start failed) is still repaired by the reload. A stop still
+// waiting for reload.lock leaves the runtime up until it runs.
+// service/initd.uc decides the same before it opens a UI job; this is the
+// check under reload.lock.
 function reload_skipped_after_stop(reason) {
     reason = as_string(reason || "");
-    if (fs.stat(STOP_REQUESTED_FILE) == null || index(BACKGROUND_RELOAD_REASONS, reason) < 0 ||
+    if (fs.stat(STOP_REQUESTED_FILE) == null ||
         module_success(STATE_UC, [ "forkop-running", RT_TABLE_NAME, NFT_TABLE_NAME, NFT_FAKEIP_MARK ]))
         return false;
     log_message("Reload '" + reason + "' skipped: Forkop was stopped; only a start brings its runtime back", "info");
@@ -2209,6 +2218,9 @@ function restart() {
     if (status != 0)
         return status;
 
+    // An explicit restart is an explicit start: it ends an earlier explicit
+    // stop.
+    remove_file(STOP_REQUESTED_FILE);
     status = start_impl();
     if (status != 0) {
         cleanup_failed_runtime();

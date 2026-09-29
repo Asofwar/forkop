@@ -24,8 +24,11 @@ const SB_TPROXY_INBOUND_PORT = getenv("SB_TPROXY_INBOUND_PORT") || "1602";
 const SB_TPROXY_INBOUND6_ADDRESS = getenv("SB_TPROXY_INBOUND6_ADDRESS") || "::1";
 const DIAGNOSTICS_RUNTIME_UC = LIB_DIR + "/diagnostics/runtime.uc";
 // Written by an explicit stop (service/initd.uc before it waits for
-// reload.lock, service/lifecycle.uc `forkop stop`) and removed only when the
-// runtime is started again (service/lifecycle.uc).
+// reload.lock, service/lifecycle.uc `forkop stop`) and removed only by an
+// explicit start or restart (service/initd.uc, service/lifecycle.uc): no
+// reload brings back the runtime it took down (D-15, UC-056). It lives in
+// runtime state and ends with a reboot, whose start at boot (autostart) is an
+// explicit start anyway.
 const STOP_REQUESTED_FILE = getenv("FORKOP_STOP_REQUESTED_FILE") ||
     (getenv("FORKOP_RUNTIME_STATE_DIR") || "/var/run/forkop") + "/stop.requested";
 

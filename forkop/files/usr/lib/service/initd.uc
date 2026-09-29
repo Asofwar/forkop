@@ -59,13 +59,6 @@ const CONFIG_CHANGE_REASON = getenv("FORKOP_CONFIG_CHANGE_REASON") || "on_config
 // one: the list worker keeps its durable apply marker, a snapshot restore and
 // an autotune apply never confirm a configuration the runtime has not loaded.
 const QUEUE_ACK_REASONS = [ "list-content", "config-restore", "autotune" ];
-// Reloads that background work requests on its own (service/lifecycle.uc
-// BACKGROUND_RELOAD_REASONS): after an explicit stop they leave the stopped
-// runtime alone (UC-012).
-const BACKGROUND_RELOAD_REASONS = [
-    "list-content", "ruleset-cache", "subscription_deferred_recovery", "pending",
-    "on_config_change", "badwan_interface_up"
-];
 
 const DNS_APPLY_UC = LIB_DIR + "/dns/apply.uc";
 const UI_UC = LIB_DIR + "/service/ui.uc";
@@ -259,9 +252,10 @@ function mark_start_retry(path, reason) {
     return write_text_file(path, "reason=" + reason + "\nupdated_at=" + current_epoch() + "\n");
 }
 
-// Removed only when the runtime is started again (start_service,
-// service/lifecycle.uc). Each request is distinct, so a start can tell a stop
-// requested while it waited for reload.lock from an earlier one.
+// Removed only by an explicit start or restart (start_service,
+// service/lifecycle.uc): until then no reload brings the runtime back (D-15,
+// UC-056). Each request is distinct, so a start can tell a stop requested
+// while it waited for reload.lock from an earlier one.
 function mark_stop_requested() {
     if (!ensure_parent_dir(STOP_REQUESTED_FILE))
         return false;
@@ -875,11 +869,14 @@ function stop_service(owner_pid) {
     return stop_finish(job_id, status);
 }
 
-// Decided before a UI job is opened: a reload that does nothing must not
-// show the stopped Forkop as "reloading" and then fail to reach a running
-// runtime. service/lifecycle.uc checks the same under reload.lock.
+// No reload, whoever requests it, starts a runtime that an explicit stop took
+// down (D-15, UC-056); a runtime that is down without a stop is still left
+// to the reload to repair. Decided before a UI job is opened: a reload that
+// does nothing must not show the stopped Forkop as "reloading" and then fail
+// to reach a running runtime. service/lifecycle.uc checks the same under
+// reload.lock.
 function reload_skipped_after_stop(reason, runtime_running_value) {
-    if (!stop_requested() || index(BACKGROUND_RELOAD_REASONS, as_string(reason)) < 0)
+    if (!stop_requested())
         return false;
     if (runtime_running_value == null ? runtime_is_running() : bool_text(runtime_running_value))
         return false;

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# A background reload after an explicit stop leaves no service action behind
-# (UC-012).
+# A reload after an explicit stop leaves no service action behind (UC-012).
 #
-# Reloads that background work requests on its own (the list worker, the
-# rule-set refresh, the deferred subscription recovery, a queued request,
-# procd's triggers) do not bring an explicitly stopped runtime back. Before
+# No reload brings an explicitly stopped runtime back, whoever requests it:
+# background work on its own (the list worker, the rule-set refresh, the
+# deferred subscription recovery, a queued request, procd's triggers) and a
+# manual reload alike; only a start does (D-15, UC-056). Before
 # that was decided, service/initd.uc had already opened a UI "reload" job:
 # the skipped reload returned 0, service/ui.uc waited for the runtime to run
 # again, and with the service enabled the stopped Forkop showed as
@@ -13,7 +13,7 @@
 # not reach expected state", and health recorded a successful reload.
 #
 # service/initd.uc, service/ui.uc, service/state.uc, diagnostics/health.uc
-# and, for a background reload after a stop, service/lifecycle.uc are real;
+# and, for a reload after a stop, service/lifecycle.uc are real;
 # init.d runs behind an rc.common stand-in that holds fd 1000 like procd.sh.
 # The service counts as enabled through /etc/rc.d/S99forkop, which exists
 # only in a private user+mount namespace (/etc is an overlay there). The test
@@ -149,23 +149,19 @@ printf '#!/bin/sh\nexit 1\n' >"$WORK_DIR/bin/nft"
 printf '#!/bin/sh\nexit 0\n' >"$WORK_DIR/bin/ip"
 printf '#!/bin/sh\nexit 1\n' >"$WORK_DIR/bin/ubus"
 
-# `forkop`. A background reload after a stop runs the real lifecycle.uc,
-# whose gate returns before it touches anything. Any other reload is only
-# recorded: here it stands for a reload that runs. get_status reports the
-# runtime as running while runtime.up exists.
+# `forkop`. A reload after a stop runs the real lifecycle.uc, whose gate
+# returns before it touches anything. Any other reload is only recorded: here
+# it stands for a reload that runs. get_status reports the runtime as running
+# while runtime.up exists.
 cat >"$WORK_DIR/bin/forkop" <<'SH'
 #!/bin/sh
 ev() { printf '%s\n' "$1" >>"$EVENTS"; }
 case "$1" in
   reload)
-    case "${2:-}" in
-      list-content | ruleset-cache | subscription_deferred_recovery | pending | on_config_change | badwan_interface_up)
-        if [ -e "$STOP_MARKER" ]; then
-          ev "lifecycle reload ${2:-}"
-          exec ucode -L "$TEST_LIB" "$TEST_LIB/service/lifecycle.uc" reload "$2"
-        fi
-        ;;
-    esac
+    if [ -e "$STOP_MARKER" ]; then
+      ev "lifecycle reload ${2:-}"
+      exec ucode -L "$TEST_LIB" "$TEST_LIB/service/lifecycle.uc" reload "${2:-}"
+    fi
     ev "reload ran ${2:-}"
     ;;
   get_status)
@@ -238,29 +234,29 @@ reset_case() {
   [ ! -e "$FORKOP_RELOAD_LOCK_DIR" ] || fail "reload.lock leaked from the previous case"
 }
 
-# 1. Each background reload that init.d runs after an explicit stop: no UI
-#    job is opened, a UI start is accepted at once, health records no reload
-#    and the stopped runtime is left alone.
-for reason in ruleset-cache list-content subscription_deferred_recovery pending badwan_interface_up on_config_change; do
+# 1. Each reload that init.d runs after an explicit stop, a manual one ("")
+#    too: no UI job is opened, a UI start is accepted at once, health records
+#    no reload and the stopped runtime is left alone.
+for reason in ruleset-cache list-content subscription_deferred_recovery pending badwan_interface_up on_config_change ""; do
   reset_case
-  output="$("$FORKOP_SERVICE_INIT" reload "$reason")" || fail "background reload '$reason' after a stop failed"
-  [ -z "$output" ] || fail "background reload '$reason' after a stop printed '$output'"
-  no_active_service_action || fail "background reload '$reason' after a stop left a '$(ui active-service-action)' service action running"
+  output="$("$FORKOP_SERVICE_INIT" reload "$reason")" || fail "reload '$reason' after a stop failed"
+  [ -z "$output" ] || fail "reload '$reason' after a stop printed '$output'"
+  no_active_service_action || fail "reload '$reason' after a stop left a '$(ui active-service-action)' service action running"
   if compgen -G "$FORKOP_UI_SERVICE_ACTION_DIR/*.json" >/dev/null; then
-    fail "background reload '$reason' after a stop opened a UI job"
+    fail "reload '$reason' after a stop opened a UI job"
   fi
   if grep -q '^lifecycle reload' "$EVENTS"; then
-    fail "init.d ran background reload '$reason' after a stop"
+    fail "init.d ran reload '$reason' after a stop"
   fi
-  ui_start_accepted || fail "a UI start was refused after background reload '$reason' after a stop"
-  no_reload_health_event || fail "health recorded background reload '$reason' that a stop skipped"
+  ui_start_accepted || fail "a UI start was refused after reload '$reason' after a stop"
+  no_reload_health_event || fail "health recorded reload '$reason' that a stop skipped"
   if grep -q '^reload ran' "$EVENTS"; then
-    fail "background reload '$reason' after a stop reloaded the runtime"
+    fail "reload '$reason' after a stop reloaded the runtime"
   fi
-  [ ! -e "$FORKOP_RELOAD_LOCK_DIR" ] || fail "background reload '$reason' after a stop left reload.lock behind"
-  [ -e "$STOP_MARKER" ] || fail "background reload '$reason' ended the explicit stop"
+  [ ! -e "$FORKOP_RELOAD_LOCK_DIR" ] || fail "reload '$reason' after a stop left reload.lock behind"
+  [ -e "$STOP_MARKER" ] || fail "reload '$reason' ended the explicit stop"
   grep -q "Reload '$reason' skipped: Forkop was stopped" "$WORK_DIR/syslog" ||
-    fail "skipped background reload '$reason' was not logged"
+    fail "skipped reload '$reason' was not logged"
 done
 
 # 2. The stop comes after init.d's check (the runtime still ran then), so the
@@ -299,14 +295,13 @@ if grep -q '^reload ran' "$EVENTS"; then
 fi
 ui_start_accepted || fail "a UI start was refused after the queued reload job"
 
-# 5. Controls: without a stop request, and for a manual reload after a stop,
-#    the reload runs as before.
-reset_case
-rm -f "$STOP_MARKER"
-"$FORKOP_SERVICE_INIT" reload ruleset-cache >/dev/null || fail "a background reload without a stop failed"
-has_event "reload ran ruleset-cache" || fail "a background reload without a stop request did not run"
-reset_case
-"$FORKOP_SERVICE_INIT" reload >/dev/null || fail "a manual reload after a stop failed"
-has_event "reload ran " || fail "a manual reload after a stop did not run"
+# 5. Controls: without a stop request the reload runs as before, a manual
+#    one too.
+for reason in ruleset-cache ""; do
+  reset_case
+  rm -f "$STOP_MARKER"
+  "$FORKOP_SERVICE_INIT" reload "$reason" >/dev/null || fail "reload '$reason' without a stop failed"
+  has_event "reload ran $reason" || fail "reload '$reason' without a stop request did not run"
+done
 
 printf 'stopped reload job checks passed\n'

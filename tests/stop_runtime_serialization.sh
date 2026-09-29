@@ -536,20 +536,23 @@ has_event '^singbox patch-dns-config failed$' || fail "the modelled patch did no
 no_event '^start-managed$' || fail "a failed DNS failover patch started sing-box after the stop request"
 [ ! -e "$RELOAD_LOCK" ] || fail "a failed DNS failover patch left reload.lock behind"
 
-# 6. A reload that background work requests after an explicit stop (the list
-#    worker's final apply, the rule-set refresh, a queued request, the
-#    deferred subscription recovery) does not bring the runtime back.
+# 6. A reload after an explicit stop does not bring the runtime back, whoever
+#    requests it: background work (the list worker's final apply, the
+#    rule-set refresh, a queued request, the deferred subscription recovery),
+#    a manual reload, a snapshot restore, an autotune apply (D-15, UC-056).
 run_reload() {
   env FORKOP_LIB="$WORK_DIR/fake-lib" FAKE_CONFLICT="${FAKE_CONFLICT:-}" \
     ucode -L "$REAL_LIB" "$REAL_LIB/service/lifecycle.uc" reload "$1" >"$WORK_DIR/reload.out" 2>&1
 }
-for reason in list-content ruleset-cache pending subscription_deferred_recovery on_config_change badwan_interface_up; do
+for reason in list-content ruleset-cache pending subscription_deferred_recovery on_config_change badwan_interface_up \
+  "" config-restore autotune; do
   reset_case
   runtime_down
   printf '1\n' >"$STOP_MARKER"
-  run_reload "$reason" || fail "background reload '$reason' after a stop failed: $(cat "$WORK_DIR/reload.out")"
-  [ ! -s "$EVENTS" ] || fail "background reload '$reason' touched the stopped runtime"
-  grep -q "Reload '$reason' skipped" "$WORK_DIR/syslog" || fail "skipped background reload '$reason' was not logged"
+  run_reload "$reason" || fail "reload '$reason' after a stop failed: $(cat "$WORK_DIR/reload.out")"
+  [ ! -s "$EVENTS" ] || fail "reload '$reason' touched the stopped runtime"
+  grep -q "Reload '$reason' skipped" "$WORK_DIR/syslog" || fail "skipped reload '$reason' was not logged"
+  [ -e "$STOP_MARKER" ] || fail "reload '$reason' ended the explicit stop"
 done
 # procd's reload for a monitored interface other than wan coming up is such
 # a background reload too, not a manual one.
@@ -559,25 +562,23 @@ ucode -L "$REAL_LIB" "$REAL_LIB/service/initd.uc" trigger-plan-fixture "$WORK_DI
   >"$WORK_DIR/trigger-plan" || fail "the procd trigger plan could not be built"
 grep -q "^interface	interface\.\*\.up	vpn0	.*	reload	badwan_interface_up\$" "$WORK_DIR/trigger-plan" ||
   fail "the reload for a monitored interface coming up is not marked as a background reload: $(cat "$WORK_DIR/trigger-plan")"
-# Without an explicit stop, or for a manual reload, the gate stays open (the
-# refused ownership check stands in for the rest of the reload).
+# Without an explicit stop the gate stays open, for a background and a
+# manual reload alike (the refused ownership check stands in for the rest of
+# the reload): a runtime that is down without a stop is left to the reload
+# to repair.
+for reason in list-content ""; do
+  reset_case
+  runtime_down
+  FAKE_CONFLICT=1 run_reload "$reason" && fail "reload '$reason' without a stop request skipped the runtime checks"
+  grep -q 'Reload refused' "$WORK_DIR/syslog" || fail "reload '$reason' without a stop request did not reach the runtime"
+done
+# A reload that restarts a runtime that is down without a stop does not
+# record a stop either (the modelled start fails early; the attempt counts).
 reset_case
 runtime_down
-FAKE_CONFLICT=1 run_reload list-content && fail "list-content reload without a stop request skipped the runtime checks"
-grep -q 'Reload refused' "$WORK_DIR/syslog" || fail "list-content reload without a stop request did not reach the runtime"
-reset_case
-runtime_down
-printf '1\n' >"$STOP_MARKER"
-FAKE_CONFLICT=1 run_reload "" && fail "a manual reload after a stop skipped the runtime checks"
-grep -q 'Reload refused' "$WORK_DIR/syslog" || fail "a manual reload after a stop did not reach the runtime"
-# A manual reload that starts the stopped runtime again ends the explicit
-# stop, as a start does (the modelled start fails early; the attempt counts).
-reset_case
-runtime_down
-printf '1\n' >"$STOP_MARKER"
 run_reload "" || true
-grep -q 'restarting Forkop runtime' "$WORK_DIR/syslog" || fail "a manual reload did not restart the stopped runtime"
-[ ! -e "$STOP_MARKER" ] || fail "a runtime restarted by a manual reload kept the explicit stop"
+grep -q 'restarting Forkop runtime' "$WORK_DIR/syslog" || fail "a reload did not repair a runtime that is down without a stop"
+[ ! -e "$STOP_MARKER" ] || fail "a reload that repaired the runtime recorded an explicit stop"
 
 # 7. `forkop stop` records the explicit stop; a start clears it, also when it
 #    fails (only a stop, not a failure, keeps the runtime down).

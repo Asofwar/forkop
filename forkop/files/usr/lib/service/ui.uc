@@ -1323,9 +1323,9 @@ function finish_service_action_after_command(action, job_id_value, status, spawn
     }
 
     // A reload after an explicit stop that left the runtime stopped: a
-    // background reload skipped under reload.lock (service/lifecycle.uc).
-    // Nothing is left to wait for, and no queued reload is applied on its
-    // behalf (UC-012).
+    // reload skipped under reload.lock (service/lifecycle.uc). Nothing is
+    // left to wait for, and no queued reload is applied on its behalf
+    // (UC-012, UC-056).
     if (action == "reload" && fs.stat(STOP_REQUESTED_FILE) != null && !forkop_running()) {
         write_finished_action_state(path, true, "Service reload completed", 0);
         return 0;

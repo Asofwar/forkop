@@ -37,6 +37,10 @@ const SB_VERSION_STATE_FILE = getenv("SB_VERSION_STATE_FILE") || "/etc/forkop/si
 const ZAPRET_PROVIDER_NFQWS_BIN = getenv("ZAPRET_PROVIDER_NFQWS_BIN") || "/opt/zapret/nfq/nfqws";
 const ZAPRET2_PROVIDER_NFQWS2_BIN = getenv("ZAPRET2_PROVIDER_NFQWS2_BIN") || "/opt/zapret2/nfq2/nfqws2";
 const BYEDPI_BIN = getenv("BYEDPI_BIN") || "/usr/bin/ciadpi";
+// Responses a subscription update fetched before it took reload.lock
+// (prefetch-request, UC-057); the update-request under the lock takes them
+// from here instead of the network.
+const SUBSCRIPTION_PREFETCH_DIR = getenv("FORKOP_SUBSCRIPTION_PREFETCH_DIR") || "";
 
 function as_string(value) {
     return value == null ? "" : "" + value;
@@ -1578,7 +1582,41 @@ function subscription_curl_args(url, filepath, http_proxy_address, headers_filep
     return args;
 }
 
+// The response of a request that prefetch-request made, as
+// download_subscription() would have returned it: its status, the body in
+// filepath and the headers in headers_filepath. null when the prefetch did
+// not make this very request (the source or its profile changed meanwhile):
+// the caller downloads it then. A failed request is not repeated.
+function prefetched_subscription(url, filepath, http_proxy_address, headers_filepath, effective_user_agent, effective_hwid) {
+    if (SUBSCRIPTION_PREFETCH_DIR == "")
+        return null;
+
+    for (let entry in array_or_empty(read_json(SUBSCRIPTION_PREFETCH_DIR + "/index.json"))) {
+        entry = object_or_empty(entry);
+        if (type(entry.status) != "int" || entry.url !== as_string(url) || entry.proxy !== as_string(http_proxy_address) ||
+            entry.user_agent !== as_string(effective_user_agent) || entry.hwid !== as_string(effective_hwid))
+            continue;
+        if (int(entry.status) != 0)
+            return int(entry.status);
+
+        let body = SUBSCRIPTION_PREFETCH_DIR + "/" + as_string(entry.body);
+        if (!file_nonempty(body) || !copy_file(body, filepath))
+            return null;
+        if (headers_filepath != "") {
+            let headers = as_string(entry.headers) != "" ? SUBSCRIPTION_PREFETCH_DIR + "/" + entry.headers : "";
+            if (headers == "" || !file_nonempty(headers) || !copy_file(headers, headers_filepath))
+                unlink_path(headers_filepath);
+        }
+        return 0;
+    }
+    return null;
+}
+
 function download_subscription(url, filepath, http_proxy_address, headers_filepath, effective_user_agent, effective_hwid) {
+    let prefetched = prefetched_subscription(url, filepath, http_proxy_address, headers_filepath, effective_user_agent, effective_hwid);
+    if (prefetched != null)
+        return prefetched;
+
     let retries = 3;
     let wait_seconds = 2;
     let stamp = clock();
@@ -2146,6 +2184,108 @@ function subscription_update_selected_source(sections, section_name_value, sourc
     return update_result;
 }
 
+// The user agent download_subscription_into_cache() starts from, as the
+// update will see it once update_subscription_source() has checked the
+// cached profile; read-only.
+function prefetch_cached_user_agent(source_section, parsed, default_user_agent) {
+    let runtime_user_agent = read_text(source_user_agent_path(TMP_SUBSCRIPTION_FOLDER, source_section));
+    for (let dir in [ TMP_SUBSCRIPTION_FOLDER, FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR ]) {
+        if (!subscription_cache_is_usable(source_json_path(dir, source_section)))
+            continue;
+        let user_agent = read_text(source_user_agent_path(dir, source_section));
+        let matches = source_cache_profile_matches(parsed, read_text(source_url_path(dir, source_section)),
+            user_agent, read_text(source_hwid_path(dir, source_section)), default_user_agent);
+        if (dir == TMP_SUBSCRIPTION_FOLDER)
+            return matches ? runtime_user_agent : "";
+        if (matches)
+            return user_agent;
+    }
+    return runtime_user_agent;
+}
+
+// The requests download_subscription_into_cache() makes for one source,
+// made into dir: one request per request profile until a response is a
+// valid subscription, as the update tries them.
+function prefetch_subscription_source(dir, index, sections, section, source_index, entry) {
+    let section_name_value = section_name(section);
+    let parsed = subscription_source_profile(section, entry);
+    if (type(parsed) != "object" || parsed.valid !== true)
+        return;
+
+    let source_section = source_id(section_name_value, source_index);
+    let proxy = get_subscription_download_proxy_address(section_name_value, sections, parsed, "runtime");
+    let default_user_agent = get_subscription_user_agent("");
+    let parser = subscription_parser();
+    for (let user_agent in user_agent_candidates(parsed.user_agent,
+        prefetch_cached_user_agent(source_section, parsed, default_user_agent), default_user_agent)) {
+        let hwid = get_subscription_hwid(parsed.hwid);
+        let number = length(index) + 1;
+        let body = "response-" + number;
+        let headers = "headers-" + number;
+        let status = download_subscription(parsed.url, dir + "/" + body, proxy, dir + "/" + headers, user_agent, hwid);
+        push(index, {
+            url: as_string(parsed.url),
+            proxy: as_string(proxy),
+            user_agent: as_string(user_agent),
+            hwid: as_string(hwid),
+            status,
+            body: status == 0 ? body : "",
+            headers: status == 0 && file_nonempty(dir + "/" + headers) ? headers : ""
+        });
+        if (status == 6)
+            break;
+        if (status != 0)
+            continue;
+
+        let check = dir + "/check-" + number;
+        let normalized = dir + "/normalized-" + number;
+        let valid = copy_file(dir + "/" + body, check) &&
+            (parser.try_decode_gzip_content_file(check) || true) &&
+            parser.normalize_content_validated(check, normalized);
+        unlink_path(check);
+        unlink_path(normalized);
+        if (valid)
+            break;
+    }
+}
+
+// The downloads of an update-request with the same arguments, made before
+// the update takes reload.lock (UC-057). Writes nothing but dir: the update
+// commits the cache from these responses under the lock.
+function subscription_prefetch_request(force_value, target_section_name, target_source_index, dir) {
+    dir = as_string(dir);
+    let info = dir != "" ? fs.stat(dir) : null;
+    if (info == null || info.type != "directory")
+        return 1;
+
+    let force = as_string(force_value) == "1";
+    let sections = uci_sections();
+    target_section_name = as_string(target_section_name);
+    let selected_index = as_string(target_source_index) != "" ? source_index_number(target_source_index) : null;
+    let index = [];
+    for (let section in sections) {
+        section = object_or_empty(section);
+        if (target_section_name != "" && section_name(section) != target_section_name)
+            continue;
+        if (!section_is_subscription_proxy(section))
+            continue;
+        if (!force && subscription_update_due_result(section) != 0)
+            continue;
+
+        let source_index = 0;
+        for (let entry in connections.subscription_urls(section)) {
+            source_index++;
+            if (selected_index != null ? source_index != selected_index :
+                !force && !connections.subscription_update_enabled(section, entry))
+                continue;
+            prefetch_subscription_source(dir, index, sections, section, source_index, entry);
+        }
+        if (target_section_name != "")
+            break;
+    }
+    return write_json(dir + "/index.json", index) ? 0 : 1;
+}
+
 function empty_subscription_update_summary() {
     return {
         updated: 0,
@@ -2649,6 +2789,9 @@ else if (mode == "update-section") {
 }
 else if (mode == "update-request") {
     subscription_update_request(ARGV[1] || "0", ARGV[2] || "", ARGV[3] || "");
+}
+else if (mode == "prefetch-request") {
+    exit(subscription_prefetch_request(ARGV[1] || "0", ARGV[2] || "", ARGV[3] || "", ARGV[4] || ""));
 }
 else if (mode == "prepare-caches") {
     exit(prepare_subscription_caches(ARGV[1] || "startup", ARGV[2] || "0", ARGV[3] || "0"));

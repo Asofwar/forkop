@@ -4211,8 +4211,40 @@ function run_pending_reload_if_requested() {
     service_state_success([ "run-pending-reload-if-requested", PENDING_RELOAD_FILE, SERVICE_INIT ]);
 }
 
-function subscription_prepare_cache_request(force, target_section, target_source_index) {
+// Responses fetched before reload.lock was taken (UC-057), or "" when the
+// fetch failed and the update downloads under the lock as before.
+let subscription_prefetch_dir = "";
+
+function subscription_prefetch(force, target_section, target_source_index) {
+    let dir = trim(command_output_from_args([ "mktemp", "-d" ]));
+    if (dir == "")
+        return "";
     let result = subscription_cache_capture([
+        "prefetch-request",
+        force ? "1" : "0",
+        as_string(target_section),
+        as_string(target_source_index),
+        dir
+    ]);
+    if (result.status != 0) {
+        command_success_from_args([ "rm", "-rf", dir ]);
+        return "";
+    }
+    return dir;
+}
+
+function subscription_prefetch_discard() {
+    if (subscription_prefetch_dir != "")
+        command_success_from_args([ "rm", "-rf", subscription_prefetch_dir ]);
+    subscription_prefetch_dir = "";
+}
+
+function subscription_prepare_cache_request(force, target_section, target_source_index) {
+    let env = subscription_cache_env();
+    if (subscription_prefetch_dir != "")
+        env.FORKOP_SUBSCRIPTION_PREFETCH_DIR = subscription_prefetch_dir;
+    let result = module_env_capture(env, [
+        LIB_DIR + "/subscription/cache.uc",
         "update-request",
         force ? "1" : "0",
         as_string(target_section),
@@ -4429,11 +4461,18 @@ function subscription_update_common(force, target_section, target_source_index) 
         exit(1);
 
     force = !!force;
+    // The downloads run before any lock is taken (UC-057): under reload.lock
+    // every retry and request profile of every source would hold back DNS
+    // failover and runtime recovery. They write nothing but a private
+    // directory; the cache is committed from it under both locks below.
+    subscription_prefetch_dir = subscription_prefetch(force, target_section, target_source_index);
+
     // Global lock order (service/state.uc): reload.lock before
     // subscription-update.lock. A start holds reload.lock around start_main,
     // which then waits for subscription-update.lock; an update holding that
     // lock while it waits for reload.lock would wait on the start in turn.
     if (!acquire_runtime_lock(RELOAD_LOCK_DIR, force)) {
+        subscription_prefetch_discard();
         log_message("Forkop reload is already running; skipping subscription update", "info");
         if (force)
             mark_pending_reload("reload_busy");
@@ -4441,6 +4480,7 @@ function subscription_update_common(force, target_section, target_source_index) 
     }
 
     if (!acquire_runtime_lock(SUBSCRIPTION_UPDATE_LOCK_DIR, force)) {
+        subscription_prefetch_discard();
         release_runtime_lock(RELOAD_LOCK_DIR);
         // Reloads that arrived while this update held reload.lock were only
         // queued; apply them now, before leaving this update's own request
@@ -4453,6 +4493,7 @@ function subscription_update_common(force, target_section, target_source_index) 
     }
 
     let ok = subscription_update_common_locked(force, target_section, target_source_index);
+    subscription_prefetch_discard();
     release_runtime_lock(SUBSCRIPTION_UPDATE_LOCK_DIR);
     release_runtime_lock(RELOAD_LOCK_DIR);
     run_pending_reload_if_requested();

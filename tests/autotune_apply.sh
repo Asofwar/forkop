@@ -11,6 +11,11 @@ LIB="$ROOT/forkop/files/usr/lib"
 REAL_UCODE="$(command -v ucode)"
 # shellcheck source=tests/helpers/autotune_stubs.sh
 . "$ROOT/tests/helpers/autotune_stubs.sh"
+# shellcheck source=tests/helpers/wait.sh
+. "$ROOT/tests/helpers/wait.sh"
+# An interrupt must land while apply runs its (slowed) DNS checks, not before
+# the runner even started: wait for its first dig call instead of a fixed delay.
+checks_started() { grep -q '^dig' "$STUB_LOG/dig.log" 2>/dev/null; }
 
 export REAL_UCODE STATE="$WORK/state"
 export FORKOP_CONFIG_FILE="$WORK/config/forkop"
@@ -488,9 +493,10 @@ wait "$tuner" || true
 ok "17 apply refused while a probe/tune run holds the autotune lock"
 
 # 18. interruption before mutation -> no change
-reset_apply; plan_ready; export DIG_SLEEP=2
+reset_apply; plan_ready; export DIG_SLEEP=2; : > "$STUB_LOG/dig.log"
 ucode -L "$LIB" "$LIB/autotune/apply.uc" apply "$WORK/plan.json" > "$WORK/out.json" &
-runner=$!; sleep 0.5; kill -TERM "$runner"; wait "$runner" || true
+runner=$!; wait_until 30 checks_started || fail "apply did not reach its checks"
+kill -TERM "$runner"; wait "$runner" || true
 json 'a.equal(r.status, "failed"); a.equal(r.reason, "interrupted_before_mutation");' "$WORK/out.json"
 { [ "$(chash)" = "$PRE_HASH" ] && [ "$(snaps)" = 1 ] && [ "$(reloads)" = 0 ]; } || fail "interrupted apply mutated"
 ok "18 interruption before mutation -> no change"
@@ -768,9 +774,10 @@ ok "operator rollback without the pre-apply snapshot -> refused, record stays ap
 # A hangup of the whole group during the checks -> interruption, not a stale
 # reason. (Background jobs of a non-interactive shell start with SIGINT
 # ignored, which apply.uc keeps; SIGHUP models the dropped SSH session.)
-reset_apply; plan_ready; export DIG_SLEEP=2
+reset_apply; plan_ready; export DIG_SLEEP=2; : > "$STUB_LOG/dig.log"
 setsid ucode -L "$LIB" "$LIB/autotune/apply.uc" apply "$WORK/plan.json" > "$WORK/out.json" &
-runner=$!; sleep 0.5; kill -HUP -- "-$runner" 2>/dev/null || true; wait "$runner" || true; unset DIG_SLEEP
+runner=$!; wait_until 30 checks_started || fail "apply did not reach its checks"
+kill -HUP -- "-$runner" 2>/dev/null || true; wait "$runner" || true; unset DIG_SLEEP
 json 'a.equal(r.status, "failed"); a.equal(r.reason, "interrupted_before_mutation");' "$WORK/out.json"
 { [ "$(chash)" = "$PRE_HASH" ] && [ "$(reloads)" = 0 ]; } || fail "group interrupt mutated"
 # An inherited "ignore" (nohup, trap '' HUP) is kept: a hangup does not abort.

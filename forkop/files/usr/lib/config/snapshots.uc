@@ -2,6 +2,7 @@
 
 let fs = require("fs");
 let identity = require("core.process_identity");
+let runtime_lock = require("core.runtime_lock");
 
 const CONFIG = getenv("FORKOP_CONFIG_FILE") || "/etc/config/forkop";
 const ROOT = getenv("FORKOP_SNAPSHOT_DIR") || "/etc/forkop/config-snapshots";
@@ -312,11 +313,9 @@ function restore_guard_state() {
 // action: the next reload takes the free lock and its finish drains that
 // request. A restore relies on this, so recovery stays possible while the
 // current configuration cannot reload and keeps failing to drain the queue.
-// The owner record names the pid on its first line; service/initd.uc adds
-// the owner's start ticks on a second one.
+// The lock and its owner record: core/runtime_lock.uc.
 function service_action() {
-    let pid = trim(split(value(fs.readfile(RELOAD_LOCK + "/pid")), "\n")[0]);
-    return match(pid, /^[1-9][0-9]*$/) != null && fs.stat("/proc/" + pid) != null ? "service_action_in_progress" : null;
+    return runtime_lock.busy(RELOAD_LOCK) ? "service_action_in_progress" : null;
 }
 // A reload that was only queued (another lifecycle action took the reload
 // lock after the check above) exits 0 without touching the runtime. init.d

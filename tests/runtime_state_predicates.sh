@@ -298,26 +298,31 @@ assert_eq "reload" \
 [ ! -e "$PENDING_RELOAD_FILE" ] ||
   fail "pending reload should be consumed when worker is started"
 
+# The owner is read through the lock helper (core/runtime_lock.uc); the
+# protocol itself: runtime_dir_lock_owner.sh.
 LOCK_DIR="$WORK_DIR/runtime.lock"
 state_ucode acquire-runtime-dir-lock "$LOCK_DIR" "$$" ||
   fail "ucode should acquire runtime dir lock"
-assert_eq "$$" "$(cat "$LOCK_DIR/pid")" "runtime lock owner pid"
+assert_eq "$$" "$(state_ucode runtime-dir-lock-owner "$LOCK_DIR")" "runtime lock owner pid"
 if state_ucode acquire-runtime-dir-lock "$LOCK_DIR" "$$" >/dev/null 2>&1; then
   fail "ucode should reject a lock held by a live pid"
 fi
 if state_ucode acquire-runtime-dir-lock-wait "$LOCK_DIR" "$$" 0 >/dev/null 2>&1; then
   fail "ucode wait lock should time out for a live holder"
 fi
-state_ucode release-runtime-dir-lock "$LOCK_DIR"
+state_ucode release-runtime-dir-lock "$LOCK_DIR" "$$"
 [ ! -e "$LOCK_DIR" ] ||
   fail "ucode should remove runtime dir lock"
 
+# A lock of the previous package version whose owner is gone.
 mkdir -p "$LOCK_DIR"
 printf '%s\n' 999999 >"$LOCK_DIR/pid"
 state_ucode acquire-runtime-dir-lock "$LOCK_DIR" "$$" ||
   fail "ucode should replace a stale runtime dir lock"
-assert_eq "$$" "$(cat "$LOCK_DIR/pid")" "stale runtime lock owner pid"
-state_ucode release-runtime-dir-lock "$LOCK_DIR"
+assert_eq "$$" "$(state_ucode runtime-dir-lock-owner "$LOCK_DIR")" "stale runtime lock owner pid"
+state_ucode release-runtime-dir-lock "$LOCK_DIR" "$$"
+[ ! -e "$LOCK_DIR" ] ||
+  fail "ucode should remove the replaced runtime dir lock"
 
 SNAPSHOT_FILE="$WORK_DIR/reload-state.snapshot"
 TARGET_RELOAD_STATE="$WORK_DIR/reload-state.target"

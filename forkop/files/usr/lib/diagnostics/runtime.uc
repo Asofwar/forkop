@@ -2057,7 +2057,7 @@ function automatic_latency_test(start_kind) {
         marker = automatic_latency_pending_marker();
         current_signature = proxy_outbounds_signature_value(config_path);
         if (marker == null || as_string(marker.signature) != pending_signature || current_signature != pending_signature) {
-            module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", AUTOMATIC_LATENCY_TEST_LOCK_DIR ]);
+            module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", AUTOMATIC_LATENCY_TEST_LOCK_DIR, owner_pid ]);
             return 0;
         }
     }
@@ -2065,14 +2065,14 @@ function automatic_latency_test(start_kind) {
     if (!module_success(SERVICE_STATE_UC, [
         "acquire-runtime-dir-lock-wait", RELOAD_LOCK_DIR, owner_pid, "300"
     ])) {
-        module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", AUTOMATIC_LATENCY_TEST_LOCK_DIR ]);
+        module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", AUTOMATIC_LATENCY_TEST_LOCK_DIR, owner_pid ]);
         log_message("Automatic latency test deferred because Forkop did not finish reloading; the pending marker was retained", "warn");
         return 0;
     }
 
     if (!module_success(SERVICE_STATE_UC, [ "single-ready-sing-box-runtime" ])) {
-        module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", AUTOMATIC_LATENCY_TEST_LOCK_DIR ]);
-        module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", RELOAD_LOCK_DIR ]);
+        module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", AUTOMATIC_LATENCY_TEST_LOCK_DIR, owner_pid ]);
+        module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", RELOAD_LOCK_DIR, owner_pid ]);
         log_message("Automatic latency test deferred because sing-box is not ready or multiple processes are running; the pending marker was retained", "info");
         return 0;
     }
@@ -2094,8 +2094,8 @@ function automatic_latency_test(start_kind) {
             command_success_from_args([ "sleep", "1" ]);
     }
     if (proxy_types == null) {
-        module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", AUTOMATIC_LATENCY_TEST_LOCK_DIR ]);
-        module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", RELOAD_LOCK_DIR ]);
+        module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", AUTOMATIC_LATENCY_TEST_LOCK_DIR, owner_pid ]);
+        module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", RELOAD_LOCK_DIR, owner_pid ]);
         automatic_latency_record_failure(pending_signature);
         log_message("Automatic latency test deferred because the Clash API is not ready; the pending marker was retained with a retry pause", "warn");
         return 1;
@@ -2107,8 +2107,8 @@ function automatic_latency_test(start_kind) {
             push(proxy_tags, proxy_tag);
 
     if (length(proxy_tags) == 0) {
-        module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", AUTOMATIC_LATENCY_TEST_LOCK_DIR ]);
-        module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", RELOAD_LOCK_DIR ]);
+        module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", AUTOMATIC_LATENCY_TEST_LOCK_DIR, owner_pid ]);
+        module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", RELOAD_LOCK_DIR, owner_pid ]);
         automatic_latency_record_failure(pending_signature);
         log_message("Automatic latency test could not find the pending proxy set in the Clash API; the pending marker was retained with a retry pause", "warn");
         return 1;
@@ -2125,14 +2125,14 @@ function automatic_latency_test(start_kind) {
         completed++;
 
         if (completed < length(proxy_tags) && completed % batch_size == 0) {
-            module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", RELOAD_LOCK_DIR ]);
+            module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", RELOAD_LOCK_DIR, owner_pid ]);
             let pending_handoff = module_success(SERVICE_STATE_UC, [
                 "run-pending-reload-if-requested", PENDING_RELOAD_FILE, SERVICE_INIT
             ]);
             // A failed handoff retains the durable request. Yield instead of
             // reclaiming runtime coordination ahead of it.
             if (!pending_handoff || fs.stat(PENDING_RELOAD_FILE) != null) {
-                module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", AUTOMATIC_LATENCY_TEST_LOCK_DIR ]);
+                module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", AUTOMATIC_LATENCY_TEST_LOCK_DIR, owner_pid ]);
                 log_message("Automatic latency test yielded to a pending Forkop reload handoff", "info");
                 return 0;
             }
@@ -2143,15 +2143,15 @@ function automatic_latency_test(start_kind) {
             if (!reacquired || !module_success(SERVICE_STATE_UC, [ "single-ready-sing-box-runtime" ]) ||
                 sing_box_pid_before != trim(module_output(SERVICE_STATE_UC, [ "sing-box-service-runtime-pid" ]))) {
                 if (reacquired)
-                    module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", RELOAD_LOCK_DIR ]);
-                module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", AUTOMATIC_LATENCY_TEST_LOCK_DIR ]);
+                    module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", RELOAD_LOCK_DIR, owner_pid ]);
+                module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", AUTOMATIC_LATENCY_TEST_LOCK_DIR, owner_pid ]);
                 log_message("Automatic latency test was interrupted by reload; the pending marker was retained for the next start", "info");
                 return 0;
             }
         }
     }
-    module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", AUTOMATIC_LATENCY_TEST_LOCK_DIR ]);
-    module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", RELOAD_LOCK_DIR ]);
+    module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", AUTOMATIC_LATENCY_TEST_LOCK_DIR, owner_pid ]);
+    module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", RELOAD_LOCK_DIR, owner_pid ]);
     // A reload is normally detected between batches through its PID/lock. A
     // non-restarting config change can still replace the proxy set, so never
     // acknowledge the old marker after its semantic generation changed.

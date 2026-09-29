@@ -186,7 +186,8 @@ run_case() {
 
   has_event '^B update ran$' && fail "$label: the update ran without subscription-update.lock"
   [ ! -e "$RELOAD_LOCK" ] || fail "$label: the update left reload.lock behind"
-  [ "$(sed -n 1p "$SUB_LOCK/pid")" = "$holder" ] || fail "$label: the update changed the subscription-update.lock owner"
+  [ "$(ucode -L "$REAL_LIB" "$REAL_LIB/service/state.uc" runtime-dir-lock-owner "$SUB_LOCK")" = "$holder" ] ||
+    fail "$label: the update changed the subscription-update.lock owner"
   [ "$(grep -c '^init ' "$EVENTS" || true)" = 1 ] || fail "$label: the queued reload was not applied exactly once"
   # The drain closes procd's fd 1000 with `1000>&-`; dash, which has no
   # descriptors above 9, passes that 1000 on as an argument.

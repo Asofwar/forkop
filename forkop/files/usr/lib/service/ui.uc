@@ -2,6 +2,7 @@
 
 let fs = require("fs");
 let uci_core = require("core.uci");
+let runtime_lock = require("core.runtime_lock");
 
 const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || "forkop";
 const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
@@ -1441,7 +1442,7 @@ function latency_worker(path, latency_type, tag, timeout) {
 
     let method = latency_clash_method(latency_type).method;
     let status = command_status(command_from_args([ BIN_PATH, "clash_api", method, tag, timeout, path ]) + " >/dev/null 2>&1");
-    module_success(STATE_UC, [ "release-runtime-dir-lock", LATENCY_TEST_LOCK_DIR ]);
+    module_success(STATE_UC, [ "release-runtime-dir-lock", LATENCY_TEST_LOCK_DIR, owner_pid ]);
     if (status == 0)
         write_finished_action_state(path, true, "Latency test completed", status);
     else
@@ -1462,7 +1463,7 @@ function latency_test_async(latency_type, section, tag, requested_timeout) {
 
     // This is only an early busy hint. The worker still acquires the lock
     // atomically and reclaims dead owners; existence alone is not ownership.
-    if (pid_running(first_line(LATENCY_TEST_LOCK_DIR + "/pid"))) {
+    if (runtime_lock.busy(LATENCY_TEST_LOCK_DIR)) {
         action_start_response(false, "", "Another latency test is already running");
         exit(1);
     }

@@ -232,8 +232,11 @@ function trim(value) {
     return replace(as_string(value), /^[ \t\r\n]+|[ \t\r\n]+$/g, "");
 }
 
+// This ucode process. `sh -c 'echo $PPID'` names it only when /bin/sh execs
+// its last command (busybox ash); dash reports a shell that has exited, and
+// a runtime lock (core/runtime_lock.uc) is never held by an exited owner.
 function owner_pid() {
-    let pid = trim(command_output_from_args([ "sh", "-c", "echo $PPID" ]));
+    let pid = as_string(fs.readlink("/proc/self"));
     return match(pid, /^[0-9]+$/) != null ? pid : "0";
 }
 
@@ -669,7 +672,7 @@ function release_start_subscription_update_lock() {
     if (!start_subscription_update_lock_held)
         return;
 
-    module_success(STATE_UC, [ "release-runtime-dir-lock", SUBSCRIPTION_UPDATE_LOCK_DIR ]);
+    module_success(STATE_UC, [ "release-runtime-dir-lock", SUBSCRIPTION_UPDATE_LOCK_DIR, owner_pid() ]);
     start_subscription_update_lock_held = false;
 }
 
@@ -1615,7 +1618,7 @@ function reload_actions_summary(plan) {
 }
 
 function release_reload_lock() {
-    module_success(STATE_UC, [ "release-runtime-dir-lock", RELOAD_LOCK_DIR ]);
+    module_success(STATE_UC, [ "release-runtime-dir-lock", RELOAD_LOCK_DIR, owner_pid() ]);
 }
 
 function sing_box_runtime_pid() {

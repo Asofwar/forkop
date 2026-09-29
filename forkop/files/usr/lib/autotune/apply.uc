@@ -37,6 +37,7 @@ let catalog = require("autotune.catalog");
 let probe_module = require("autotune.probe");
 let select_module = require("autotune.select");
 let autotune_lock = require("autotune.lock");
+let runtime_lock = require("core.runtime_lock");
 let resolver = require("routing.resolve");
 
 const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
@@ -244,11 +245,9 @@ function guards_present() {
 // A lifecycle action (reload/start/stop) holds the reload lock, and a reload
 // requested meanwhile is queued: either would run outside this transaction
 // (a queued reload after the guard is gone would confirm LKG unverified).
-// The owner record names the pid on its first line; service/initd.uc adds
-// the owner's start ticks on a second one.
+// The lock and its owner record: core/runtime_lock.uc.
 function service_action() {
-    let pid = trim(split(as_string(fs.readfile(RELOAD_LOCK + "/pid")), "\n")[0]);
-    if (match(pid, /^[1-9][0-9]*$/) != null && fs.stat("/proc/" + pid) != null) return "service_action_in_progress";
+    if (runtime_lock.busy(RELOAD_LOCK)) return "service_action_in_progress";
     if (fs.stat(PENDING_RELOAD) != null) return "reload_pending";
     return null;
 }

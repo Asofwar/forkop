@@ -4,8 +4,16 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 FORKOP_LIB="$ROOT_DIR/forkop/files/usr/lib"
 WORK_DIR="$(mktemp -d)"
-trap 'rm -rf "$WORK_DIR"' EXIT
+holder=""
+cleanup() {
+  [ -z "$holder" ] || kill "$holder" 2>/dev/null || true
+  rm -rf "$WORK_DIR"
+}
+trap cleanup EXIT
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
+# The lock and its owner are read through service/state.uc (core/runtime_lock.uc).
+state() { ucode -L "$FORKOP_LIB" "$FORKOP_LIB/service/state.uc" "$@"; }
+export REAL_LIB="$FORKOP_LIB" START_OWNER="$$"
 
 mkdir -p "$WORK_DIR/run" "$WORK_DIR/lib/dns"
 printf 'forkop.settings=settings\n' >"$WORK_DIR/uci.state"
@@ -13,7 +21,8 @@ printf 'exit(0);\n' >"$WORK_DIR/lib/dns/apply.uc"
 cat >"$WORK_DIR/forkop" <<'SH'
 #!/bin/sh
 [ "$1" = start ] || exit 50
-[ -s "$FORKOP_RELOAD_LOCK_DIR/pid" ] || exit 51
+# The start runs under its own reload.lock.
+[ "$(ucode -L "$REAL_LIB" "$REAL_LIB/service/state.uc" runtime-dir-lock-owner "$FORKOP_RELOAD_LOCK_DIR")" = "$START_OWNER" ] || exit 51
 printf 'start\n' >>"$START_TEST_LOG"
 exit "${START_TEST_STATUS:-0}"
 SH
@@ -29,16 +38,18 @@ start() {
     ucode -L "$FORKOP_LIB" "$FORKOP_LIB/service/initd.uc" start-service manual "$$"
 }
 
-mkdir "$WORK_DIR/run/reload.lock"
-printf '%s\n' "$$" >"$WORK_DIR/run/reload.lock/pid"
+# A reload holds the lock under its own live owner.
+sleep 300 >/dev/null 2>&1 &
+holder=$!
+state acquire-runtime-dir-lock "$WORK_DIR/run/reload.lock" "$holder" || fail "the reload could not take the lock"
 if start; then fail "start ignored an active reload"; fi
 [ ! -e "$WORK_DIR/start.log" ] || fail "blocked start invoked the backend"
-[ -s "$WORK_DIR/run/reload.lock/pid" ] || fail "blocked start removed another owner's lock"
+[ "$(state runtime-dir-lock-owner "$WORK_DIR/run/reload.lock")" = "$holder" ] ||
+  fail "blocked start removed another owner's lock"
 
 (
   sleep 1
-  rm "$WORK_DIR/run/reload.lock/pid"
-  rmdir "$WORK_DIR/run/reload.lock"
+  state release-runtime-dir-lock "$WORK_DIR/run/reload.lock" "$holder"
 ) &
 release_pid=$!
 START_TEST_WAIT=5 start || fail "start did not resume after reload released its lock"

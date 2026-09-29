@@ -177,7 +177,8 @@ wait "$caller" || status=$?
 [ "$status" = 0 ] || fail "init.d start returned $status: $(cat "$WORK_DIR/rc-start.out")"
 wait_until 10 file_nonempty "$WORK_DIR/start.running" || fail "detached start did not reach its backend"
 START_JOB="$(job_file start)" || fail "the start registered no UI job"
-owner="$(sed -n 1p "$LOCK/pid")"
+owner="$("$REAL_UCODE" -L "$LIB" "$LIB/service/state.uc" runtime-dir-lock-owner "$LOCK")" ||
+  fail "the detached start does not hold reload.lock"
 [ "$(job_field "$START_JOB" pid)" = "$owner" ] ||
   fail "the UI start job is tracked under pid '$(job_field "$START_JOB" pid)', not the reload.lock owner $owner"
 

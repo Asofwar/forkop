@@ -4,7 +4,7 @@ let fs = require("fs");
 let common = require("core.common");
 let uci_core = require("core.uci");
 let netstat = require("core.netstat");
-let process_identity = require("core.process_identity");
+let runtime_lock = require("core.runtime_lock");
 let rule_config = require("config.rule");
 let connections = require("config.connections");
 let zapret_validator = require("providers.zapret.validator");
@@ -288,20 +288,6 @@ function run_pending_reload_if_requested(path, init_script) {
     return true;
 }
 
-function first_line_value(path) {
-    let data = fs.readfile(path);
-    if (data == null)
-        return "";
-
-    let newline = index(data, "\n");
-    return newline >= 0 ? substr(data, 0, newline) : data;
-}
-
-function pid_alive(pid) {
-    pid = as_string(pid);
-    return match(pid, /^[0-9]+$/) != null && command_success_from_args([ "kill", "-0", pid ]);
-}
-
 // Runtime directory locks. Global order: a process that holds more than one
 // takes them in this order and never waits for an earlier one while it holds
 // a later one (UC-054):
@@ -317,56 +303,13 @@ function pid_alive(pid) {
 //      the subscription update, after reload.lock; the deferred subscription
 //      bootstrap retry (subscription/cache.uc), which holds nothing else and
 //      releases it before it requests a reload.
-function lock_dir_write_owner(lock_dir, owner_pid) {
-    return write_text_file(as_string(lock_dir) + "/pid", as_string(owner_pid) + "\n");
-}
-
-// An owner record may carry the owner's start ticks on a second line
-// (service/initd.uc writes them for a start or reload): the lock is then held
-// only while that very process runs, not by a process that reused its pid.
-function lock_dir_owner_alive(lock_dir) {
-    let lines = split(as_string(fs.readfile(as_string(lock_dir) + "/pid")), "\n");
-    let pid = trim(as_string(lines[0]));
-    let ticks = trim(as_string(lines[1]));
-    return pid_alive(pid) && (ticks == "" || process_identity.start_ticks(pid) == ticks);
-}
-
-function release_runtime_dir_lock(lock_dir) {
-    lock_dir = as_string(lock_dir);
-    if (lock_dir == "")
-        return;
-
-    command_success_from_args([ "rm", "-f", lock_dir + "/pid" ]);
-    command_success_from_args([ "rmdir", lock_dir ]);
+// The lock protocol and the owner record: core/runtime_lock.uc.
+function release_runtime_dir_lock(lock_dir, owner_pid) {
+    return runtime_lock.release(lock_dir, owner_pid);
 }
 
 function acquire_runtime_dir_lock(lock_dir, owner_pid) {
-    lock_dir = as_string(lock_dir);
-    owner_pid = as_string(owner_pid);
-    if (lock_dir == "" || owner_pid == "")
-        return false;
-
-    if (command_success_from_args([ "mkdir", lock_dir ])) {
-        if (lock_dir_write_owner(lock_dir, owner_pid))
-            return true;
-        release_runtime_dir_lock(lock_dir);
-        return false;
-    }
-
-    if (lock_dir_owner_alive(lock_dir))
-        return false;
-
-    command_success_from_args([ "rm", "-f", lock_dir + "/pid" ]);
-    if (!command_success_from_args([ "rmdir", lock_dir ]))
-        return false;
-    if (!command_success_from_args([ "mkdir", lock_dir ]))
-        return false;
-
-    if (lock_dir_write_owner(lock_dir, owner_pid))
-        return true;
-
-    release_runtime_dir_lock(lock_dir);
-    return false;
+    return runtime_lock.acquire(lock_dir, owner_pid);
 }
 
 function acquire_runtime_dir_lock_wait(lock_dir, owner_pid, timeout) {
@@ -2081,7 +2024,13 @@ else if (mode == "acquire-runtime-dir-lock")
 else if (mode == "acquire-runtime-dir-lock-wait")
     exit(acquire_runtime_dir_lock_wait(ARGV[1], ARGV[2], ARGV[3]) ? 0 : 1);
 else if (mode == "release-runtime-dir-lock")
-    release_runtime_dir_lock(ARGV[1]);
+    release_runtime_dir_lock(ARGV[1], ARGV[2]);
+else if (mode == "runtime-dir-lock-owner") {
+    let owner = runtime_lock.owner(ARGV[1]);
+    if (owner == "")
+        exit(1);
+    print(owner, "\n");
+}
 else if (mode == "reload-sing-box-runtime")
     reload_sing_box_runtime(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
 else if (mode == "stop-managed-sing-box-runtime")

@@ -82,7 +82,7 @@ ev() { printf '%s\n' "$1" >>"$EVENTS"; }
 state() { ucode -L "$REAL_LIB" "$REAL_LIB/service/state.uc" "$@"; }
 case "$1" in
   start)
-    sed -n 1p "$RELOAD_LOCK/pid" >"$A_OWNER_FILE"
+    state runtime-dir-lock-owner "$RELOAD_LOCK" >"$A_OWNER_FILE"
     ev "A start begin"
     if [ -n "${A_GATE:-}" ]; then
       n=0
@@ -96,7 +96,7 @@ case "$1" in
     ev "A sub acquired"
     sleep 0.3
     ev "A sub released"
-    state release-runtime-dir-lock "$SUB_LOCK"
+    state release-runtime-dir-lock "$SUB_LOCK" "$$"
     ev "A start end"
     exit 0
     ;;

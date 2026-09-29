@@ -91,9 +91,12 @@ pending_reason="$(FORKOP_LIST_UPDATE_RELOAD_FILE="$WORK_DIR/list-update.reload" 
 
 # Exercise the real initd lock path too, rather than merely returning the
 # queue acknowledgement from the worker stub above. A live owner makes the
-# directory non-stale, so initd must queue list-content and expose `queued`.
-mkdir "$WORK_DIR/held-reload.lock"
-printf '%s\n' "$$" >"$WORK_DIR/held-reload.lock/pid"
+# lock non-stale, so initd must queue list-content and expose `queued`.
+sleep 300 >/dev/null 2>&1 &
+holder=$!
+trap 'kill "$holder" 2>/dev/null || true; rm -rf "$WORK_DIR"' EXIT
+ucode -L "$FORKOP_LIB" "$FORKOP_LIB/service/state.uc" acquire-runtime-dir-lock "$WORK_DIR/held-reload.lock" "$holder" ||
+  fail "the holder could not take reload.lock"
 initd_queue_output="$(
   FORKOP_RUNTIME_STATE_DIR="$WORK_DIR/initd-runtime" \
   FORKOP_PENDING_RELOAD_FILE="$WORK_DIR/initd-reload.pending" \
@@ -104,8 +107,11 @@ initd_queue_output="$(
 [ "$initd_queue_output" = "queued" ] || fail "locked initd request did not report queued list-content"
 [ "$(sed -n '1p' "$WORK_DIR/initd-reload.pending")" = "reason=list-content" ] ||
   fail "locked initd request did not retain list-content as its pending reason"
-rm -f "$WORK_DIR/held-reload.lock/pid"
-rmdir "$WORK_DIR/held-reload.lock"
+[ "$(ucode -L "$FORKOP_LIB" "$FORKOP_LIB/service/state.uc" runtime-dir-lock-owner "$WORK_DIR/held-reload.lock")" = "$holder" ] ||
+  fail "the queued initd request changed the reload.lock owner"
+ucode -L "$FORKOP_LIB" "$FORKOP_LIB/service/state.uc" release-runtime-dir-lock "$WORK_DIR/held-reload.lock" "$holder"
+[ ! -e "$WORK_DIR/held-reload.lock" ] || fail "the holder's release left reload.lock behind"
+kill "$holder" 2>/dev/null || true
 
 # A changed remote JSON/SRS cache is independent of list-derived generation.
 # Its refresh return code 0 means changed and must coalesce into one apply.

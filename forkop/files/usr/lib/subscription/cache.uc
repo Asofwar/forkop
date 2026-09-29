@@ -2343,8 +2343,10 @@ function prepare_subscription_caches(phase, already_prepared, no_refresh) {
     return 1;
 }
 
+// This ucode process, the owner of the runtime locks it takes; see
+// service/lifecycle.uc owner_pid().
 function current_pid() {
-    return trim(command_output("sh -c 'echo $PPID'"));
+    return as_string(fs.readlink("/proc/self"));
 }
 
 function pid_running(pid) {
@@ -2518,7 +2520,7 @@ function deferred_subscription_bootstrap_retry_worker(remaining_sections) {
         }
 
         let result = subscription_bootstrap_retry_result(remaining_sections);
-        state_ucode_status([ "release-runtime-dir-lock", FORKOP_SUBSCRIPTION_UPDATE_LOCK_DIR ]);
+        state_ucode_status([ "release-runtime-dir-lock", FORKOP_SUBSCRIPTION_UPDATE_LOCK_DIR, current_pid() ]);
 
         if (result.recovered != "") {
             log_message("Recovered deferred subscription rule(s): " + result.recovered + "; reloading Forkop", "info");

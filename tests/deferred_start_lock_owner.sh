@@ -149,7 +149,8 @@ chmod +x "$WORK_DIR/bin/ucode" "$WORK_DIR/bin/forkop" "$WORK_DIR/bin/logger" \
   "$WORK_DIR/bin/no-init" "$WORK_DIR/bin/nft" "$WORK_DIR/bin/init" "$WORK_DIR/rc"
 
 has_event() { grep -q "$1" "$EVENTS" 2>/dev/null; }
-lock_line() { sed -n "${1}p" "$LOCK/pid" 2>/dev/null; }
+# The live reload.lock owner, read through the lock helper (core/runtime_lock.uc).
+lock_owner() { "$REAL_UCODE" -L "$LIB" "$LIB/service/state.uc" runtime-dir-lock-owner "$LOCK" 2>/dev/null || true; }
 start_ticks() {
   local stat
   IFS= read -r stat <"/proc/$1/stat" || return 1
@@ -188,14 +189,13 @@ deferred_start() {
 }
 
 owner_holds_lock() {
-  local label="$1" owner ticks
-  owner="$(lock_line 1)"
-  ticks="$(lock_line 2)"
+  local label="$1" owner
+  owner="$(lock_owner)"
   [ -n "$owner" ] || fail "$label: reload.lock has no owner while the start runs"
   [ "$owner" != "$RC_PID" ] || fail "$label: reload.lock names the rc.common shell that already exited"
   process_running "$owner" || fail "$label: reload.lock owner $owner is dead while the start runs"
-  [ -n "$ticks" ] || fail "$label: reload.lock records no start ticks for its owner"
-  [ "$ticks" = "$(start_ticks "$owner")" ] || fail "$label: recorded start ticks do not match owner $owner"
+  [ -e "$LOCK/owner.$owner.$(start_ticks "$owner")" ] ||
+    fail "$label: reload.lock records no owner with the start ticks of $owner: $(ls -A "$LOCK" | tr '\n' ' ')"
   tr '\0' ' ' <"/proc/$owner/cmdline" | grep -q 'service/initd.uc start-service' ||
     fail "$label: reload.lock owner $owner is not the start worker"
   descends_from "$BACKEND_PID" "$owner" || fail "$label: \`forkop start\` does not run under the lock owner"
@@ -218,7 +218,7 @@ flock -n "$RC_PROCD_LOCK" true || fail "the detached start holds procd's service
 if "$REAL_UCODE" -L "$LIB" "$LIB/service/state.uc" acquire-runtime-dir-lock "$LOCK" "$$"; then
   fail "a contender took reload.lock from the running start"
 fi
-[ "$(lock_line 1)" = "$OWNER" ] || fail "a failed contender changed the reload.lock owner"
+[ "$(lock_owner)" = "$OWNER" ] || fail "a failed contender changed the reload.lock owner"
 
 # 3. The owner record keeps the lock readers working: a snapshot apply and an
 #    autotune apply see the running start as a lifecycle action.
@@ -242,7 +242,7 @@ wait "$reloader" || status=$?
 [ "$status" = 0 ] || fail "queued reload returned $status"
 [ -e "$FORKOP_PENDING_RELOAD_FILE" ] || fail "the reload was neither run nor queued"
 has_event '^reload' && fail "a reload ran next to the start"
-[ "$(lock_line 1)" = "$OWNER" ] || fail "the reload changed the reload.lock owner"
+[ "$(lock_owner)" = "$OWNER" ] || fail "the reload changed the reload.lock owner"
 
 # 5. The owner is still the live start worker at the end of the start, and
 #    the queued reload runs once the start has released reload.lock (no
@@ -264,18 +264,21 @@ owner_holds_lock "second start"
 sleep 300 >/dev/null 2>&1 &
 other=$!
 actors+=("$other")
-printf '%s\n' "$other" >"$LOCK/pid"
+rm -rf "$LOCK"
+"$REAL_UCODE" -L "$LIB" "$LIB/service/state.uc" acquire-runtime-dir-lock "$LOCK" "$other" ||
+  fail "the contender could not take the broken reload.lock"
 touch "$WORK_DIR/start.gate"
 wait_until 20 start_finished || fail "the second start did not finish"
 wait_until 10 process_gone "$OWNER" || fail "the second start worker did not exit"
-[ "$(lock_line 1)" = "$other" ] || fail "the start's release removed another owner's reload.lock"
+[ "$(lock_owner)" = "$other" ] || fail "the start's release removed another owner's reload.lock"
+"$REAL_UCODE" -L "$LIB" "$LIB/service/state.uc" release-runtime-dir-lock "$LOCK" "$other"
 kill "$other" 2>/dev/null || true
-rm -f "$LOCK/pid"
-rmdir "$LOCK"
+[ ! -e "$LOCK" ] || fail "the contender's release left reload.lock behind"
 
 # 7. The start ticks make the record name one process: a record whose pid now
 #    belongs to another process is stale for service/state.uc and for
-#    service/initd.uc, and a matching one is not.
+#    service/initd.uc, and a matching one is not. The record here is one of
+#    the previous package version (<lock>/pid), which an upgrade can leave.
 reload_begin() {
   "$REAL_UCODE" -L "$LIB" "$LIB/service/initd.uc" reload-begin-fixture badwan_interface_up "$$" 1 1 "" >/dev/null
 }
@@ -295,8 +298,7 @@ for implementation in state initd; do
   else
     reload_begin || fail "initd.uc kept a lock whose owner pid was reused"
   fi
-  rm -f "$LOCK/pid"
-  rmdir "$LOCK"
+  rm -rf "$LOCK"
 done
 
 printf 'deferred start lock owner checks passed\n'

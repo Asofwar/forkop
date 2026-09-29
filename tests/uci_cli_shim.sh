@@ -202,7 +202,8 @@ DELTA
 transcript() { # transcript <uci> <dir>
   UCI="$1"
   mkdir -p "$2"
-  (cd "$2" && scenario)
+  # File modes are part of the transcript.
+  (umask 022 && cd "$2" && scenario)
 }
 
 command -v ucode >/dev/null 2>&1 || fail "the uci test shim needs ucode on PATH"

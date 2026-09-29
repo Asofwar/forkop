@@ -11,7 +11,10 @@ set -euo pipefail
 # PID in it is soon reused. Such a pidfile, as a bare PID, as a record with
 # another start time, or as the right start time of a process with another
 # command line, must not get that process signalled and must not count as a
-# running worker. A recorded worker still does.
+# running worker. A recorded worker still does. The process that reused the
+# PID can run the worker's own executable (on OpenWrt /bin/sh, sleep and most
+# daemons are one busybox binary, and ucode runs every Forkop module): then
+# the command line alone tells it apart, also for a bare PID.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB="$ROOT_DIR/forkop/files/usr/lib"
@@ -26,7 +29,7 @@ cleanup() {
     kill -KILL "$pid" 2>/dev/null || true
   done
   wait 2>/dev/null || true
-  rm -f "$WORK_DIR/dig.hold" "$WORK_DIR/lifecycle.hold" "$WORK_DIR/subscription.hold"
+  rm -f "$WORK_DIR/dig.hold" "$WORK_DIR/lifecycle.hold" "$WORK_DIR/subscription.hold" "$WORK_DIR/foreign.hold"
   pkill -KILL -f "$WORK_DIR" 2>/dev/null || true
   rm -rf "$WORK_DIR"
 }
@@ -130,37 +133,58 @@ wait_until 10 process_exec_is "$FOREIGN" sleep || fail "the foreign process did 
 FOREIGN_TICKS="$(start_ticks "$FOREIGN")"
 [ -n "$FOREIGN_TICKS" ] || fail "cannot read the start ticks of the foreign process"
 FORMS="bare other-start same-start"
+# Processes that hold the PID and run the worker's executable with another
+# command line: another ucode program with the same library path, and
+# another /bin/sh script.
+: >"$WORK_DIR/foreign.hold"
+FOREIGN_LOOP="while [ -e '$WORK_DIR/foreign.hold' ]; do sleep 0.05; done"
+ucode -L "$LIB" -e 'system(ARGV[0])' "$FOREIGN_LOOP" &
+FOREIGN_UCODE=$!
+actors+=("$FOREIGN_UCODE")
+wait_until 10 process_exec_is "$FOREIGN_UCODE" ucode || fail "the foreign ucode process did not start"
+/bin/sh -c "$FOREIGN_LOOP" &
+FOREIGN_SH=$!
+actors+=("$FOREIGN_SH")
+wait_until 10 process_exec_is "$FOREIGN_SH" "$(basename "$(readlink -f /bin/sh)")" ||
+  fail "the foreign /bin/sh process did not start"
 
 stale_record() {
+  local pid="${3:-$FOREIGN}" ticks
+  ticks="$(start_ticks "$pid")"
+  [ -n "$ticks" ] || fail "cannot read the start ticks of $pid"
   case "$2" in
-    bare) printf '%s\n' "$FOREIGN" ;;
-    other-start) printf '%s\n%s\n' "$FOREIGN" "$((FOREIGN_TICKS + 1))" ;;
-    same-start) printf '%s\n%s\n' "$FOREIGN" "$FOREIGN_TICKS" ;;
+    bare) printf '%s\n' "$pid" ;;
+    other-start) printf '%s\n%s\n' "$pid" "$((ticks + 1))" ;;
+    same-start) printf '%s\n%s\n' "$pid" "$ticks" ;;
   esac >"$1"
 }
 
 foreign_alive() {
   process_running "$FOREIGN" || fail "$1 signalled the process that reused the worker's PID"
+  process_running "$FOREIGN_UCODE" || fail "$1 signalled a ucode process that reused the worker's PID"
+  process_running "$FOREIGN_SH" || fail "$1 signalled a /bin/sh process that reused the worker's PID"
 }
 
 # --- list update worker ------------------------------------------------------
 LIST_PID="$FORKOP_LIST_UPDATE_PID_FILE"
-for form in $FORMS; do
-  stale_record "$LIST_PID" "$form"
-  list stop-list-update
-  foreign_alive "stop-list-update ($form)"
-  [ ! -e "$LIST_PID" ] || fail "stop-list-update kept a stale pidfile ($form)"
+for foreign in "$FOREIGN" "$FOREIGN_UCODE"; do
+  for form in $FORMS; do
+    stale_record "$LIST_PID" "$form" "$foreign"
+    list stop-list-update
+    foreign_alive "stop-list-update ($form $foreign)"
+    [ ! -e "$LIST_PID" ] || fail "stop-list-update kept a stale pidfile ($form $foreign)"
 
-  stale_record "$LIST_PID" "$form"
-  : >"$WORK_DIR/syslog"
-  list prepare-list-cache >/dev/null 2>&1 || true
-  if grep -q 'Another lists update is already running' "$WORK_DIR/syslog"; then
-    fail "a list pidfile left behind ($form) kept the lists from being updated"
-  fi
-  grep -q 'Downloading and processing lists' "$WORK_DIR/syslog" ||
-    fail "the list update did not run past a stale pidfile ($form)"
-  [ "$(first_line "$LIST_PID")" != "$FOREIGN" ] || fail "the list update left the stale pidfile ($form)"
-  foreign_alive "the list update ($form)"
+    stale_record "$LIST_PID" "$form" "$foreign"
+    : >"$WORK_DIR/syslog"
+    list prepare-list-cache >/dev/null 2>&1 || true
+    if grep -q 'Another lists update is already running' "$WORK_DIR/syslog"; then
+      fail "a list pidfile left behind ($form $foreign) kept the lists from being updated"
+    fi
+    grep -q 'Downloading and processing lists' "$WORK_DIR/syslog" ||
+      fail "the list update did not run past a stale pidfile ($form $foreign)"
+    [ "$(first_line "$LIST_PID")" != "$foreign" ] || fail "the list update left the stale pidfile ($form $foreign)"
+    foreign_alive "the list update ($form $foreign)"
+  done
 done
 
 # A running list worker is recorded, keeps a second one out and is stopped.
@@ -184,56 +208,60 @@ rm -f "$WORK_DIR/dig.hold"
 
 # --- deferred subscription bootstrap worker ----------------------------------
 SUB_PID="$FORKOP_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE"
-for form in $FORMS; do
-  stale_record "$SUB_PID" "$form"
-  subscription stop-deferred-bootstrap-worker
-  foreign_alive "stop-deferred-bootstrap-worker ($form)"
-  [ ! -e "$SUB_PID" ] || fail "stop-deferred-bootstrap-worker kept a stale pidfile ($form)"
+for foreign in "$FOREIGN" "$FOREIGN_UCODE"; do
+  for form in $FORMS; do
+    stale_record "$SUB_PID" "$form" "$foreign"
+    subscription stop-deferred-bootstrap-worker
+    foreign_alive "stop-deferred-bootstrap-worker ($form $foreign)"
+    [ ! -e "$SUB_PID" ] || fail "stop-deferred-bootstrap-worker kept a stale pidfile ($form $foreign)"
 
-  stale_record "$SUB_PID" "$form"
-  subscription start-deferred-bootstrap-worker alpha
-  worker="$(first_line "$SUB_PID")"
-  if [ -z "$worker" ] || [ "$worker" = "$FOREIGN" ]; then
-    fail "a stale pidfile ($form) kept the deferred subscription worker from starting"
-  fi
-  actors+=("$worker")
-  process_running "$worker" || fail "the deferred subscription worker did not start ($form)"
-  foreign_alive "start-deferred-bootstrap-worker ($form)"
+    stale_record "$SUB_PID" "$form" "$foreign"
+    subscription start-deferred-bootstrap-worker alpha
+    worker="$(first_line "$SUB_PID")"
+    if [ -z "$worker" ] || [ "$worker" = "$foreign" ]; then
+      fail "a stale pidfile ($form $foreign) kept the deferred subscription worker from starting"
+    fi
+    actors+=("$worker")
+    process_running "$worker" || fail "the deferred subscription worker did not start ($form $foreign)"
+    foreign_alive "start-deferred-bootstrap-worker ($form $foreign)"
 
-  : >"$WORK_DIR/syslog"
-  subscription start-deferred-bootstrap-worker alpha
-  [ "$(first_line "$SUB_PID")" = "$worker" ] || fail "a second deferred subscription worker replaced the recorded one"
-  wait_until 10 test -n "$(descendants "$worker")" || fail "the deferred subscription worker did not start waiting"
-  track_descendants "$worker"
-  subscription stop-deferred-bootstrap-worker
-  wait_until 10 process_gone "$worker" || fail "the recorded deferred subscription worker was not stopped"
-  foreign_alive "stop-deferred-bootstrap-worker"
+    : >"$WORK_DIR/syslog"
+    subscription start-deferred-bootstrap-worker alpha
+    [ "$(first_line "$SUB_PID")" = "$worker" ] || fail "a second deferred subscription worker replaced the recorded one"
+    wait_until 10 test -n "$(descendants "$worker")" || fail "the deferred subscription worker did not start waiting"
+    track_descendants "$worker"
+    subscription stop-deferred-bootstrap-worker
+    wait_until 10 process_gone "$worker" || fail "the recorded deferred subscription worker was not stopped"
+    foreign_alive "stop-deferred-bootstrap-worker"
+  done
 done
 
 # --- scheduled start retry ---------------------------------------------------
 RETRY_PID="$WORK_DIR/run/start-retry.pid"
-for form in $FORMS; do
-  stale_record "$RETRY_PID" "$form"
-  initd cancel-scheduled-start-retry "$RETRY_PID"
-  foreign_alive "cancel-scheduled-start-retry ($form)"
-  [ ! -e "$RETRY_PID" ] || fail "cancel-scheduled-start-retry kept a stale pidfile ($form)"
+for foreign in "$FOREIGN" "$FOREIGN_SH"; do
+  for form in $FORMS; do
+    stale_record "$RETRY_PID" "$form" "$foreign"
+    initd cancel-scheduled-start-retry "$RETRY_PID"
+    foreign_alive "cancel-scheduled-start-retry ($form $foreign)"
+    [ ! -e "$RETRY_PID" ] || fail "cancel-scheduled-start-retry kept a stale pidfile ($form $foreign)"
 
-  stale_record "$RETRY_PID" "$form"
-  initd schedule-start-retry "$RETRY_PID" 300 || fail "the start retry was not scheduled ($form)"
-  worker="$(first_line "$RETRY_PID")"
-  if [ -z "$worker" ] || [ "$worker" = "$FOREIGN" ]; then
-    fail "a stale pidfile ($form) kept the start retry from being scheduled"
-  fi
-  actors+=("$worker")
-  process_running "$worker" || fail "the scheduled start retry is not running ($form)"
+    stale_record "$RETRY_PID" "$form" "$foreign"
+    initd schedule-start-retry "$RETRY_PID" 300 || fail "the start retry was not scheduled ($form $foreign)"
+    worker="$(first_line "$RETRY_PID")"
+    if [ -z "$worker" ] || [ "$worker" = "$foreign" ]; then
+      fail "a stale pidfile ($form $foreign) kept the start retry from being scheduled"
+    fi
+    actors+=("$worker")
+    process_running "$worker" || fail "the scheduled start retry is not running ($form $foreign)"
 
-  initd schedule-start-retry "$RETRY_PID" 300 || fail "a second schedule of the start retry failed"
-  [ "$(first_line "$RETRY_PID")" = "$worker" ] || fail "a second start retry replaced the scheduled one"
-  wait_until 10 test -n "$(descendants "$worker")" || fail "the scheduled start retry did not start waiting"
-  track_descendants "$worker"
-  initd cancel-scheduled-start-retry "$RETRY_PID"
-  wait_until 10 process_gone "$worker" || fail "the scheduled start retry was not cancelled"
-  foreign_alive "cancel-scheduled-start-retry"
+    initd schedule-start-retry "$RETRY_PID" 300 || fail "a second schedule of the start retry failed"
+    [ "$(first_line "$RETRY_PID")" = "$worker" ] || fail "a second start retry replaced the scheduled one"
+    wait_until 10 test -n "$(descendants "$worker")" || fail "the scheduled start retry did not start waiting"
+    track_descendants "$worker"
+    initd cancel-scheduled-start-retry "$RETRY_PID"
+    wait_until 10 process_gone "$worker" || fail "the scheduled start retry was not cancelled"
+    foreign_alive "cancel-scheduled-start-retry"
+  done
 done
 # The retry still runs its marker-gated action after its delay.
 : >"$WORK_DIR/init.log"
@@ -295,37 +323,46 @@ wait_until 20 process_gone "$worker" || fail "the subscription update worker did
 ui_status() {
   ui get-ui-state | ucode -e 'print(json(require("fs").stdin.read("all")).service.forkop.status)'
 }
-for form in $FORMS; do
-  stale_record "$FORKOP_START_IN_PROGRESS_FILE" "$form"
-  [ "$(ui_status)" != starting ] || fail "a start marker left behind ($form) keeps Forkop starting"
+for foreign in "$FOREIGN" "$FOREIGN_UCODE"; do
+  for form in $FORMS; do
+    stale_record "$FORKOP_START_IN_PROGRESS_FILE" "$form" "$foreign"
+    [ "$(ui_status)" != starting ] || fail "a start marker left behind ($form $foreign) keeps Forkop starting"
+  done
 done
-# The recorded lifecycle worker, here a stand-in lifecycle.uc in a library
-# tree that is otherwise the real one, still reports a start in progress.
-mkdir -p "$WORK_DIR/lib/service"
-for entry in "$LIB"/*; do
-  [ "${entry##*/}" = service ] || ln -s "$entry" "$WORK_DIR/lib/${entry##*/}"
-done
-for entry in "$LIB"/service/*; do
-  [ "${entry##*/}" = lifecycle.uc ] || ln -s "$entry" "$WORK_DIR/lib/service/${entry##*/}"
-done
-cat >"$WORK_DIR/lib/service/lifecycle.uc" <<'UC'
+# The real lifecycle start, run as the CLI runs it (`ucode -L <lib>
+# <lib>/service/lifecycle.uc start`), records itself in the start marker, and
+# ui.uc reports a start in progress while it runs and no longer once it has
+# ended. Every module the start calls is a double; the first one it calls
+# (the sing-box conflict check) holds it, then reports a conflict, so the
+# start refuses and ends.
+FAKE_LIB="$WORK_DIR/fake-lib"
+mkdir -p "$FAKE_LIB/service" "$FAKE_LIB/diagnostics"
+cat >"$FAKE_LIB/service/state.uc" <<'UC'
 let fs = require("fs");
-let identity = require("core.process_identity");
-identity.record(getenv("FORKOP_START_IN_PROGRESS_FILE"), fs.readlink("/proc/self"));
+fs.writefile(getenv("TEST_WORK") + "/lifecycle.held", "");
 while (fs.stat(getenv("TEST_WORK") + "/lifecycle.hold") != null)
     system("sleep 0.05");
+exit(0);
 UC
-rm -f "$FORKOP_START_IN_PROGRESS_FILE"
+printf 'exit(0);\n' >"$FAKE_LIB/diagnostics/health.uc"
+rm -f "$FORKOP_START_IN_PROGRESS_FILE" "$WORK_DIR/lifecycle.held"
 : >"$WORK_DIR/lifecycle.hold"
-ucode -L "$WORK_DIR/lib" "$WORK_DIR/lib/service/lifecycle.uc" start &
+FORKOP_LIB="$FAKE_LIB" FORKOP_MANAGED_UPGRADE_SING_BOX_MARKER="$WORK_DIR/missing-upgrade-marker" \
+  ucode -L "$LIB" "$LIB/service/lifecycle.uc" start >/dev/null 2>&1 &
 LIFECYCLE=$!
 actors+=("$LIFECYCLE")
-wait_until 10 file_nonempty "$FORKOP_START_IN_PROGRESS_FILE" || fail "the lifecycle stand-in did not record itself"
-[ "$(FORKOP_LIB="$WORK_DIR/lib" ucode -L "$WORK_DIR/lib" "$WORK_DIR/lib/service/ui.uc" get-ui-state |
-  ucode -e 'print(json(require("fs").stdin.read("all")).service.forkop.status)')" = starting ] ||
-  fail "a running lifecycle start is not reported as starting"
+wait_until 20 test -e "$WORK_DIR/lifecycle.held" || fail "the lifecycle start did not reach its first module"
+[ "$(first_line "$FORKOP_START_IN_PROGRESS_FILE")" = "$LIFECYCLE" ] ||
+  fail "the lifecycle start did not record itself in the start marker"
+[ "$(sed -n 2p "$FORKOP_START_IN_PROGRESS_FILE")" = "$(start_ticks "$LIFECYCLE")" ] ||
+  fail "the start marker has no start ticks of the lifecycle start"
+[ "$(ui_status)" = starting ] || fail "a running lifecycle start is not reported as starting"
 rm -f "$WORK_DIR/lifecycle.hold"
-wait_until 10 process_gone "$LIFECYCLE" || fail "the lifecycle stand-in did not finish"
+wait_until 20 process_gone "$LIFECYCLE" || fail "the lifecycle start did not finish"
+grep -q 'sing-box process ownership is ambiguous' "$WORK_DIR/syslog" ||
+  fail "the lifecycle start did not end where the test expects it to"
+[ ! -e "$FORKOP_START_IN_PROGRESS_FILE" ] || fail "the finished lifecycle start left its start marker"
+[ "$(ui_status)" != starting ] || fail "a finished lifecycle start is still reported as starting"
 
 foreign_alive "the test"
 printf 'worker_pid_reuse: PASS\n'

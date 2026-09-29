@@ -4010,9 +4010,8 @@ function list_update() {
     // finish_list_update() runs them after list_update_pid_end().
     if (!list_update_prepare_only && !acquire_runtime_lock(RELOAD_LOCK_DIR, true)) {
         log_message("Lists update skipped because Forkop reload did not release the runtime lock", "warn");
-        cleanup_list_downloads();
-        list_update_pid_end();
-        exit(1);
+        // Runs the reloads queued during the downloads as well.
+        finish_list_update(1, false);
     }
 
     if (!begin_list_ruleset_snapshot()) {

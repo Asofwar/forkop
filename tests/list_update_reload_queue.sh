@@ -17,6 +17,8 @@ set -euo pipefail
 # B. During an update that a list-source reload started, an unrelated reload
 #    became a list-content reload (the list worker owns the final apply) and
 #    failed: the generation for the new sources did not exist yet.
+# C. The worker also runs the reloads it queued when it gives up waiting for
+#    reload.lock after its downloads.
 #
 # The worker is the real components/updates.uc; reloads go through the real
 # init.d script and service/initd.uc. The lifecycle reload itself is a
@@ -87,11 +89,16 @@ export NFT_TABLE_NAME=forkop
 MARKER="$RUN/list-update.reload"
 RULESET="$WORK/rulesets/alpha-remote-domains-ruleset.json"
 
-# UI jobs and the dnsmasq fail-safe are outside this contract.
+# UI jobs and the dnsmasq fail-safe are outside this contract. With
+# $WORK/lock.timeout present, a wait for reload.lock times out at once.
 cat >"$WORK/bin/ucode" <<'SH'
 #!/bin/sh
 case "${3:-}" in
   */service/ui.uc|*/dns/apply.uc) exit 0 ;;
+  */service/state.uc)
+    if [ "${4:-}" = acquire-runtime-dir-lock-wait ] && [ -e "$WORK/lock.timeout" ]; then
+      exit 1
+    fi ;;
 esac
 exec "$REAL_UCODE" "$@"
 SH
@@ -124,7 +131,10 @@ cat >"$WORK/bin/nft" <<'SH'
 [ "$*" = '-j list table inet forkop' ] && printf '{"nftables":[]}\n'
 exit 0
 SH
-printf '#!/bin/sh\nexit 0\n' >"$WORK/bin/logger"
+cat >"$WORK/bin/logger" <<'SH'
+#!/bin/sh
+printf '%s\n' "$*" >>"$WORK/log"
+SH
 # The lifecycle reload (see the header).
 cat >"$WORK/bin/forkop" <<'SH'
 #!/bin/sh
@@ -184,8 +194,9 @@ UCI
 reset_state() {
   : >"$EVENTS"
   : >"$WORK/worker.log"
+  : >"$WORK/log"
   rm -rf "$WORK/generation" "$WORK/cache" "$WORK/ruleset-cache" "$WORK/rulesets" "${RUN:?}"/*
-  rm -f "$WORK"/hold.* "$WORK"/in.* "$WORK/sources.changed"
+  rm -f "$WORK"/hold.* "$WORK"/in.* "$WORK/sources.changed" "$WORK/lock.timeout"
   mkdir -p "$WORK/cache" "$WORK/rulesets"
 }
 
@@ -249,5 +260,24 @@ fi
 [ -e "$RUN/reload.pending" ] || fail "B: the reload during the list update was not queued"
 rm -f "$WORK/hold.new.txt"
 check_converged
+
+# C. A reload queued during the downloads is run even when the update then
+#    gives up waiting for reload.lock.
+reset_state
+set_source old.txt
+: >"$WORK/hold.old.txt"
+list_worker &
+worker=$!
+printf '%s\n' "$worker" >>"$WORK/bg.pids"
+wait_until 30 test -e "$WORK/in.old.txt" || fail "C: the scheduled update did not download"
+"$WORK/init.d" reload >/dev/null || fail "C: the reload failed"
+[ -e "$RUN/reload.pending" ] || fail "C: the reload during the list update was not queued"
+: >"$WORK/lock.timeout"
+rm -f "$WORK/hold.old.txt"
+wait_until 60 process_gone "$worker" || fail "C: the list update did not finish"
+grep -q 'did not release the runtime lock' "$WORK/log" || fail "C: fixture: the list update did not time out on reload.lock"
+grep -qx 'reload pending' "$EVENTS" || fail "C: the reload queued during the list update was never run"
+[ ! -e "$RUN/reload.pending" ] || fail "C: the queued reload was left in reload.pending"
+[ ! -e "$RUN/list.pid" ] || fail "C: the list update left its PID file behind"
 
 printf 'list update reload queue checks passed\n'

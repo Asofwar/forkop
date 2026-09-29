@@ -649,6 +649,9 @@ EOF_UCI
 FORKOP_UCI_STATE_FILE="$WORK_DIR/runtime-version.state" \
 FORKOP_UCI_LOG_FILE="$WORK_DIR/runtime-version.log" \
 FORKOP_CONFIG_NAME="forkop" \
+TMP_SUBSCRIPTION_FOLDER="$WORK_DIR/runtime-subscriptions" \
+FORKOP_RUNTIME_STATE_DIR="$WORK_DIR/runtime-state" \
+FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR="$WORK_DIR/subscription-cache" \
 FORKOP_INTERNAL_CONFIG_TRIGGER_GUARD="$WORK_DIR/internal-config-change" \
 ucode -L "$FORKOP_LIB" "$MIGRATION" migrate
 
@@ -673,6 +676,9 @@ fi
 FORKOP_UCI_STATE_FILE="$WORK_DIR/runtime-version.state" \
 FORKOP_UCI_LOG_FILE="$WORK_DIR/runtime-version.log" \
 FORKOP_CONFIG_NAME="forkop" \
+TMP_SUBSCRIPTION_FOLDER="$WORK_DIR/runtime-subscriptions" \
+FORKOP_RUNTIME_STATE_DIR="$WORK_DIR/runtime-state" \
+FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR="$WORK_DIR/subscription-cache" \
 FORKOP_INTERNAL_CONFIG_TRIGGER_GUARD="$WORK_DIR/internal-config-change" \
 ucode -L "$FORKOP_LIB" "$MIGRATION" migrate
 if grep -Fq 'commit forkop' "$WORK_DIR/runtime-version.log"; then
@@ -733,6 +739,9 @@ NODE
 FORKOP_UCI_STATE_FILE="$WORK_DIR/uci-commit.state" \
 FORKOP_UCI_LOG_FILE="$WORK_DIR/uci-commit.log" \
 FORKOP_CONFIG_NAME="forkop" \
+TMP_SUBSCRIPTION_FOLDER="$WORK_DIR/runtime-subscriptions" \
+FORKOP_RUNTIME_STATE_DIR="$WORK_DIR/runtime-state" \
+FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR="$WORK_DIR/subscription-cache" \
 FORKOP_INTERNAL_CONFIG_TRIGGER_GUARD="$WORK_DIR/internal-config-change" \
 ucode -L "$FORKOP_LIB" "$MIGRATION" commit
 

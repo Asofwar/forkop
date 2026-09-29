@@ -24,7 +24,7 @@ trap 'exit 1' HUP INT TERM
 source "$ROOT_DIR/tests/helpers/uci_cli/select.sh"
 export FORKOP_LIB="$LIB"
 export FORKOP_AUTOTUNE_STATE_FILE="$WORK/etc/autotune/state.json"
-export FORKOP_AUTOTUNE_LAST_DIR="$WORK/run/last"
+export FORKOP_AUTOTUNE_LAST_DIR="$WORK/run/last" FORKOP_AUTOTUNE_STATE_DIR="$WORK/run/autotune"
 export FORKOP_CONFIG_FILE="$WORK/config/forkop"
 export FORKOP_AUTOTUNE_SINGBOX_CONFIG="$WORK/sing-box.json"
 export FORKOP_AUTOTUNE_DIG="$WORK/dig"

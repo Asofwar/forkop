@@ -1624,6 +1624,19 @@ function stop_impl() {
     return status;
 }
 
+// Who asked for the stop (FORKOP_STOP_SOURCE): Forkop itself for a package
+// or component change, or the user; as service/initd.uc stop_request_source.
+function stop_request_source() {
+    let source = as_string(getenv("FORKOP_STOP_SOURCE"));
+    if (source != "package" && source != "component")
+        return "user";
+    let previous = fs.readfile(STOP_REQUESTED_FILE);
+    if (previous == null)
+        return source;
+    let by = match(previous, /(^|\n)by=([a-z]*)/);
+    return by == null || by[2] == "user" ? "user" : source;
+}
+
 // Also recorded by service/initd.uc before it waits for reload.lock; here for
 // a `forkop stop` that does not come through init.d. The stop also revokes
 // what would otherwise bring the runtime back or change it later: the
@@ -1634,7 +1647,8 @@ function stop_impl() {
 function stop() {
     ensure_dir(RUNTIME_STATE_DIR);
     let now = clock();
-    write_file(STOP_REQUESTED_FILE, sprintf("%d.%09d.%s\n", now[0], now[1], owner_pid()));
+    let source = stop_request_source();
+    write_file(STOP_REQUESTED_FILE, sprintf("%d.%09d.%s\nby=%s\n", now[0], now[1], owner_pid(), source));
     if (refresh_worker.stop_all(LIB_DIR) > 0)
         log_message("Stopped the rule-set refresh", "info");
     let status = stop_impl();

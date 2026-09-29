@@ -256,15 +256,35 @@ function mark_start_retry(path, reason) {
     return write_text_file(path, "reason=" + reason + "\nupdated_at=" + current_epoch() + "\n");
 }
 
+// Who asked for a stop, recorded with it as "by=<source>". "package" (the
+// package maintainer scripts) and "component" (a component change) stop
+// Forkop for a start that follows; any other stop is the user's. Only the
+// user's stop is shown as one (service/ui.uc, diagnostics/runtime.uc): an
+// internal stop whose start never came is a failure. A stop made while the
+// user's stop is in effect stays the user's. Reloads are held off alike
+// (D-15, UC-056). service/lifecycle.uc records the same.
+function stop_request_source() {
+    let source = as_string(getenv("FORKOP_STOP_SOURCE"));
+    if (source != "package" && source != "component")
+        return "user";
+    let previous = fs.readfile(STOP_REQUESTED_FILE);
+    if (previous == null)
+        return source;
+    let by = match(previous, /(^|\n)by=([a-z]*)/);
+    return by == null || by[2] == "user" ? "user" : source;
+}
+
 // Removed only by an explicit start or restart (start_service,
 // service/lifecycle.uc): until then no reload brings the runtime back (D-15,
 // UC-056). Each request is distinct, so a start can tell a stop requested
-// while it waited for reload.lock from an earlier one.
+// while it waited for reload.lock from an earlier one (its first line).
 function mark_stop_requested() {
     if (!ensure_parent_dir(STOP_REQUESTED_FILE))
         return false;
     let now = clock();
-    return write_text_file(STOP_REQUESTED_FILE, sprintf("%d.%09d.%s\n", now[0], now[1], as_string(fs.readlink("/proc/self"))));
+    let source = stop_request_source();
+    return write_text_file(STOP_REQUESTED_FILE, sprintf("%d.%09d.%s\nby=%s\n", now[0], now[1],
+        as_string(fs.readlink("/proc/self")), source));
 }
 
 function stop_requested() {

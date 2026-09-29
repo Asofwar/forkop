@@ -1213,10 +1213,14 @@ function get_status() {
     ]) ? 1 : 0;
     let enabled = file_executable("/etc/rc.d/S99" + FORKOP_SERVICE_NAME) ? 1 : 0;
     let dns_configured = dnsmasq_has_forkop_dns() ? 1 : 0;
-    // Down because an explicit stop holds it down, not a failed start or a
-    // crash (D-15, UC-056).
+    // Down because the user's explicit stop holds it down, not a failed start
+    // or a crash, nor Forkop's own stop for a package or component change
+    // whose start never came (D-15, UC-056; service/initd.uc
+    // stop_request_source).
+    let request = running == 0 ? fs.readfile(STOP_REQUESTED_FILE) : null;
+    let by = request == null ? null : match(request, /(^|\n)by=([a-z]*)/);
     write_service_status(running, enabled, dns_configured, {
-        stopped_by_user: running == 0 && fs.stat(STOP_REQUESTED_FILE) != null ? 1 : 0
+        stopped_by_user: request != null && (by == null || by[2] == "user") ? 1 : 0
     });
     return 0;
 }

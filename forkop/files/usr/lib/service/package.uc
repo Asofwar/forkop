@@ -201,7 +201,9 @@ function prerm_cleanup(action) {
 
     remember_upgrade_state(action);
     if (!PACKAGE_TEST_MODE) {
-        command_success_from_args([ INIT_PATH, "stop" ]);
+        // Forkop's own stop for the package change, not the user's
+        // (service/initd.uc stop_request_source).
+        command_success_from_args([ "env", "FORKOP_STOP_SOURCE=package", INIT_PATH, "stop" ]);
         restore_dnsmasq_if_needed();
         remove_managed_sing_box();
     }

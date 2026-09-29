@@ -13,7 +13,8 @@ set -euo pipefail
 # stopped_by_user while the explicit stop holds the runtime down, and
 # diagnostics/health.uc reports the service as "stopped" (not "error") then.
 # A restore recorded as not started (the runtime was not started) is no
-# failure either.
+# failure either. A stop that Forkop made itself for a package or component
+# change (its source is recorded with the stop) is not the user's.
 #
 # ui.uc, runtime.uc, state.uc and health.uc are real; nothing here runs a
 # runtime, so it is down.
@@ -98,6 +99,22 @@ ui_state
 get_status
 [ "$(forkop_field "$WORK_DIR/status.json" stopped_by_user)" = 0 ] ||
   fail "get_status calls a runtime down without a stop stopped by the user: $(cat "$WORK_DIR/status.json")"
+
+# 2b. A stop that Forkop made itself for a package or component change, whose
+#     start never came (a failed upgrade restart), is no stop by the user:
+#     the start failed. The user's stop, recorded as such, still is one.
+for source in package component user; do
+  printf '1.000000001.42\nby=%s\n' "$source" >"$STOP_MARKER"
+  want=0
+  [ "$source" != user ] || want=1
+  ui_state
+  [ "$(forkop_field "$WORK_DIR/ui.json" stopped_by_user)" = "$want" ] ||
+    fail "the UI state after a stop by '$source': $(cat "$WORK_DIR/ui.json")"
+  get_status
+  [ "$(forkop_field "$WORK_DIR/status.json" stopped_by_user)" = "$want" ] ||
+    fail "get_status after a stop by '$source': $(cat "$WORK_DIR/status.json")"
+done
+rm -f "$STOP_MARKER"
 
 # 3. Health: stopped by the user is "stopped", not a failure; down without a
 #    stop stays an error; a failed change still is one.

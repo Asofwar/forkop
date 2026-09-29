@@ -91,6 +91,7 @@ case "$1" in
   stop)
     grep -Fq '105 forkop' "${FORKOP_RT_TABLES:?}" || exit 1
     printf '%s\n' 'stop-with-route-table' >>"${FORKOP_STOP_LOG:?}"
+    printf 'stop-source=%s\n' "${FORKOP_STOP_SOURCE:-}" >>"${FORKOP_STOP_LOG:?}"
     ;;
 esac
 SH
@@ -116,6 +117,10 @@ grep -Fxq 'stop-with-route-table' "$WORK_DIR/stop-order.log" ||
   fail "package prerm must stop Forkop before removing its routing table name"
 [ ! -s "$WORK_DIR/rt_tables_stop_order" ] ||
   fail "package prerm must remove the routing table name after Forkop stops"
+# Its stop is Forkop's own, for the package change, not the user's
+# (service/initd.uc stop_request_source; UC-056).
+grep -Fxq 'stop-source=package' "$WORK_DIR/stop-order.log" ||
+  fail "package prerm must record its stop as the package's, not the user's"
 
 # The preceding case stops a running Forkop, so prerm correctly records a
 # restart for postinst. The configuration-recovery cases below own no init

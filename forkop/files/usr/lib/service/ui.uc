@@ -1075,10 +1075,16 @@ function ui_capabilities_json() {
     write_json(capability_flags());
 }
 
-// An explicit stop that holds the runtime down (D-15, UC-056), told apart
-// from a runtime that is down without one (a failed start, a crash).
+// An explicit stop by the user that holds the runtime down (D-15, UC-056),
+// told apart from a runtime that is down without one (a failed start, a
+// crash) and from Forkop's own stop for a package or component change whose
+// start never came (service/initd.uc stop_request_source).
 function stopped_by_user(running) {
-    return !running && fs.stat(STOP_REQUESTED_FILE) != null;
+    let request = running ? null : fs.readfile(STOP_REQUESTED_FILE);
+    if (request == null)
+        return false;
+    let by = match(request, /(^|\n)by=([a-z]*)/);
+    return by == null || by[2] == "user";
 }
 
 function current_ui_state_json() {

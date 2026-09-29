@@ -245,6 +245,7 @@ FORKOP_LIB="$LIB"
 FORKOP_INITD_UC="$REAL_LIB/service/initd.uc"
 case "$action" in
   reload) reload_service "$@" ;;
+  stop) stop_service "$@" ;;
   *) exit 64 ;;
 esac
 SH
@@ -432,5 +433,39 @@ printf 'stop\n' >"$STOP_MARKER"
 lifecycle restart || true
 grep -q 'Starting Forkop' "$WORK_DIR/syslog" || fail "forkop restart did not reach the start"
 [ ! -e "$STOP_MARKER" ] || fail "an explicit restart kept the explicit stop"
+
+# 6. A stop records who asked for it: Forkop's own stop for a package or
+#    component change (FORKOP_STOP_SOURCE, followed by a start) is told apart
+#    from the user's (tests/stopped_by_user_state.sh); both hold reloads off
+#    alike. A stop made while the user's stop is in effect stays the user's;
+#    any other source is the user's.
+stop_source() { sed -n 's/^by=//p' "$STOP_MARKER"; }
+for how in init.d lifecycle; do
+  for case_ in "package||package" "component||component" "||user" "bogus||user" "package|user|user" "component|package|component"; do
+    source="${case_%%|*}"
+    rest="${case_#*|}"
+    previous="${rest%%|*}"
+    want="${rest#*|}"
+    reset_case
+    runtime_down
+    [ -z "$previous" ] || printf '1.000000001.42\nby=%s\n' "$previous" >"$STOP_MARKER"
+    if [ "$how" = init.d ]; then
+      FORKOP_STOP_SOURCE="$source" bash "$WORK_DIR/rc" stop >"$WORK_DIR/stop.out" 2>&1 || true
+    else
+      FORKOP_STOP_SOURCE="$source" lifecycle stop || true
+    fi
+    [ -e "$STOP_MARKER" ] || fail "$how stop by '$source' did not record the stop"
+    [ "$(stop_source)" = "$want" ] ||
+      fail "$how stop by '$source' after a stop by '$previous' recorded '$(stop_source)', not '$want'"
+    head -n 1 "$STOP_MARKER" | grep -Eq '^[0-9]+\.[0-9]{9}\.[0-9]+$' ||
+      fail "$how stop by '$source' changed the stop request value: $(head -n 1 "$STOP_MARKER")"
+  done
+done
+# An internal stop holds reloads off like the user's.
+reset_case
+runtime_down
+printf '1.000000001.42\nby=package\n' >"$STOP_MARKER"
+lifecycle reload "" || fail "reload after a package stop failed"
+grep -q "Reload '' skipped: Forkop was stopped" "$WORK_DIR/syslog" || fail "a reload started a runtime that a package stop took down"
 
 printf 'user stop sticky checks passed\n'

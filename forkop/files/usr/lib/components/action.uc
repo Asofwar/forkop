@@ -951,13 +951,19 @@ function restart_forkop_after_successful_change() {
     return false;
 }
 
+// Forkop's own stop for a component change, followed by a start: not the
+// user's stop (service/initd.uc stop_request_source).
+function forkop_stop_for_component_change_args() {
+    return [ "env", "FORKOP_STOP_SOURCE=component", SERVICE_INIT, "stop" ];
+}
+
 function stop_forkop_before_sing_box_change() {
     if (forkop_stopped_for_sing_box_change)
         return;
     forkop_stopped_for_sing_box_change = true;
 
     if (forkop_was_running && file_exists(SERVICE_INIT))
-        run_logged("Stopping Forkop before sing-box package change", command_from_args([ SERVICE_INIT, "stop" ]));
+        run_logged("Stopping Forkop before sing-box package change", command_from_args(forkop_stop_for_component_change_args()));
 
     if (forkop_was_running && file_exists(BIN_PATH))
         command_success_from_args([ BIN_PATH, "restore_dnsmasq" ]);
@@ -1728,7 +1734,7 @@ function install_sing_box_extended_package(action) {
     if (!restart_forkop_after_successful_change() || !wait_forkop_running_after_sing_box_change()) {
         updates_log("sing-box-extended package did not start cleanly; restoring previous sing-box variant", "error");
         if (file_exists(SERVICE_INIT))
-            command_success_from_args([ SERVICE_INIT, "stop" ]);
+            command_success_from_args(forkop_stop_for_component_change_args());
         if (restore_sing_box_after_failed_extended_package_install(current_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, package_file, cronet_touched)) {
             remove_file(backup_binary);
             remove_file(backup_cronet);
@@ -1891,7 +1897,7 @@ function install_sing_box_extended(action, compressed) {
     if (!restart_forkop_after_successful_change() || !wait_forkop_running_after_sing_box_change()) {
         updates_log(label + " did not start cleanly; restoring previous sing-box binary", "error");
         if (file_exists(SERVICE_INIT))
-            command_success_from_args([ SERVICE_INIT, "stop" ]);
+            command_success_from_args(forkop_stop_for_component_change_args());
         if (restore_sing_box_after_failed_extended_install(current_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, archive_file, cronet_touched)) {
             remove_file(backup_binary);
             remove_file(backup_cronet);

@@ -3,6 +3,9 @@ set -eu
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 TEST_DIR="$(mktemp -d)"
 trap 'rm -rf "$TEST_DIR"' EXIT HUP INT TERM
+# Recorded events must stay out of /etc/forkop and /var/run/forkop.
+export FORKOP_HISTORY_FILE="$TEST_DIR/history.jsonl"
+export FORKOP_RUNTIME_STATE_DIR="$TEST_DIR"
 cat > "$TEST_DIR/fixture.json" <<'JSON'
 {"ui":{"service":{"forkop":{"running":1,"dns_configured":1},"sing_box":{"running":1}}},"guard":false,"package_pending":false,"events":[]}
 JSON
@@ -77,4 +80,5 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 assert.equal(JSON.parse(fs.readFileSync(process.argv[2])).events.length, 10);
 JS
+test "$(grep -c '"kind": *"reload"' "$FORKOP_HISTORY_FILE")" = 12
 printf 'health_status: PASS\n'

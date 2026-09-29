@@ -6,6 +6,10 @@ SCRIPT="$ROOT_DIR/ops/mirror/sync-forkop-release.py"
 SERVICE="$ROOT_DIR/ops/mirror/forkop-release-sync.service"
 PUBLISH="$ROOT_DIR/ops/mirror/publish-forkop-feed.sh"
 PYTHON_BIN="${PYTHON_BIN:-python}"
+PYCACHE_DIR="$(mktemp -d)"
+trap 'rm -rf "$PYCACHE_DIR"' EXIT
+# Byte code of the checked script goes to a private cache, not into ops/mirror.
+export PYTHONPYCACHEPREFIX="$PYCACHE_DIR" PYTHONDONTWRITEBYTECODE=1
 
 "$PYTHON_BIN" -m py_compile "$SCRIPT"
 bash -n "$PUBLISH"

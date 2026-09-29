@@ -27,6 +27,9 @@ export FORKOP_LIB="$LIB"
 export FORKOP_RELOAD_COMMAND="$WORK/reload"
 export FORKOP_PENDING_RELOAD_FILE="$WORK/run/reload.pending"
 export FORKOP_RELOAD_LOCK_DIR="$WORK/run/reload.lock"
+# Real history records (snapshot creation) stay out of /etc/forkop and /run/forkop.
+export FORKOP_HISTORY_FILE="$WORK/history.jsonl"
+export FORKOP_RUNTIME_STATE_DIR="$WORK/run"
 export STATE="$WORK/state"
 
 # Guard model (absent | valid) with the real contracts of the state query,

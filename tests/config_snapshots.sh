@@ -11,6 +11,7 @@ export FORKOP_SNAPSHOT_HASH_DIR="$WORK/hash"
 export FORKOP_SNAPSHOT_LOCK_DIR="$WORK/run/config-snapshot.lock"
 export FORKOP_LIB="$LIB"
 export FORKOP_HISTORY_FILE="$WORK/history.jsonl"
+export FORKOP_RUNTIME_STATE_DIR="$WORK/run"
 export FORKOP_PENDING_RELOAD_FILE="$WORK/run/reload.pending"
 export FORKOP_RELOAD_LOCK_DIR="$WORK/run/reload.lock"
 cat > "$FORKOP_CONFIG_FILE" <<'UCI'

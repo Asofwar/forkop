@@ -39,6 +39,7 @@ const SERVICE_INIT = "/etc/init.d/forkop";
 const SERVICE_NAME = "forkop";
 const START_RETRY_FILE = "/test/start.retry";
 const START_IN_PROGRESS_FILE = "/test/start.in-progress";
+const STOP_REQUESTED_FILE = "/test/stop.requested";
 let marker_present = false;
 let marker_resolved = true;
 let conflict = false;
@@ -54,6 +55,7 @@ let retry_running = false;
 let retry_enabled = true;
 let retry_pending = true;
 let start_marker_present = false;
+let stop_marker_present = false;
 function as_string(value) { return value == null ? "" : "" + value; }
 function bool_text(value) { return value == "1"; }
 function die(message) { warn("FAIL: " + message + "\n"); exit(1); }
@@ -119,6 +121,10 @@ function write_file(path, value) {
     return true;
 }
 function remove_file(path) {
+    if (path == STOP_REQUESTED_FILE) {
+        stop_marker_present = false;
+        return true;
+    }
     check(path == START_IN_PROGRESS_FILE, "unexpected file removal during start");
     start_marker_present = false;
     return true;
@@ -129,6 +135,7 @@ function reset_probe() {
     calls = []; logs = []; released = 0; cold_starts = 0; cleanups = 0;
     retry_status = 0; retry_running = false; retry_enabled = true; retry_pending = true;
     start_marker_present = false;
+    stop_marker_present = true;
 }
 '''
 cases = r'''
@@ -141,11 +148,15 @@ check(released == 1 && cold_starts == 0 && cleanups == 0,
 // The UI reads this marker to keep the start button blocked. It must not
 // survive a start that has already returned, on any outcome.
 check(!start_marker_present, "start left its in-progress marker behind");
+// An explicit start ends an explicit stop even when it finds the runtime
+// already running (UC-012).
+check(!stop_marker_present, "duplicate start kept the explicit stop");
 
 reset_probe();
 transition_guard = true;
 check(start() == 1, "retained fail-closed guard was reported as successful recovery");
 check(!start_marker_present, "failed start left its in-progress marker behind");
+check(!stop_marker_present, "failed start kept the explicit stop");
 check(released == 1 && cold_starts == 0 && cleanups == 0,
     "duplicate start altered the retained fail-closed runtime");
 

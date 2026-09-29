@@ -32,6 +32,14 @@ const START_RETRY_DELAY_SECONDS = getenv("FORKOP_START_RETRY_DELAY_SECONDS") || 
 // reload_service() so that start never classifies that expected transient as
 // an orphaned sing-box process.
 const START_RUNTIME_LOCK_WAIT_SECONDS = getenv("FORKOP_START_RUNTIME_LOCK_WAIT_SECONDS") || "30";
+// A stop takes the same lock, so the work that holds it (a subscription
+// update, a DNS-failover apply, a start) finishes before the runtime is torn
+// down. The wait is bounded: a stop must not fail because of a download. The
+// stop request is recorded before the wait, and a holder that is still at
+// work when the stop proceeds without the lock does not start the runtime
+// again (service/state.uc runtime-apply-allowed; UC-012).
+const STOP_RUNTIME_LOCK_WAIT_SECONDS = getenv("FORKOP_STOP_RUNTIME_LOCK_WAIT_SECONDS") || "30";
+const STOP_REQUESTED_FILE = getenv("FORKOP_STOP_REQUESTED_FILE") || RUNTIME_STATE_DIR + "/stop.requested";
 const SERVICE_TRIGGER_SYNC_FILE = getenv("FORKOP_SERVICE_TRIGGER_SYNC_FILE") || RUNTIME_STATE_DIR + "/service-triggers.sync";
 const INTERNAL_CONFIG_TRIGGER_GUARD = getenv("FORKOP_INTERNAL_CONFIG_TRIGGER_GUARD") || "/var/run/forkop.internal-config-change";
 const CONFIG_CHANGE_REASON = getenv("FORKOP_CONFIG_CHANGE_REASON") || "on_config_change";
@@ -235,6 +243,13 @@ function mark_start_retry(path, reason) {
         return false;
 
     return write_text_file(path, "reason=" + reason + "\nupdated_at=" + current_epoch() + "\n");
+}
+
+// Removed only when the runtime is started again (service/lifecycle.uc).
+function mark_stop_requested() {
+    if (!ensure_parent_dir(STOP_REQUESTED_FILE))
+        return false;
+    return write_text_file(STOP_REQUESTED_FILE, current_epoch() + "\n");
 }
 
 function clear_start_retry(path) {
@@ -642,7 +657,10 @@ function stop_finish(job_id, status) {
     return status;
 }
 
+// This process owns reload.lock for the stop: it runs `forkop stop` and
+// releases the lock itself.
 function stop_service(owner_pid) {
+    mark_stop_requested();
     clear_start_retry(START_RETRY_FILE);
     cancel_scheduled_start_retry(START_RETRY_PID_FILE);
     let job_id = begin_external_service_action("stop", "initd", owner_pid);
@@ -652,7 +670,13 @@ function stop_service(owner_pid) {
         return 1;
     }
 
+    let lock_owner = owner_pid_value();
+    let locked = acquire_runtime_dir_lock_wait(RELOAD_LOCK_DIR, lock_owner, STOP_RUNTIME_LOCK_WAIT_SECONDS);
+    if (!locked)
+        command_success_from_args([ "logger", "-t", SERVICE_NAME, "[warn] Forkop stop did not get the runtime lock within " + STOP_RUNTIME_LOCK_WAIT_SECONDS + " s; stopping without it, the work that holds it will not start the runtime again" ]);
     let status = command_status_from_args([ BIN_PATH, "stop" ]);
+    if (locked)
+        release_runtime_dir_lock(RELOAD_LOCK_DIR, lock_owner);
     return stop_finish(job_id, status);
 }
 

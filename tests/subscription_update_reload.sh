@@ -73,7 +73,8 @@ if (mode == "acquire-runtime-dir-lock" ||
     mode == "stop-managed-sing-box-runtime" ||
     mode == "start-managed-sing-box-runtime" ||
     mode == "write-current-reload-state-clean" ||
-    mode == "run-pending-reload-if-requested")
+    mode == "run-pending-reload-if-requested" ||
+    mode == "runtime-apply-allowed")
     exit(0);
 exit(64);
 '

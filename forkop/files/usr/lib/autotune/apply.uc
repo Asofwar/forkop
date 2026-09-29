@@ -242,8 +242,9 @@ function guards_present() {
     for (let name in GUARD_TABLES) if (table_present(name) != false) push(result, name);
     return result;
 }
-// A lifecycle action (reload/start/stop) holds the reload lock, and a reload
-// requested meanwhile is queued: either would run outside this transaction
+// A lifecycle action (reload/start, and a stop once its bounded wait got the
+// lock) holds the reload lock, and a reload requested meanwhile is queued:
+// either would run outside this transaction
 // (a queued reload after the guard is gone would confirm LKG unverified).
 // The lock and its owner record: core/runtime_lock.uc.
 function service_action() {

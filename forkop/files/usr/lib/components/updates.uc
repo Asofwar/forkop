@@ -4202,6 +4202,13 @@ function subscription_discard_config_stage(stage_path, backup_path) {
         remove_file(backup_path);
 }
 
+// This update holds reload.lock, and a stop waits for it only for a bounded
+// time: sing-box and its workers are started only while no stop was requested
+// and Forkop runs at all (service/state.uc; UC-012).
+function subscription_runtime_start_allowed() {
+    return service_state_success([ "runtime-apply-allowed", core_constants.NFT_TABLE_NAME ]);
+}
+
 function subscription_restore_previous_runtime(backup_path, transition_timeout) {
     if (!service_state_success([ "stop-managed-sing-box-runtime", transition_timeout ]))
         return false;
@@ -4210,10 +4217,14 @@ function subscription_restore_previous_runtime(backup_path, transition_timeout) 
         !module_success([ LIB_DIR + "/singbox/runtime.uc", "restore-config-stage", backup_path ]))
         return false;
 
+    if (!subscription_runtime_start_allowed())
+        return true;
     return service_state_success([ "start-managed-sing-box-runtime", transition_timeout ]);
 }
 
 function subscription_start_auxiliary_runtimes() {
+    if (!subscription_runtime_start_allowed())
+        return true;
     if (!module_success([ PRIORITY_UC, "start-runtime" ]))
         return false;
     return module_success([ DNS_FAILOVER_UC, "start-runtime" ]);
@@ -4235,6 +4246,13 @@ function subscription_update_common_locked(force, target_section, target_source_
     let failed = prepared.failed;
     if (updated == 0)
         return true;
+
+    // The cache is what the next start reads; the runtime of a stopped Forkop
+    // is not brought up for it.
+    if (!subscription_runtime_start_allowed()) {
+        log_message("Subscription cache was updated; Forkop is stopped, so its runtime was left unchanged", "info");
+        return true;
+    }
 
     log_message("Reloading sing-box to apply updated subscriptions", "info");
     let validation = module_capture([ LIB_DIR + "/config/validator.uc", "validate-runtime" ]);
@@ -4280,6 +4298,14 @@ function subscription_update_common_locked(force, target_section, target_source_
             log_message("Subscription runtime update rollback failed; sing-box remains stopped", "fatal");
         log_message("Failed to publish sing-box configuration after subscription update", "error");
         return false;
+    }
+    // A stop requested while this update held reload.lock tears the runtime
+    // down as soon as the lock is released: leave sing-box stopped.
+    if (!subscription_runtime_start_allowed()) {
+        remove_file(backup_config_path);
+        subscription_discard_config_stage(staged_config_path, "");
+        log_message("Forkop is stopping; the updated subscriptions were saved and sing-box stays stopped", "info");
+        return true;
     }
     if (!service_state_success([
         "start-managed-sing-box-runtime",

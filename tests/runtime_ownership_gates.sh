@@ -22,12 +22,14 @@ awk '
 ' "$LIFECYCLE_UC" || fail "stop_main must refuse an ambiguous runtime before tearing down any state"
 
 # reload() must refuse before capturing reload state or staging candidate nft
-# rules, not only when the runtime already looks incomplete.
+# rules, not only when the runtime already looks incomplete (the branch that
+# restarts it). The read-only skip of a background reload after an explicit
+# stop may look at the runtime earlier: it changes nothing.
 awk '
   /^function reload\(reason\) \{/ { inside = 1 }
   inside && /"sing-box-process-conflict"/ && !gate_line { gate_line = NR }
   inside && /"capture-reload-state"/ && !capture_line { capture_line = NR }
-  inside && /"forkop-running"/ && !running_line { running_line = NR }
+  inside && /if \(!module_success\(STATE_UC, \[ "forkop-running"/ && !running_line { running_line = NR }
   inside && /^}/ { done = 1; exit }
   END { exit done && gate_line && capture_line && running_line && gate_line < capture_line && gate_line < running_line ? 0 : 1 }
 ' "$LIFECYCLE_UC" || fail "reload must refuse an ambiguous runtime before capturing state or staging nft rules"

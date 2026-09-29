@@ -22,6 +22,11 @@ const SB_DNS_INBOUND_ADDRESS = getenv("SB_DNS_INBOUND_ADDRESS") || "127.0.0.42";
 const SB_TPROXY_INBOUND_PORT = getenv("SB_TPROXY_INBOUND_PORT") || "1602";
 const SB_TPROXY_INBOUND6_ADDRESS = getenv("SB_TPROXY_INBOUND6_ADDRESS") || "::1";
 const DIAGNOSTICS_RUNTIME_UC = LIB_DIR + "/diagnostics/runtime.uc";
+// Written by an explicit stop (service/initd.uc before it waits for
+// reload.lock, service/lifecycle.uc `forkop stop`) and removed only when the
+// runtime is started again (service/lifecycle.uc).
+const STOP_REQUESTED_FILE = getenv("FORKOP_STOP_REQUESTED_FILE") ||
+    (getenv("FORKOP_RUNTIME_STATE_DIR") || "/var/run/forkop") + "/stop.requested";
 
 function as_string(value) {
     return value == null ? "" : "" + value;
@@ -294,10 +299,11 @@ function run_pending_reload_if_requested(path, init_script) {
 //   1. automatic-latency-test.lock: only ever try-acquired; the automatic
 //      latency test (diagnostics/runtime.uc) holds it while it waits for
 //      reload.lock.
-//   2. reload.lock: start and reload (service/initd.uc, around `forkop
-//      start` and `forkop reload`), the list worker and the subscription
-//      update (components/updates.uc), dns_failover_apply
-//      (service/lifecycle.uc), the automatic latency test.
+//   2. reload.lock: start, reload and stop (service/initd.uc, around `forkop
+//      start`, `forkop reload` and `forkop stop`; stop waits for it only for
+//      a bounded time), the list worker and the subscription update
+//      (components/updates.uc), dns_failover_apply (service/lifecycle.uc),
+//      the automatic latency test.
 //   3. subscription-update.lock: start_main (service/lifecycle.uc), inside
 //      reload.lock for a start and for a reload that restarts the runtime;
 //      the subscription update, after reload.lock; the deferred subscription
@@ -921,6 +927,19 @@ function forkop_stably_running(rt_table, nft_table, mark, min_age) {
     return sing_box_current_owned_service_runtime() && sing_box_service_stable(min_age) &&
         sing_box_runtime_ports_ready() && sing_box_clash_api_ready() &&
         forkop_runtime_network_configured(rt_table, nft_table, mark);
+}
+
+// Whether work that holds reload.lock (a subscription update, a DNS-failover
+// apply) may still start sing-box and its workers (UC-012). Not after an
+// explicit stop: the stop waits for reload.lock only for a bounded time, and
+// the holder must not bring the runtime back once it is released. Not while
+// Forkop is down either: start and reload hold reload.lock, so under it a
+// missing production nft table means a stopped or failed runtime, and a lone
+// sing-box without it is no Forkop runtime.
+function runtime_apply_allowed(nft_table) {
+    if (fs.stat(STOP_REQUESTED_FILE) != null)
+        return false;
+    return command_success_from_args([ "nft", "list", "table", "inet", as_string(nft_table || "ForkopTable") ]);
 }
 
 function wait_forkop_stable_start(rt_table, nft_table, mark, min_age, timeout) {
@@ -2123,6 +2142,8 @@ else if (mode == "forkop-stably-running")
     exit(forkop_stably_running(ARGV[1], ARGV[2], ARGV[3], ARGV[4]) ? 0 : 1);
 else if (mode == "wait-forkop-stable-start")
     exit(wait_forkop_stable_start(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5]) ? 0 : 1);
+else if (mode == "runtime-apply-allowed")
+    exit(runtime_apply_allowed(ARGV[1]) ? 0 : 1);
 else if (mode == "list-has-remote-references" || mode == "list-has-remote-sing-box-rulesets")
     exit(list_has_remote_references(ARGV[1]) ? 0 : 1);
 else if (mode == "community-service-has-subnet-list")

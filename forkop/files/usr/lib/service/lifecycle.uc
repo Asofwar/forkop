@@ -32,6 +32,8 @@ const LIST_UPDATE_RELOAD_FILE = getenv("FORKOP_LIST_UPDATE_RELOAD_FILE") || RUNT
 const RULESET_REFRESH_AFTER_LIST_FILE = getenv("FORKOP_RULESET_REFRESH_AFTER_LIST_FILE") || RUNTIME_STATE_DIR + "/ruleset-refresh-after-list";
 const START_IN_PROGRESS_FILE = getenv("FORKOP_START_IN_PROGRESS_FILE") || RUNTIME_STATE_DIR + "/start.in-progress";
 const START_FAILURE_FILE = getenv("FORKOP_START_FAILURE_FILE") || RUNTIME_STATE_DIR + "/start.failure";
+// An explicit stop (service/state.uc runtime-apply-allowed; UC-012).
+const STOP_REQUESTED_FILE = getenv("FORKOP_STOP_REQUESTED_FILE") || RUNTIME_STATE_DIR + "/stop.requested";
 const MANAGED_UPGRADE_SING_BOX_MARKER = getenv("FORKOP_MANAGED_UPGRADE_SING_BOX_MARKER") || "/tmp/forkop-managed-upgrade-sing-box";
 const MANAGED_UPGRADE_SING_BOX_WAIT_SECONDS = int(getenv("FORKOP_MANAGED_UPGRADE_SING_BOX_WAIT_SECONDS") || "15");
 const MANAGED_UPGRADE_SING_BOX_MARKER_MAX_AGE_SECONDS = int(getenv("FORKOP_MANAGED_UPGRADE_SING_BOX_MARKER_MAX_AGE_SECONDS") || "120");
@@ -53,6 +55,15 @@ const DNS_FAILOVER_PID_FILE = getenv("FORKOP_DNS_FAILOVER_PID_FILE") || RUNTIME_
 const SUBSCRIPTION_UPDATE_LOCK_DIR = getenv("FORKOP_SUBSCRIPTION_UPDATE_LOCK_DIR") || RUNTIME_STATE_DIR + "/subscription-update.lock";
 const RELOAD_LOCK_DIR = getenv("FORKOP_RELOAD_LOCK_DIR") || "/var/run/forkop.reload.lock";
 const INTERNAL_CONFIG_TRIGGER_GUARD = getenv("FORKOP_INTERNAL_CONFIG_TRIGGER_GUARD") || "/var/run/forkop.internal-config-change";
+// Reloads that background work requests on its own: the list worker's final
+// apply, the rule-set refresh, the deferred subscription recovery, a queued
+// request, procd triggers. After an explicit stop they do not bring the
+// runtime back (UC-012). A manual reload, a snapshot restore and an autotune
+// apply still restart a stopped runtime (D-15, UC-056).
+const BACKGROUND_RELOAD_REASONS = [
+    "list-content", "ruleset-cache", "subscription_deferred_recovery", "pending",
+    "on_config_change", "badwan_interface_up"
+];
 
 const LIST_UPDATE_CRON_MARKER = getenv("FORKOP_LIST_UPDATE_CRON_MARKER") || "# forkop-list-update";
 const SUBSCRIPTION_UPDATE_CRON_MARKER = getenv("FORKOP_SUBSCRIPTION_UPDATE_CRON_MARKER") || "# forkop-subscription-update";
@@ -1023,6 +1034,9 @@ function refresh_rulesets_after_start() {
 }
 
 function start_impl() {
+    // The runtime is being started again: an earlier explicit stop no longer
+    // holds back the work that applies changes to it.
+    remove_file(STOP_REQUESTED_FILE);
     let status = start_main();
     if (status != 0)
         return status;
@@ -1475,6 +1489,9 @@ function start() {
     // The init.d UI action can fail to register when a stop has only just
     // completed. Track the actual lifecycle worker independently of UI jobs.
     write_file(START_IN_PROGRESS_FILE, owner_pid() + "\n");
+    // An explicit start ends an explicit stop, also when it finds the
+    // runtime already running and does not start it again.
+    remove_file(STOP_REQUESTED_FILE);
     let status = start_inner();
     remove_file(START_IN_PROGRESS_FILE);
     return status;
@@ -1514,7 +1531,11 @@ function stop_impl() {
     return status;
 }
 
+// Also recorded by service/initd.uc before it waits for reload.lock; here for
+// a `forkop stop` that does not come through init.d.
 function stop() {
+    ensure_dir(RUNTIME_STATE_DIR);
+    write_file(STOP_REQUESTED_FILE, as_string(int(clock()[0])) + "\n");
     return stop_impl();
 }
 
@@ -1638,6 +1659,14 @@ function wait_dns_failover_state(candidate_state_path, attempts) {
     return 1;
 }
 
+// Checked under reload.lock right before sing-box is started (UC-012).
+function runtime_apply_allowed() {
+    return module_success(STATE_UC, [ "runtime-apply-allowed", NFT_TABLE_NAME ]);
+}
+
+// Runs as a child of the DNS-failover worker; a stop TERMs only the worker, so
+// this apply can still be at work when the stop proceeds. It never starts
+// sing-box once a stop was requested or Forkop is down.
 function dns_failover_apply(candidate_state_path) {
     candidate_state_path = as_string(candidate_state_path);
     if (candidate_state_path == "" || fs.stat(candidate_state_path) == null)
@@ -1645,6 +1674,12 @@ function dns_failover_apply(candidate_state_path) {
 
     if (!module_success(STATE_UC, [ "acquire-runtime-dir-lock-wait", RELOAD_LOCK_DIR, owner_pid(), "2" ]))
         return 2;
+
+    if (!runtime_apply_allowed()) {
+        log_message("DNS failover switch skipped: Forkop is stopped or stopping", "info");
+        release_reload_lock();
+        return 1;
+    }
 
     // Do not publish config.json while a vendor-provided init script can be
     // watching it. Its watcher is outside Forkop's ownership and can otherwise
@@ -1657,7 +1692,8 @@ function dns_failover_apply(candidate_state_path) {
 
     let patch_result = module_capture(SINGBOX_UC, [ "patch-dns-config", candidate_state_path ]);
     if (patch_result.status != 0) {
-        module_success(STATE_UC, [ "start-managed-sing-box-runtime", transition_timeout ]);
+        if (runtime_apply_allowed())
+            module_success(STATE_UC, [ "start-managed-sing-box-runtime", transition_timeout ]);
         release_reload_lock();
         return patch_result.status;
     }
@@ -1666,8 +1702,13 @@ function dns_failover_apply(candidate_state_path) {
     let changed = as_string(fields[0]) == "1";
     let backup_path = length(fields) > 1 ? as_string(fields[1]) : "";
     let status = 0;
+    let stopping = !runtime_apply_allowed();
 
-    if (changed) {
+    if (stopping) {
+        log_message("Forkop is stopping; the DNS failover switch was abandoned and sing-box stays stopped", "info");
+        status = 1;
+    }
+    else if (changed) {
         status = module_status(STATE_UC, [ "start-managed-sing-box-runtime", transition_timeout ]);
         if (status == 0)
             status = wait_dns_failover_state(candidate_state_path, 8);
@@ -1680,9 +1721,11 @@ function dns_failover_apply(candidate_state_path) {
         status = 1;
 
     if (status != 0 && backup_path != "") {
-        log_message("DNS failover apply failed; restoring the previous sing-box configuration", "error");
+        if (!stopping)
+            log_message("DNS failover apply failed; restoring the previous sing-box configuration", "error");
         if (module_success(STATE_UC, [ "stop-managed-sing-box-runtime", transition_timeout ]) &&
-            module_success(SINGBOX_UC, [ "restore-dns-config", backup_path ]))
+            module_success(SINGBOX_UC, [ "restore-dns-config", backup_path ]) &&
+            runtime_apply_allowed())
             module_success(STATE_UC, [ "start-managed-sing-box-runtime", transition_timeout ]);
     }
 
@@ -1694,6 +1737,14 @@ function dns_failover_apply(candidate_state_path) {
 
 function reload(reason) {
     reason = as_string(reason || "");
+    // Work that began before an explicit stop requests these reloads after
+    // it; they must not start the stopped runtime again (UC-012). A stop
+    // still waiting for reload.lock leaves the runtime up until it runs.
+    if (fs.stat(STOP_REQUESTED_FILE) != null && index(BACKGROUND_RELOAD_REASONS, reason) >= 0 &&
+        !module_success(STATE_UC, [ "forkop-running", RT_TABLE_NAME, NFT_TABLE_NAME, NFT_FAKEIP_MARK ])) {
+        log_message("Reload '" + reason + "' skipped: Forkop was stopped; only a start brings its runtime back", "info");
+        return 0;
+    }
     // A completed list generation whose final runtime apply failed is safe to
     // retry locally. Never let a later generic/pending reload skip that
     // generation or trigger a second network update.

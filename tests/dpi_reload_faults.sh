@@ -41,6 +41,10 @@ function log_message(message, level) {}
 function module_success(path, args) { return true; }
 function cleanup_failed_runtime() { cleaned++; }
 function restore_dnsmasq_reload_config() { return dns_restore_ok; }
+// No stop is requested while these rollbacks run
+// (tests/reload_overtaken_by_stop.sh covers the reload that gives way to one).
+let reload_stop_abandoned = false;
+function reload_gives_way_to_stop(step) { return false; }
 function remove_file(path) { removed_state++; }
 function module_status(path, args) {
     if (args[0] == "snapshot-runtime") {

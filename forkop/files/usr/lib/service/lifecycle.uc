@@ -131,8 +131,9 @@ const BYEDPI_UC = LIB_DIR + "/providers/byedpi/runtime.uc";
 const PACKAGES_UC = LIB_DIR + "/core/packages.uc";
 
 let start_subscription_update_lock_held = false;
-// Set once start_impl has cleared an earlier explicit stop: a stop request
-// seen after that was made during this start (UC-012).
+// Set once start_impl runs: an explicit start or restart has ended an earlier
+// explicit stop before, so a stop request seen after that was made during
+// this start (UC-012).
 let start_watches_stop_request = false;
 let subscription_caches_prepared = getenv("FORKOP_SUBSCRIPTION_CACHES_PREPARED") || "0";
 let subscription_runtime_no_refresh = getenv("FORKOP_SUBSCRIPTION_RUNTIME_NO_REFRESH") || "0";
@@ -150,6 +151,9 @@ let dpi_singbox_backup = "";
 let dns_reload_backup = "";
 const DNSMASQ_CONFIG_FILE = getenv("FORKOP_DNSMASQ_CONFIG_FILE") || "/etc/config/dhcp";
 let dpi_guard_active = false;
+// Set once the reload in progress has given way to a stop request
+// (reload_gives_way_to_stop).
+let reload_stop_abandoned = false;
 
 function shell_quote(value) {
     return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
@@ -806,6 +810,22 @@ function discard_singbox_config_stage(stage_path) {
         module_success(SINGBOX_UC, [ "discard-config-stage", stage_path ]);
 }
 
+// A stop that stopped waiting for reload.lock (service/initd.uc) tears the
+// runtime down while the reload in progress still holds the lock, and one
+// that still waits does so as soon as the lock is released. From the moment
+// its request is recorded the reload starts, commits and restores nothing
+// more: no sing-box, no auxiliary or DPI runtime, no nft table, no dnsmasq
+// change (D-15, UC-056). reload_skipped_after_stop decides the same when a
+// reload begins.
+function reload_gives_way_to_stop(step) {
+    if (fs.stat(STOP_REQUESTED_FILE) == null)
+        return false;
+    if (!reload_stop_abandoned)
+        log_message("Forkop reload abandoned before " + step + ": a stop was requested meanwhile; the runtime stays stopped", "info");
+    reload_stop_abandoned = true;
+    return true;
+}
+
 function restore_guarded_singbox_runtime(backup_path, guard_active) {
     // The stock sing-box init script may watch config.json too. Ensure that no
     // managed runtime can observe the restored file before we publish it.
@@ -813,6 +833,10 @@ function restore_guarded_singbox_runtime(backup_path, guard_active) {
         "stop-managed-sing-box-runtime",
         as_string(getenv("FORKOP_SING_BOX_RELOAD_PID_TIMEOUT") || "15")
     ]) != 0 || !module_success(SINGBOX_UC, [ "restore-config-stage", backup_path ]))
+        return false;
+
+    // The previous configuration is back; a stop keeps sing-box down.
+    if (reload_gives_way_to_stop("the sing-box rollback"))
         return false;
 
     if (module_status(STATE_UC, [
@@ -1257,6 +1281,8 @@ function restore_dpi_runtime() {
             return false;
         }
     }
+    if (reload_gives_way_to_stop("the DPI rollback"))
+        return false;
     if (dpi_nft_committed && dpi_nft_rollback_file != "") {
         if (system(command_from_args([ "nft", "-f", dpi_nft_rollback_file ])) != 0) {
             log_message("Failed to restore the previous nft table during DPI rollback", "fatal");
@@ -1314,7 +1340,31 @@ function switch_dpi_runtime(plan) {
     return 0;
 }
 
+// The reload gives way to a stop (reload_gives_way_to_stop): sing-box stays
+// stopped, the fail-closed guards and the rest of the teardown are left to
+// the stop, and nothing this reload prepared is kept. Not a failure: the next
+// explicit start applies the whole configuration.
+function abandon_reload_for_stop(stage_path, backup_path) {
+    nft_candidate_finish(false);
+    discard_singbox_config_stage(stage_path);
+    if (as_string(backup_path) != "")
+        remove_file(backup_path);
+    if (dpi_singbox_backup != "")
+        remove_file(dpi_singbox_backup);
+    discard_dpi_snapshot();
+    discard_dnsmasq_reload_config();
+    remove_file(RELOAD_STATE_SNAPSHOT_FILE);
+    dpi_guard_active = false;
+    module_status(STATE_UC, [
+        "stop-managed-sing-box-runtime",
+        as_string(getenv("FORKOP_SING_BOX_RELOAD_PID_TIMEOUT") || "15")
+    ]);
+    return 0;
+}
+
 function abort_reload(status, runtime_changed) {
+    if (reload_gives_way_to_stop("its rollback"))
+        return abandon_reload_for_stop("", "");
     status = int(status || 0);
     if (status == 0)
         status = 1;
@@ -1346,6 +1396,8 @@ function abort_reload(status, runtime_changed) {
     if (dpi_singbox_backup != "") {
         if (!module_success(NFT_UC, [ "install-transition-guard", NFT_TABLE_NAME, NFT_FAKEIP_MARK ]) ||
             !restore_guarded_singbox_runtime(dpi_singbox_backup, false)) {
+            if (reload_stop_abandoned)
+                return abandon_reload_for_stop("", "");
             log_message("Post-commit sing-box rollback failed; retaining the fail-closed transition guard", "fatal");
             remove_file(RELOAD_STATE_SNAPSHOT_FILE);
             return status;
@@ -1355,6 +1407,8 @@ function abort_reload(status, runtime_changed) {
     let dpi_rollback_attempted = dpi_switch_started;
     let dpi_restored = restore_dpi_runtime();
     if (!dpi_restored) {
+        if (reload_stop_abandoned)
+            return abandon_reload_for_stop("", "");
         log_message("DPI reload rollback failed; preserving the fail-closed guards and rollback snapshot " + dpi_snapshot_dir, "fatal");
         remove_file(RELOAD_STATE_SNAPSHOT_FILE);
         return status;
@@ -1389,6 +1443,9 @@ function abort_guarded_transition(status, stage_path, backup_path, guard_active)
     nft_candidate_finish(false);
     discard_singbox_config_stage(stage_path);
 
+    if (reload_gives_way_to_stop("its rollback"))
+        return abandon_reload_for_stop("", backup_path);
+
     if (!guard_active)
         return abort_reload(status, false);
 
@@ -1406,6 +1463,8 @@ function abort_guarded_transition(status, stage_path, backup_path, guard_active)
 
     if (fs.stat(backup_path) != null && restore_guarded_singbox_runtime(backup_path, true))
         return abort_reload(status, false);
+    if (reload_stop_abandoned)
+        return abandon_reload_for_stop("", backup_path);
 
     // Do not call cleanup_failed_runtime here. The guard intentionally stays
     // in the old table and drops classified traffic until an operator/retry can
@@ -1789,10 +1848,10 @@ function dns_failover_apply(candidate_state_path) {
 // requests it: background work that began before the stop (UC-012), a manual
 // reload, a snapshot restore, an autotune apply. Only an explicit start
 // brings it back (D-15, UC-056). A runtime that is down without a stop (it
-// crashed, its start failed) is still repaired by the reload. A stop still
-// waiting for reload.lock leaves the runtime up until it runs.
-// service/initd.uc decides the same before it opens a UI job; this is the
-// check under reload.lock.
+// crashed, its start failed) is still repaired by the reload. A stop
+// requested while the reload is in progress stops it before its next start
+// step (reload_gives_way_to_stop). service/initd.uc decides the same before
+// it opens a UI job; this is the check under reload.lock.
 function reload_skipped_after_stop(reason) {
     reason = as_string(reason || "");
     if (fs.stat(STOP_REQUESTED_FILE) == null ||
@@ -2013,6 +2072,8 @@ function reload(reason) {
     }
 
     if (!needs_singbox_transition) {
+        if (reload_gives_way_to_stop("the DPI providers and the nft table"))
+            return abandon_reload_for_stop("", "");
         status = switch_dpi_runtime(plan);
         if (status != 0) {
             nft_candidate_finish(false);
@@ -2051,6 +2112,8 @@ function reload(reason) {
             return abort_guarded_transition(1, staged_singbox_config, staged_singbox_backup, transition_guard_active);
         if (!module_success(SINGBOX_UC, [ "commit-config-stage", staged_singbox_config, staged_singbox_backup ]))
             return abort_guarded_transition(1, staged_singbox_config, staged_singbox_backup, transition_guard_active);
+        if (reload_gives_way_to_stop("sing-box"))
+            return abandon_reload_for_stop(staged_singbox_config, staged_singbox_backup);
         status = module_status(STATE_UC, [
             "start-managed-sing-box-runtime",
             as_string(getenv("FORKOP_SING_BOX_RELOAD_PID_TIMEOUT") || "15")
@@ -2069,16 +2132,22 @@ function reload(reason) {
             log_message("Reload verification failed after sing-box was reloaded; restoring the previous coherent runtime", "fatal");
             return abort_guarded_transition(status, staged_singbox_config, staged_singbox_backup, transition_guard_active);
         }
+        if (reload_gives_way_to_stop("Priority"))
+            return abandon_reload_for_stop(staged_singbox_config, staged_singbox_backup);
         status = module_status(PRIORITY_UC, [ "start-runtime" ]);
         if (status != 0) {
             log_message("Failed to start Priority runtime after sing-box reload", "fatal");
             return abort_guarded_transition(status, staged_singbox_config, staged_singbox_backup, transition_guard_active);
         }
+        if (reload_gives_way_to_stop("DNS failover"))
+            return abandon_reload_for_stop(staged_singbox_config, staged_singbox_backup);
         status = module_status(DNS_FAILOVER_UC, [ "start-runtime" ]);
         if (status != 0) {
             log_message("Failed to restart DNS failover runtime after sing-box reload", "fatal");
             return abort_guarded_transition(status, staged_singbox_config, staged_singbox_backup, transition_guard_active);
         }
+        if (reload_gives_way_to_stop("the DPI providers and the nft table"))
+            return abandon_reload_for_stop(staged_singbox_config, staged_singbox_backup);
         status = switch_dpi_runtime(plan);
         if (status != 0)
             return abort_guarded_transition(status, staged_singbox_config, staged_singbox_backup, transition_guard_active);
@@ -2098,6 +2167,9 @@ function reload(reason) {
             remove_file(staged_singbox_backup);
         runtime_changed = true;
     }
+
+    if (reload_gives_way_to_stop("dnsmasq and the scheduled jobs"))
+        return abandon_reload_for_stop("", "");
 
     if ((plan.needs_dnsmasq_configure == 1 || plan.needs_dnsmasq_restore == 1) &&
         !snapshot_dnsmasq_reload_config())
@@ -2144,6 +2216,11 @@ function reload(reason) {
     if (reason == "list-content")
         remove_file(LIST_UPDATE_RELOAD_FILE);
 
+    // A stop requested meanwhile has terminated the workers it found; no new
+    // one comes after it (D-15, UC-056): the next start runs them.
+    if (fs.stat(STOP_REQUESTED_FILE) != null)
+        return 0;
+
     // Background workers may update UCI selector state or materialized list
     // files immediately. Start them only after the reload snapshot and config
     // fingerprint have been committed, otherwise Forkop mistakes its own
@@ -2177,9 +2254,11 @@ function reload_tracked(reason) {
     if (reload_skipped_after_stop(reason))
         return 0;
 
+    // A reload that gave way to a stop is recorded as neither.
     if (as_string(getenv("FORKOP_UI_ACTION_TRACKED") || "0") == "1") {
         let status = reload(reason);
-        module_success(LIB_DIR + "/diagnostics/health.uc", [ "record", "reload", status == 0 ? "success" : "failure" ]);
+        if (!reload_stop_abandoned)
+            module_success(LIB_DIR + "/diagnostics/health.uc", [ "record", "reload", status == 0 ? "success" : "failure" ]);
         return status;
     }
 
@@ -2188,7 +2267,8 @@ function reload_tracked(reason) {
         module_success(UI_UC, [ "service-action-update-pid", job_id, owner_pid() ]);
 
     let status = reload(reason);
-    module_success(LIB_DIR + "/diagnostics/health.uc", [ "record", "reload", status == 0 ? "success" : "failure" ]);
+    if (!reload_stop_abandoned)
+        module_success(LIB_DIR + "/diagnostics/health.uc", [ "record", "reload", status == 0 ? "success" : "failure" ]);
     if (job_id != "")
         module_success(UI_UC, [ "service-action-finish-after-command", "reload", job_id, as_string(status) ]);
 

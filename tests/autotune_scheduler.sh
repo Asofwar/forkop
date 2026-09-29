@@ -10,6 +10,12 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=tests/helpers/autotune_scheduler/setup.sh
 source "$ROOT_DIR/tests/helpers/autotune_scheduler/setup.sh"
+# shellcheck source=tests/helpers/wait.sh
+source "$ROOT_DIR/tests/helpers/wait.sh"
+WORKER_LOCK="$FORKOP_AUTOTUNE_STATE_DIR/worker.lock"
+worker_lock_free() { ! lock_held "$WORKER_LOCK"; }
+# job_state_is JOB STATE FILE: run-status of JOB, saved to FILE, reports STATE.
+job_state_is() { manager run-status "$1" >"$3" && [ "$(json_get "$3" job.state)" = "\"$2\"" ]; }
 
 # ---- groups as the scheduler sees them -------------------------------------
 manager groups >"$WORK/groups.json"
@@ -124,13 +130,18 @@ manager if-due >"$WORK/busy.json"
 selected discord.com multisplit high
 
 # ---- the worker lock ------------------------------------------------------
-flock "$FORKOP_AUTOTUNE_STATE_DIR/worker.lock" sleep 3 &
-BG_PIDS+=("$!")
-sleep 0.3
+# The holder is one process (the lock stays with fd 9 across exec), so killing
+# it releases the lock; wait until it is really held instead of a fixed delay.
+( flock 9 && exec sleep 60 ) 9>>"$WORKER_LOCK" &
+lock_holder=$!
+BG_PIDS+=("$lock_holder")
+wait_until 30 lock_held "$WORKER_LOCK" || fail "the worker lock holder did not take the lock"
 if manager run all >"$WORK/locked.json"; then fail "a second worker must be refused"; fi
 [ "$(json_get "$WORK/locked.json" reason)" = '"autotune_worker_running"' ] || fail "worker lock: $(cat "$WORK/locked.json")"
 if manager run-async all >"$WORK/locked-async.json"; then fail "a job must not start while a worker runs"; fi
-wait "${BG_PIDS[-1]}" || true
+kill "$lock_holder"
+wait "$lock_holder" || true
+wait_until 30 worker_lock_free || fail "the worker lock was not released"
 
 # ---- a target edited during the run keeps the edit -------------------------
 printf '%s\n' "FORKOP_LIB='$LIB' ucode -L '$LIB' '$LIB/autotune/manager.uc' target-set ytimg img.youtube.com >/dev/null" >"$WORK/tune/www.youtube.com.hook"
@@ -171,41 +182,30 @@ wait "$run_pid" || true
 STUB_TUNE_SLEEP=1 manager run-async youtube >"$WORK/job.json"
 job="$(node -e 'console.log(require(process.argv[1]).job)' "$WORK/job.json")"
 [[ "$job" =~ ^[0-9]+_[0-9]+$ ]] || fail "job id: $(cat "$WORK/job.json")"
-for _ in $(seq 30); do
-  manager run-status "$job" >"$WORK/job-status.json"
-  [ "$(json_get "$WORK/job-status.json" job.state)" = '"running"' ] && break; sleep 0.1
-done
-[ "$(json_get "$WORK/job-status.json" job.state)" = '"running"' ] || fail "job running: $(cat "$WORK/job-status.json")"
+wait_until 30 job_state_is "$job" running "$WORK/job-status.json" || fail "job running: $(cat "$WORK/job-status.json")"
 if manager run-async all >"$WORK/job-busy.json"; then fail "one job at a time"; fi
 [ "$(json_get "$WORK/job-busy.json" reason)" = '"autotune_worker_running"' ] || fail "busy job reason"
-for _ in $(seq 100); do
-  manager run-status "$job" >"$WORK/job-status.json"
-  [ "$(json_get "$WORK/job-status.json" job.state)" = '"finished"' ] && break; sleep 0.1
-done
-[ "$(json_get "$WORK/job-status.json" job.state)" = '"finished"' ] || fail "job finished: $(cat "$WORK/job-status.json")"
+wait_until 60 job_state_is "$job" finished "$WORK/job-status.json" || fail "job finished: $(cat "$WORK/job-status.json")"
 [ "$(json_get "$WORK/job-status.json" job.result.result)" = '"completed"' ] || fail "job result"
 [ "$(json_get "$FORKOP_AUTOTUNE_STATE_FILE" worker.trigger)" = '"manual"' ] || fail "job runs are manual"
 
 STUB_TUNE_SLEEP=3 manager run-async youtube >"$WORK/job2.json"
 job2="$(node -e 'console.log(require(process.argv[1]).job)' "$WORK/job2.json")"
-for _ in $(seq 30); do
-  manager run-status "$job2" >"$WORK/job2-status.json"
-  [ "$(json_get "$WORK/job2-status.json" job.state)" = '"running"' ] && break; sleep 0.1
-done
+wait_until 30 job_state_is "$job2" running "$WORK/job2-status.json" || fail "job2 running: $(cat "$WORK/job2-status.json")"
 worker_pid="$(json_get "$WORK/job2-status.json" job.pid | tr -d '"')"
 kill -9 "$worker_pid"
-sleep 0.2
-manager run-status "$job2" >"$WORK/job2-lost.json"
-[ "$(json_get "$WORK/job2-lost.json" job.state)" = '"lost"' ] || fail "a killed job is reported lost: $(cat "$WORK/job2-lost.json")"
+wait_until 30 job_state_is "$job2" lost "$WORK/job2-lost.json" ||
+  fail "a killed job is reported lost: $(cat "$WORK/job2-lost.json")"
 if manager run-status '../x' >"$WORK/job-bad.json"; then fail "invalid job ids are refused"; fi
 if manager run-status 1_1 >"$WORK/job-missing.json"; then fail "unknown jobs are refused"; fi
 [ "$(json_get "$WORK/job-missing.json" reason)" = '"unknown_job"' ] || fail "unknown job reason"
 
 for i in $(seq 12); do printf '{"id":"%s","state":"finished"}\n' "1_$i" >"$FORKOP_AUTOTUNE_STATE_DIR/jobs/1_$i.json"; done
-sleep 3.2
+# The killed worker's tune stand-in keeps the inherited lock until its sleep ends.
+wait_until 30 worker_lock_free || fail "the killed job's worker lock was not released"
 manager run-async youtube >/dev/null
 [ "$(find "$FORKOP_AUTOTUNE_STATE_DIR/jobs" -name '*.json' | wc -l)" -le 10 ] || fail "old jobs are pruned"
-for _ in $(seq 50); do flock -n "$FORKOP_AUTOTUNE_STATE_DIR/worker.lock" true && break; sleep 0.1; done
+wait_until 30 worker_lock_free || fail "the pruning job did not finish"
 
 # ---- mode off removes the cron line ----------------------------------------
 manager policy-set mode off >/dev/null

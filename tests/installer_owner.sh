@@ -32,36 +32,24 @@ fail() {
 
 # A killed process whose parent is gone is reparented to PID 1. Where PID 1
 # does not reap children (some container inits), it stays a zombie for a while
-# and kill -0 still succeeds although it runs no code. Count zombies as dead.
-process_alive() {
-  local stat
-  kill -0 "$1" 2>/dev/null || return 1
-  if IFS= read -r stat 2>/dev/null <"/proc/$1/stat"; then
-    stat="${stat##*) }"
-    case "${stat%% *}" in
-      Z | X) return 1 ;;
-    esac
-    return 0
-  fi
-  kill -0 "$1" 2>/dev/null
-}
+# and kill -0 still succeeds although it runs no code: process_running counts
+# zombies as dead.
+# shellcheck source=tests/helpers/wait.sh
+source "$ROOT_DIR/tests/helpers/wait.sh"
 
 # Self-check: an unreaped child of a live parent is dead, the parent is alive.
 sh -c 'sleep 0 & printf "%s\n" "$!" >"$1"; exec sleep 30' sh "$WORK_DIR/zombie.pid" &
 zombie_parent=$!
-zombie_state=""
-for _ in $(seq 1 100); do
-  if [ -s "$WORK_DIR/zombie.pid" ] &&
-    IFS= read -r zombie_state 2>/dev/null <"/proc/$(cat "$WORK_DIR/zombie.pid")/stat"; then
-    zombie_state="${zombie_state##*) }"
-    zombie_state="${zombie_state%% *}"
-    [ "$zombie_state" = Z ] && break
-  fi
-  sleep 0.05
-done
-[ "$zombie_state" = Z ] || fail "zombie fixture did not produce a zombie process"
-process_alive "$(cat "$WORK_DIR/zombie.pid")" && fail "process_alive must treat a zombie as dead"
-process_alive "$zombie_parent" || fail "process_alive must report a running process as alive"
+fixture_is_zombie() {
+  local stat
+  [ -s "$WORK_DIR/zombie.pid" ] &&
+    IFS= read -r stat 2>/dev/null <"/proc/$(cat "$WORK_DIR/zombie.pid")/stat" &&
+    stat="${stat##*) }" && [ "${stat%% *}" = Z ]
+}
+wait_until 10 fixture_is_zombie || fail "zombie fixture did not produce a zombie process"
+kill -0 "$(cat "$WORK_DIR/zombie.pid")" 2>/dev/null || fail "zombie fixture: kill -0 must still see the zombie"
+process_running "$(cat "$WORK_DIR/zombie.pid")" && fail "process_running must treat a zombie as dead"
+process_running "$zombie_parent" || fail "process_running must report a running process as alive"
 kill -KILL "$zombie_parent" 2>/dev/null || true
 wait "$zombie_parent" 2>/dev/null || true
 
@@ -128,7 +116,7 @@ if run_with_deadline 1 sh -c '
   fail "installer deadline watchdog must fail a stubborn process tree"
 fi
 [ -s "$deadline_child_pid" ] || fail "deadline process-tree fixture did not record its child"
-if process_alive "$(cat "$deadline_child_pid")"; then
+if process_running "$(cat "$deadline_child_pid")"; then
   fail "installer deadline watchdog left a descendant running"
 fi
 grep -Fq 'curl --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --max-time "$METADATA_TIMEOUT_SECONDS"' "$INSTALLER" ||
@@ -398,12 +386,12 @@ if [ -e "$WORK_DIR/start.retry" ] || [ -e "$WORK_DIR/start-retry.pid" ]; then
 fi
 wait "$RETRY_PID" 2>/dev/null || true
 RETRY_PID=""
-if process_alive "$ORPHAN_PROBE_PID"; then
+if process_running "$ORPHAN_PROBE_PID"; then
   fail "installer cleanup left an orphaned init.d probe running"
 fi
 ORPHAN_PROBE_PID=""
 while IFS= read -r pid; do
-  if process_alive "$pid"; then
+  if process_running "$pid"; then
     fail "installer cleanup left a timed-out service process running: $pid"
   fi
 done < "$HANG_PID_LOG"

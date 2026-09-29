@@ -206,7 +206,8 @@ iso cleanup; json 'a.equal(r.status, "clean");' "$WORK/out.json"; ok "cleanup id
 
 # An nfqws with the run signature that no run recorded (an admin's own nfqws
 # on a run queue, say) is not ours: neither a run nor a cleanup signals it,
-# and a run refuses while it exists (UC-053).
+# and a run refuses while it exists (UC-053). Both name it, so the operator
+# knows what to stop.
 queue_released() { ! grep -q "^ $1 " "$FORKOP_AUTOTUNE_PROC_QUEUE"; }
 foreign_on_run_queue() {
   local foreign
@@ -218,16 +219,18 @@ foreign_on_run_queue() {
   FOREIGN_PIDS+=("$foreign")
   unset NFQWS_STUB_NO_LISTENER
   run_probe multisplit 1
-  json 'a.equal(r.status, "refused"); a.equal(r.reason, "queue_in_use");' "$WORK/out.json"
+  json "a.equal(r.status, 'refused'); a.equal(r.reason, 'queue_in_use');
+    a.deepEqual(r.blocking_nfqws, [{ pid: $foreign, queue: 4600 }]);" "$WORK/out.json"
   process_running "$foreign" || fail "a run signalled a foreign nfqws on its queue ($1)"
   [ ! -e "$NFT_STATE/tables/ForkopAutotuneProbe" ] || fail "a refused run created its table ($1)"
   iso cleanup
-  json 'a.equal(r.status, "failed"); a.equal(r.verified.process_absent, false);' "$WORK/out.json"
+  json "a.equal(r.status, 'failed'); a.equal(r.verified.process_absent, false);
+    a.deepEqual(r.verified.blocking_nfqws, [{ pid: $foreign, queue: 4600 }]);" "$WORK/out.json"
   process_running "$foreign" || fail "cleanup signalled a foreign nfqws on a run queue ($1)"
   kill "$foreign"
   wait_until 10 process_gone "$foreign" || fail "the foreign nfqws double did not exit"
   wait_until 10 queue_released 4600 || fail "the foreign nfqws double kept its queue"
-  iso cleanup; json 'a.equal(r.status, "clean");' "$WORK/out.json"
+  iso cleanup; json 'a.equal(r.status, "clean"); a.equal(r.verified.blocking_nfqws, undefined);' "$WORK/out.json"
   assert_clean "foreign nfqws ($1)"
   ok "foreign nfqws on a run queue ($1): refused, never signalled"
 }

@@ -453,11 +453,16 @@ function orphans() {
         let argv = split(as_string(fs.readfile("/proc/" + name + "/cmdline")), "\0");
         let m = match(as_string(argv[1]), /^--qnum=([0-9]+)$/);
         if (m == null || !in_run_range(int(m[1]))) continue;
-        let saved = { pid: name, ticks: identity.start_ticks(name), prefix: signature_prefix(int(m[1])) };
+        let saved = { pid: name, queue: int(m[1]), ticks: identity.start_ticks(name), prefix: signature_prefix(int(m[1])) };
         if (saved.ticks != "" && identity.matches_record(saved, NFQWS, saved.prefix, false, true) != "")
             push(result, saved);
     }
     return result;
+}
+
+// What keeps a run or a cleanup from ending clean, for the operator to stop.
+function blocking_nfqws(found) {
+    return map(found, (o) => ({ pid: int(o.pid), queue: o.queue }));
 }
 
 // nfqws processes a run started: [{ queue, pidfile, argv }] from active.json,
@@ -723,13 +728,15 @@ function teardown(active, actions, report) {
 }
 
 function verify_clean() {
+    let found = orphans();
     let result = {
         table_absent: table_state(TABLE) == "absent",
         queue_absent: length(run_queues()) == 0,
-        process_absent: length(orphans()) == 0,
+        process_absent: length(found) == 0,
         state_removed: fs.stat(ACTIVE) == null && !pidfiles_present() && fs.stat(WORKDIR) == null
     };
     result.clean = result.table_absent && result.queue_absent && result.process_absent && result.state_removed;
+    if (length(found) > 0) result.blocking_nfqws = blocking_nfqws(found);
     return result;
 }
 
@@ -804,12 +811,13 @@ function preflight(result, host, resolver, ip, on_dns_failure) {
     if (length(recovered) > 0) result.recovered = recovered;
     timeline = []; result.timeline = timeline;
 
-    let refusal = null;
+    let refusal = null, found = [];
     if (length(guards_present()) > 0) refusal = "guard_active";
     else if (fs.stat(SNAPSHOT_LOCK) != null) refusal = "snapshot_operation_in_progress";
     // An nfqws of the run signature that no run recorded is not ours to stop.
-    else if (length(orphans()) > 0) refusal = "queue_in_use";
+    else if (length(found = orphans()) > 0) refusal = "queue_in_use";
     else refusal = queue_check() || port_check();
+    if (length(found) > 0) result.blocking_nfqws = blocking_nfqws(found);
     if (refusal) { result.status = "refused"; result.reason = refusal; return null; }
 
     let target = { host, port: 443, resolver: resolver || null, addresses: null, ip: null, route: null };

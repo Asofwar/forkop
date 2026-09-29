@@ -439,9 +439,11 @@ function stop_identified(saved, argv, exact) {
     return identity.matches_record(saved, NFQWS, argv, exact, true) == "" ? "killed" : "failed";
 }
 
-// Temporary nfqws processes left behind by an interrupted run: the very
-// binary path, a queue of the run range and the desync mark; nothing else
-// qualifies.
+// nfqws processes with the signature of a run: the very binary path, a
+// queue of the run range and the desync mark. A run stops only the processes
+// it recorded when it started them (pidfile: pid + start ticks); any other
+// match - an admin's own nfqws on a run queue, say - is never signalled, and
+// a run refuses while one exists (queue_in_use, UC-053).
 function orphans() {
     let result = [];
     for (let name in fs.lsdir("/proc") || []) {
@@ -459,7 +461,8 @@ function orphans() {
 }
 
 // nfqws processes a run started: [{ queue, pidfile, argv }] from active.json,
-// plus pidfiles without a recorded command line (never signalled).
+// plus pidfiles without a recorded command line (active.json lost), which
+// are identified by the run signature instead.
 function nfqws_entries(active) {
     let result = [], known = {};
     for (let e in (type(active) == "object" && type(active.nfqws) == "array") ? active.nfqws : []) {
@@ -670,16 +673,11 @@ function teardown(active, actions, report) {
         if (fs.stat(entry.pidfile) == null) continue;      // never started
         let saved = identity.read_record(entry.pidfile);
         if (saved == null) { push(actions, "pidfile:stale"); continue; }
-        let outcome = entry.argv ? stop_identified(saved, entry.argv, true) : "not_ours";
+        let outcome = entry.argv ? stop_identified(saved, entry.argv, true)
+            : stop_identified(saved, signature_prefix(entry.queue), false);
         if (outcome == "failed") ok = false;
         else if (outcome != "not_ours") stopped = true;
         push(actions, "pidfile:" + (outcome == "not_ours" ? "stale" : outcome));
-    }
-    for (let orphan in orphans()) {
-        let outcome = stop_identified(orphan, orphan.prefix, false);
-        if (outcome == "failed") ok = false;
-        else if (outcome != "not_ours") stopped = true;
-        push(actions, "orphan:" + outcome);
     }
     if (stopped) {
         // The kernel releases the queue binding as the process exits.
@@ -713,8 +711,9 @@ function teardown(active, actions, report) {
             mark("T7", "temporary table removed", held);
         }
     }
-    // Recovery data is kept until the table and the process are verifiably gone.
-    if (ok && table_state(TABLE) == "absent" && length(orphans()) == 0) {
+    // Recovery data is kept until the table and the recorded processes are
+    // verifiably gone.
+    if (ok && table_state(TABLE) == "absent") {
         for (let entry in nfqws_entries(active)) fs.unlink(entry.pidfile);
         for (let name in fs.lsdir(WORKDIR) || []) fs.unlink(WORKDIR + "/" + name);
         fs.rmdir(WORKDIR);
@@ -763,7 +762,16 @@ function summary(probes) {
 // Start one candidate nfqws on its queue and wait for its listener.
 function start_candidate(entry) {
     let pid = start_nfqws(entry.argv, WORKDIR + "/nfqws-" + entry.queue + ".log");
-    if (pid == "" || !identity.record(entry.pidfile, pid)) return { failure: "nfqws_start_failed" };
+    if (pid == "") return { failure: "nfqws_start_failed" };
+    if (!identity.record(entry.pidfile, pid)) {
+        // Unrecorded, it would never be stopped later: stop the process this
+        // run has just started, once it runs nfqws.
+        let saved = { pid, ticks: identity.start_ticks(pid) };
+        for (let i = 0; saved.ticks != "" && i <= LISTENER_WAIT &&
+            stop_identified(saved, entry.argv, true) == "not_ours" && identity.start_ticks(pid) == saved.ticks; i++)
+            pause();
+        return { failure: "nfqws_start_failed" };
+    }
     let listener = null;
     for (let i = 0; i <= LISTENER_WAIT && listener == null; i++) {
         if (identity.matches(entry.pidfile, NFQWS, entry.argv, true, true) == "") return { failure: "nfqws_start_failed" };
@@ -799,6 +807,8 @@ function preflight(result, host, resolver, ip, on_dns_failure) {
     let refusal = null;
     if (length(guards_present()) > 0) refusal = "guard_active";
     else if (fs.stat(SNAPSHOT_LOCK) != null) refusal = "snapshot_operation_in_progress";
+    // An nfqws of the run signature that no run recorded is not ours to stop.
+    else if (length(orphans()) > 0) refusal = "queue_in_use";
     else refusal = queue_check() || port_check();
     if (refusal) { result.status = "refused"; result.reason = refusal; return null; }
 

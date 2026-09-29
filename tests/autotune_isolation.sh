@@ -204,13 +204,53 @@ assert_clean "dead pid"; ok "stale pidfile of a dead process"
 reset_state; iso cleanup; json 'a.equal(r.status, "clean"); a.deepEqual(r.actions, []);' "$WORK/out.json"
 iso cleanup; json 'a.equal(r.status, "clean");' "$WORK/out.json"; ok "cleanup idempotent when nothing exists"
 
-# Orphan without pidfile (process exists, table missing): found by identity.
-reset_state
+# An nfqws with the run signature that no run recorded (an admin's own nfqws
+# on a run queue, say) is not ours: neither a run nor a cleanup signals it,
+# and a run refuses while it exists (UC-053).
+queue_released() { ! grep -q "^ $1 " "$FORKOP_AUTOTUNE_PROC_QUEUE"; }
+foreign_on_run_queue() {
+  local foreign
+  reset_state
+  [ "$1" = bound ] || export NFQWS_STUB_NO_LISTENER=1
+  ( "$ZAPRET_NFQWS_BIN" --qnum=4600 --dpi-desync-fwmark=0x40000000 --filter-tcp=443 --dpi-desync=fake >/dev/null 2>&1 & )
+  wait_until 30 nfqws_started "$WORK/bin/nfqws --qnum=4600" || fail "foreign nfqws double did not start"
+  foreign="$(pgrep -f "$WORK/bin/nfqws --qnum=4600")"
+  FOREIGN_PIDS+=("$foreign")
+  unset NFQWS_STUB_NO_LISTENER
+  run_probe multisplit 1
+  json 'a.equal(r.status, "refused"); a.equal(r.reason, "queue_in_use");' "$WORK/out.json"
+  process_running "$foreign" || fail "a run signalled a foreign nfqws on its queue ($1)"
+  [ ! -e "$NFT_STATE/tables/ForkopAutotuneProbe" ] || fail "a refused run created its table ($1)"
+  iso cleanup
+  json 'a.equal(r.status, "failed"); a.equal(r.verified.process_absent, false);' "$WORK/out.json"
+  process_running "$foreign" || fail "cleanup signalled a foreign nfqws on a run queue ($1)"
+  kill "$foreign"
+  wait_until 10 process_gone "$foreign" || fail "the foreign nfqws double did not exit"
+  wait_until 10 queue_released 4600 || fail "the foreign nfqws double kept its queue"
+  iso cleanup; json 'a.equal(r.status, "clean");' "$WORK/out.json"
+  assert_clean "foreign nfqws ($1)"
+  ok "foreign nfqws on a run queue ($1): refused, never signalled"
+}
+foreign_on_run_queue bound
+foreign_on_run_queue unbound
+# The run's own nfqws is found by its record even without active.json.
+reset_state; mkdir -p "$FORKOP_AUTOTUNE_STATE_DIR"
 ( "$ZAPRET_NFQWS_BIN" --qnum=4600 --dpi-desync-fwmark=0x40000000 --filter-tcp=443 >/dev/null 2>&1 & )
-wait_until 30 nfqws_started "$WORK/bin/nfqws --qnum=4600" || fail "orphan nfqws double did not start"
+wait_until 30 nfqws_started "$WORK/bin/nfqws --qnum=4600" || fail "recorded nfqws double did not start"
+ucode -L "$LIB" "$LIB/core/pidfile_cli.uc" record "$(pgrep -f "$WORK/bin/nfqws --qnum=4600")" \
+  "$FORKOP_AUTOTUNE_STATE_DIR/nfqws-4600.pid"
 iso cleanup
-json 'a.equal(r.status, "clean"); a.ok(r.actions.includes("orphan:stopped"), r.actions);' "$WORK/out.json"
-assert_clean "orphan"; ok "process exists, table missing"
+json 'a.equal(r.status, "clean"); a.ok(r.actions.includes("pidfile:stopped"), r.actions);' "$WORK/out.json"
+assert_clean "recorded nfqws, active.json lost"; ok "recorded nfqws stopped without active.json"
+# A candidate whose pidfile cannot be written is stopped at once: unrecorded,
+# nothing would stop it later.
+reset_state; mkdir -p "$FORKOP_AUTOTUNE_STATE_DIR/nfqws-4600.pid"
+run_probe multisplit 1
+json 'a.equal(r.status, "failed"); a.equal(r.reason, "nfqws_start_failed");' "$WORK/out.json"
+! pgrep -f "$WORK/bin/nfqws --qnum" >/dev/null || fail "an unrecorded candidate nfqws was left running"
+wait_until 10 queue_released 4600 || fail "the unrecorded candidate kept its queue"
+rmdir "$FORKOP_AUTOTUNE_STATE_DIR/nfqws-4600.pid"; iso cleanup
+assert_clean "unrecorded candidate"; ok "a candidate that could not be recorded is stopped"
 # A production-like nfqws on another queue is never an orphan.
 ( "$ZAPRET_NFQWS_BIN" --qnum=4000 --dpi-desync-fwmark=0x40000000 >/dev/null 2>&1 & )
 wait_until 30 nfqws_started "$WORK/bin/nfqws --qnum=4000" || fail "production-queue nfqws double did not start"

@@ -59,13 +59,20 @@ int main(int argc, char **argv) {
   for (int i = 1; i < argc; i++) if (!strncmp(argv[i], "--qnum=", 7)) queue = atoi(argv[i] + 7);
   if (getenv("NFQWS_STUB_IGNORE_TERM")) signal(SIGTERM, SIG_IGN);
   if (qfile && !getenv("NFQWS_STUB_NO_LISTENER")) {
+    /* The kernel binds and releases a queue atomically: a signal between
+       adding the queue line and starting its watcher would leave the line
+       behind, so signals wait until both are done. */
+    sigset_t all, old;
+    sigfillset(&all);
+    sigprocmask(SIG_BLOCK, &all, &old);
     /* Queue-file edits are serialized: stand-ins and the curl stub rewrite it. */
     char add[1024];
     snprintf(add, sizeof add, "flock '%s.lock' sh -c 'printf \" %%d %%8d     0 2 65531     0     0 %%8d  1\\n\" %d %d 0 >> \"%s\"'", qfile, queue, getpid(), qfile);
     if (system(add) != 0) return 1;
     char script[1024];
     snprintf(script, sizeof script, "while kill -0 %d 2>/dev/null && [ \"$(cut -d' ' -f3 /proc/%d/stat)\" != Z ]; do sleep 0.05; done; flock '%s.lock' sed -i '/^ %d  *%d /d' '%s'", getpid(), getpid(), qfile, queue, getpid(), qfile);
-    if (fork() == 0) { setsid(); execl("/bin/sh", "sh", "-c", script, (char *)0); _exit(1); }
+    if (fork() == 0) { sigprocmask(SIG_SETMASK, &old, NULL); setsid(); execl("/bin/sh", "sh", "-c", script, (char *)0); _exit(1); }
+    sigprocmask(SIG_SETMASK, &old, NULL);
   }
   for (;;) pause();
 }

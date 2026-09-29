@@ -365,6 +365,11 @@ let outcome = null;
 // has no start-and-wait mode.
 let initd_source = 'else if (mode == "start-and-wait")';
 let status_results = [];
+// service/state.uc: an explicit stop was requested; the runtime's nft table
+// is in place (runtime-apply-allowed also refuses after a stop).
+let stop_requested = false;
+let runtime_table = false;
+let constants = { NFT_TABLE_NAME: "ForkopTable" };
 function as_string(value) { return value == null ? "" : "" + value; }
 function die_check(message) { warn("FAIL: " + message + "\n"); exit(1); }
 function check(condition, message) { if (!condition) die_check(message); }
@@ -406,6 +411,12 @@ function run_logged(description, command) {
     return true;
 }
 function module_success(args) {
+    if (args[0] == LIB_DIR + "/service/state.uc" && args[1] == "stop-requested")
+        return stop_requested;
+    if (args[0] == LIB_DIR + "/service/state.uc" && args[1] == "runtime-apply-allowed") {
+        check(args[2] == "ForkopTable", "the runtime check names no nft table");
+        return !stop_requested && runtime_table;
+    }
     check(args[0] == LIB_DIR + "/service/initd.uc" && args[1] == "start-and-wait",
         "unexpected module " + join(" ", args));
     push(calls, "wait:" + args[2]);
@@ -429,6 +440,7 @@ function reset(values) {
     calls = []; results = values; outcome = null;
     forkop_was_running = true; forkop_stopped_for_sing_box_change = false;
     initd_source = 'else if (mode == "start-and-wait")'; status_results = [];
+    stop_requested = false; runtime_table = false;
 }
 function run(fn) {
     try { fn(); }
@@ -479,6 +491,22 @@ check(outcome != null && outcome.success, "Direct Proxy of a stopped Forkop was 
 check(uci["forkop.settings.direct_proxy_enabled"] == "1", "Direct Proxy of a stopped Forkop was rolled back");
 check(index(join(",", calls), "wait:") < 0 && index(join(",", calls), "init:") < 0,
     "a Direct Proxy change started a stopped Forkop: " + join(",", calls));
+// Nor one that the user stopped, although its status still read running (the
+// stop is waiting for reload.lock) or its nft table is still there.
+reset([]);
+stop_requested = true; runtime_table = true;
+run(function() { set_direct_proxy("enable"); });
+check(outcome != null && outcome.success && uci["forkop.settings.direct_proxy_enabled"] == "1",
+    "Direct Proxy of a Forkop that the user stopped was not saved");
+check(index(join(",", calls), "wait:") < 0, "a Direct Proxy change restarted a Forkop that the user stopped: " + join(",", calls));
+// A Forkop whose status probe failed in the middle of a sing-box restart (a
+// DNS-failover switch, a subscription update, a reload) or answered too
+// slowly still has its runtime: the change is applied by a restart.
+reset([ true ]);
+forkop_was_running = false; runtime_table = true;
+run(function() { set_direct_proxy("enable"); });
+check(outcome != null && outcome.success, "Direct Proxy of a Forkop in a transition was reported as failure");
+check(join(",", calls) == "wait:restart", "Direct Proxy of a Forkop in a transition was not applied by a restart: " + join(",", calls));
 
 // An older release installed by the action has no start-and-wait: the
 // restart goes through init.d and the runtime is polled instead.
@@ -498,6 +526,7 @@ print("component start outcome checks passed\n");
 pathlib.Path(sys.argv[2]).write_text('\n'.join([
     doubles,
     extract('forkop_start_and_wait', optional=True),
+    extract('forkop_active_for_setting_change', optional=True),
     extract('restart_forkop_after_failed_sing_box_change'),
     extract('restart_forkop_after_successful_change'),
     extract('remove_optional_component'),

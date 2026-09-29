@@ -2513,6 +2513,20 @@ function set_packet_steering(action) {
         target_mode, target_mode, current_mode == target_mode ? 0 : 1, "", "");
 }
 
+// A setting change applies through a restart, but does not start a Forkop
+// that the user stopped (D-15), or one that is not up at all: its next start
+// applies the setting. The status probe taken before the action misses a
+// runtime whose sing-box is being restarted (a DNS-failover switch, a
+// subscription update, a reload) or that answers slowly; its nft table shows
+// it is still there.
+function forkop_active_for_setting_change() {
+    let state_module = LIB_DIR + "/service/state.uc";
+    if (module_success([ state_module, "stop-requested" ]))
+        return false;
+    return forkop_was_running ||
+        module_success([ state_module, "runtime-apply-allowed", constants.NFT_TABLE_NAME ]);
+}
+
 function set_direct_proxy(action) {
     let enabled_path = CONFIG_NAME + ".settings.direct_proxy_enabled";
     let port_path = CONFIG_NAME + ".settings.direct_proxy_port";
@@ -2542,9 +2556,7 @@ function set_direct_proxy(action) {
         !uci_core.commit(CONFIG_NAME))
         action_fail("direct_proxy", action, "Failed to save Direct Proxy settings", current_enabled, target_enabled);
 
-    // A setting change does not start a Forkop that is not running (D-15);
-    // the setting applies at its next start.
-    if (!forkop_was_running)
+    if (!forkop_active_for_setting_change())
         updates_log("Forkop is not running; the Direct Proxy setting applies at its next start");
     else if (!forkop_start_and_wait("restart")) {
         uci_core.set(enabled_path, current_enabled);

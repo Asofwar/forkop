@@ -308,7 +308,8 @@ function clash_controller(config) {
     return { url: "http://" + host + ":" + m[2], secret: type(c.secret) == "string" ? c.secret : "" };
 }
 function clash_connections(ctl) {
-    let args = [ CURL, "-s", "--noproxy", "*", "--max-time", "3" ], header = null;
+    // Bounded like every controller request (UC-016).
+    let args = [ CURL, "-s", "--noproxy", "*", "--connect-timeout", "2", "--max-time", "3" ], header = null;
     if (ctl.secret != "") {
         // The secret goes through a private file, never the command line.
         header = trim(capture([ "mktemp", TMP_DIR + "/forkop-autotune-hdr.XXXXXX" ]).output);

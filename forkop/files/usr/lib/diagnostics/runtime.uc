@@ -55,6 +55,15 @@ const AUTOMATIC_LATENCY_PENDING_FORMAT = "1";
 const AUTOMATIC_LATENCY_RETRY_BASE_SECONDS = int(getenv("FORKOP_AUTOMATIC_LATENCY_RETRY_BASE_SECONDS") || "300");
 const AUTOMATIC_LATENCY_MAX_FAILURES = int(getenv("FORKOP_AUTOMATIC_LATENCY_MAX_FAILURES") || "5");
 const AUTOMATIC_LATENCY_CLASH_READY_ATTEMPTS = int(getenv("FORKOP_AUTOMATIC_LATENCY_CLASH_READY_ATTEMPTS") || "15");
+// Bounds of every request to the Clash API controller (UC-016), in seconds.
+// A controller that accepts connections and never answers (a stopped or
+// wedged sing-box) would otherwise hold UI polls, the readiness probe of
+// start/reload verification (under reload.lock and the transition guard), the
+// Priority worker and latency tests with no time limit. A delay request lasts
+// up to sing-box's own delay timeout, so curl waits that long plus a margin.
+const CLASH_API_CONNECT_TIMEOUT = 2;
+const CLASH_API_MAX_TIME = 5;
+const CLASH_API_DELAY_MARGIN = 2;
 
 const STATUS_UC = LIB_DIR + "/diagnostics/status.uc";
 const HELPERS_UC = LIB_DIR + "/core/helpers.uc";
@@ -1578,9 +1587,26 @@ function check_fakeip() {
     return 0;
 }
 
-function clash_json_output(args) {
-    print(status_output([ "stdin-json" ], command_output(command_from_args(args))));
-    return 0;
+// The curl command of a controller request, bounded (UC-016); max_time
+// defaults to CLASH_API_MAX_TIME.
+function clash_curl(max_time) {
+    return [ "curl", "-s", "--connect-timeout", as_string(CLASH_API_CONNECT_TIMEOUT),
+        "--max-time", as_string(max_time || CLASH_API_MAX_TIME) ];
+}
+
+// --max-time of a delay request that asks sing-box for timeout_ms.
+function clash_delay_max_time(timeout_ms) {
+    let ms = arg_number(timeout_ms);
+    return ms > 0 ? int((ms + 999) / 1000) + CLASH_API_DELAY_MARGIN : CLASH_API_MAX_TIME;
+}
+
+// Runs a controller request. A request that got no answer (refused, or a
+// bound expired) fails with a reason instead of passing on an empty body.
+function clash_request(args) {
+    let result = command_capture(command_from_args(args));
+    if (result.status == 0)
+        return { ok: true, output: result.output };
+    return { ok: false, error: result.status == 28 ? "clash_api_timeout" : "clash_api_unreachable" };
 }
 
 function clash_api_url() {
@@ -1632,10 +1658,18 @@ function clash_json_error(message) {
     return 1;
 }
 
+function clash_json_output(args) {
+    let response = clash_request(args);
+    if (!response.ok)
+        return clash_json_error(response.error);
+    print(status_output([ "stdin-json" ], response.output));
+    return 0;
+}
+
 function clash_proxy_type_map(base_url, auth) {
     if (auth == null)
         return null;
-    let args = [ "curl", "-s" ];
+    let args = clash_curl();
     for (let item in auth) push(args, item);
     push(args, base_url + "/proxies");
 
@@ -1788,14 +1822,14 @@ function clash_api_request(action, arg1, arg2, arg3, auth) {
     let test_url = latency_test_url();
 
     if (action == "get_proxies") {
-        let args = [ "curl", "-s" ];
+        let args = clash_curl();
         for (let item in auth) push(args, item);
         push(args, base_url + "/proxies");
         return clash_json_output(args);
     }
 
     if (action == "get_connections") {
-        let args = [ "curl", "-s" ];
+        let args = clash_curl();
         for (let item in auth) push(args, item);
         push(args, base_url + "/connections");
         return clash_json_output(args);
@@ -1807,12 +1841,14 @@ function clash_api_request(action, arg1, arg2, arg3, auth) {
         let url = as_string(arg3 || "");
         if (url == "")
             url = test_url;
-        let args = [ "curl", "-G", "-s", base_url + "/proxies/" + clash_urlencode(arg1) + "/delay" ];
+        let timeout = as_string(arg2 || "2000");
+        let args = clash_curl(clash_delay_max_time(timeout));
+        push(args, "-G", base_url + "/proxies/" + clash_urlencode(arg1) + "/delay");
         for (let item in auth) push(args, item);
         push(args, "--data-urlencode");
         push(args, "url=" + url);
         push(args, "--data-urlencode");
-        push(args, "timeout=" + as_string(arg2 || "2000"));
+        push(args, "timeout=" + timeout);
         return clash_json_output(args);
     }
 
@@ -1836,7 +1872,11 @@ function clash_api_request(action, arg1, arg2, arg3, auth) {
         if (progress_path != "")
             module_success(SERVICE_UI_UC, [ "latency-progress-state", progress_path, count, total, failed ]);
 
+        // A controller that cannot list its proxies will not answer delay
+        // requests either: fail once instead of waiting out every tag.
         let proxy_types = clash_proxy_type_map(base_url, auth);
+        if (proxy_types == null)
+            return clash_json_error("clash_api_unavailable");
         let ordered_proxy_tags = [];
         for (let proxy_tag in proxy_tags)
             if (lc(as_string(proxy_types[proxy_tag])) != "urltest")
@@ -1845,13 +1885,15 @@ function clash_api_request(action, arg1, arg2, arg3, auth) {
             if (lc(as_string(proxy_types[proxy_tag])) == "urltest")
                 push(ordered_proxy_tags, proxy_tag);
 
+        let timeout = as_string(arg2 || "5000");
         for (let proxy_tag in ordered_proxy_tags) {
-            let args = [ "curl", "-G", "-s", clash_latency_endpoint(base_url, proxy_tag, proxy_types[proxy_tag]) ];
+            let args = clash_curl(clash_delay_max_time(timeout));
+            push(args, "-G", clash_latency_endpoint(base_url, proxy_tag, proxy_types[proxy_tag]));
             for (let item in auth) push(args, item);
             push(args, "--data-urlencode");
             push(args, "url=" + test_url);
             push(args, "--data-urlencode");
-            push(args, "timeout=" + as_string(arg2 || "5000"));
+            push(args, "timeout=" + timeout);
             if (status_capture([ "stdin-json" ], command_output(command_from_args(args))).status != 0)
                 failed++;
             count++;
@@ -1867,12 +1909,14 @@ function clash_api_request(action, arg1, arg2, arg3, auth) {
     if (action == "get_group_latency") {
         if (as_string(arg1) == "")
             return clash_json_error("group_tag required");
-        let args = [ "curl", "-G", "-s", base_url + "/group/" + clash_urlencode(arg1) + "/delay" ];
+        let timeout = as_string(arg2 || "5000");
+        let args = clash_curl(clash_delay_max_time(timeout));
+        push(args, "-G", base_url + "/group/" + clash_urlencode(arg1) + "/delay");
         for (let item in auth) push(args, item);
         push(args, "--data-urlencode");
         push(args, "url=" + test_url);
         push(args, "--data-urlencode");
-        push(args, "timeout=" + as_string(arg2 || "5000"));
+        push(args, "timeout=" + timeout);
         return clash_json_output(args);
     }
 
@@ -1880,11 +1924,15 @@ function clash_api_request(action, arg1, arg2, arg3, auth) {
         if (as_string(arg1) == "" || as_string(arg2) == "")
             return clash_json_error("group_tag and proxy_tag required");
         let payload = status_output([ "clash-set-group-proxy-payload", arg2 ], null);
-        let args = [ "curl", "-X", "PUT", "-s", "-w", "\n%{http_code}", base_url + "/proxies/" + clash_urlencode(arg1) ];
+        let args = clash_curl();
+        push(args, "-X", "PUT", "-w", "\n%{http_code}", base_url + "/proxies/" + clash_urlencode(arg1));
         for (let item in auth) push(args, item);
         push(args, "--data-raw");
         push(args, payload);
-        let result = status_capture([ "clash-set-group-proxy-result", arg1, arg2 ], command_output(command_from_args(args)));
+        let response = clash_request(args);
+        if (!response.ok)
+            return clash_json_error(response.error);
+        let result = status_capture([ "clash-set-group-proxy-result", arg1, arg2 ], response.output);
         if (result.output != "")
             print(result.output);
         return result.status;
@@ -1893,18 +1941,26 @@ function clash_api_request(action, arg1, arg2, arg3, auth) {
     if (action == "close_connection") {
         if (as_string(arg1) == "")
             return clash_json_error("connection_id required");
-        let args = [ "curl", "-X", "DELETE", "-s", "-w", "\n%{http_code}", base_url + "/connections/" + clash_urlencode(arg1) ];
+        let args = clash_curl();
+        push(args, "-X", "DELETE", "-w", "\n%{http_code}", base_url + "/connections/" + clash_urlencode(arg1));
         for (let item in auth) push(args, item);
-        let result = status_capture([ "clash-close-connection-result", arg1 ], command_output(command_from_args(args)));
+        let response = clash_request(args);
+        if (!response.ok)
+            return clash_json_error(response.error);
+        let result = status_capture([ "clash-close-connection-result", arg1 ], response.output);
         if (result.output != "")
             print(result.output);
         return result.status;
     }
 
     if (action == "close_all_connections") {
-        let args = [ "curl", "-X", "DELETE", "-s", "-w", "\n%{http_code}", base_url + "/connections" ];
+        let args = clash_curl();
+        push(args, "-X", "DELETE", "-w", "\n%{http_code}", base_url + "/connections");
         for (let item in auth) push(args, item);
-        let result = status_capture([ "clash-close-all-connections-result" ], command_output(command_from_args(args)));
+        let response = clash_request(args);
+        if (!response.ok)
+            return clash_json_error(response.error);
+        let result = status_capture([ "clash-close-all-connections-result" ], response.output);
         if (result.output != "")
             print(result.output);
         return result.status;

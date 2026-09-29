@@ -126,11 +126,22 @@ chmod 0755 "$WORK_DIR/trampoline"
 wrapper_for "$WORK_DIR/trampoline" "$WORK_DIR/forkop-ro.cli"
 
 # The wrapper hands the CLI production default paths, so the real commands
-# would write caches under /var/run/forkop and global_check would reach the
-# network. Run them in a private mount and network namespace with an empty
-# /run where available (as root, or through an unprivileged user namespace).
+# would write caches under /var/run/forkop and /tmp/sing-box and global_check
+# would reach the network. Run them in a private mount and network namespace
+# with an empty /run and /tmp where available (as root, or through an
+# unprivileged user namespace). Paths the test itself needs are bound back
+# into the private /tmp when they live there.
 ISOLATE=()
-isolate_probe='mount -t tmpfs tmpfs /run'
+isolate_probe='mount -t tmpfs tmpfs /run && mkdir /run/host-tmp && mount --rbind /tmp /run/host-tmp &&
+mount -t tmpfs tmpfs /tmp'
+for needed in "$ROOT_DIR" "$UCODE_DIR" "$WORK_DIR"; do
+  case "$needed" in
+    /tmp/*)
+      isolate_probe="$isolate_probe && mkdir -p $(printf '%q' "$needed") &&
+mount --rbind $(printf '%q' "/run/host-tmp/${needed#/tmp/}") $(printf '%q' "$needed")"
+      ;;
+  esac
+done
 if unshare --mount --net --propagation private sh -c "$isolate_probe" 2>/dev/null; then
   ISOLATE=(unshare --mount --net --propagation private)
 elif unshare --user --map-root-user --mount --net --propagation private \
@@ -152,6 +163,11 @@ for command in "get_ui_capabilities" "get_system_info" "global_check masked" \
     >"$WORK_DIR/out" 2>&1 || true
   if grep -Fq 'SHADOWMARKER' "$WORK_DIR/out"; then
     fail "$command printed a file chosen by the caller environment"
+  fi
+  if [ "$command" = get_ui_capabilities ]; then
+    # Guard against a vacuous pass: the real CLI must have run.
+    grep -Fq '"sing_box_package"' "$WORK_DIR/out" ||
+      fail "the real CLI did not run under the wrapper: $(head -c 300 "$WORK_DIR/out")"
   fi
 done
 

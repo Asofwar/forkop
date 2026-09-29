@@ -27,6 +27,8 @@ const PENDING_RELOAD_FILE = getenv("FORKOP_PENDING_RELOAD_FILE") || RUNTIME_STAT
 const START_RETRY_FILE = getenv("FORKOP_START_RETRY_FILE") || RUNTIME_STATE_DIR + "/start.retry";
 const START_RETRY_PID_FILE = getenv("FORKOP_START_RETRY_PID_FILE") || RUNTIME_STATE_DIR + "/start-retry.pid";
 const START_FAILURE_FILE = getenv("FORKOP_START_FAILURE_FILE") || RUNTIME_STATE_DIR + "/start.failure";
+// Recorded by the list worker (components/updates.uc list_update_pid_begin).
+const LIST_UPDATE_PID_FILE = getenv("FORKOP_LIST_UPDATE_PID_FILE") || "/var/run/forkop_list_update.pid";
 const START_RETRY_DELAY_SECONDS = getenv("FORKOP_START_RETRY_DELAY_SECONDS") || "30";
 // procd.sh holds its lock on fd 1000 for every init.d call, so start_service
 // detaches the start and init.d exits 0 before the start has run (UC-013). A
@@ -339,6 +341,21 @@ function schedule_start_retry(path, delay_seconds) {
         return false;
 
     return process_identity.record(path, pid);
+}
+
+// A list update runs its DNS probe and downloads without reload.lock
+// (UC-057), but it reads its sources when it starts and applies them in its
+// final reload. A reload that ran meanwhile would start a list update that
+// the running one refuses, while the running one discards its generation for
+// the changed sources; or it would try to apply the new sources before their
+// generation exists. Reloads that arrive while the list worker runs are
+// queued, as when it held reload.lock for the whole update, and the worker
+// runs them when it ends (finish_list_update). Only the list worker records
+// this file, so any updates.uc process it names is that worker, whatever its
+// mode; a PID that a dead worker left there is not (UC-014).
+function list_update_worker_running() {
+    return process_identity.matches(LIST_UPDATE_PID_FILE, "ucode",
+        [ "ucode", "-L", LIB_DIR, LIB_DIR + "/components/updates.uc" ], false, false) != "";
 }
 
 function consume_pending_reload(path) {
@@ -898,7 +915,7 @@ function reload_begin_value(reason, owner_pid, runtime_running_value, service_en
     }
 
     if (reason == "pending") {
-        if (!acquire_runtime_dir_lock(RELOAD_LOCK_DIR, owner_pid || owner_pid_value())) {
+        if (list_update_worker_running() || !acquire_runtime_dir_lock(RELOAD_LOCK_DIR, owner_pid || owner_pid_value())) {
             mark_pending_reload(PENDING_RELOAD_FILE, reason || "reload_busy");
             return { action: "skip", job_id: "" };
         }
@@ -920,7 +937,7 @@ function reload_begin_value(reason, owner_pid, runtime_running_value, service_en
         return { action: "skip", job_id: "" };
     }
 
-    if (!acquire_runtime_dir_lock(RELOAD_LOCK_DIR, owner_pid || owner_pid_value())) {
+    if (list_update_worker_running() || !acquire_runtime_dir_lock(RELOAD_LOCK_DIR, owner_pid || owner_pid_value())) {
         mark_pending_reload(PENDING_RELOAD_FILE, reason || "reload_busy");
         return { action: "skip", job_id: "" };
     }

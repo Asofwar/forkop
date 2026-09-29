@@ -4005,8 +4005,9 @@ function list_update() {
         finish_list_update(1, false);
 
     // Share the same lock as lifecycle reloads for the transaction. init.d
-    // queues reloads that arrive while this lock is held, and
-    // finish_list_update() runs them.
+    // queues reloads that arrive while this worker runs, with or without
+    // the lock (service/initd.uc list_update_worker_running), and
+    // finish_list_update() runs them after list_update_pid_end().
     if (!list_update_prepare_only && !acquire_runtime_lock(RELOAD_LOCK_DIR, true)) {
         log_message("Lists update skipped because Forkop reload did not release the runtime lock", "warn");
         cleanup_list_downloads();

@@ -159,7 +159,7 @@ refused() {
   pgrep -f "$WORK/bin/nfqws --qnum" >/dev/null && fail "$1 started nfqws"
   ok "refused: $1"
 }
-reset_state; printf '%s\n 4600  31337     0 2 65531     0     0        0  1\n' "$PROD_QUEUE_LINE" > "$FORKOP_AUTOTUNE_PROC_QUEUE"; refused queue_in_use
+reset_state; queue_reset "$PROD_QUEUE_LINE" ' 4600  31337     0 2 65531     0     0        0  1'; refused queue_in_use
 grep -q ' 4600  31337' "$FORKOP_AUTOTUNE_PROC_QUEUE" || fail "foreign queue listener was touched"
 reset_state; printf 'table inet other {\n\tqueue to 4590-4610\n}\n' >> "$NFT_STATE/ruleset"; refused queue_referenced
 reset_state; export FORKOP_AUTOTUNE_QUEUE=4001; refused queue_overlaps_forkop_range

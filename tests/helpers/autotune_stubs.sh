@@ -6,8 +6,13 @@
 WORK="$(mktemp -d)"
 FOREIGN_PIDS=()
 cleanup_test() {
+  local deadline=$((SECONDS + 10))
   for pid in "${FOREIGN_PIDS[@]}"; do kill -9 "$pid" 2>/dev/null || true; done
   pkill -9 -f "$WORK/bin/nfqws" 2>/dev/null || true
+  # The queue watchers of the killed stand-ins still rewrite the queue file
+  # under its lock file: removing $WORK under them fails, or leaves the lock
+  # file they recreate behind in a stray directory.
+  while pgrep -f "$WORK/nfnetlink_queue" >/dev/null && [ "$SECONDS" -lt "$deadline" ]; do sleep 0.05; done
   rm -rf "$WORK"
 }
 trap cleanup_test EXIT
@@ -221,7 +226,10 @@ printf '%b' "${DIG_STUB_ANSWER-93.184.216.34\n}"
 SH
 chmod +x "$WORK/bin/nft" "$WORK/bin/curl" "$WORK/bin/dig" "$WORK/bin/ip"
 
-json() { node -e 'const a=require("node:assert/strict");const r=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));'"$1" "$2"; }
+# json <assertions> <file>: a failed assertion also names the result's status
+# and reason, so the cause of an unexpected result shows up in the log.
+json() { node -e 'const a=require("node:assert/strict");const r=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));
+try {'"$1"'} catch (e) { console.error("result: status=%s reason=%s", r && r.status, r && r.reason); throw e; }' "$2"; }
 
 # Production stand-ins that must survive every scenario untouched.
 sleep 600 & PROD_NFQWS=$!; disown; FOREIGN_PIDS+=("$PROD_NFQWS")
@@ -248,6 +256,17 @@ const bypass = (x) => x.rule && x.rule.table === "ForkopTable" && x.rule.chain =
 if (process.argv[2] === "remove-bypass") r.nftables = r.nftables.filter((x) => !bypass(x));
 fs.writeFileSync(file, JSON.stringify(r, null, 1) + "\n");' "$1" "$2"
 }
+# queue_reset [LINE...]: rewrite the queue file under its lock, as every other
+# writer does (stand-ins, their watchers, curl). A watcher whose sed -i read
+# the file before an unlocked rewrite renames the old lines back over it.
+queue_reset() {
+  local line
+  (
+    flock 9
+    : > "$FORKOP_AUTOTUNE_PROC_QUEUE"
+    for line in "$@"; do printf '%s\n' "$line" >> "$FORKOP_AUTOTUNE_PROC_QUEUE"; done
+  ) 9>"$FORKOP_AUTOTUNE_PROC_QUEUE.lock"
+}
 reset_state() {
   unset CURL_STUB_MODE CURL_STUB_TOUCH_PROD CURL_STUB_SLEEP NFT_STUB_FAIL_SETUP NFT_STUB_FAIL_DELETE \
     NFQWS_STUB_EXIT NFQWS_STUB_NO_LISTENER NFQWS_STUB_REJECT NFQWS_STUB_IGNORE_TERM DIG_STUB_ANSWER FORKOP_AUTOTUNE_QUEUE \
@@ -259,7 +278,7 @@ reset_state() {
     "$NFT_STATE/released" "$NFT_STATE/release.nft" "$NFT_STATE/route.changed" "$NFT_STATE/rule.state"
   export FORKOP_AUTOTUNE_DRAIN_TIMEOUT=1 FORKOP_AUTOTUNE_HOLD_TIMEOUT=2
   rm -rf "$FORKOP_AUTOTUNE_STATE_DIR" "$FORKOP_SNAPSHOT_LOCK_DIR" "$NFT_STATE/tables"/* "$NFT_STATE/last.nft"
-  printf '%s\n' "$PROD_QUEUE_LINE" > "$FORKOP_AUTOTUNE_PROC_QUEUE"
+  queue_reset "$PROD_QUEUE_LINE"
   printf '32768\t60999\n' > "$FORKOP_AUTOTUNE_PORT_RANGE_FILE"
   printf '  sl  local_address rem_address   st\n' > "$WORK/proc_net/tcp"
   printf '  sl  local_address rem_address   st\n' > "$WORK/proc_net/tcp6"

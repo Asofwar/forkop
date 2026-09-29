@@ -17,7 +17,7 @@ REAL_UCODE="$(command -v ucode)"
 # the runner even started: wait for its first dig call instead of a fixed delay.
 checks_started() { grep -q '^dig' "$STUB_LOG/dig.log" 2>/dev/null; }
 
-export REAL_UCODE STATE="$WORK/state"
+export REAL_UCODE STATE="$WORK/state" WAIT_HELPER="$ROOT/tests/helpers/wait.sh"
 export FORKOP_CONFIG_FILE="$WORK/config/forkop"
 export FORKOP_SNAPSHOT_DIR="$WORK/snapshots" FORKOP_SNAPSHOT_HASH_DIR="$WORK/hash"
 export FORKOP_RELOAD_COMMAND="$WORK/reload" FORKOP_BIN="$WORK/bin/forkop"
@@ -160,13 +160,23 @@ if [ -n "${BREAK_FIRST_RELOAD:-}" ] && [ ! -e "$STATE/broke-once" ]; then touch 
 SH
 cat > "$STATE/start-dpi" <<'SH'
 #!/usr/bin/env bash
+# shellcheck source=tests/helpers/wait.sh
+. "$WAIT_HELPER"
+# A runtime that does not reach its state fails the test here, instead of
+# leaving the verification of apply to judge a half-started one.
+fixture_fail() { echo "start-dpi: $1" | tee -a "$STATE/fixture.error" >&2; exit 1; }
+bound() { grep -q "^ 4000  *$1 " "$FORKOP_AUTOTUNE_PROC_QUEUE"; }
+released() { ! bound "$1"; }
 opt="$(awk '/^config / { in_s = ($0 ~ /^config section .?Dpi.?$/) } in_s && $1 == "option" && $2 == "nfqws_opt" { sub(/^[ \t]*option nfqws_opt[ \t]+/, ""); gsub(/^'"'"'|'"'"'$/, ""); print }' "$FORKOP_CONFIG_FILE")"
 old="$(head -n 1 "$ZAPRET_CHILD_PID_DIR/Dpi.pid" 2>/dev/null || true)"
-if [ -n "$old" ]; then kill "$old" 2>/dev/null || true; for _ in $(seq 1 40); do grep -q "^ 4000  *$old " "$FORKOP_AUTOTUNE_PROC_QUEUE" || break; sleep 0.05; done; fi
+if [ -n "$old" ]; then
+  kill "$old" 2>/dev/null || true
+  wait_until 10 released "$old" || fixture_fail "the old nfqws $old still holds queue 4000"
+fi
 # shellcheck disable=SC2086
 "$ZAPRET_NFQWS_BIN" --qnum=4000 --dpi-desync-fwmark=0x40000000 $opt >/dev/null 2>&1 &
 pid=$!
-for _ in $(seq 1 40); do grep -q "^ 4000  *$pid " "$FORKOP_AUTOTUNE_PROC_QUEUE" && break; sleep 0.05; done
+wait_until 10 bound "$pid" || fixture_fail "nfqws $pid did not bind queue 4000"
 "$REAL_UCODE" -L "$FORKOP_LIB" "$FORKOP_LIB/core/pidfile_cli.uc" record "$pid" "$ZAPRET_CHILD_PID_DIR/Dpi.pid"
 SH
 cat > "$WORK/zapret-status.uc" <<'UC'
@@ -227,7 +237,10 @@ selection() { # selection <candidate> [host] [confidence]
   printf '{"status":"selected","selected":"%s","reason":"direct_failed_candidate_stable","confidence":"%s","target":{"host":"%s","ip":"93.184.216.34","resolver":"192.0.2.53"},"probes":[{},{},{}]}\n' \
     "$1" "${3:-high}" "${2:-example.com}" > "$WORK/selection.json"
 }
-at() { ucode -L "$LIB" "$LIB/autotune/apply.uc" "$@" > "$WORK/out.json" || true; }
+at() {
+  ucode -L "$LIB" "$LIB/autotune/apply.uc" "$@" > "$WORK/out.json" || true
+  [ ! -s "$STATE/fixture.error" ] || fail "fixture: $(cat "$STATE/fixture.error")"
+}
 snaps() { find "$FORKOP_SNAPSHOT_DIR" -maxdepth 1 -name "*.json" 2>/dev/null | wc -l; }
 chash() { sha256sum "$FORKOP_CONFIG_FILE" | cut -d' ' -f1; }
 lkg() { cat "$FORKOP_SNAPSHOT_DIR/last-known-working" 2>/dev/null || true; }
@@ -242,13 +255,15 @@ reset_apply() {
     "$ZAPRET_CHILD_PID_DIR"/*.pid "$NFT_STATE/tables/ForkopConfigRestoreDpiGuard" "$FORKOP_SNAPSHOT_LOCK_DIR" "$WORK/run"/* \
     "$STATE/hold" "$STATE/guard.pid" "$WORK/uci-save"/*
   echo 0 > "$STATE/prod.counter"
-  : > "$FORKOP_AUTOTUNE_PROC_QUEUE"
+  queue_reset
   touch "$NFT_STATE/tables/ForkopTable"
   write_config "${1:-$FAKE}"; write_singbox
   # Production runtime: Dpi and Game nfqws on queues 4000/4001.
   "$STATE/start-dpi"
   "$ZAPRET_NFQWS_BIN" --qnum=4001 --dpi-desync-fwmark=0x40000000 --filter-udp=1024-65535 --dpi-desync=fake --dpi-desync-repeats=6 >/dev/null 2>&1 &
-  "$REAL_UCODE" -L "$LIB" "$LIB/core/pidfile_cli.uc" record "$!" "$ZAPRET_CHILD_PID_DIR/Game.pid"
+  game=$!
+  wait_until 10 grep -q "^ 4001  *$game " "$FORKOP_AUTOTUNE_PROC_QUEUE" || fail "fixture: the Game nfqws did not bind queue 4001"
+  "$REAL_UCODE" -L "$LIB" "$LIB/core/pidfile_cli.uc" record "$game" "$ZAPRET_CHILD_PID_DIR/Game.pid"
   ucode -L "$LIB" "$LIB/config/snapshots.uc" confirm-working > /dev/null
   PRE_LKG="$(lkg)"; PRE_HASH="$(chash)"; : > "$STUB_LOG/reload.log"
 }

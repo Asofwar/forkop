@@ -109,9 +109,6 @@ let list_download_staging_dir = "";
 let list_download_cache = {};
 let list_download_metadata = [];
 let list_download_sequence = 0;
-// Sources whose download through the service proxy failed before reload.lock
-// was taken: { url, format, path }.
-let list_download_retry = [];
 let list_update_signature_at_start = "";
 let subscription_outbounds_changed = false;
 let runtime_generation_commit_changed = false;
@@ -1247,6 +1244,15 @@ function acquire_runtime_lock(lock_dir, wait) {
 
 function release_runtime_lock(lock_dir) {
     service_state_success([ "release-runtime-dir-lock", lock_dir, owner_pid() ]);
+}
+
+// A start or reload in progress may still be bringing the sing-box service
+// proxy up: downloads through it wait until reload.lock is free once.
+function wait_for_runtime_lock_release() {
+    if (!acquire_runtime_lock(RELOAD_LOCK_DIR, true))
+        return false;
+    release_runtime_lock(RELOAD_LOCK_DIR);
+    return true;
 }
 
 function unsigned_number(value) {
@@ -3106,19 +3112,21 @@ function abandon_list_downloads(url) {
     command_success_from_args([ "rm", "-rf", list_download_staging_dir ]);
     list_download_staging_dir = "";
     list_download_cache = {};
-    list_download_retry = [];
     return false;
 }
 
 // unlocked: the downloads run before reload.lock is taken (UC-057). A DNS
-// failover switch or a subscription update may then be restarting the
-// service proxy; a source that failed through it is downloaded again under
-// the lock (retry_list_downloads). A direct download does not depend on the
-// proxy, and its failure fails the update at once.
+// failover switch or a subscription update may then hold the lock and
+// restart the service proxy the downloads go through. The first source that
+// fails through the proxy waits until the lock is free, without holding it,
+// and is downloaded once more. Any further failure, and a failed direct
+// download, which does not depend on the proxy, fails the update at once:
+// no download runs under reload.lock, and a proxy that is really down does
+// not cost a full download budget for every source.
 function prepare_list_downloads(sections, proxy_address, unlocked) {
+    let proxy_retry = unlocked && as_string(proxy_address) != "";
     list_download_cache = {};
     list_download_metadata = [];
-    list_download_retry = [];
     list_download_sequence = 0;
     list_download_staging_dir = temp_path();
     if (list_download_staging_dir != "")
@@ -3132,14 +3140,15 @@ function prepare_list_downloads(sections, proxy_address, unlocked) {
         list_download_sequence++;
         let path = list_download_staging_dir + "/source-" + as_string(list_download_sequence);
         let downloaded = download_to_file_network(entry.url, path, proxy_address);
-        if (!downloaded && unlocked && as_string(proxy_address) != "") {
+        if (!downloaded && proxy_retry) {
+            proxy_retry = false;
             log_message("List source " + safe_remote_source_identity(entry.url) + " failed through the service proxy; retrying it once the runtime lock is free", "warn");
-            push(list_download_retry, { url: entry.url, format: entry.format, path });
+            downloaded = wait_for_runtime_lock_release() &&
+                download_to_file_network(entry.url, path, proxy_address);
         }
-        else if (!downloaded || !validate_staged_list_download(path, entry.format))
+        if (!downloaded || !validate_staged_list_download(path, entry.format))
             return abandon_list_downloads(entry.url);
-        else
-            list_download_cache[entry.url] = path;
+        list_download_cache[entry.url] = path;
         push(list_download_metadata, {
             name: "source-" + as_string(list_download_sequence),
             url: entry.url,
@@ -3149,25 +3158,12 @@ function prepare_list_downloads(sections, proxy_address, unlocked) {
     return true;
 }
 
-// Under reload.lock: nothing restarts the service proxy now.
-function retry_list_downloads(proxy_address) {
-    for (let entry in list_download_retry) {
-        if (!download_to_file_network(entry.url, entry.path, proxy_address) ||
-            !validate_staged_list_download(entry.path, entry.format))
-            return abandon_list_downloads(entry.url);
-        list_download_cache[entry.url] = entry.path;
-    }
-    list_download_retry = [];
-    return true;
-}
-
 function cleanup_list_downloads() {
     if (list_download_staging_dir != "")
         command_success_from_args([ "rm", "-rf", list_download_staging_dir ]);
     list_download_staging_dir = "";
     list_download_cache = {};
     list_download_metadata = [];
-    list_download_retry = [];
 }
 
 function load_persistent_list_sources() {
@@ -3995,15 +3991,6 @@ function dns_probe_passed(proxy_address) {
     return false;
 }
 
-// A start or reload in progress may still be bringing the sing-box service
-// proxy up: downloads through it wait until reload.lock is free once.
-function wait_for_runtime_lock_release() {
-    if (!acquire_runtime_lock(RELOAD_LOCK_DIR, true))
-        return false;
-    release_runtime_lock(RELOAD_LOCK_DIR);
-    return true;
-}
-
 function list_update() {
     log_message("Starting lists update", "info");
     if (!list_update_pid_begin())
@@ -4044,8 +4031,6 @@ function list_update() {
         // Runs the reloads queued during the downloads as well.
         finish_list_update(1, false);
     }
-    if (!retry_list_downloads(proxy_address))
-        finish_list_update(1, false);
 
     if (!begin_list_ruleset_snapshot()) {
         log_message("Could not snapshot the active rule sets; aborting the list transaction", "error");

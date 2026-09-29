@@ -137,6 +137,9 @@ const BYEDPI_UC = LIB_DIR + "/providers/byedpi/runtime.uc";
 const PACKAGES_UC = LIB_DIR + "/core/packages.uc";
 
 let start_subscription_update_lock_held = false;
+// Set once start_impl has cleared an earlier explicit stop: a stop request
+// seen after that was made during this start (UC-012).
+let start_watches_stop_request = false;
 let subscription_caches_prepared = getenv("FORKOP_SUBSCRIPTION_CACHES_PREPARED") || "0";
 let subscription_runtime_no_refresh = getenv("FORKOP_SUBSCRIPTION_RUNTIME_NO_REFRESH") || "0";
 let subscription_deferred_sections = "";
@@ -902,6 +905,15 @@ function start_phase_failed(phase, status) {
     return status;
 }
 
+// A stop waits for the start's reload.lock only for a bounded time: a start
+// that is still at work then must not bring the runtime up after the stop.
+function start_abandoned_for_stop(phase) {
+    if (!start_watches_stop_request || fs.stat(STOP_REQUESTED_FILE) == null)
+        return false;
+    log_message("Forkop start abandoned before " + phase + ": a stop was requested meanwhile", "warn");
+    return true;
+}
+
 function start_main() {
     let status;
 
@@ -946,6 +958,9 @@ function start_main() {
             return 1;
         }
     }
+
+    if (start_abandoned_for_stop("the nftables policy"))
+        return 1;
 
     if (!nft_candidate_begin())
         return start_phase_failed("nft-candidate-begin", 1);
@@ -992,6 +1007,9 @@ function start_main() {
     if (status != 0)
         return start_phase_failed("cron-refresh", status);
 
+    if (start_abandoned_for_stop("sing-box"))
+        return 1;
+
     module_success(BYEDPI_UC, [ "start-runtime" ]);
 
     status = start_sing_box_and_wait();
@@ -1037,6 +1055,7 @@ function start_impl() {
     // The runtime is being started again: an earlier explicit stop no longer
     // holds back the work that applies changes to it.
     remove_file(STOP_REQUESTED_FILE);
+    start_watches_stop_request = true;
     let status = start_main();
     if (status != 0)
         return status;
@@ -1535,7 +1554,8 @@ function stop_impl() {
 // a `forkop stop` that does not come through init.d.
 function stop() {
     ensure_dir(RUNTIME_STATE_DIR);
-    write_file(STOP_REQUESTED_FILE, as_string(int(clock()[0])) + "\n");
+    let now = clock();
+    write_file(STOP_REQUESTED_FILE, sprintf("%d.%09d.%s\n", now[0], now[1], owner_pid()));
     return stop_impl();
 }
 

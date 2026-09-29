@@ -54,6 +54,7 @@ let retry_status = 0;
 let retry_running = false;
 let retry_enabled = true;
 let retry_pending = true;
+let retry_stop_requested = false;
 let start_marker_present = false;
 let stop_marker_present = false;
 function as_string(value) { return value == null ? "" : "" + value; }
@@ -98,6 +99,7 @@ function cleanup_failed_runtime() { cleanups++; }
 function runtime_is_running() { return retry_running; }
 function service_is_enabled() { return retry_enabled; }
 function start_retry_pending(path) { return retry_pending; }
+function stop_requested() { return retry_stop_requested; }
 function clear_start_retry(path) { push(calls, "clear-retry"); }
 function command_status_from_args(args) {
     check(join(" ", args) == SERVICE_INIT + " start triggered", "retry used destructive restart");
@@ -134,6 +136,7 @@ function reset_probe() {
     health = [true, true, true, true, true];
     calls = []; logs = []; released = 0; cold_starts = 0; cleanups = 0;
     retry_status = 0; retry_running = false; retry_enabled = true; retry_pending = true;
+    retry_stop_requested = false;
     start_marker_present = false;
     stop_marker_present = true;
 }
@@ -212,6 +215,13 @@ for (let skipped in ["running", "disabled", "no-retry"]) {
     check(index(join(",", calls), "retry-start") < 0 && length(logs) == 0,
         "skipped retry started a service or falsely announced recovery");
 }
+// A retry of a start that an explicit stop interrupted does not start Forkop
+// again; it is dropped (UC-012).
+reset_probe();
+retry_stop_requested = true;
+check(retry_start_on_wan_up("123") == 0, "a retry skipped for an explicit stop failed");
+check(index(join(",", calls), "retry-start") < 0, "a retry started Forkop after an explicit stop");
+check(index(join(",", calls), "clear-retry") >= 0, "a retry skipped for an explicit stop was kept pending");
 print("idempotent start and retry outcome checks passed\n");
 '''
 pathlib.Path(sys.argv[2]).write_text('\n'.join([

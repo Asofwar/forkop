@@ -251,11 +251,24 @@ function mark_start_retry(path, reason) {
     return write_text_file(path, "reason=" + reason + "\nupdated_at=" + current_epoch() + "\n");
 }
 
-// Removed only when the runtime is started again (service/lifecycle.uc).
+// Removed only when the runtime is started again (start_service,
+// service/lifecycle.uc). Each request is distinct, so a start can tell a stop
+// requested while it waited for reload.lock from an earlier one.
 function mark_stop_requested() {
     if (!ensure_parent_dir(STOP_REQUESTED_FILE))
         return false;
-    return write_text_file(STOP_REQUESTED_FILE, current_epoch() + "\n");
+    let now = clock();
+    return write_text_file(STOP_REQUESTED_FILE, sprintf("%d.%09d.%s\n", now[0], now[1], as_string(fs.readlink("/proc/self"))));
+}
+
+function stop_requested() {
+    return file_exists(STOP_REQUESTED_FILE);
+}
+
+function stop_request_value() {
+    if (!stop_requested())
+        return "";
+    return first_line_value(STOP_REQUESTED_FILE) || "requested";
 }
 
 function clear_start_retry(path) {
@@ -486,9 +499,12 @@ function service_is_enabled() {
     return file_exists("/etc/rc.d/S99" + SERVICE_NAME);
 }
 
-function retry_start_on_wan_up_action(runtime_running_value, service_enabled_value, retry_pending_value) {
+function retry_start_on_wan_up_action(runtime_running_value, service_enabled_value, retry_pending_value, stop_requested_value) {
     if (bool_text(runtime_running_value))
         return "skip_running";
+    // An explicit stop outlasts a retry of a start it interrupted (UC-012).
+    if (bool_text(stop_requested_value))
+        return "skip_stopped";
     if (!bool_text(service_enabled_value))
         return "skip_disabled";
     if (!bool_text(retry_pending_value))
@@ -500,10 +516,13 @@ function retry_start_on_wan_up(owner_pid) {
     let action = retry_start_on_wan_up_action(
         runtime_is_running() ? "1" : "0",
         service_is_enabled() ? "1" : "0",
-        start_retry_pending(START_RETRY_FILE) ? "1" : "0"
+        start_retry_pending(START_RETRY_FILE) ? "1" : "0",
+        stop_requested() ? "1" : "0"
     );
 
-    if (action == "skip_running" || action == "skip_disabled") {
+    if (action == "skip_stopped" && start_retry_pending(START_RETRY_FILE))
+        command_success_from_args([ "logger", "-t", SERVICE_NAME, "[info] Automatic Forkop start retry skipped: Forkop was stopped" ]);
+    if (action == "skip_running" || action == "skip_disabled" || action == "skip_stopped") {
         clear_start_retry(START_RETRY_FILE);
         return 0;
     }
@@ -535,10 +554,10 @@ function badwan_interface_monitored(settings, interface_name) {
     return false;
 }
 
-function wan_up_action(runtime_running_value, service_enabled_value, retry_pending_value, monitoring_value) {
+function wan_up_action(runtime_running_value, service_enabled_value, retry_pending_value, monitoring_value, stop_requested_value) {
     if (bool_text(runtime_running_value))
         return bool_text(monitoring_value) ? "reload" : "skip_running";
-    return retry_start_on_wan_up_action(runtime_running_value, service_enabled_value, retry_pending_value);
+    return retry_start_on_wan_up_action(runtime_running_value, service_enabled_value, retry_pending_value, stop_requested_value);
 }
 
 function handle_wan_up(owner_pid) {
@@ -548,7 +567,8 @@ function handle_wan_up(owner_pid) {
         running,
         service_is_enabled() ? "1" : "0",
         start_retry_pending(START_RETRY_FILE) ? "1" : "0",
-        badwan_interface_monitored(settings, "wan") ? "1" : "0"
+        badwan_interface_monitored(settings, "wan") ? "1" : "0",
+        stop_requested() ? "1" : "0"
     );
 
     if (action == "reload") {
@@ -558,7 +578,7 @@ function handle_wan_up(owner_pid) {
         return command_status_from_args([ SERVICE_INIT, "reload", "badwan_interface_up" ]);
     }
 
-    if (action == "skip_running") {
+    if (action == "skip_running" || action == "skip_stopped") {
         clear_start_retry(START_RETRY_FILE);
         cancel_scheduled_start_retry(START_RETRY_PID_FILE);
         return 0;
@@ -639,11 +659,24 @@ function report_start_result(reason, status) {
 function start_service(reason, owner_pid) {
     print("Start Forkop\n");
     owner_pid = as_string(owner_pid) || owner_pid_value();
+    // A stop requested after this start (for the automatic retry: at all)
+    // wins over it: the stop may have run while this start waited for
+    // reload.lock, or runs next (UC-012).
+    let stop_request_before = as_string(reason) == "triggered" ? "" : stop_request_value();
     if (!acquire_runtime_dir_lock_wait(RELOAD_LOCK_DIR, owner_pid, START_RUNTIME_LOCK_WAIT_SECONDS)) {
         command_success_from_args([ "logger", "-t", SERVICE_NAME, "[warn] Forkop start deferred because a runtime reload did not finish in time" ]);
         report_start_result(reason, 1);
         return 1;
     }
+    if (stop_requested() && stop_request_value() != stop_request_before) {
+        release_runtime_dir_lock(RELOAD_LOCK_DIR, owner_pid);
+        command_success_from_args([ "logger", "-t", SERVICE_NAME, "[info] Forkop start skipped: a stop was requested after it" ]);
+        report_start_result(reason, 1);
+        return 1;
+    }
+    // An explicit start ends an explicit stop; a stop request seen after
+    // this point was made during this start.
+    unlink_file(STOP_REQUESTED_FILE);
 
     let plan = start_plan_value(reason, owner_pid, uci_settings(), null);
     if (!plan.bin_ok) {
@@ -663,6 +696,12 @@ function start_service(reason, owner_pid) {
         // the start is the last holder and applies it, as a reload does.
         if (file_exists(PENDING_RELOAD_FILE) && active_service_action_value() == "")
             run_pending_reload_if_requested(PENDING_RELOAD_FILE, SERVICE_INIT);
+    }
+    else if (stop_requested()) {
+        // The start was abandoned for, or overtaken by, an explicit stop.
+        clear_start_retry(START_RETRY_FILE);
+        cancel_scheduled_start_retry(START_RETRY_PID_FILE);
+        command_success_from_args([ "logger", "-t", SERVICE_NAME, "[info] Forkop start did not complete because a stop was requested; no automatic retry" ]);
     }
     else if (start_failure_blocks_retry(START_FAILURE_FILE)) {
         clear_start_retry(START_RETRY_FILE);
@@ -765,6 +804,10 @@ function stop_service(owner_pid) {
     let locked = acquire_runtime_dir_lock_wait(RELOAD_LOCK_DIR, lock_owner, STOP_RUNTIME_LOCK_WAIT_SECONDS);
     if (!locked)
         command_success_from_args([ "logger", "-t", SERVICE_NAME, "[warn] Forkop stop did not get the runtime lock within " + STOP_RUNTIME_LOCK_WAIT_SECONDS + " s; stopping without it, the work that holds it will not start the runtime again" ]);
+    // A start that held reload.lock meanwhile and failed may have scheduled
+    // its retry before it saw this stop request.
+    clear_start_retry(START_RETRY_FILE);
+    cancel_scheduled_start_retry(START_RETRY_PID_FILE);
     let status = command_status_from_args([ BIN_PATH, "stop" ]);
     if (locked)
         release_runtime_dir_lock(RELOAD_LOCK_DIR, lock_owner);
@@ -907,9 +950,9 @@ else if (mode == "retry-start-on-wan-up")
 else if (mode == "handle-wan-up")
     exit(handle_wan_up(ARGV[1]));
 else if (mode == "retry-start-on-wan-up-action")
-    print(retry_start_on_wan_up_action(ARGV[1], ARGV[2], ARGV[3]), "\n");
+    print(retry_start_on_wan_up_action(ARGV[1], ARGV[2], ARGV[3], ARGV[4]), "\n");
 else if (mode == "wan-up-action")
-    print(wan_up_action(ARGV[1], ARGV[2], ARGV[3], ARGV[4]), "\n");
+    print(wan_up_action(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5]), "\n");
 else if (mode == "service-enabled")
     exit(service_is_enabled() ? 0 : 1);
 else if (mode == "mark-start-retry")

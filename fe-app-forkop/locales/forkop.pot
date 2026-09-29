@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-29 22:55+0000\n"
-"PO-Revision-Date: 2026-09-29 22:55+0000\n"
+"POT-Creation-Date: 2026-09-29 22:56+0000\n"
+"PO-Revision-Date: 2026-09-29 22:56+0000\n"
 "Last-Translator: Asofwar <7397608+Asofwar@users.noreply.github.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -399,7 +399,7 @@ msgstr ""
 msgid "An IP address needs no DNS"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:246
+#: src/forkop/tabs/history/initController.ts:248
 msgid "and %d more"
 msgstr ""
 
@@ -812,7 +812,7 @@ msgstr ""
 msgid "Cascade connection"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:362
+#: src/forkop/tabs/history/initController.ts:371
 msgid "Changes"
 msgstr ""
 
@@ -824,7 +824,7 @@ msgstr ""
 msgid "Changes compare a snapshot with the saved configuration. Unsaved form edits are not included."
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:207
+#: src/forkop/tabs/history/initController.ts:209
 msgid "Changes since this snapshot"
 msgstr ""
 
@@ -1003,7 +1003,7 @@ msgstr ""
 #: src/forkop/tabs/autotune/initController.ts:608
 #: src/forkop/tabs/dashboard/initController.ts:1281
 #: src/forkop/tabs/dashboard/initController.ts:1659
-#: src/forkop/tabs/history/initController.ts:217
+#: src/forkop/tabs/history/initController.ts:219
 #: src/forkop/tabs/updates/releaseSelector.ts:121
 msgid "Close"
 msgstr ""
@@ -1085,11 +1085,11 @@ msgstr ""
 msgid "Configuration reload"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:259
+#: src/forkop/tabs/history/model.ts:272
 msgid "Configuration restored and reloaded"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:266
+#: src/forkop/tabs/history/model.ts:279
 msgid "Configuration restored, but Forkop X is stopped: it was not started or checked. The restored configuration takes effect when Forkop X is started."
 msgstr ""
 
@@ -1197,8 +1197,8 @@ msgstr ""
 msgid "Could not change autostart"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:203
-#: src/forkop/tabs/history/initController.ts:257
+#: src/forkop/tabs/history/initController.ts:205
+#: src/forkop/tabs/history/initController.ts:266
 msgid "Could not compare configurations"
 msgstr ""
 
@@ -1210,11 +1210,11 @@ msgstr ""
 msgid "Could not confirm completion. Check the removal log before retrying."
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:294
+#: src/forkop/tabs/history/initController.ts:303
 msgid "Could not create snapshot"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:284
+#: src/forkop/tabs/history/initController.ts:293
 msgid "Could not delete snapshot"
 msgstr ""
 
@@ -1227,7 +1227,7 @@ msgstr ""
 msgid "Could not load available versions"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:323
+#: src/forkop/tabs/history/initController.ts:332
 msgid "Could not load configuration snapshots"
 msgstr ""
 
@@ -1238,7 +1238,7 @@ msgstr ""
 #: src/forkop/tabs/diagnostic/initController.ts:631
 #: src/forkop/tabs/diagnostic/initController.ts:667
 #: src/forkop/tabs/diagnostic/initController.ts:671
-#: src/forkop/tabs/history/initController.ts:231
+#: src/forkop/tabs/history/initController.ts:233
 msgid "Could not load data"
 msgstr ""
 
@@ -1260,7 +1260,7 @@ msgstr ""
 msgid "Could not start the check"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:313
+#: src/forkop/tabs/history/initController.ts:322
 msgid "Create snapshot"
 msgstr ""
 
@@ -1320,19 +1320,19 @@ msgstr ""
 msgid "Delay value cannot be empty"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:274
+#: src/forkop/tabs/history/initController.ts:283
 msgid "Delete"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:272
+#: src/forkop/tabs/history/initController.ts:281
 msgid "Delete snapshot?"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:273
+#: src/forkop/tabs/history/initController.ts:282
 msgid "Delete this configuration snapshot?"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:376
+#: src/forkop/tabs/history/initController.ts:385
 msgid "Delete…"
 msgstr ""
 
@@ -2105,6 +2105,10 @@ msgstr ""
 msgid "Forkop X is stopped; start it first"
 msgstr ""
 
+#: src/forkop/tabs/history/model.ts:250
+msgid "Forkop X is stopped: the configuration is replaced and checked, but Forkop X is not started. It takes effect when you start Forkop X."
+msgstr ""
+
 #: src/forkop/tabs/diagnostic/initController.ts:546
 msgid "Forkop X is stopped. Start it to run the checks."
 msgstr ""
@@ -2134,7 +2138,7 @@ msgstr ""
 msgid "Forkop X never turns DPI bypass off by itself."
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:252
+#: src/forkop/tabs/history/model.ts:253
 msgid "Forkop X reloads the configuration. If the reload fails, the previous configuration is restored automatically."
 msgstr ""
 
@@ -2266,12 +2270,12 @@ msgstr ""
 msgid "History and recovery"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:138
+#: src/forkop/tabs/history/initController.ts:140
 msgid "History is kept in memory until the router restarts."
 msgstr ""
 
 #: src/forkop/tabs/autotune/initController.ts:1099
-#: src/forkop/tabs/history/initController.ts:125
+#: src/forkop/tabs/history/initController.ts:127
 msgid "History is unavailable"
 msgstr ""
 
@@ -2351,7 +2355,7 @@ msgstr ""
 msgid "In progress"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:179
+#: src/forkop/tabs/history/initController.ts:181
 msgid "In snapshot"
 msgstr ""
 
@@ -2810,7 +2814,7 @@ msgstr ""
 msgid "Last important event"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:349
+#: src/forkop/tabs/history/initController.ts:358
 #: src/forkop/tabs/history/model.ts:186
 msgid "Last known good"
 msgstr ""
@@ -3166,12 +3170,12 @@ msgstr ""
 msgid "No DNS server for measurements: set a plain IPv4 DNS server in Forkop X or on the target."
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:164
+#: src/forkop/tabs/history/initController.ts:166
 msgid "No events of this kind"
 msgstr ""
 
 #: src/forkop/tabs/dashboard/overviewCards.ts:232
-#: src/forkop/tabs/history/initController.ts:163
+#: src/forkop/tabs/history/initController.ts:165
 msgid "No events recorded yet"
 msgstr ""
 
@@ -3222,12 +3226,12 @@ msgstr ""
 msgid "No rules use Zapret2"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:172
-#: src/forkop/tabs/history/initController.ts:256
+#: src/forkop/tabs/history/initController.ts:174
+#: src/forkop/tabs/history/initController.ts:265
 msgid "No saved changes since this snapshot"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:390
+#: src/forkop/tabs/history/initController.ts:399
 msgid "No snapshots yet"
 msgstr ""
 
@@ -3356,7 +3360,7 @@ msgstr ""
 
 #: src/forkop/tabs/autotune/initController.ts:806
 #: src/forkop/tabs/autotune/model.ts:619
-#: src/forkop/tabs/history/initController.ts:180
+#: src/forkop/tabs/history/initController.ts:182
 msgid "Now"
 msgstr ""
 
@@ -3746,7 +3750,7 @@ msgstr ""
 msgid "Recovery details"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:80
+#: src/forkop/tabs/history/initController.ts:82
 msgid "Recovery state is unavailable"
 msgstr ""
 
@@ -3878,23 +3882,23 @@ msgstr ""
 msgid "Restart Forkop X. If another add-on marks traffic, make sure it does not conflict."
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:258
+#: src/forkop/tabs/history/initController.ts:267
 msgid "Restore"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:251
+#: src/forkop/tabs/history/initController.ts:260
 msgid "Restore configuration snapshot?"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:301
+#: src/forkop/tabs/history/model.ts:314
 msgid "Restore did not finish: the service was busy and only queued the reload. The DPI guard stays active; restore again when the service is idle."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:310
+#: src/forkop/tabs/history/model.ts:323
 msgid "Restore failed; check the recovery state before retrying"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:279
+#: src/forkop/tabs/history/model.ts:292
 msgid "Restore failed; previous configuration and runtime recovered"
 msgstr ""
 
@@ -3902,19 +3906,19 @@ msgstr ""
 msgid "Restore normal mode"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:291
+#: src/forkop/tabs/history/model.ts:304
 msgid "Restore was not applied: Forkop X was stopped during the restore. The previous configuration is kept."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:276
+#: src/forkop/tabs/history/model.ts:289
 msgid "Restore was not applied: the service was busy and only queued the reload. The previous configuration is kept."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:288
+#: src/forkop/tabs/history/model.ts:301
 msgid "Restore was not applied: the snapshot configuration did not pass validation. The previous configuration is kept; Forkop X stays stopped."
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:369
+#: src/forkop/tabs/history/initController.ts:378
 msgid "Restore…"
 msgstr ""
 
@@ -4257,7 +4261,7 @@ msgstr ""
 msgid "set %s: %s"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:178
+#: src/forkop/tabs/history/initController.ts:180
 msgid "Setting"
 msgstr ""
 
@@ -4331,7 +4335,7 @@ msgstr ""
 msgid "Site, IP, device or rule"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:367
+#: src/forkop/tabs/history/initController.ts:376
 msgid "Snapshot actions"
 msgstr ""
 
@@ -4340,7 +4344,7 @@ msgid "Snapshot created"
 msgstr ""
 
 #: src/forkop/ui/status.ts:290
-#: src/forkop/tabs/history/initController.ts:283
+#: src/forkop/tabs/history/initController.ts:292
 msgid "Snapshot deleted"
 msgstr ""
 
@@ -4348,7 +4352,7 @@ msgstr ""
 msgid "Snapshot restore"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:293
+#: src/forkop/tabs/history/initController.ts:302
 msgid "Snapshot saved"
 msgstr ""
 
@@ -4757,7 +4761,7 @@ msgstr ""
 msgid "The last configuration change failed"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:377
+#: src/forkop/tabs/history/initController.ts:386
 msgid "The last known good snapshot cannot be deleted"
 msgstr ""
 

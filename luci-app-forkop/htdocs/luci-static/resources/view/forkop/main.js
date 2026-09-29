@@ -18894,6 +18894,15 @@ function snapshotBusyText(reason) {
     "Another snapshot operation is already in progress. Try again in a moment.",
   );
 }
+function restoreConfirmMessage(stoppedByUser) {
+  return stoppedByUser
+    ? _(
+        "Forkop X is stopped: the configuration is replaced and checked, but Forkop X is not started. It takes effect when you start Forkop X.",
+      )
+    : _(
+        "Forkop X reloads the configuration. If the reload fails, the previous configuration is restored automatically.",
+      );
+}
 function restoreResultToast(result) {
   switch (result?.status) {
     case "busy":
@@ -19166,9 +19175,13 @@ async function restoreSnapshot(id, label) {
       _("and %d more").replace("%d", String(rows.length - MAX_RESTORE_PREVIEW)),
     );
   }
+  await refreshRuntimeUiState({ force: true }).catch(() => void 0);
+  const stoppedByUser = Boolean(
+    store.get().servicesInfoWidget.data.forkopStoppedByUser,
+  );
   const confirmed = await confirmAction({
     title: _("Restore configuration snapshot?"),
-    message: `${label}. ${_("Forkop X reloads the configuration. If the reload fails, the previous configuration is restored automatically.")}`,
+    message: `${label}. ${restoreConfirmMessage(stoppedByUser)}`,
     consequences: changes
       ? rows.length
         ? preview

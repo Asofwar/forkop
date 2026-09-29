@@ -242,6 +242,19 @@ export function snapshotBusyText(reason?: string) {
   );
 }
 
+// What the restore will do, said before the user confirms it. Forkop X
+// stopped by the user is not started by a restore (D-15): the configuration
+// is replaced and checked, and takes effect at the next start.
+export function restoreConfirmMessage(stoppedByUser: boolean): string {
+  return stoppedByUser
+    ? _(
+        'Forkop X is stopped: the configuration is replaced and checked, but Forkop X is not started. It takes effect when you start Forkop X.',
+      )
+    : _(
+        'Forkop X reloads the configuration. If the reload fails, the previous configuration is restored automatically.',
+      );
+}
+
 // What a finished restore means. A reload that the service only queued
 // behind another operation never ran, so it is never reported as restored.
 export function restoreResultToast(

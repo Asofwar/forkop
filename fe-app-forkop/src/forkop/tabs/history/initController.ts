@@ -3,6 +3,7 @@ import { showToast } from '../../../helpers/showToast';
 import { ForkopShellMethods } from '../../methods';
 import { logger, store, StoreType } from '../../services';
 import { isReadonlyMode } from '../../services/accessMode.service';
+import { refreshRuntimeUiState } from '../../services/runtimeUiState.service';
 import { isActiveLuciTab } from '../../helpers/isActiveLuciTab';
 import { Forkop } from '../../types';
 import { confirmAction } from '../../ui/confirmAction';
@@ -18,6 +19,7 @@ import {
   historyFilterLabel,
   historyItems,
   recoveryRows,
+  restoreConfirmMessage,
   restoreResultToast,
   snapshotBusyText,
   snapshotRows,
@@ -247,9 +249,16 @@ async function restoreSnapshot(id: string, label: string) {
     );
   }
 
+  // Whether Forkop X is stopped by the user now decides what the restore
+  // does (D-15).
+  await refreshRuntimeUiState({ force: true }).catch(() => undefined);
+  const stoppedByUser = Boolean(
+    store.get().servicesInfoWidget.data.forkopStoppedByUser,
+  );
+
   const confirmed = await confirmAction({
     title: _('Restore configuration snapshot?'),
-    message: `${label}. ${_('Forkop X reloads the configuration. If the reload fails, the previous configuration is restored automatically.')}`,
+    message: `${label}. ${restoreConfirmMessage(stoppedByUser)}`,
     consequences: changes
       ? rows.length
         ? preview

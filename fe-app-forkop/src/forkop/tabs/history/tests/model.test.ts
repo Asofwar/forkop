@@ -4,6 +4,7 @@ import {
   diffRows,
   historyItems,
   recoveryRows,
+  restoreConfirmMessage,
   restoreResultToast,
   snapshotBusyText,
   snapshotReasonLabel,
@@ -240,6 +241,16 @@ describe('restore result', () => {
         reason: 'target_reload_failed',
       }).text,
     ).toBe('Restore failed; previous configuration and runtime recovered');
+  });
+
+  it('does not promise a reload before a restore while Forkop is stopped', () => {
+    const running = restoreConfirmMessage(false);
+    expect(running).toContain('reloads the configuration');
+
+    const stopped = restoreConfirmMessage(true);
+    expect(stopped).toContain('Forkop X is stopped');
+    expect(stopped).toContain('when you start Forkop X');
+    expect(stopped).not.toContain('reloads');
   });
 
   it('never reports a restore while Forkop is stopped as reloaded', () => {

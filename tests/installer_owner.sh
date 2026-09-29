@@ -30,6 +30,9 @@ fail() {
   exit 1
 }
 
+# shellcheck source=tests/helpers/source_checks.sh
+source "$ROOT_DIR/tests/helpers/source_checks.sh"
+
 # A killed process whose parent is gone is reparented to PID 1. Where PID 1
 # does not reap children (some container inits), it stays a zombie for a while
 # and kill -0 still succeeds although it runs no code: process_running counts
@@ -95,7 +98,8 @@ grep -Fq 'run_with_deadline "$DOWNLOAD_TIMEOUT_SECONDS" wget -T "$CONNECT_TIMEOU
 if grep -n -E 'wget.*[[:space:]]-t([[:space:]]|$)' "$INSTALLER" >/dev/null; then
   fail "installer wget commands must not use the unsupported OpenWrt -t option"
 fi
-eval "$(sed -n '/^run_with_deadline()/,/^}/p' "$INSTALLER")"
+run_with_deadline_source="$(source_function "$INSTALLER" run_with_deadline)" || exit 1
+eval "$run_with_deadline_source"
 deadline_started="$(date +%s)"
 if run_with_deadline 1 sh -c 'sleep 5'; then
   fail "installer deadline watchdog must fail a command that exceeds its deadline"

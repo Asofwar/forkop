@@ -16,6 +16,9 @@ fail() {
   exit 1
 }
 
+# shellcheck source=tests/helpers/source_checks.sh
+source "$ROOT_DIR/tests/helpers/source_checks.sh"
+
 assert_eq() {
   local expected="$1"
   local actual="$2"
@@ -57,22 +60,18 @@ if grep -R -n "subscription_runtime.sh" "$ROOT_DIR/forkop/files" >/dev/null 2>&1
 fi
 
 subscription_runtime_shell_symbols='subscription_runtime_|prepare_subscription_caches_for_startup|prepare_subscription_caches_for_runtime_generation|run_deferred_subscription_bootstrap|stop_deferred_subscription_bootstrap_retry_worker'
-if grep -R -n -E "$subscription_runtime_shell_symbols" "$ROOT_DIR/forkop/files/usr/bin/forkop" "$ROOT_DIR/forkop/files/usr/lib" --include='*.sh' >/dev/null 2>&1; then
-  fail "subscription_runtime shell symbols must not remain in runtime shell"
-fi
+source_refute_shell "subscription_runtime shell symbols must not remain in runtime shell" \
+  -E "$subscription_runtime_shell_symbols" "$ROOT_DIR/forkop/files/usr/bin/forkop" "$ROOT_DIR/forkop/files/usr/lib"
 
-if grep -R -n -E 'get_subscription_metadata_path|get_outbound_metadata_path' "$ROOT_DIR/forkop/files/usr/bin/forkop" "$ROOT_DIR/forkop/files/usr/lib" --include='*.sh' >/dev/null 2>&1; then
-  fail "subscription metadata path helpers must be owned by subscription/cache.uc"
-fi
+source_refute_shell "subscription metadata path helpers must be owned by subscription/cache.uc" \
+  -E 'get_subscription_metadata_path|get_outbound_metadata_path' "$ROOT_DIR/forkop/files/usr/bin/forkop" "$ROOT_DIR/forkop/files/usr/lib"
 
 if grep -n -E 'require\("uci"\)\.cursor|uci -q' "$CACHE_UC" >/dev/null 2>&1; then
   fail "subscription/cache.uc must use core.uci instead of owning direct UCI cursor or CLI calls"
 fi
 
-move_file_source="$(sed -n '/^function move_file(/,/^}/p' "$CACHE_UC")"
-if grep -Fq 'unlink_path(target)' <<<"$move_file_source"; then
-  fail "subscription cache replacement must keep the current file until atomic rename succeeds"
-fi
+source_refute_text "subscription cache replacement must keep the current file until atomic rename succeeds" \
+  -F 'unlink_path(target)' "$(source_function "$CACHE_UC" move_file)"
 if grep -Fq 'remove-legacy-server-country-cache' "$CACHE_UC"; then
   fail "subscription/cache.uc must not expose the migrated legacy cache cleanup"
 fi

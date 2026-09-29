@@ -21,6 +21,9 @@ fail() {
   exit 1
 }
 
+# shellcheck source=tests/helpers/source_checks.sh
+source "$ROOT_DIR/tests/helpers/source_checks.sh"
+
 [ ! -e "$FORKOP_LIB/zapret.sh" ] ||
   fail "zapret.sh shell owner must be removed"
 [ ! -e "$FORKOP_LIB/zapret2.sh" ] ||
@@ -63,24 +66,18 @@ grep -Fq 'function nft_queue_overlap' "$NFQUEUE_CHECK" ||
 if grep -n -E 'function (start_runtime|stop_runtime|status_json|create_nft_rules|supervisor)\b' "$ZAPRET_COMMON" "$ZAPRET2_COMMON" >/dev/null 2>&1; then
   fail "provider common modules must stay thin config wrappers, not runtime engines"
 fi
-if grep -R -n -E 'providers/zapret/runtime\.uc" (start-runtime|stop-runtime|status|check|installed|package-installed|package-version|enabled-rule-count) zapret2' \
-  "$FORKOP_BIN" "$FORKOP_LIB" --include='*.sh' >/dev/null 2>&1; then
-  fail "zapret2 must not be multiplexed through providers/zapret/runtime.uc"
-fi
+source_refute_shell "zapret2 must not be multiplexed through providers/zapret/runtime.uc" \
+  -E 'providers/zapret/runtime\.uc" (start-runtime|stop-runtime|status|check|installed|package-installed|package-version|enabled-rule-count) zapret2' "$FORKOP_BIN" "$FORKOP_LIB"
 if grep -R -n -E 'providers\.zapret\.|providers/zapret/' "$FORKOP_LIB/providers/zapret2" >/dev/null 2>&1; then
   fail "zapret2 provider modules must not import or execute providers/zapret modules"
 fi
 if grep -n 'zapret2' "$ZAPRET_COMMON" >/dev/null 2>&1; then
   fail "providers/zapret/common.uc must not contain zapret2 ownership"
 fi
-if grep -R -n -E 'start_zapret2?_runtime|stop_zapret2?_runtime|get_zapret2?_status_json|check_zapret2?_runtime_json|create_zapret2?_nft_rules|validate_rule_nfqws2?_opt|has_enabled_zapret2?_rules|get_zapret2?_rule_' \
-  "$FORKOP_BIN" "$FORKOP_LIB" --include='*.sh' >/dev/null 2>&1; then
-  fail "zapret runtime shell symbols must not remain"
-fi
-if grep -R -n -E 'is_zapret2?_installed|get_zapret2?_package_version' \
-  "$FORKOP_BIN" "$FORKOP_LIB" --include='*.sh' >/dev/null 2>&1; then
-  fail "zapret installed/version shell predicates must not remain"
-fi
+source_refute_shell "zapret runtime shell symbols must not remain" \
+  -E 'start_zapret2?_runtime|stop_zapret2?_runtime|get_zapret2?_status_json|check_zapret2?_runtime_json|create_zapret2?_nft_rules|validate_rule_nfqws2?_opt|has_enabled_zapret2?_rules|get_zapret2?_rule_' "$FORKOP_BIN" "$FORKOP_LIB"
+source_refute_shell "zapret installed/version shell predicates must not remain" \
+  -E 'is_zapret2?_installed|get_zapret2?_package_version' "$FORKOP_BIN" "$FORKOP_LIB"
 if grep -n -E 'require\("uci"\)\.cursor|uci -q|"uci", "-q"|command_output\(command_from_args\(\[ "uci"' "$NFQUEUE_RUNTIME" "$ZAPRET_COMMON" "$ZAPRET2_COMMON" >/dev/null 2>&1; then
   fail "zapret provider runtimes must use core.uci instead of direct UCI cursor or CLI access"
 fi

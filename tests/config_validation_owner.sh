@@ -17,6 +17,9 @@ fail() {
   exit 1
 }
 
+# shellcheck source=tests/helpers/source_checks.sh
+source "$ROOT_DIR/tests/helpers/source_checks.sh"
+
 [ ! -e "$FORKOP_LIB/config_validation.sh" ] ||
   fail "config_validation.sh shell owner must be removed"
 
@@ -25,9 +28,8 @@ if grep -R -n "config_validation.sh" "$FORKOP_FILES" >/dev/null 2>&1; then
 fi
 
 legacy_symbols='(^|[^A-Za-z0-9_])(config_validate_runtime|check_requirements|commit_forkop_config|mwan3_is_active|get_inline_remote_ruleset_format|detect_inline_ruleset_reference_kind)([^A-Za-z0-9_]|$)'
-if grep -R -n -E "$legacy_symbols" "$FORKOP_BIN" "$FORKOP_LIB" --include='*.sh' >/dev/null 2>&1; then
-  fail "runtime shell must not keep config_validation.sh symbols"
-fi
+source_refute_shell "runtime shell must not keep config_validation.sh symbols" \
+  -E "$legacy_symbols" "$FORKOP_BIN" "$FORKOP_LIB"
 
 grep -Fq 'mode == "check-requirements"' "$VALIDATOR" ||
   fail "config validator must own requirement checks"

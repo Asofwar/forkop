@@ -18,6 +18,9 @@ fail() {
   exit 1
 }
 
+# shellcheck source=tests/helpers/source_checks.sh
+source "$ROOT_DIR/tests/helpers/source_checks.sh"
+
 [ ! -e "$CONSTANTS_SH" ] ||
   fail "constants.sh shell owner must be removed"
 
@@ -28,10 +31,9 @@ grep -Fq 'service/lifecycle.uc' "$CLI_UC" ||
 grep -Fq 'core.constants' "$LIFECYCLE_UC" ||
   fail "service/lifecycle.uc must load constants from core/constants.uc"
 
-if grep -R -n -E 'constants\.sh|read_shell_constants|expand_shell_constants|unquote_shell_value' \
-  "$FORKOP_BIN" "$FORKOP_LIB" --include='*.sh' --include='*.uc' >/dev/null 2>&1; then
-  fail "shell constants owner or parser references must not remain"
-fi
+# Every runtime file: the ucode entrypoint has no .uc suffix.
+source_refute "shell constants owner or parser references must not remain" \
+  -E 'constants\.sh|read_shell_constants|expand_shell_constants|unquote_shell_value' "$FORKOP_BIN" "$FORKOP_LIB"
 
 if grep -n 'constants\.sh' "$FORKOP_MAKEFILE" "$BUILD_SCRIPT" >/dev/null 2>&1; then
   fail "package build must not patch removed constants.sh"

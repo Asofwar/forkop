@@ -12,12 +12,13 @@ fail() {
   exit 1
 }
 
+# shellcheck source=tests/helpers/source_checks.sh
+source "$ROOT_DIR/tests/helpers/source_checks.sh"
+
 grep -Fq '/forkop/sing-box-extended/latest.json' "$ACTION_UC" ||
   fail "sing-box Extended metadata must come from the Forkop mirror"
-if grep -A12 'function resolve_sing_box_extended_release' "$ACTION_UC" |
-  grep -Fq 'fetch_github'; then
-  fail "sing-box Extended resolver must not fall back to GitHub"
-fi
+source_refute_text "sing-box Extended resolver must not fall back to GitHub" \
+  -F 'fetch_github' "$(source_function "$ACTION_UC" resolve_sing_box_extended_release)"
 
 grep -Fq '"slayer326/forkop"' "$CONSTANTS_UC" ||
   fail "Forkop releases must default to slayer326/forkop"

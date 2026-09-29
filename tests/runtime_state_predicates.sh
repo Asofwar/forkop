@@ -22,6 +22,9 @@ fail() {
   exit 1
 }
 
+# shellcheck source=tests/helpers/source_checks.sh
+source "$ROOT_DIR/tests/helpers/source_checks.sh"
+
 assert_eq() {
   local expected="$1"
   local actual="$2"
@@ -139,9 +142,8 @@ assert_eq "8" \
 if state_ucode process-age-seconds-fixture 786162159 786161359 >/dev/null 2>&1; then
   fail "process age must reject a current tick value older than the process"
 fi
-if sed -n '/^function process_age_seconds(pid) {$/,/^}$/p' "$STATE_UC" | grep -Fq '/proc/uptime'; then
-  fail "process age must not mix process start ticks with virtualized /proc/uptime"
-fi
+source_refute_text "process age must not mix process start ticks with virtualized /proc/uptime" \
+  -F '/proc/uptime' "$(source_function "$STATE_UC" process_age_seconds)"
 
 # Stable start: the runtime state counts every sing-box executable in /proc
 # and accepts the procd-owned process only as the sole one. Other tests

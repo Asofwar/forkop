@@ -9,7 +9,10 @@ fail() {
   exit 1
 }
 
-modal_source="$(sed -n '/^function renderStackedJsonSettingsModal(/,/^function renderJsonOutboundSettingsModal(/p' "$SECTION_JS")"
+# shellcheck source=tests/helpers/source_checks.sh
+source "$ROOT_DIR/tests/helpers/source_checks.sh"
+
+modal_source="$(source_function "$SECTION_JS" renderStackedJsonSettingsModal)" || exit 1
 
 grep -Fq '.catch((error) => {' <<<"$modal_source" ||
   fail "stacked settings Save must retain the validation error"

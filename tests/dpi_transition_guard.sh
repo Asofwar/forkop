@@ -5,6 +5,8 @@ ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 NFT_UC="$ROOT_DIR/forkop/files/usr/lib/nft/apply.uc"
 STATE_DIR="$(mktemp -d)"
 trap 'rm -rf "$STATE_DIR"' EXIT HUP INT TERM
+# shellcheck source=tests/helpers/source_checks.sh
+. "$ROOT_DIR/tests/helpers/source_checks.sh"
 
 cat > "$STATE_DIR/guard.uc" <<'UCODE'
 let fs = require("fs");
@@ -25,7 +27,8 @@ function run_args(args) {
 }
 UCODE
 
-awk '/^function nft_dpi_transition_guard\(/{copy=1} /^function nft_rebuild_runtime_from_uci\(/{copy=0} copy{print}' "$NFT_UC" >> "$STATE_DIR/guard.uc"
+guard_source="$(source_between "$NFT_UC" '^function nft_dpi_transition_guard\(' '^function nft_rebuild_runtime_from_uci\(')" || exit 1
+printf '%s\n' "$guard_source" >> "$STATE_DIR/guard.uc"
 
 cat >> "$STATE_DIR/guard.uc" <<'UCODE'
 if (!nft_dpi_transition_guard("ForkopTable", false))

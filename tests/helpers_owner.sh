@@ -24,15 +24,14 @@ fail() {
   exit 1
 }
 
+# shellcheck source=tests/helpers/source_checks.sh
+source "$ROOT_DIR/tests/helpers/source_checks.sh"
+
 [ ! -e "$HELPERS_SH" ] ||
   fail "helpers.sh shell owner must be removed"
-if grep -R -n -F 'helpers.sh' "$FORKOP_BIN" "$FORKOP_LIB" --include='*.sh' >/dev/null 2>&1; then
-  fail "runtime shell must not reference helpers.sh"
-fi
-if grep -R -n -E 'helpers_ucode\(|get_(inbound|server_inbound|tailscale_dns_server|outbound)_tag_by_section\(|get_domain_resolver_tag\(|provider_status_ucode\(|is_ipv4\(|is_min_package_version\(|url_get_(scheme|userinfo|host|port|path|query_param)\(' \
-  "$FORKOP_BIN" "$FORKOP_LIB" --include='*.sh' >/dev/null 2>&1; then
-  fail "helpers.sh wrapper symbols must not remain in runtime shell"
-fi
+source_refute_shell "runtime shell must not reference helpers.sh" -F 'helpers.sh' "$FORKOP_BIN" "$FORKOP_LIB"
+source_refute_shell "helpers.sh wrapper symbols must not remain in runtime shell" \
+  -E 'helpers_ucode\(|get_(inbound|server_inbound|tailscale_dns_server|outbound)_tag_by_section\(|get_domain_resolver_tag\(|provider_status_ucode\(|is_ipv4\(|is_min_package_version\(|url_get_(scheme|userinfo|host|port|path|query_param)\(' "$FORKOP_BIN" "$FORKOP_LIB"
 
 grep -Fq '#!/usr/bin/ucode' "$FORKOP_BIN" ||
   fail "forkop entrypoint must be a direct ucode executable"
@@ -85,10 +84,8 @@ do
   grep -Fq "$mode" "$SINGBOX_RUNTIME_UC" ||
     fail "singbox/runtime.uc missing $mode"
 done
-if grep -R -n -E 'get_sing_box_version\(|sing_box_version_from_output\(|sing_box_version_output\(|sing_box_output_has_build_tag\(|sing_box_has_build_tag\(|is_sing_box_extended\(|is_sing_box_tiny_package_installed\(|is_sing_box_full_package_installed\(|is_sing_box_compressed_marker_set\(|is_sing_box_extended_marker_set\(|read_sing_box_version_state\(|is_sing_box_tiny_marker_set\(|is_sing_box_tiny\(|sing_box_supports_tailscale\(|get_sing_box_variant\(|updates_(write|read|clear|restore)_sing_box_(variant_marker|version_state)\(' \
-  "$FORKOP_BIN" "$FORKOP_LIB" --include='*.sh' >/dev/null 2>&1; then
-  fail "sing-box helper/state shell symbols must not remain"
-fi
+source_refute_shell "sing-box helper/state shell symbols must not remain" \
+  -E 'get_sing_box_version\(|sing_box_version_from_output\(|sing_box_version_output\(|sing_box_output_has_build_tag\(|sing_box_has_build_tag\(|is_sing_box_extended\(|is_sing_box_tiny_package_installed\(|is_sing_box_full_package_installed\(|is_sing_box_compressed_marker_set\(|is_sing_box_extended_marker_set\(|read_sing_box_version_state\(|is_sing_box_tiny_marker_set\(|is_sing_box_tiny\(|sing_box_supports_tailscale\(|get_sing_box_variant\(|updates_(write|read|clear|restore)_sing_box_(variant_marker|version_state)\(' "$FORKOP_BIN" "$FORKOP_LIB"
 
 if ucode -L "$FORKOP_LIB" "$PACKAGES_UC" installed forkop-definitely-missing >/dev/null 2>&1; then
   fail "missing package must not be reported installed"

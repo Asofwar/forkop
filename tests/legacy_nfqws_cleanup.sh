@@ -8,7 +8,12 @@ set -euo pipefail
 # command line merely mentions the path (a `tail -f` of its log, a process
 # named after it, another binary given the path as an argument) is never
 # signalled. The cleanup has one owner, providers/nfqueue/runtime.uc; the
-# requirements check of every start no longer carries a copy of it.
+# requirements check of every start no longer carries a copy of it, so the
+# zapret start-runtime of every start runs it, also without zapret rules.
+#
+# On OpenWrt /var is a symlink to /tmp and the kernel reports the executable
+# by its resolved path, also for a binary whose directory is already gone:
+# the legacy base here is reached through such a symlink.
 #
 # The zapret runtime, its supervisor and process identity are real; nfqws is
 # a stand-in binary.
@@ -39,14 +44,19 @@ fail() {
   exit 1
 }
 
-LEGACY="$WORK_DIR/run/zapret-runtime"
+mkdir -p "$WORK_DIR/tmpfs/run"
+ln -s tmpfs "$WORK_DIR/var"
+LEGACY="$WORK_DIR/var/run/zapret-runtime"
 mkdir -p "$WORK_DIR/bin" "$WORK_DIR/other" "$LEGACY/nfq" "$WORK_DIR/tmp"
-cat >"$WORK_DIR/uci.state" <<'UCI'
+zapret_rule() {
+  cat >"$WORK_DIR/uci.state" <<UCI
 forkop.settings=settings
 forkop.dpi=section
-forkop.dpi.enabled=1
+forkop.dpi.enabled=$1
 forkop.dpi.action=zapret
 UCI
+}
+zapret_rule 1
 
 export TMPDIR="$WORK_DIR/tmp"
 export PATH="$WORK_DIR/bin:$PATH"
@@ -132,6 +142,33 @@ survived "$OTHER" "another binary given the legacy path"
 [ ! -e "$LEGACY" ] || fail "the legacy runtime directory was left behind"
 zapret stop-runtime >/dev/null 2>&1 || fail "zapret stop-runtime failed"
 survived "$OTHER" "another binary given the legacy path (stop)"
+
+# Without zapret rules the start still cleans the legacy runtime up.
+zapret_rule 0
+legacy_nfqws() {
+  mkdir -p "$LEGACY/nfq"
+  cp "$WORK_DIR/bin/nfqws" "$LEGACY/nfq/nfqws"
+  "$LEGACY/nfq/nfqws" --qnum=4001 --dpi-desync=fake &
+  LEGACY_NFQWS=$!
+  actors+=("$LEGACY_NFQWS")
+  started "$LEGACY_NFQWS" nfqws "the legacy nfqws ($1)"
+}
+legacy_nfqws "no zapret rules"
+zapret start-runtime >"$WORK_DIR/start.log" 2>&1 ||
+  fail "zapret start-runtime without rules failed: $(cat "$WORK_DIR/start.log")"
+wait_until 10 process_gone "$LEGACY_NFQWS" || fail "the legacy runtime's nfqws was left running without zapret rules"
+[ ! -e "$LEGACY" ] || fail "the legacy runtime directory was left behind without zapret rules"
+
+# The legacy directory is already gone under a running nfqws (stop-runtime
+# removes it without stopping the process).
+legacy_nfqws "directory removed"
+rm -rf "$LEGACY"
+zapret start-runtime >"$WORK_DIR/start.log" 2>&1 ||
+  fail "zapret start-runtime failed: $(cat "$WORK_DIR/start.log")"
+wait_until 10 process_gone "$LEGACY_NFQWS" || fail "the legacy nfqws of a removed directory was left running"
+survived "$TAIL" "tail -f of the legacy log"
+survived "$NAMED" "a process named after the legacy binary"
+survived "$OTHER" "another binary given the legacy path"
 
 # One owner: the requirements check of every start carries no copy.
 source_refute "config/validator.uc must not carry a second legacy nfqws cleanup" \

@@ -309,13 +309,16 @@ forkop.disabled.enabled=0
 forkop.disabled.action=connection
 forkop.disabled.ip_cidr=93.184.230.0/24
 EOF
-printf '93.184.221.0/24\n2606:2800:222::/48\nnot-an-address\n' >"$WORK_DIR/subnets.lst"
+# Several chunks per set, and entries overlapping other chunks and the
+# section's own ip_cidr, which the batch adds later.
+printf '%s\n' 93.184.221.0/24 93.184.226.0/24 93.184.221.128/25 93.184.227.1 93.184.216.128/25 \
+  2606:2800:222::/48 2606:2800:226::/48 2606:2800:222:1::/64 not-an-address >"$WORK_DIR/subnets.lst"
 printf '149.154.160.0/20\n2001:67c:4e8::/48\n' >"$WORK_DIR/telegram.lst"
 printf '66.22.192.0/18\n162.159.0.0/16\n2606:4700::/32\n' >"$WORK_DIR/discord.lst"
 printf '{"version":2,"rules":[{"ip_cidr":["93.184.222.0/24","2606:2800:223::/48"]}]}\n' >"$WORK_DIR/rules.json"
 connections_lists() {
   nft_uc nft-add-subnet-file-for-uci-section main "$WORK_DIR/subnets.lst" \
-    "$TABLE" "$COMMON" "$IP_PORTS" 5000 "$COMMON6" "$IP6_PORTS" || fail "subnet list data"
+    "$TABLE" "$COMMON" "$IP_PORTS" 2 "$COMMON6" "$IP6_PORTS" || fail "subnet list data"
   local service
   for service in telegram discord; do
     nft_uc nft-add-community-subnet-file-for-uci-section ports "$service" "$WORK_DIR/$service.lst" \
@@ -329,14 +332,18 @@ connections_lists() {
 candidate "$WORK_DIR/connections.uci" "$WORK_DIR/connections.nft" connections_lists
 [ "$(first_command "$WORK_DIR/connections.nft")" = "delete table inet $TABLE" ] ||
   fail "a reload candidate must replace the live table in the same transaction"
+for set in forkop_rule_main_subnets forkop_rule_main_subnets6; do
+  [ "$(grep -c "^add element inet $TABLE $set { " "$WORK_DIR/connections.nft")" -gt 2 ] ||
+    fail "the list data did not reach $set in several chunks"
+done
 check_batch "$WORK_DIR/connections.nft" "connections"
 commit_batch "$WORK_DIR/connections.json" "connections"
 json="$WORK_DIR/connections.json"
 check tables "$json" "$TABLE"
 check production "$json" "$TABLE" "$OUTBOUND_MARK" no
 check set "$json" "$TABLE" "$INTERFACES" br-lan wg0
-check set "$json" "$TABLE" forkop_rule_main_subnets 93.184.216.0/24 93.184.221.0/24
-check set "$json" "$TABLE" forkop_rule_main_subnets6 2606:2800:220::/48 2606:2800:222::/48
+check set "$json" "$TABLE" forkop_rule_main_subnets 93.184.216.0/24 93.184.221.0/24 93.184.226.0/24 93.184.227.1
+check set "$json" "$TABLE" forkop_rule_main_subnets6 2606:2800:220::/48 2606:2800:222::/48 2606:2800:226::/48
 check set "$json" "$TABLE" forkop_rule_main_sources 192.168.1.0/24
 check set "$json" "$TABLE" forkop_rule_main_sources6 fd00:1::/64
 check set "$json" "$TABLE" forkop_rule_main_excluded_sources 192.168.1.5

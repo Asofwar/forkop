@@ -57,6 +57,13 @@ const CONFIG_CHANGE_REASON = getenv("FORKOP_CONFIG_CHANGE_REASON") || "on_config
 // one: the list worker keeps its durable apply marker, a snapshot restore and
 // an autotune apply never confirm a configuration the runtime has not loaded.
 const QUEUE_ACK_REASONS = [ "list-content", "config-restore", "autotune" ];
+// Reloads that background work requests on its own (service/lifecycle.uc
+// BACKGROUND_RELOAD_REASONS): after an explicit stop they leave the stopped
+// runtime alone (UC-012).
+const BACKGROUND_RELOAD_REASONS = [
+    "list-content", "ruleset-cache", "subscription_deferred_recovery", "pending",
+    "on_config_change", "badwan_interface_up"
+];
 
 const DNS_APPLY_UC = LIB_DIR + "/dns/apply.uc";
 const UI_UC = LIB_DIR + "/service/ui.uc";
@@ -840,6 +847,19 @@ function stop_service(owner_pid) {
     return stop_finish(job_id, status);
 }
 
+// Decided before a UI job is opened: a reload that does nothing must not
+// show the stopped Forkop as "reloading" and then fail to reach a running
+// runtime. service/lifecycle.uc checks the same under reload.lock.
+function reload_skipped_after_stop(reason, runtime_running_value) {
+    if (!stop_requested() || index(BACKGROUND_RELOAD_REASONS, as_string(reason)) < 0)
+        return false;
+    if (runtime_running_value == null ? runtime_is_running() : bool_text(runtime_running_value))
+        return false;
+    command_success_from_args([ "logger", "-t", SERVICE_NAME, "[info] Reload '" + as_string(reason) +
+        "' skipped: Forkop was stopped; only a start brings its runtime back" ]);
+    return true;
+}
+
 function reload_begin_value(reason, owner_pid, runtime_running_value, service_enabled_value, active_service_action) {
     reason = as_string(reason);
 
@@ -852,6 +872,10 @@ function reload_begin_value(reason, owner_pid, runtime_running_value, service_en
     )) {
         return { action: "skip", job_id: "" };
     }
+
+    // Not a queued request either: the next start applies everything.
+    if (reload_skipped_after_stop(reason, runtime_running_value))
+        return { action: "skip", job_id: "", stopped: true };
 
     active_service_action = active_service_action == null ? active_service_action_value() : as_string(active_service_action);
     if (reason == "pending" && active_service_action != "" && !ui_action_tracked()) {
@@ -921,8 +945,9 @@ function reload_service(reason, owner_pid) {
     if (plan.action != "run") {
         // Callers of QUEUE_ACK_REASONS must distinguish an accepted queued
         // request from a completed lifecycle; for them a skip is always a
-        // queued request. Ordinary callers keep no output and status 0.
-        if (index(QUEUE_ACK_REASONS, as_string(reason)) >= 0)
+        // queued request, except after an explicit stop. Ordinary callers
+        // keep no output and status 0.
+        if (!plan.stopped && index(QUEUE_ACK_REASONS, as_string(reason)) >= 0)
             print("queued\n");
         return 0;
     }

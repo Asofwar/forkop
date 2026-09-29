@@ -1761,16 +1761,22 @@ function dns_failover_apply(candidate_state_path) {
     return status;
 }
 
+// Work that began before an explicit stop requests these reloads after it;
+// they must not start the stopped runtime again (UC-012). A stop still
+// waiting for reload.lock leaves the runtime up until it runs. service/initd.uc
+// decides the same before it opens a UI job; this is the check under
+// reload.lock.
+function reload_skipped_after_stop(reason) {
+    reason = as_string(reason || "");
+    if (fs.stat(STOP_REQUESTED_FILE) == null || index(BACKGROUND_RELOAD_REASONS, reason) < 0 ||
+        module_success(STATE_UC, [ "forkop-running", RT_TABLE_NAME, NFT_TABLE_NAME, NFT_FAKEIP_MARK ]))
+        return false;
+    log_message("Reload '" + reason + "' skipped: Forkop was stopped; only a start brings its runtime back", "info");
+    return true;
+}
+
 function reload(reason) {
     reason = as_string(reason || "");
-    // Work that began before an explicit stop requests these reloads after
-    // it; they must not start the stopped runtime again (UC-012). A stop
-    // still waiting for reload.lock leaves the runtime up until it runs.
-    if (fs.stat(STOP_REQUESTED_FILE) != null && index(BACKGROUND_RELOAD_REASONS, reason) >= 0 &&
-        !module_success(STATE_UC, [ "forkop-running", RT_TABLE_NAME, NFT_TABLE_NAME, NFT_FAKEIP_MARK ])) {
-        log_message("Reload '" + reason + "' skipped: Forkop was stopped; only a start brings its runtime back", "info");
-        return 0;
-    }
     // A completed list generation whose final runtime apply failed is safe to
     // retry locally. Never let a later generic/pending reload skip that
     // generation or trigger a second network update.
@@ -2138,6 +2144,12 @@ function reload(reason) {
 }
 
 function reload_tracked(reason) {
+    // Nothing was reloaded: no UI job of its own and no health record. A job
+    // that init.d opened completes without waiting for the stopped runtime
+    // (service/ui.uc).
+    if (reload_skipped_after_stop(reason))
+        return 0;
+
     if (as_string(getenv("FORKOP_UI_ACTION_TRACKED") || "0") == "1") {
         let status = reload(reason);
         module_success(LIB_DIR + "/diagnostics/health.uc", [ "record", "reload", status == 0 ? "success" : "failure" ]);

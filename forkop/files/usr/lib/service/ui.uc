@@ -14,6 +14,9 @@ const UI_UC = LIB_DIR + "/service/ui.uc";
 const STATE_DIR = getenv("FORKOP_UI_STATE_DIR") || "/var/run/forkop/ui-state";
 const PENDING_RELOAD_FILE = getenv("FORKOP_PENDING_RELOAD_FILE") || "/var/run/forkop/reload.pending";
 const START_IN_PROGRESS_FILE = getenv("FORKOP_START_IN_PROGRESS_FILE") || "/var/run/forkop/start.in-progress";
+// An explicit stop (service/initd.uc, service/lifecycle.uc; UC-012).
+const STOP_REQUESTED_FILE = getenv("FORKOP_STOP_REQUESTED_FILE") ||
+    (getenv("FORKOP_RUNTIME_STATE_DIR") || "/var/run/forkop") + "/stop.requested";
 const SERVICE_ACTION_DIR = getenv("FORKOP_UI_SERVICE_ACTION_DIR") || STATE_DIR + "/service-actions";
 const SERVICE_ACTION_LOCK_DIR = getenv("FORKOP_UI_SERVICE_ACTION_LOCK_DIR") || STATE_DIR + "/service-actions.lock";
 const LATENCY_ACTION_DIR = getenv("FORKOP_UI_LATENCY_ACTION_DIR") || STATE_DIR + "/latency-actions";
@@ -1306,6 +1309,15 @@ function finish_service_action_after_command(action, job_id_value, status, spawn
         return 0;
     }
 
+    // A reload after an explicit stop that left the runtime stopped: a
+    // background reload skipped under reload.lock (service/lifecycle.uc).
+    // Nothing is left to wait for, and no queued reload is applied on its
+    // behalf (UC-012).
+    if (action == "reload" && fs.stat(STOP_REQUESTED_FILE) != null && !forkop_running()) {
+        write_finished_action_state(path, true, "Service reload completed", 0);
+        return 0;
+    }
+
     // A disabled service may well be stopped, but a start or restart that
     // left no runtime did not complete (UC-013).
     if (action != "start" && action != "restart" && !service_enabled() && !forkop_running()) {
@@ -1579,7 +1591,7 @@ else if (mode == "service-action-finish-after-command")
 else if (mode == "service-action-wait-worker")
     service_action_wait_worker(ARGV[1], ARGV[2], ARGV[3]);
 else if (mode == "service-action-worker")
-    service_action_worker(ARGV[1], ARGV[2], ARGV[3]);
+    service_action_worker(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
 else if (mode == "service-action-async")
     service_action_async(ARGV[1]);
 else if (mode == "service-action-status")

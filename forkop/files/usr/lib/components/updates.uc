@@ -4434,7 +4434,15 @@ function subscription_update_common_locked(force, target_section, target_source_
     }
     remove_file(backup_config_path);
     subscription_discard_config_stage(staged_config_path, "");
-    if (!write_current_reload_state_clean())
+    // This update applied the sing-box configuration only. A reload queued
+    // before or during it has not been applied (init.d queues every reload
+    // while a list update runs, with or without reload.lock): recording the
+    // current configuration as applied would leave that reload nothing to do,
+    // and a list source changed during a list update would never be
+    // downloaded. The queued reload records the state once it applied it.
+    if (file_exists_value(PENDING_RELOAD_FILE))
+        log_message("A queued reload has not been applied yet; leaving the recorded reload state to it", "info");
+    else if (!write_current_reload_state_clean())
         return false;
 
     let proxy_signature_after = current_proxy_outbounds_signature(sing_box_config_path);

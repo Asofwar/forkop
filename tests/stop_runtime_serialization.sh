@@ -213,6 +213,10 @@ if (mode == "forkop-running" || mode == "forkop-stably-running")
     exit(trim(fs.readfile(getenv("SING_BOX_STATE")) ?? "") == "running" && fs.stat(getenv("NFT_TABLE_FILE")) != null ? 0 : 1);
 if (mode == "sing-box-process-conflict")
     exit(getenv("FAKE_CONFLICT") == "1" ? 0 : 1);
+if (mode == "sing-box-service-running") {
+    ev("state " + mode);
+    exit(trim(fs.readfile(getenv("SING_BOX_STATE")) ?? "") == "running" ? 0 : 1);
+}
 ev("state " + mode);
 exit(0);
 UC
@@ -348,6 +352,7 @@ finish "subscription update" "$UPDATE_PID" "$WORK_DIR/update.out"
 finish "stop" "$STOP_PID" "$WORK_DIR/stop.out"
 before "update end" "stop begin (locked)" || fail "stop did not run inside reload.lock after the update"
 no_event '^singbox configure-service$' || fail "the update reconfigured the sing-box service after the stop request"
+no_event '^state mark-pending-reload$' || fail "the update queued a reload for a runtime that is being stopped"
 assert_stopped_for_good "stop during subscription update"
 
 # 1b. The stop request arrives after the update has decided to apply, while
@@ -397,6 +402,7 @@ grep -q 'stop did not get the runtime lock' "$WORK_DIR/syslog" ||
   fail "stop without reload.lock was not logged"
 touch "$WORK_DIR/update.gate"
 finish "subscription update after the stop" "$UPDATE_PID" "$WORK_DIR/update.out"
+no_event '^state mark-pending-reload$' || fail "an update that outlived a stop queued a reload"
 assert_stopped_for_good "update that outlived a stop"
 
 # 3. A forced update while Forkop is not running at all (never started,
@@ -409,7 +415,25 @@ has_event '^update end$' || fail "the update did not refresh the subscription ca
 no_event '^start-managed$' || fail "an update started sing-box for a stopped Forkop"
 no_event '^singbox configure-service$' || fail "an update reconfigured the sing-box service for a stopped Forkop"
 no_event '^priority start-runtime$' || fail "an update started Priority for a stopped Forkop"
+no_event '^state mark-pending-reload$' || fail "an update queued a reload that would start a stopped Forkop"
 [ "$(cat "$SING_BOX_STATE")" = stopped ] || fail "an update left sing-box running for a stopped Forkop"
+
+# 3b. A running Forkop whose table check fails (a transient nft error) when
+#     the update decides whether to apply: the committed cache is not
+#     silently left unapplied (the next scheduled update finds nothing new);
+#     a reload is queued for when the update releases its locks. The update
+#     itself does not touch sing-box.
+reset_case
+runtime_up
+: >"$NFT_TABLE_FILE.list-fails"
+UPDATE_GATE="" launch_update
+finish "subscription update with a failing table check" "$UPDATE_PID" "$WORK_DIR/update.out"
+has_event '^state mark-pending-reload$' || fail "an update that could not check the runtime left its cache unapplied"
+before "state mark-pending-reload" "state run-pending-reload-if-requested" ||
+  fail "the queued reload was not handed over after the update"
+no_event '^stop-managed$' || fail "an update that could not check the runtime changed sing-box"
+grep -q 'runtime could not be checked' "$WORK_DIR/syslog" || fail "the unapplied update was not logged"
+rm -f "$NFT_TABLE_FILE.list-fails"
 
 # 4. Control: a running Forkop still gets the new configuration applied.
 reset_case

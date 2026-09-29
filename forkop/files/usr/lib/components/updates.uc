@@ -4257,6 +4257,16 @@ function subscription_update_common_locked(force, target_section, target_source_
     // The cache is what the next start reads; the runtime of a stopped Forkop
     // is not brought up for it.
     if (!subscription_runtime_start_allowed()) {
+        // A sing-box that runs without an explicit stop, although the table
+        // check failed (a transient nft error): the committed cache would
+        // stay unapplied, since the next update finds nothing new. A queued
+        // reload applies it once this update has released its locks; it
+        // leaves a runtime that is stopped meanwhile alone.
+        if (!subscription_stop_requested() && service_state_success([ "sing-box-service-running" ])) {
+            mark_pending_reload("subscription_update");
+            log_message("Subscription cache was updated, but the Forkop runtime could not be checked; a reload was queued to apply it", "warn");
+            return true;
+        }
         log_message("Subscription cache was updated; Forkop is stopped, so its runtime was left unchanged", "info");
         return true;
     }

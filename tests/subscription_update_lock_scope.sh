@@ -86,8 +86,9 @@ state() { ucode -L "$LIB" "$LIB/service/state.uc" "$@"; }
 events_with() { grep -c -- "$1" "$EVENTS" 2>/dev/null || true; }
 cached_host() { grep -o '@[a-z0-9]*\.example\.com' "$SUBS/alpha-subscription-1.json" 2>/dev/null | head -n 1 || true; }
 
-# run_case URL: a forced update of rule alpha while another lifecycle holds
-# reload.lock; starts the update in the background.
+# start_case URL [SOURCE_INDEX]: a forced update of rule alpha (or of one of
+# its sources) while another lifecycle holds reload.lock; starts the update in
+# the background.
 start_case() {
   : >"$EVENTS"
   rm -rf "$WORK_DIR/sing-box" "$WORK_DIR/persistent" "${RUN:?}"/*
@@ -120,7 +121,7 @@ UCI
     FORKOP_HISTORY_FILE="$WORK_DIR/history.jsonl" \
     SB_VARIANT_STATE_FILE="$WORK_DIR/sing-box-variant" \
     SB_VERSION_STATE_FILE="$WORK_DIR/sing-box-version" \
-    ucode -L "$LIB" "$LIB/components/updates.uc" subscription-update alpha >"$WORK_DIR/update.log" 2>&1 &
+    ucode -L "$LIB" "$LIB/components/updates.uc" subscription-update alpha "${2:-}" >"$WORK_DIR/update.log" 2>&1 &
   UPDATE=$!
   pids+=("$UPDATE")
 }
@@ -179,5 +180,16 @@ finish_case
 [ "$UPDATE_STATUS" = 0 ] || fail "the subscription update of a changed source failed: $(cat "$WORK_DIR/update.log")"
 [ "$(cached_host)" = "@bravo.example.com" ] || fail "a response fetched for a replaced source was committed"
 grep -qx 'curl https://sub.test/bravo lock=update' "$EVENTS" || fail "the changed source was not downloaded"
+
+# 4. An update of an invalid source index, which the update refuses, fetches
+#    nothing beforehand.
+start_case "https://sub.test/alpha" x
+wait_until 30 pgrep -f "acquire-runtime-dir-lock-wait $RELOAD_LOCK" >/dev/null ||
+  fail "the update of an invalid source did not reach reload.lock"
+finish_case
+[ "$UPDATE_STATUS" != 0 ] || fail "the update of an invalid source index reported success"
+if grep -q '^curl ' "$EVENTS"; then
+  fail "the update of an invalid source index downloaded"
+fi
 
 printf 'subscription update lock scope checks passed\n'

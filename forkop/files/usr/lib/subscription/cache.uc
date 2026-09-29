@@ -2263,6 +2263,9 @@ function subscription_prefetch_request(force_value, target_section_name, target_
     target_section_name = as_string(target_section_name);
     let selected_index = as_string(target_source_index) != "" ? source_index_number(target_source_index) : null;
     let index = [];
+    // The update refuses an invalid source index without downloading.
+    if (as_string(target_source_index) != "" && selected_index == null)
+        sections = [];
     for (let section in sections) {
         section = object_or_empty(section);
         if (target_section_name != "" && section_name(section) != target_section_name)

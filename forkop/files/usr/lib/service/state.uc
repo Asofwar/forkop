@@ -469,16 +469,6 @@ function pid_has_deleted_sing_box_exe(pid) {
     return sing_box_exe_kind(command_trimmed_output_from_args([ "readlink", "/proc/" + pid + "/exe" ])) == "deleted";
 }
 
-function hup_sing_box_runtime() {
-    let pid = sing_box_service_pid_runtime();
-    if (pid <= 0 || !pid_is_sing_box(pid))
-        exit(1);
-
-    command_success_from_args([ "logger", "-t", "forkop", "[info] Applying DNS failover with sing-box SIGHUP reload" ]);
-    if (!command_success_from_args([ "kill", "-HUP", as_string(pid) ]))
-        exit(1);
-}
-
 function process_start_ticks(stat) {
     let fields = process_identity.stat_fields(stat);
     if (fields == null || length(fields) < 20)
@@ -2060,8 +2050,6 @@ else if (mode == "start-managed-sing-box-runtime")
     exit(start_managed_sing_box_and_verify(ARGV[1]) ? 0 : 1);
 else if (mode == "controlled-replace-managed-sing-box-runtime")
     exit(controlled_replace_managed_sing_box_runtime(ARGV[1]) ? 0 : 1);
-else if (mode == "hup-sing-box-runtime")
-    hup_sing_box_runtime();
 else if (mode == "single-ready-sing-box-runtime")
     exit(single_ready_sing_box_runtime() ? 0 : 1);
 else if (mode == "clear-reload-state")

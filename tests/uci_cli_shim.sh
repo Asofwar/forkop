@@ -6,7 +6,8 @@ set -euo pipefail
 # (selected by tests/helpers/uci_cli/select.sh). Its behaviour on the subset
 # Forkop uses is pinned here to a transcript recorded with the real CLI
 # (tests/fixtures/uci_cli/transcript.txt, uci 74f6277a, 2026-03-12); with a
-# real uci on PATH the transcript is checked against it as well. Calls
+# real uci on PATH the transcript is checked against it as well (a failure
+# only with FORKOP_TEST_UCI_CLI=real, which pins that revision). Calls
 # outside the subset must fail loudly and fail the test that made them, and
 # the selection must name a missing or broken tool.
 
@@ -219,10 +220,32 @@ fi
 transcript "$SHIM" "$WORK/shim" >"$WORK/shim.txt"
 diff -u "$GOLDEN" "$WORK/shim.txt" >&2 || fail "the uci shim differs from the transcript of the real uci CLI"
 ok "the shim reproduces the recorded transcript of the real uci CLI"
-if REAL="$(command -v uci)"; then
+# The transcript is re-checked against a real uci on PATH. Only
+# FORKOP_TEST_UCI_CLI=real (a pinned uci, as in the CI proposal) makes a
+# difference a failure: another uci revision on a developer host may word its
+# errors differently, which says nothing about the shim.
+REAL=""
+case "${FORKOP_TEST_UCI_CLI:-auto}" in
+  auto) REAL="$(command -v uci 2>/dev/null || true)" ;;
+  real)
+    REAL="$(command -v uci 2>/dev/null)" ||
+      fail "FORKOP_TEST_UCI_CLI=real: the OpenWrt uci CLI (uci -c/-t) is not on PATH"
+    ;;
+  shim) ;;
+  *) fail "FORKOP_TEST_UCI_CLI must be auto, real or shim, not '${FORKOP_TEST_UCI_CLI}'" ;;
+esac
+if [ -n "$REAL" ]; then
   transcript "$REAL" "$WORK/real" >"$WORK/real.txt"
-  diff -u "$GOLDEN" "$WORK/real.txt" >&2 || fail "the real uci CLI ($REAL) differs from the recorded transcript"
-  ok "the recorded transcript matches the real uci CLI ($REAL)"
+  if diff -u "$GOLDEN" "$WORK/real.txt" >"$WORK/real.diff"; then
+    ok "the recorded transcript matches the real uci CLI ($REAL)"
+  else
+    cat "$WORK/real.diff" >&2
+    [ "${FORKOP_TEST_UCI_CLI:-auto}" != real ] ||
+      fail "the real uci CLI ($REAL) differs from the recorded transcript"
+    printf 'NOTE: the uci CLI on PATH (%s) differs from the transcript recorded with uci 74f6277a; FORKOP_TEST_UCI_CLI=real makes this a failure, FORKOP_TEST_UCI_RECORD=1 records it again\n' "$REAL"
+  fi
+elif [ "${FORKOP_TEST_UCI_CLI:-auto}" = shim ]; then
+  printf 'NOTE: FORKOP_TEST_UCI_CLI=shim, the transcript is not re-checked against a real uci CLI\n'
 else
   printf 'NOTE: no OpenWrt uci CLI on PATH, the transcript is not re-checked against it\n'
 fi

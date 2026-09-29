@@ -17,7 +17,7 @@
 
 **Проблема.** `backend-ci.yml` собирает только ucode (`-DUCI_SUPPORT=OFF`); `autotune/manager.uc` пишет политику и цели через `uci -c DIR -t SAVEDIR set/delete/commit`. До S0 пять тестов autotune падали на первом `policy-set` с пустым выводом.
 
-**Вариант A (рекомендуется): настоящий uci в CI.** Шаг собирает libubox и uci из зеркал `github.com/openwrt/*` на тех коммитах, на которых записан транскрипт (`libubox e7608b69`, `uci 74f6277a` от 2026-03-12). Зависимости (`build-essential cmake git libjson-c-dev pkg-config`) уже ставит шаг ucode. `FORKOP_TEST_UCI_CLI=real` в шаге тестов запрещает тихий откат на замену: если сборка uci сломается, тесты autotune упадут с сообщением `FAIL: FORKOP_TEST_UCI_CLI=real: the OpenWrt uci CLI (uci -c/-t) is not on PATH`. `tests/uci_cli_shim.sh` при этом сверяет транскрипт и с настоящим uci (`OK: the recorded transcript matches the real uci CLI`).
+**Вариант A (рекомендуется): настоящий uci в CI.** Шаг собирает libubox и uci из зеркал `github.com/openwrt/*` на тех коммитах, на которых записан транскрипт (`libubox e7608b69`, `uci 74f6277a` от 2026-03-12). Зависимости (`build-essential cmake git libjson-c-dev pkg-config`) уже ставит шаг ucode. `FORKOP_TEST_UCI_CLI=real` в шаге тестов запрещает тихий откат на замену: если сборка uci сломается, тесты autotune упадут с сообщением `FAIL: FORKOP_TEST_UCI_CLI=real: the OpenWrt uci CLI (uci -c/-t) is not on PATH`. `tests/uci_cli_shim.sh` при этом сверяет транскрипт и с настоящим uci (`OK: the recorded transcript matches the real uci CLI`); расхождение с ним — провал только при `FORKOP_TEST_UCI_CLI=real`, то есть на закреплённой ревизии. В режиме по умолчанию (`auto`) другая ревизия uci на машине разработчика даёт diff и `NOTE`, а не провал: замена по-прежнему сверяется с записанным транскриптом.
 
 **Вариант B: без uci в CI.** Правка `backend-ci.yml` для uci не нужна, тесты проходят через замену. Минус: семантика настоящего CLI в CI не проверяется, а транскрипт сверяется только с заменой. Годится как временное состояние до PR.
 
@@ -169,7 +169,7 @@
 ## 6. Проверка в самом CI PR
 
 1. Backend CI зелёный; в логе шага сборки `command -v uci` печатает `/usr/local/bin/uci`, а `tests/uci_cli_shim.sh` — `OK: the recorded transcript matches the real uci CLI (/usr/local/bin/uci)`.
-2. Негативная проверка (временный коммит в PR): без шага `Build OpenWrt uci CLI` пять тестов autotune падают с `FAIL: FORKOP_TEST_UCI_CLI=real: the OpenWrt uci CLI (uci -c/-t) is not on PATH`, а не с пустым выводом.
+2. Негативная проверка (временный коммит в PR): без шага `Build OpenWrt uci CLI` пять тестов autotune и `tests/uci_cli_shim.sh` падают с `FAIL: FORKOP_TEST_UCI_CLI=real: the OpenWrt uci CLI (uci -c/-t) is not on PATH`, а не с пустым выводом.
 3. PR, меняющий только `luci-app-forkop/root/usr/share/rpcd/acl.d/luci-app-forkop.json`, запускает Backend CI (UC-048).
 4. PR в `main`, меняющий только `forkop/files/usr/lib/full-uninstall.sh` или `forkop/files/usr/libexec/forkop-ro`, запускает ShellCheck, и в списке проверенных есть `forkop-ro` (UC-153).
 

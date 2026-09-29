@@ -1586,7 +1586,10 @@ function subscription_curl_args(url, filepath, http_proxy_address, headers_filep
 // download_subscription() would have returned it: its status, the body in
 // filepath and the headers in headers_filepath. null when the prefetch did
 // not make this very request (the source or its profile changed meanwhile):
-// the caller downloads it then. A failed request is not repeated.
+// the caller downloads it then. A failed request is not repeated, unless it
+// went through the sing-box service proxy: a start, reload or DNS failover
+// may have been restarting sing-box, which the update used to wait for on
+// reload.lock, and the update now holds that lock.
 function prefetched_subscription(url, filepath, http_proxy_address, headers_filepath, effective_user_agent, effective_hwid) {
     if (SUBSCRIPTION_PREFETCH_DIR == "")
         return null;
@@ -1597,7 +1600,7 @@ function prefetched_subscription(url, filepath, http_proxy_address, headers_file
             entry.user_agent !== as_string(effective_user_agent) || entry.hwid !== as_string(effective_hwid))
             continue;
         if (int(entry.status) != 0)
-            return int(entry.status);
+            return entry.proxy != "" ? null : int(entry.status);
 
         let body = SUBSCRIPTION_PREFETCH_DIR + "/" + as_string(entry.body);
         if (!file_nonempty(body) || !copy_file(body, filepath))
@@ -1705,12 +1708,20 @@ function subscription_config_is_current(section_name_value, subscription_url, su
     return false;
 }
 
-function get_subscription_download_proxy_address(section_name_value, sections, parsed, phase) {
+// The port of the sing-box service proxy through which a source downloads
+// (another rule's outbound), or 0 when it downloads directly.
+function subscription_service_proxy_port(section_name_value, sections, parsed) {
     let download_section = as_string(object_or_empty(parsed).download_section);
     if (download_section == "" || download_section == as_string(section_name_value))
-        return "";
+        return 0;
 
     let port = connections.subscription_download_target_port(sections, download_section, int(SB_SERVICE_MIXED_INBOUND_PORT));
+    return port > 0 ? port : 0;
+}
+
+function get_subscription_download_proxy_address(section_name_value, sections, parsed, phase) {
+    let download_section = as_string(object_or_empty(parsed).download_section);
+    let port = subscription_service_proxy_port(section_name_value, sections, parsed);
     if (port <= 0)
         return "";
 
@@ -2212,8 +2223,15 @@ function prefetch_subscription_source(dir, index, sections, section, source_inde
     if (type(parsed) != "object" || parsed.valid !== true)
         return;
 
+    // A source that downloads through the sing-box service proxy is not
+    // fetched while that proxy is down: the fetch would go around the
+    // configured proxy, directly, and a start, reload or DNS failover may be
+    // restarting sing-box. The update decides about it under reload.lock.
     let source_section = source_id(section_name_value, source_index);
-    let proxy = get_subscription_download_proxy_address(section_name_value, sections, parsed, "runtime");
+    let proxy_port = subscription_service_proxy_port(section_name_value, sections, parsed);
+    if (proxy_port > 0 && !sing_box_service_running())
+        return;
+    let proxy = proxy_port > 0 ? SB_SERVICE_MIXED_INBOUND_ADDRESS + ":" + as_string(proxy_port) : "";
     let default_user_agent = get_subscription_user_agent("");
     let parser = subscription_parser();
     for (let user_agent in user_agent_candidates(parsed.user_agent,

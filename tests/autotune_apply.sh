@@ -397,6 +397,45 @@ reset_apply; plan_ready; export PROD_PLAN=reset; echo "0 1 1" > "$STATE/reload.p
 json 'a.equal(r.status, "needs_attention"); a.equal(r.rollback.status, "needs_attention"); a.equal(r.applied, false);' "$WORK/out.json"
 ok "13 rollback reaching needs_attention -> needs_attention, no further mutation"
 
+# 13a. A lifecycle action (list update) takes reload.lock right after the
+#      candidate reload and holds it through verification: verification fails
+#      (no_service_action) and the rollback restore is refused busy. The
+#      rollback waits for the action to end instead of leaving the unverified
+#      candidate in place, then restores the pre-apply snapshot.
+cat > "$WORK/reload-then-lock" <<'SH'
+#!/usr/bin/env bash
+"$WORK_RELOAD" "$@"; rc=$?
+if [ ! -e "$STATE/lock-taken" ]; then
+  touch "$STATE/lock-taken"
+  mkdir -p "$FORKOP_RELOAD_LOCK_DIR"
+  sleep 300 >/dev/null 2>&1 </dev/null &
+  echo "$!" > "$FORKOP_RELOAD_LOCK_DIR/pid"
+fi
+exit $rc
+SH
+chmod +x "$WORK/reload-then-lock"
+holder() { cat "$FORKOP_RELOAD_LOCK_DIR/pid" 2>/dev/null || true; }
+reset_apply; plan_ready; rm -f "$STATE/lock-taken"
+# The action ends a moment after the rollback started.
+( for _ in $(seq 1 300); do grep -q '"phase": "rolling_back"' "$FORKOP_AUTOTUNE_APPLY_STATE" 2>/dev/null && break; sleep 0.1; done
+  sleep 1; kill "$(holder)" 2>/dev/null || true ) &
+watcher=$!
+WORK_RELOAD="$WORK/reload" FORKOP_RELOAD_COMMAND="$WORK/reload-then-lock" at apply "$WORK/plan.json"
+kill "$watcher" "$(holder)" 2>/dev/null || true; wait "$watcher" 2>/dev/null || true
+json '
+a.equal(r.status, "rolled_back", JSON.stringify(r).slice(0, 600)); a.equal(r.reason, "verification_failed");
+a.ok(r.verification.checks.some((c) => c.name === "no_service_action" && !c.ok));
+a.equal(r.rollback.status, "success"); a.equal(r.rollback.lkg_is_pre_snapshot, true); a.ok(r.rollback.runtime.ok);
+' "$WORK/out.json"
+{ [ "$(chash)" = "$PRE_HASH" ] && [ ! -e "$NFT_STATE/tables/ForkopConfigRestoreDpiGuard" ]; } || fail "busy rollback did not restore the pre-apply state"
+[ "$(dpi_args)" = "$ZAPRET_NFQWS_BIN --qnum=4000 --dpi-desync-fwmark=0x40000000 $FAKE " ] || fail "busy rollback left the candidate runtime"
+# The wait is bounded: an action that outlasts it leaves needs_attention.
+reset_apply; plan_ready; rm -f "$STATE/lock-taken"
+WORK_RELOAD="$WORK/reload" FORKOP_RELOAD_COMMAND="$WORK/reload-then-lock" FORKOP_AUTOTUNE_ROLLBACK_WAIT_SECONDS=1 at apply "$WORK/plan.json"
+kill "$(holder)" 2>/dev/null || true
+json 'a.equal(r.status, "needs_attention"); a.equal(r.reason, "verification_failed:rollback_busy"); a.equal(r.rollback.reason, "service_action_in_progress");' "$WORK/out.json"
+ok "13a verification failed under a lifecycle action -> rollback waits for it (bounded) and restores the pre-apply snapshot"
+
 # 22. direct never mutates production
 reset_apply; selection direct; at plan "$WORK/selection.json"
 json 'a.equal(r.status, "direct_not_applicable"); a.equal(r.changes, undefined);' "$WORK/out.json"

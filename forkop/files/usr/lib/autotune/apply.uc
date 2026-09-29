@@ -62,6 +62,7 @@ const PROD_TABLE = constants.NFT_TABLE_NAME;
 const PROBE_TABLE = "ForkopAutotuneProbe";
 const GUARD_TABLES = [ "ForkopConfigRestoreDpiGuard", PROD_TABLE + "DpiGuard" ];
 const VERIFY_PROBES = 3;
+const ROLLBACK_WAIT_SECONDS = int(getenv("FORKOP_AUTOTUNE_ROLLBACK_WAIT_SECONDS") || "300");
 const TERMINAL_PHASES = [ "applied", "rolled_back", "failed", "stale", "no_change_required", "needs_attention" ];
 
 let interrupted = false;
@@ -599,6 +600,15 @@ function rollback_to(audit, p, why) {
     audit.phase = "rolling_back";
     state_write(audit);
     let restored = snapshots([ "restore", audit.pre_snapshot ]);
+    // A lifecycle action that owns the reload lock (a list update, say, which
+    // also fails verification's no_service_action) refuses the restore
+    // unchanged. An automatic rollback waits for it, bounded, instead of
+    // leaving the unverified candidate in place without a guard.
+    for (let waited = 0; why != "operator_rollback" && restored.status == "busy" &&
+        restored.reason == "service_action_in_progress" && waited < ROLLBACK_WAIT_SECONDS && !interrupted; waited++) {
+        system("sleep 1");
+        if (service_action() != "service_action_in_progress") restored = snapshots([ "restore", audit.pre_snapshot ]);
+    }
     audit.rollback = { status: restored.status, reason: restored.reason || null, guard: restored.guard || null };
     if (restored.status != "success" && why == "operator_rollback" && length(guards_present()) == 0 &&
         diagnose(audit).diagnosis == "candidate_active") {

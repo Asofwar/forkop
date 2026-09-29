@@ -11,7 +11,9 @@
 # starts, so a missing or broken tool fails here with its name, not as an
 # empty failure deep inside the test. Calls the shim refuses during the test
 # are collected in FORKOP_TEST_UCI_SHIM_LOG; uci_cli_report (EXIT trap)
-# prints them.
+# prints them and returns 1, and the trap must then fail the test even where
+# the test tolerated the failing call (tests/uci_cli_shim.sh checks every
+# test that sources this file).
 
 UCI_CLI_SHIM="$ROOT_DIR/tests/helpers/uci_cli/uci"
 export FORKOP_TEST_UCI_SHIM_LOG="$WORK/uci-shim.log"
@@ -20,6 +22,7 @@ uci_cli_report() {
   if [ -s "$FORKOP_TEST_UCI_SHIM_LOG" ]; then
     printf 'FAIL: the uci test shim refused a call:\n' >&2
     cat "$FORKOP_TEST_UCI_SHIM_LOG" >&2
+    return 1
   fi
 }
 

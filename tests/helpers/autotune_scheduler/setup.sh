@@ -7,12 +7,16 @@ REAL_LIB="$ROOT_DIR/forkop/files/usr/lib"
 STUBS="$ROOT_DIR/tests/helpers/autotune_scheduler"
 WORK="$(mktemp -d)"
 BG_PIDS=()
+# A call the uci test shim refused fails the test, even one it tolerated.
 cleanup() {
+  local rc=$? pid
   for pid in "${BG_PIDS[@]}"; do kill -9 "$pid" 2>/dev/null || true; done
-  uci_cli_report
+  uci_cli_report || [ "$rc" != 0 ] || rc=1
   rm -rf "$WORK"
+  exit "$rc"
 }
-trap cleanup EXIT HUP INT TERM
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 # The manager writes policy and targets through the uci CLI (UC-009).
 # shellcheck source=tests/helpers/uci_cli/select.sh

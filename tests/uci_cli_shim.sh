@@ -7,8 +7,8 @@ set -euo pipefail
 # Forkop uses is pinned here to a transcript recorded with the real CLI
 # (tests/fixtures/uci_cli/transcript.txt, uci 74f6277a, 2026-03-12); with a
 # real uci on PATH the transcript is checked against it as well. Calls
-# outside the subset must fail loudly, and the selection must name a missing
-# or broken tool.
+# outside the subset must fail loudly and fail the test that made them, and
+# the selection must name a missing or broken tool.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SHIM="$ROOT_DIR/tests/helpers/uci_cli/uci"
@@ -300,3 +300,44 @@ case "$got" in *"FAIL: the uci test shim needs ucode on PATH"*) ;; *) fail "the 
 got="$(select_cli bogus "$WORK/nouci")"
 case "$got" in *"FAIL: FORKOP_TEST_UCI_CLI must be auto, real or shim"*) ;; *) fail "unknown mode: $got" ;; esac
 ok "the selection names a missing or broken uci CLI"
+
+# ---- a refused call fails the test, even where the test tolerates it -----------
+
+# Every test that sources select.sh sets its EXIT trap first. Its prologue (up
+# to that source line) runs here with a body whose failing uci call the test
+# would tolerate (`|| true`, a negative check): the refusal the shim logged
+# must still fail the test, and WORK must still be removed.
+# shellcheck disable=SC2016 # a literal $ROOT_DIR in the pattern
+users="$(grep -rlE '^source "\$ROOT_DIR/tests/helpers/uci_cli/select\.sh"$' "$ROOT_DIR/tests" | LC_ALL=C sort)"
+[ -n "$users" ] || fail "no test sources select.sh: the check lost its anchor"
+mkdir -p "$WORK/refusal/host"
+# shellcheck disable=SC2016 # literal $ROOT_DIR and $WORK for the generated test
+with_prologue() { # with_prologue <test file> <body>: runs it, sets RUN_RC and RUN_OUT
+  local script="$WORK/refusal/test.sh"
+  {
+    printf 'set -euo pipefail\nROOT_DIR=%q\n' "$ROOT_DIR"
+    sed -e '/^ROOT_DIR=/d' -e '/^source "\$ROOT_DIR\/tests\/helpers\/uci_cli\/select\.sh"$/q' "$1"
+    printf 'printf "%%s\\n" "$WORK" >%q\n%s\n' "$WORK/refusal/work" "$2"
+  } >"$script"
+  rm -f "$WORK/refusal/work"
+  RUN_RC=0
+  RUN_OUT="$(env -u FORKOP_AUTOTUNE_UCI FORKOP_TEST_UCI_CLI=shim \
+    FORKOP_TEST_UCI_SHIM_HOST_SAVEDIR="$WORK/refusal/host" bash "$script" 2>&1)" || RUN_RC=$?
+  [ -s "$WORK/refusal/work" ] || fail "${1#"$ROOT_DIR"/}: the body did not run: $RUN_OUT"
+  [ ! -e "$(cat "$WORK/refusal/work")" ] || fail "${1#"$ROOT_DIR"/}: WORK was not removed at exit"
+}
+# shellcheck disable=SC2016 # expanded by the test body
+refused='if "$FORKOP_AUTOTUNE_UCI" -c "$WORK" -t "$WORK/uci-save" rename forkop.yt=other 2>/dev/null; then exit 3; fi'
+for file in $users; do
+  name="${file#"$ROOT_DIR"/}"
+  with_prologue "$file" "$refused"$'\nexit 0'
+  [ "$RUN_RC" = 1 ] || fail "$name: a tolerated refused call must fail the test, exit $RUN_RC: $RUN_OUT"
+  case "$RUN_OUT" in *"FAIL: the uci test shim refused a call"*"unsupported command 'rename'"*) ;;
+    *) fail "$name: the refusal is not reported: $RUN_OUT" ;; esac
+  with_prologue "$file" "$refused"$'\nexit 3'
+  [ "$RUN_RC" = 3 ] || fail "$name: a failing test must keep its exit status, exit $RUN_RC: $RUN_OUT"
+  with_prologue "$file" 'exit 0'
+  [ "$RUN_RC" = 0 ] || fail "$name: a passing test without refusals must pass, exit $RUN_RC: $RUN_OUT"
+  case "$RUN_OUT" in *FAIL*) fail "$name: no refusal, yet: $RUN_OUT" ;; esac
+done
+ok "a call the shim refused fails the test that tolerated it"

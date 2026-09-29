@@ -10,7 +10,15 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB="$ROOT_DIR/forkop/files/usr/lib"
 WORK="$(mktemp -d)"
-trap 'uci_cli_report; rm -rf "$WORK"' EXIT HUP INT TERM
+# A call the uci test shim refused fails the test, even one it tolerated.
+cleanup() {
+  local rc=$?
+  uci_cli_report || [ "$rc" != 0 ] || rc=1
+  rm -rf "$WORK"
+  exit "$rc"
+}
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
 # Policy and targets are written through the uci CLI (UC-009).
 # shellcheck source=tests/helpers/uci_cli/select.sh
 source "$ROOT_DIR/tests/helpers/uci_cli/select.sh"

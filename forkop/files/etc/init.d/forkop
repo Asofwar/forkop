@@ -36,8 +36,14 @@ start_service() {
     # timeout. Detach the tracked worker and let rcS continue; LuCI reports the
     # action as "starting" until service/initd.uc completes it. This shell
     # exits as soon as start_service returns, so the worker owns reload.lock
-    # and the UI job under its own identity, not under $$.
+    # and the UI job under its own identity, not under $$. Its outcome is not
+    # known here: callers that act on it use service/initd.uc start-and-wait.
+    # Only a worker that cannot be launched at all fails this call.
     if [ -e "/proc/$$/fd/1000" ]; then
+        if [ ! -r "$FORKOP_INITD_UC" ]; then
+            FORKOP_LAST_START_STATUS=1
+            return 1
+        fi
         initd_ucode start-service "$1" </dev/null >/dev/null 2>&1 1000>&- &
         FORKOP_LAST_START_STATUS=0
         return 0

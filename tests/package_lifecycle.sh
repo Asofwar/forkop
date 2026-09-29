@@ -239,14 +239,25 @@ FORKOP_RT_TABLES="$WORK_DIR/rt_tables_restore" \
 grep -Fxq 'restore_dnsmasq' "$WORK_DIR/restore.log" ||
   fail "package prerm must restore dnsmasq when dont_touch_dhcp is disabled"
 
+# init.d under procd accepts the start at once; its detached worker reports
+# the outcome to the waiting postinst (service/initd.uc start-and-wait).
 cat >"$WORK_DIR/upgrade-init" <<'SH'
 #!/usr/bin/env bash
 case "$1" in
   status) exit "${FORKOP_FAKE_STATUS:-0}" ;;
-  start) printf '%s\n' start >>"${FORKOP_START_LOG:?}" ;;
+  start)
+    printf '%s\n' start >>"${FORKOP_START_LOG:?}"
+    [ -z "${FORKOP_START_REQUEST:-}" ] ||
+      printf 'status=0\n' >"$FORKOP_RUNTIME_STATE_DIR/start-result.$FORKOP_START_REQUEST"
+    ;;
 esac
 SH
-chmod 0755 "$WORK_DIR/upgrade-init"
+cat >"$WORK_DIR/upgrade-forkop" <<'SH'
+#!/bin/sh
+[ "$1" != get_status ] || printf '{"running":1}\n'
+SH
+chmod 0755 "$WORK_DIR/upgrade-init" "$WORK_DIR/upgrade-forkop"
+mkdir -p "$WORK_DIR/upgrade-run"
 : >"$WORK_DIR/upgrade-start.log"
 : >"$WORK_DIR/rt_tables_upgrade"
 FORKOP_PACKAGE_TEST_MODE=1 \
@@ -259,6 +270,10 @@ FORKOP_RT_TABLES="$WORK_DIR/rt_tables_upgrade" \
   fail "package pre-upgrade must remember a running service"
 FORKOP_PACKAGE_TEST_MODE=1 \
 FORKOP_INIT="$WORK_DIR/upgrade-init" \
+FORKOP_LIB="$FORKOP_LIB" \
+FORKOP_BIN="$WORK_DIR/upgrade-forkop" \
+FORKOP_RUNTIME_STATE_DIR="$WORK_DIR/upgrade-run" \
+FORKOP_START_WAIT_TIMEOUT_SECONDS=5 \
 FORKOP_START_LOG="$WORK_DIR/upgrade-start.log" \
 FORKOP_CONFIG_PATH="$WORK_DIR/config-forkop" \
 FORKOP_DEFAULT_CONFIG_PATH="$WORK_DIR/default-forkop" \

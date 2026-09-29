@@ -1306,7 +1306,9 @@ function finish_service_action_after_command(action, job_id_value, status, spawn
         return 0;
     }
 
-    if (!service_enabled() && !forkop_running()) {
+    // A disabled service may well be stopped, but a start or restart that
+    // left no runtime did not complete (UC-013).
+    if (action != "start" && action != "restart" && !service_enabled() && !forkop_running()) {
         write_finished_service_action_state(path, action, true, "Service " + as_string(action) + " completed", 0);
         return 0;
     }
@@ -1339,6 +1341,10 @@ function service_action_worker(path, action, job_id_value, reason) {
     reason = as_string(reason || "");
     if (reason != "")
         push(args, reason);
+    // init.d exits 0 under procd before a detached start has run: wait for
+    // the start's own result through the same init.d call (UC-013).
+    if (action == "start" || action == "restart")
+        args = [ "ucode", "-L", LIB_DIR, LIB_DIR + "/service/initd.uc", "start-and-wait", action, reason, SERVICE_ACTION_TIMEOUT_SECONDS ];
     let command = "FORKOP_UI_ACTION_TRACKED=1 " + command_from_args(args) + " >/dev/null 2>&1";
     let status = command_status(command);
     finish_service_action_after_command(action, job_id_value, status, false);

@@ -27,6 +27,12 @@ const START_RETRY_FILE = getenv("FORKOP_START_RETRY_FILE") || RUNTIME_STATE_DIR 
 const START_RETRY_PID_FILE = getenv("FORKOP_START_RETRY_PID_FILE") || RUNTIME_STATE_DIR + "/start-retry.pid";
 const START_FAILURE_FILE = getenv("FORKOP_START_FAILURE_FILE") || RUNTIME_STATE_DIR + "/start.failure";
 const START_RETRY_DELAY_SECONDS = getenv("FORKOP_START_RETRY_DELAY_SECONDS") || "30";
+// procd.sh holds its lock on fd 1000 for every init.d call, so start_service
+// detaches the start and init.d exits 0 before the start has run (UC-013). A
+// caller that needs the outcome runs start-and-wait: it passes a request id
+// (FORKOP_START_REQUEST) through init.d, and the start worker writes its
+// status to start-result.<id> in RUNTIME_STATE_DIR.
+const START_WAIT_TIMEOUT_SECONDS = getenv("FORKOP_START_WAIT_TIMEOUT_SECONDS") || "300";
 // A package upgrade can start Forkop while the previous process is still
 // completing a list-content reload.  Use the same inter-process lock as
 // reload_service() so that start never classifies that expected transient as
@@ -289,7 +295,8 @@ function schedule_start_retry(path, delay_seconds) {
     if (!ensure_parent_dir(path))
         return false;
 
-    let worker = command_from_args([ "sleep", delay_seconds ]) +
+    // The retry is not the start a start-and-wait caller waits for.
+    let worker = "unset FORKOP_START_REQUEST; " + command_from_args([ "sleep", delay_seconds ]) +
         "; " + command_from_args([ "rm", "-f", path ]) +
         "; exec " + command_from_args([ SERVICE_INIT, "retry_start_on_wan_up" ]);
     let result = command_capture(command_from_args([ "sh", "-c", worker ]) + " >/dev/null 2>&1 & echo $!");
@@ -508,11 +515,11 @@ function retry_start_on_wan_up(owner_pid) {
     // A failed cold start has no Forkop runtime to tear down. Re-enter the
     // guarded start path so foreign/ambiguous sing-box processes remain
     // untouched instead of using restart's destructive stop phase.
+    // init.d only accepts the detached start here; the start worker logs
+    // whether the runtime recovered (start_service, reason "triggered").
     let status = command_status_from_args([ SERVICE_INIT, "start", "triggered" ]);
-    if (status == 0)
-        command_success_from_args([ "logger", "-t", SERVICE_NAME, "[info] Forkop recovered automatically after a failed start" ]);
-    else
-        command_success_from_args([ "logger", "-t", SERVICE_NAME, "[error] Forkop automatic recovery attempt failed; see the preceding startup logs" ]);
+    if (status != 0)
+        command_success_from_args([ "logger", "-t", SERVICE_NAME, "[error] Forkop automatic recovery request failed with status " + status ]);
     return status;
 }
 
@@ -593,6 +600,38 @@ function start_plan(reason, owner_pid, settings, bin_ok) {
     shell_assignment("INITD_BIN_OK", plan.bin_ok ? "1" : "0");
 }
 
+function start_request_value() {
+    let request = as_string(getenv("FORKOP_START_REQUEST") || "");
+    return match(request, /^[A-Za-z0-9._-]+$/) != null ? request : "";
+}
+
+function start_result_path(request) {
+    return RUNTIME_STATE_DIR + "/start-result." + as_string(request);
+}
+
+// The outcome of this start for the start-and-wait caller that requested it,
+// and for the WAN-up retry (reason "triggered") in the log. Written before a
+// queued reload is drained: that reload waits for procd's lock, which the
+// caller may hold while it waits for this result.
+function report_start_result(reason, status) {
+    if (as_string(reason) == "triggered") {
+        if (status == 0)
+            command_success_from_args([ "logger", "-t", SERVICE_NAME, "[info] Forkop recovered automatically after a failed start" ]);
+        else
+            command_success_from_args([ "logger", "-t", SERVICE_NAME, "[error] Forkop automatic recovery attempt failed; see the preceding startup logs" ]);
+    }
+
+    let request = start_request_value();
+    if (request == "")
+        return;
+    let path = start_result_path(request);
+    let tmp = path + ".tmp";
+    if (!ensure_parent_dir(path) || !write_text_file(tmp, "status=" + as_string(int(status)) + "\n"))
+        return;
+    if (!fs.rename(tmp, path))
+        unlink_file(tmp);
+}
+
 // Without an owner (the detached init.d start, whose rc.common shell exits
 // at once) this process owns reload.lock and the UI job: it runs `forkop
 // start` and releases the lock itself, so the owner lives for the whole
@@ -602,17 +641,20 @@ function start_service(reason, owner_pid) {
     owner_pid = as_string(owner_pid) || owner_pid_value();
     if (!acquire_runtime_dir_lock_wait(RELOAD_LOCK_DIR, owner_pid, START_RUNTIME_LOCK_WAIT_SECONDS)) {
         command_success_from_args([ "logger", "-t", SERVICE_NAME, "[warn] Forkop start deferred because a runtime reload did not finish in time" ]);
+        report_start_result(reason, 1);
         return 1;
     }
 
     let plan = start_plan_value(reason, owner_pid, uci_settings(), null);
     if (!plan.bin_ok) {
         release_runtime_dir_lock(RELOAD_LOCK_DIR, owner_pid);
+        report_start_result(reason, 1);
         return 1;
     }
 
     let status = command_status_from_args([ BIN_PATH, "start" ]);
     release_runtime_dir_lock(RELOAD_LOCK_DIR, owner_pid);
+    report_start_result(reason, status);
     if (status == 0) {
         clear_start_retry(START_RETRY_FILE);
         cancel_scheduled_start_retry(START_RETRY_PID_FILE);
@@ -634,6 +676,55 @@ function start_service(reason, owner_pid) {
     }
     finish_external_service_action("start", plan.job_id, status);
     return status;
+}
+
+function read_start_result(path) {
+    let data = fs.readfile(path);
+    if (data == null)
+        return null;
+    let matched = match(trim(data), /^status=([0-9]+)$/);
+    return matched != null ? int(matched[1], 10) : null;
+}
+
+// Runs `init.d start|restart` and waits (bounded) for the start worker's
+// result, then checks that the runtime runs: init.d under procd returns 0
+// before the start has run. For callers that act on the outcome (component
+// actions, the package postinst, UI actions). Waiting outside init.d keeps
+// procd's lock free for the start worker and other service calls.
+function start_and_wait(action, reason, timeout) {
+    action = as_string(action);
+    if (action != "start" && action != "restart")
+        return 2;
+    timeout = as_string(timeout);
+    timeout = numeric_text(timeout) ? int(timeout, 10) : int(START_WAIT_TIMEOUT_SECONDS, 10);
+
+    let now = clock();
+    let request = sprintf("%s.%d.%09d", owner_pid_value(), now[0], now[1]);
+    let path = start_result_path(request);
+    unlink_file(path);
+
+    let args = [ "env", "FORKOP_START_REQUEST=" + request, SERVICE_INIT, action ];
+    if (as_string(reason) != "")
+        push(args, as_string(reason));
+    let status = command_status(command_from_args(args) + " </dev/null >/dev/null 2>&1");
+
+    let result = read_start_result(path);
+    let deadline = int(current_epoch(), 10) + timeout;
+    while (status == 0 && result == null && int(current_epoch(), 10) < deadline) {
+        command_success_from_args([ "sleep", "1" ]);
+        result = read_start_result(path);
+    }
+    unlink_file(path);
+
+    if (status != 0)
+        return status;
+    if (result == null) {
+        command_success_from_args([ "logger", "-t", SERVICE_NAME, "[warn] Forkop " + action + " did not report its result within " + as_string(timeout) + " s" ]);
+        return 1;
+    }
+    if (result != 0)
+        return result;
+    return runtime_is_running() ? 0 : 1;
 }
 
 function stop_plan(owner_pid, bin_ok) {
@@ -844,6 +935,8 @@ else if (mode == "start-plan")
     start_plan(ARGV[1], ARGV[2], uci_settings(), null);
 else if (mode == "start-service")
     exit(start_service(ARGV[1], ARGV[2]));
+else if (mode == "start-and-wait")
+    exit(start_and_wait(ARGV[1], ARGV[2], ARGV[3]));
 else if (mode == "start-plan-fixture") {
     let settings = {
         shutdown_correctly: ARGV[2],

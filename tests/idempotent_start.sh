@@ -190,16 +190,18 @@ for (let failed_check = 0; failed_check < 5; failed_check++) {
         "partial runtime bypassed original cold-start error handling");
 }
 
+// init.d accepts the detached retry start with 0 before it has run; only the
+// start worker knows whether Forkop recovered (UC-013, tests/start_result_wait.sh).
 reset_probe();
-check(retry_start_on_wan_up("123") == 0, "successful retry lost its status");
-check(index(join("\n", logs), "[info] Forkop recovered automatically after a failed start") >= 0,
-    "successful retry outcome is not logged");
+check(retry_start_on_wan_up("123") == 0, "accepted retry lost its status");
+check(index(join("\n", logs), "recovered automatically") < 0,
+    "an accepted retry was announced as a recovery before the start ran");
 
 reset_probe();
 retry_status = 19;
 check(retry_start_on_wan_up("123") == 19, "failed retry lost its status");
-check(index(join("\n", logs), "[error] Forkop automatic recovery attempt failed") >= 0,
-    "failed retry outcome is not logged");
+check(index(join("\n", logs), "[error] Forkop automatic recovery request failed with status 19") >= 0,
+    "failed retry request is not logged");
 
 for (let skipped in ["running", "disabled", "no-retry"]) {
     reset_probe();

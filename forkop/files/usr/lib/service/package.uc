@@ -18,6 +18,7 @@ const DEFAULT_CONFIG_PATH = env("FORKOP_DEFAULT_CONFIG_PATH", "/usr/share/forkop
 const RT_TABLES_PATH = env("FORKOP_RT_TABLES", "/etc/iproute2/rt_tables");
 const BIN_PATH = env("FORKOP_BIN", "/usr/bin/forkop");
 const INIT_PATH = env("FORKOP_INIT", "/etc/init.d/forkop");
+const LIB_DIR = env("FORKOP_LIB", "/usr/lib/forkop");
 const DNS_APPLY_UC = env("FORKOP_DNS_APPLY_UC", "/usr/lib/forkop/dns/apply.uc");
 const SING_BOX_INIT = env("FORKOP_SING_BOX_INIT", "/etc/init.d/sing-box");
 const SING_BOX_BIN = env("FORKOP_SING_BOX_BIN", "/usr/bin/sing-box");
@@ -227,8 +228,14 @@ function postinst_restore() {
         return false;
     }
 
-    if (!command_success_from_args([ INIT_PATH, "start" ]))
+    // init.d exits 0 under procd before the detached start has run; the
+    // hand-off is consumed only once the start reported success and the
+    // runtime runs (service/initd.uc start-and-wait, UC-013).
+    if (!command_success_from_args([ "env", "FORKOP_SERVICE_INIT=" + INIT_PATH,
+        "ucode", "-L", LIB_DIR, LIB_DIR + "/service/initd.uc", "start-and-wait", "start" ])) {
+        warn("Forkop did not start after the package upgrade; see the Forkop log.\n");
         return false;
+    }
 
     unlink_if_exists(PACKAGE_UPGRADE_STATE);
     return true;

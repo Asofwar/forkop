@@ -305,12 +305,19 @@ function updates_response(success, component, action, message, current_version, 
     });
 }
 
+// `init.d start|restart` exits 0 under procd before the detached start has
+// run; service/initd.uc start-and-wait waits for the start's own result and
+// then checks the runtime (UC-013).
+function forkop_start_and_wait(action) {
+    return module_success([ LIB_DIR + "/service/initd.uc", "start-and-wait", action ]);
+}
+
 function restart_forkop_after_failed_sing_box_change() {
     if (!forkop_stopped_for_sing_box_change || !forkop_was_running || !file_exists(SERVICE_INIT))
         return;
     updates_log("Restarting Forkop after failed sing-box component change");
-    if (!command_success_from_args([ SERVICE_INIT, "start" ]))
-        command_success_from_args([ SERVICE_INIT, "restart" ]);
+    if (!forkop_start_and_wait("start") && !forkop_start_and_wait("restart"))
+        updates_log("Forkop did not start again after the failed sing-box component change", "error");
 }
 
 function action_success(component, action, message, current_version, latest_version, changed, status, release_url) {
@@ -925,15 +932,20 @@ function capture_managed_upgrade_sing_box_marker() {
         updates_log("Recorded managed sing-box provenance for package upgrade");
 }
 
+// False when Forkop was running before the change and did not start again.
 function restart_forkop_after_successful_change() {
     if (!file_exists(SERVICE_INIT))
-        return;
+        return true;
     if (!forkop_was_running) {
         updates_log("Forkop was not running before component change; restart skipped");
         prepare_sing_box_service_disabled();
-        return;
+        return true;
     }
-    run_logged("Restarting Forkop after successful component change", command_from_args([ SERVICE_INIT, "restart" ]));
+    updates_log("Restarting Forkop after successful component change");
+    if (forkop_start_and_wait("restart"))
+        return true;
+    updates_log("Forkop did not start again after the component change", "error");
+    return false;
 }
 
 function stop_forkop_before_sing_box_change() {
@@ -1183,11 +1195,13 @@ function install_zapret_like(component, action, runtime_module, resolve_fn, labe
         action_fail(component, action, "Failed to install " + label + " package", current_version, pkg.version, "", release.release_url || "");
 
     disable_standalone_service(component);
-    restart_forkop_after_successful_change();
+    let restarted = restart_forkop_after_successful_change();
     clear_version_caches();
     current_version = provider_package_version(runtime_module);
     if (current_version == "")
         current_version = "unknown";
+    if (!restarted)
+        action_fail(component, action, label + " package has been installed, but Forkop did not start again", current_version, pkg.version, "", release.release_url || "");
     action_success(component, action, label + " package has been installed", current_version, pkg.version, 1, "latest", release.release_url || "");
 }
 
@@ -1228,11 +1242,13 @@ function install_byedpi(action) {
         action_fail("byedpi", action, "Failed to install ByeDPI package", current_version, pkg.version);
 
     disable_standalone_service("byedpi");
-    restart_forkop_after_successful_change();
+    let restarted = restart_forkop_after_successful_change();
     clear_version_caches();
     current_version = provider_package_version(runtime_module);
     if (current_version == "")
         current_version = "unknown";
+    if (!restarted)
+        action_fail("byedpi", action, "ByeDPI package has been installed, but Forkop did not start again", current_version, pkg.version);
     action_success("byedpi", action, "ByeDPI package has been installed", current_version, pkg.version, 1, "latest", release.release_url || "");
 }
 
@@ -1303,7 +1319,8 @@ function remove_optional_component(component, package_name, label, runtime_modul
     clear_version_caches();
     if (provider_installed(runtime_module))
         action_fail(component, "remove", label + " package was removed, but provider files are still present", current_version);
-    restart_forkop_after_successful_change();
+    if (!restart_forkop_after_successful_change())
+        action_fail(component, "remove", label + " package has been removed, but Forkop did not start again", current_version);
     action_success(component, "remove", label + " package has been removed", current_version, "", 1);
 }
 
@@ -1705,8 +1722,7 @@ function install_sing_box_extended_package(action) {
     }
 
     write_sing_box_variant_state("extended", new_version);
-    restart_forkop_after_successful_change();
-    if (!wait_forkop_running_after_sing_box_change()) {
+    if (!restart_forkop_after_successful_change() || !wait_forkop_running_after_sing_box_change()) {
         updates_log("sing-box-extended package did not start cleanly; restoring previous sing-box variant", "error");
         if (file_exists(SERVICE_INIT))
             command_success_from_args([ SERVICE_INIT, "stop" ]);
@@ -1869,8 +1885,7 @@ function install_sing_box_extended(action, compressed) {
     }
 
     write_sing_box_variant_state("extended-compressed", new_version);
-    restart_forkop_after_successful_change();
-    if (!wait_forkop_running_after_sing_box_change()) {
+    if (!restart_forkop_after_successful_change() || !wait_forkop_running_after_sing_box_change()) {
         updates_log(label + " did not start cleanly; restoring previous sing-box binary", "error");
         if (file_exists(SERVICE_INIT))
             command_success_from_args([ SERVICE_INIT, "stop" ]);
@@ -1958,8 +1973,7 @@ function install_package_sing_box(action, tiny) {
         fail_package_sing_box_install(action, tiny, "package was installed, but the active binary is still sing-box-extended", new_version, latest_version,
             package_name, previous_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, cronet_touched);
     write_sing_box_variant_state(tiny ? "tiny" : "stable", new_version);
-    restart_forkop_after_successful_change();
-    if (!wait_forkop_running_after_sing_box_change())
+    if (!restart_forkop_after_successful_change() || !wait_forkop_running_after_sing_box_change())
         fail_package_sing_box_install(action, tiny, "was installed, but Forkop did not start cleanly", new_version, latest_version,
             package_name, previous_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, cronet_touched);
     remove_file(backup_binary);
@@ -2423,14 +2437,17 @@ function install_forkop(requested_version) {
     // instance that was running before this release upgrade. Avoid a second
     // full restart and its readiness wait, but retain the restart fallback
     // if the package lifecycle did not leave Forkop healthy.
+    let restarted = true;
     if (forkop_was_running && forkop_status_running_with_timeout())
         updates_log("Forkop was restored by the package upgrade; final restart skipped");
     else
-        restart_forkop_after_successful_change();
+        restarted = restart_forkop_after_successful_change();
     clear_version_caches();
     let new_version = installed_package_version("forkop");
     if (new_version == "")
         new_version = latest_version;
+    if (!restarted)
+        action_fail("forkop", "install", "Forkop has been installed, but did not start again", new_version, latest_version, "", release.release_url);
     updates_log("Forkop updated to " + new_version);
     action_success("forkop", "install", "Forkop has been installed", new_version, latest_version, 1, "latest", release.release_url);
 }
@@ -2513,14 +2530,15 @@ function set_direct_proxy(action) {
         !uci_core.commit(CONFIG_NAME))
         action_fail("direct_proxy", action, "Failed to save Direct Proxy settings", current_enabled, target_enabled);
 
-    if (!command_success_from_args([ SERVICE_INIT, "restart" ])) {
+    if (!forkop_start_and_wait("restart")) {
         uci_core.set(enabled_path, current_enabled);
         if (current_port != "")
             uci_core.set(port_path, current_port);
         else
             uci_core.delete(port_path);
         uci_core.commit(CONFIG_NAME);
-        command_success_from_args([ SERVICE_INIT, "restart" ]);
+        if (!forkop_start_and_wait("restart"))
+            updates_log("Forkop did not start again with the previous Direct Proxy settings", "error");
         action_fail("direct_proxy", action, "Failed to apply Direct Proxy settings", current_enabled, target_enabled);
     }
 

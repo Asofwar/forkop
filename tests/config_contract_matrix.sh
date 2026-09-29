@@ -2,10 +2,14 @@
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-STABLE_REF="${FORKOP_STABLE_REF:-0.7.19.9}"
 STABLE_VERSION="${FORKOP_STABLE_VERSION:-0.7.19.9}"
-STABLE_COMMIT="${FORKOP_STABLE_COMMIT:-68d516e85b9a81b5a37e8e258610098ed03b02d1}"
 STABLE_REPO="${FORKOP_STABLE_REPO:-}"
+# The stable side comes from a committed inventory of the 0.7.19.9 release, so
+# the test needs neither git history nor network and never writes git refs.
+# Regenerate it from a checkout of that release with:
+#   node tests/helpers/config_contract_matrix.js --inventory <stable-checkout> \
+#     --version 0.7.19.9 --commit 68d516e85b9a81b5a37e8e258610098ed03b02d1
+STABLE_INVENTORY="${FORKOP_STABLE_INVENTORY:-$ROOT_DIR/tests/fixtures/config_contract/stable-$STABLE_VERSION.json}"
 MATRIX_SCRIPT="$ROOT_DIR/tests/helpers/config_contract_matrix.js"
 WORK_DIR="$(mktemp -d)"
 LEGACY_STEM="$(printf '\160\157\144\153\157\160')"
@@ -20,42 +24,17 @@ fail() {
   exit 1
 }
 
-ensure_stable_ref() {
-  if git -C "$ROOT_DIR" rev-parse --verify "$STABLE_REF^{commit}" >/dev/null 2>&1; then
-    return 0
+if [ -n "$STABLE_REPO" ]; then
+  if [ ! -r "$STABLE_REPO/forkop/files/etc/config/forkop" ] &&
+    [ ! -r "$STABLE_REPO/$LEGACY_STEM/files/etc/config/$LEGACY_STEM" ]; then
+    fail "stable repo is missing the expected config template: $STABLE_REPO"
   fi
-
-  if git -C "$ROOT_DIR" fetch --force --depth=1 origin "refs/tags/$STABLE_REF:refs/tags/$STABLE_REF" >/dev/null 2>&1; then
-    return 0
-  fi
-
-  if git -C "$ROOT_DIR" rev-parse --verify "$STABLE_COMMIT^{commit}" >/dev/null 2>&1; then
-    STABLE_REF="$STABLE_COMMIT"
-    return 0
-  fi
-
-  fail "stable baseline is unavailable: tag $STABLE_REF or commit $STABLE_COMMIT"
-}
-
-prepare_stable_repo() {
-  if [ -n "$STABLE_REPO" ]; then
-    if [ ! -r "$STABLE_REPO/forkop/files/etc/config/forkop" ] &&
-      [ ! -r "$STABLE_REPO/$LEGACY_STEM/files/etc/config/$LEGACY_STEM" ]; then
-      fail "stable repo is missing the expected config template: $STABLE_REPO"
-    fi
-    return 0
-  fi
-
-  ensure_stable_ref
-  STABLE_REPO="$WORK_DIR/stable-$STABLE_VERSION"
-  mkdir -p "$STABLE_REPO"
-  git -C "$ROOT_DIR" archive "$STABLE_REF" | tar -x -C "$STABLE_REPO" ||
-    fail "failed to materialize stable baseline: $STABLE_REF"
-}
-
-prepare_stable_repo
-
-node "$MATRIX_SCRIPT" --current "$ROOT_DIR" --stable "$STABLE_REPO" >"$WORK_DIR/matrix.json"
+  node "$MATRIX_SCRIPT" --current "$ROOT_DIR" --stable "$STABLE_REPO" >"$WORK_DIR/matrix.json"
+else
+  [ -r "$STABLE_INVENTORY" ] ||
+    fail "precondition: stable baseline inventory is missing: $STABLE_INVENTORY (set FORKOP_STABLE_REPO to a checkout of $STABLE_VERSION instead)"
+  node "$MATRIX_SCRIPT" --current "$ROOT_DIR" --stable-inventory "$STABLE_INVENTORY" >"$WORK_DIR/matrix.json"
+fi
 
 node - "$WORK_DIR/matrix.json" <<'NODE'
 const fs = require("fs");

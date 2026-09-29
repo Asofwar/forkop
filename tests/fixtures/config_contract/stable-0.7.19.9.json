@@ -1,0 +1,2665 @@
+{
+  "version": "0.7.19.9",
+  "commit": "68d516e85b9a81b5a37e8e258610098ed03b02d1",
+  "fields": {
+    "_action_display": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.DummyValue",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "_mount_node": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/dashboard.js",
+          "type": "form.DummyValue",
+          "default": "",
+          "values": []
+        },
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/diagnostic.js",
+          "type": "form.DummyValue",
+          "default": "",
+          "values": []
+        },
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/monitoring.js",
+          "type": "form.DummyValue",
+          "default": "",
+          "values": []
+        },
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/updates.js",
+          "type": "form.DummyValue",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "_protocol_display": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.DummyValue",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "action": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.ListValue",
+          "default": "proxy",
+          "values": [
+            "block",
+            "byedpi",
+            "direct",
+            "outbound",
+            "proxy",
+            "vpn",
+            "zapret",
+            "zapret2"
+          ]
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/bin/podkop",
+        "podkop/files/usr/lib/config_validation.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:outbound",
+        "podkop/files/etc/config/podkop:option:proxy"
+      ],
+      "migrations": [
+        "podkop/files/usr/lib/config_validation.sh"
+      ]
+    },
+    "badwan_monitored_interfaces": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/settings.js",
+          "type": "widgets.NetworkSelect",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/etc/init.d/podkop",
+        "podkop/files/usr/lib/runtime_state.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:list:wan"
+      ],
+      "migrations": []
+    },
+    "badwan_reload_delay": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/settings.js",
+          "type": "form.Value",
+          "default": "2000",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/etc/init.d/podkop",
+        "podkop/files/usr/lib/runtime_state.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:2000"
+      ],
+      "migrations": []
+    },
+    "bootstrap_dns_server": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/settings.js",
+          "type": "form.Value",
+          "default": "77.88.8.8",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh",
+        "podkop/files/usr/lib/status_diagnostics.sh"
+      ],
+      "defaults": [
+        "podkop/files/etc/config/podkop:option:77.88.8.8"
+      ],
+      "examples": [],
+      "migrations": []
+    },
+    "byedpi_cmd_opts": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.TextValue",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/byedpi.sh",
+        "podkop/files/usr/lib/config_validation.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": [
+        "podkop/files/usr/lib/config_validation.sh"
+      ]
+    },
+    "cache_path": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/settings.js",
+          "type": "form.Value",
+          "default": "/tmp/sing-box/cache.db",
+          "values": [
+            "/tmp/sing-box/cache.db",
+            "/usr/share/sing-box/cache.db"
+          ]
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh"
+      ],
+      "defaults": [
+        "podkop/files/etc/config/podkop:option:/tmp/sing-box/cache.db"
+      ],
+      "examples": [],
+      "migrations": []
+    },
+    "client_fingerprint": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.ListValue",
+          "default": "chrome",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:chrome"
+      ],
+      "migrations": []
+    },
+    "cmd_opts": {
+      "ui": [],
+      "backend": [
+        "podkop/files/usr/lib/config_validation.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": [
+        "podkop/files/usr/lib/config_validation.sh"
+      ]
+    },
+    "community_lists": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.DynamicList",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/rules_nft_runtime.sh",
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:list:russia_inside"
+      ],
+      "migrations": []
+    },
+    "conditions_text_mode": {
+      "ui": [],
+      "backend": [
+        "podkop/files/usr/lib/rules_nft_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "conffile": {
+      "ui": [],
+      "backend": [
+        "install.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh",
+        "podkop/files/usr/lib/updater.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "config_path": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/settings.js",
+          "type": "form.ListValue",
+          "default": "/etc/sing-box/config.json",
+          "values": [
+            "/etc/sing-box/config.json",
+            "/tmp/sing-box/config.json"
+          ]
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/byedpi.sh",
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh",
+        "podkop/files/usr/lib/status_diagnostics.sh",
+        "podkop/files/usr/lib/zapret.sh",
+        "podkop/files/usr/lib/zapret2.sh"
+      ],
+      "defaults": [
+        "podkop/files/etc/config/podkop:option:/etc/sing-box/config.json"
+      ],
+      "examples": [],
+      "migrations": []
+    },
+    "connection_type": {
+      "ui": [],
+      "backend": [
+        "podkop/files/usr/lib/config_validation.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": [
+        "podkop/files/usr/lib/config_validation.sh"
+      ]
+    },
+    "detect_server_country": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.ListValue",
+          "default": "flag_emoji",
+          "values": [
+            "country_is",
+            "flag_emoji"
+          ]
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/config_validation.sh",
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:flag_emoji"
+      ],
+      "migrations": [
+        "podkop/files/usr/lib/config_validation.sh"
+      ]
+    },
+    "disable_quic": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/settings.js",
+          "type": "form.Flag",
+          "default": "0",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh"
+      ],
+      "defaults": [
+        "podkop/files/etc/config/podkop:option:0"
+      ],
+      "examples": [],
+      "migrations": []
+    },
+    "dns_rewrite_ttl": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/settings.js",
+          "type": "form.Value",
+          "default": "60",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh"
+      ],
+      "defaults": [
+        "podkop/files/etc/config/podkop:option:60"
+      ],
+      "examples": [],
+      "migrations": []
+    },
+    "dns_server": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/settings.js",
+          "type": "form.Value",
+          "default": "8.8.8.8",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh",
+        "podkop/files/usr/lib/status_diagnostics.sh"
+      ],
+      "defaults": [
+        "podkop/files/etc/config/podkop:option:77.88.8.8"
+      ],
+      "examples": [],
+      "migrations": []
+    },
+    "dns_type": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/settings.js",
+          "type": "form.ListValue",
+          "default": "udp",
+          "values": [
+            "doh",
+            "dot",
+            "udp"
+          ]
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh",
+        "podkop/files/usr/lib/status_diagnostics.sh"
+      ],
+      "defaults": [
+        "podkop/files/etc/config/podkop:option:udp"
+      ],
+      "examples": [],
+      "migrations": []
+    },
+    "domain_ip_lists": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.DynamicList",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/rules_nft_runtime.sh",
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "domain_list_enabled": {
+      "ui": [],
+      "backend": [
+        "podkop/files/usr/lib/status_diagnostics.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "domain_resolver_dns_server": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.Value",
+          "default": "8.8.8.8",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "domain_resolver_dns_type": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.ListValue",
+          "default": "udp",
+          "values": [
+            "doh",
+            "dot",
+            "udp"
+          ]
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "domain_resolver_enabled": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.Flag",
+          "default": "0",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "dont_touch_dhcp": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/settings.js",
+          "type": "form.Flag",
+          "default": "0",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/etc/init.d/podkop",
+        "podkop/files/usr/bin/podkop",
+        "podkop/files/usr/lib/dnsmasq_runtime.sh",
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/status_diagnostics.sh"
+      ],
+      "defaults": [
+        "podkop/files/etc/config/podkop:option:0"
+      ],
+      "examples": [],
+      "migrations": []
+    },
+    "download_lists_via_proxy": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/settings.js",
+          "type": "form.Flag",
+          "default": "0",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/config_validation.sh",
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh",
+        "podkop/files/usr/lib/subscription_runtime.sh"
+      ],
+      "defaults": [
+        "podkop/files/etc/config/podkop:option:0"
+      ],
+      "examples": [],
+      "migrations": []
+    },
+    "download_lists_via_proxy_section": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/settings.js",
+          "type": "form.ListValue",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/config_validation.sh",
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh",
+        "podkop/files/usr/lib/subscription_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:main"
+      ],
+      "migrations": []
+    },
+    "enable_badwan_interface_monitoring": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/settings.js",
+          "type": "form.Flag",
+          "default": "0",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/etc/init.d/podkop",
+        "podkop/files/usr/lib/runtime_state.sh"
+      ],
+      "defaults": [
+        "podkop/files/etc/config/podkop:option:0"
+      ],
+      "examples": [],
+      "migrations": []
+    },
+    "enable_output_network_interface": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/settings.js",
+          "type": "form.Flag",
+          "default": "0",
+          "values": []
+        }
+      ],
+      "backend": [],
+      "defaults": [
+        "podkop/files/etc/config/podkop:option:0"
+      ],
+      "examples": [],
+      "migrations": []
+    },
+    "enable_udp_over_tcp": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.Flag",
+          "default": "0",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "enable_yacd": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/settings.js",
+          "type": "form.Flag",
+          "default": "0",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh"
+      ],
+      "defaults": [
+        "podkop/files/etc/config/podkop:option:0"
+      ],
+      "examples": [],
+      "migrations": []
+    },
+    "enable_yacd_wan_access": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/settings.js",
+          "type": "form.Flag",
+          "default": "0",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh",
+        "podkop/files/usr/lib/status_diagnostics.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "enabled": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.Flag",
+          "default": "1",
+          "values": []
+        },
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.Flag",
+          "default": "1",
+          "values": []
+        }
+      ],
+      "backend": [
+        "install.sh",
+        "podkop/files/usr/bin/podkop",
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh",
+        "podkop/files/usr/lib/updater.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:1"
+      ],
+      "migrations": []
+    },
+    "exclude_ntp": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/settings.js",
+          "type": "form.Flag",
+          "default": "0",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/rules_nft_runtime.sh",
+        "podkop/files/usr/lib/runtime_state.sh"
+      ],
+      "defaults": [
+        "podkop/files/etc/config/podkop:option:0"
+      ],
+      "examples": [],
+      "migrations": []
+    },
+    "fully_routed_ips": {
+      "ui": [],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "group_by_countries": {
+      "ui": [],
+      "backend": [],
+      "defaults": [],
+      "examples": [],
+      "migrations": [
+        "podkop/files/usr/lib/config_validation.sh"
+      ]
+    },
+    "hysteria2_down_mbps": {
+      "ui": [],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "hysteria2_obfs_password": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.Value",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "hysteria2_obfs_type": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.ListValue",
+          "default": "",
+          "values": [
+            "",
+            "salamander"
+          ]
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "hysteria2_up_mbps": {
+      "ui": [],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "interface": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "widgets.DeviceSelect",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/config_validation.sh",
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh",
+        "podkop/files/usr/lib/subscription_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "label": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.Value",
+          "default": "",
+          "values": []
+        },
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.Value",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh",
+        "podkop/files/usr/lib/status_diagnostics.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:JSON outbound",
+        "podkop/files/etc/config/podkop:option:MTProto proxy",
+        "podkop/files/etc/config/podkop:option:Subscription",
+        "podkop/files/etc/config/podkop:option:Tailscale endpoint",
+        "podkop/files/etc/config/podkop:option:VLESS Reality server"
+      ],
+      "migrations": []
+    },
+    "list_update_enabled": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/settings.js",
+          "type": "form.Flag",
+          "default": "1",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/config_validation.sh",
+        "podkop/files/usr/lib/runtime_state.sh"
+      ],
+      "defaults": [
+        "podkop/files/etc/config/podkop:option:1"
+      ],
+      "examples": [],
+      "migrations": [
+        "podkop/files/usr/lib/config_validation.sh"
+      ]
+    },
+    "listen": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.Value",
+          "default": "0.0.0.0",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh",
+        "podkop/files/usr/lib/status_diagnostics.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:0.0.0.0"
+      ],
+      "migrations": []
+    },
+    "listen_port": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.Value",
+          "default": "443",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh",
+        "podkop/files/usr/lib/status_diagnostics.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:443"
+      ],
+      "migrations": []
+    },
+    "local_domain_lists": {
+      "ui": [],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "log_level": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/settings.js",
+          "type": "form.ListValue",
+          "default": "warn",
+          "values": [
+            "debug",
+            "error",
+            "fatal",
+            "info",
+            "panic",
+            "trace",
+            "warn"
+          ]
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh"
+      ],
+      "defaults": [
+        "podkop/files/etc/config/podkop:option:warn"
+      ],
+      "examples": [],
+      "migrations": []
+    },
+    "log_stderr": {
+      "ui": [],
+      "backend": [
+        "install.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh",
+        "podkop/files/usr/lib/updater.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "mixed_proxy_auth_enabled": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.Flag",
+          "default": "0",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "mixed_proxy_enabled": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.Flag",
+          "default": "0",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "mixed_proxy_password": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.Value",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "mixed_proxy_port": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.Value",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "mixed_proxy_username": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.Value",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "mtproto_allow_fallback_on_unknown_dc": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.Flag",
+          "default": "0",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "mtproto_auto_update": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.Flag",
+          "default": "0",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "mtproto_concurrency": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.Value",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "mtproto_domain_fronting_ip": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.Value",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "mtproto_domain_fronting_port": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.Value",
+          "default": "443",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:443"
+      ],
+      "migrations": []
+    },
+    "mtproto_domain_fronting_proxy_protocol": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.Flag",
+          "default": "0",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "mtproto_faketls": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.Value",
+          "default": "google.com",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:google.com"
+      ],
+      "migrations": []
+    },
+    "mtproto_handshake_timeout": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.Value",
+          "default": "10s",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:10s"
+      ],
+      "migrations": []
+    },
+    "mtproto_idle_timeout": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.Value",
+          "default": "5m",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:5m"
+      ],
+      "migrations": []
+    },
+    "mtproto_padding": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.Flag",
+          "default": "1",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:1"
+      ],
+      "migrations": []
+    },
+    "mtproto_prefer_ip": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.ListValue",
+          "default": "prefer-ipv4",
+          "values": [
+            "only-ipv4",
+            "only-ipv6",
+            "prefer-ipv4",
+            "prefer-ipv6"
+          ]
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:prefer-ipv4"
+      ],
+      "migrations": []
+    },
+    "mtproto_secret": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.Value",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:11111111111111111111111111111111"
+      ],
+      "migrations": []
+    },
+    "mtproto_tolerate_time_skewness": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.Value",
+          "default": "3s",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:3s"
+      ],
+      "migrations": []
+    },
+    "nfqws_opt": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.TextValue",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/config_validation.sh",
+        "podkop/files/usr/lib/zapret.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": [
+        "podkop/files/usr/lib/config_validation.sh"
+      ]
+    },
+    "nfqws2_opt": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.TextValue",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/zapret2.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "outbound_detour_enabled": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.Flag",
+          "default": "0",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/config_validation.sh",
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "outbound_detour_section": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.ListValue",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/config_validation.sh",
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "outbound_json": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.TextValue",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/config_validation.sh",
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh",
+        "podkop/files/usr/lib/subscription_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:{"
+      ],
+      "migrations": []
+    },
+    "output_network_interface": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/settings.js",
+          "type": "widgets.DeviceSelect",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:wan"
+      ],
+      "migrations": []
+    },
+    "ports": {
+      "ui": [],
+      "backend": [
+        "podkop/files/usr/lib/rules_nft_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "ports_text": {
+      "ui": [],
+      "backend": [
+        "podkop/files/usr/lib/rules_nft_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "protocol": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.ListValue",
+          "default": "",
+          "values": [
+            "hysteria2",
+            "mtproto",
+            "shadowsocks",
+            "socks",
+            "tailscale",
+            "trojan",
+            "vless",
+            "vmess"
+          ]
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/config_validation.sh",
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh",
+        "podkop/files/usr/lib/status_diagnostics.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:mtproto",
+        "podkop/files/etc/config/podkop:option:tailscale",
+        "podkop/files/etc/config/podkop:option:vless"
+      ],
+      "migrations": []
+    },
+    "proxy_config_type": {
+      "ui": [],
+      "backend": [
+        "podkop/files/usr/lib/config_validation.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": [
+        "podkop/files/usr/lib/config_validation.sh"
+      ]
+    },
+    "proxy_string": {
+      "ui": [],
+      "backend": [
+        "podkop/files/usr/lib/config_validation.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": [
+        "podkop/files/usr/lib/config_validation.sh"
+      ]
+    },
+    "public_host": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.Value",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh",
+        "podkop/files/usr/lib/status_diagnostics.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:vpn.example.com"
+      ],
+      "migrations": []
+    },
+    "reality_handshake_server": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.Value",
+          "default": "www.microsoft.com",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:www.microsoft.com"
+      ],
+      "migrations": []
+    },
+    "reality_handshake_server_port": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.Value",
+          "default": "443",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:443"
+      ],
+      "migrations": []
+    },
+    "reality_max_time_difference": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.Value",
+          "default": "1m",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:1m"
+      ],
+      "migrations": []
+    },
+    "reality_private_key": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.Value",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:PRIVATE_KEY_FROM_sing-box_generate_reality-keypair"
+      ],
+      "migrations": []
+    },
+    "reality_public_key": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.Value",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:PUBLIC_KEY_FROM_sing-box_generate_reality-keypair"
+      ],
+      "migrations": []
+    },
+    "reality_short_id": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.Value",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:5a"
+      ],
+      "migrations": []
+    },
+    "remote_domain_lists": {
+      "ui": [],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "remote_subnet_lists": {
+      "ui": [],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "resolve_real_ip_for_routing": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.Flag",
+          "default": "0",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "routing_excluded_ips": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/settings.js",
+          "type": "form.DynamicList",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:list:192.168.1.3"
+      ],
+      "migrations": []
+    },
+    "routing_mode": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.ListValue",
+          "default": "rules",
+          "values": [
+            "direct",
+            "rules",
+            "section"
+          ]
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh",
+        "podkop/files/usr/lib/status_diagnostics.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:rules"
+      ],
+      "migrations": []
+    },
+    "routing_section": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.ListValue",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "rule_set": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.DynamicList",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/rules_nft_runtime.sh",
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "rule_set_with_subnets": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.DynamicList",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/rules_nft_runtime.sh",
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "security": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.ListValue",
+          "default": "reality",
+          "values": [
+            "none",
+            "reality",
+            "tls"
+          ]
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:reality"
+      ],
+      "migrations": []
+    },
+    "selector_proxy_links": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.DynamicList",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/config_validation.sh",
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh",
+        "podkop/files/usr/lib/subscription_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:list:vless://example"
+      ],
+      "migrations": [
+        "podkop/files/usr/lib/config_validation.sh"
+      ]
+    },
+    "server_password": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.Value",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "server_username": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.Value",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "server_users": {
+      "ui": [],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "server_uuid": {
+      "ui": [],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:00000000-0000-0000-0000-000000000000"
+      ],
+      "migrations": []
+    },
+    "service_listen_address": {
+      "ui": [],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "shadowsocks_method": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.ListValue",
+          "default": "aes-128-gcm",
+          "values": [
+            "aes-128-gcm",
+            "aes-256-gcm",
+            "chacha20-ietf-poly1305"
+          ]
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "shutdown_correctly": {
+      "ui": [],
+      "backend": [
+        "podkop/files/etc/init.d/podkop",
+        "podkop/files/usr/lib/dnsmasq_runtime.sh"
+      ],
+      "defaults": [
+        "podkop/files/etc/config/podkop:option:0"
+      ],
+      "examples": [],
+      "migrations": []
+    },
+    "sort_by_latency": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.Flag",
+          "default": "0",
+          "values": []
+        }
+      ],
+      "backend": [],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:0"
+      ],
+      "migrations": []
+    },
+    "source_network_interfaces": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/settings.js",
+          "type": "widgets.DeviceSelect",
+          "default": "br-lan",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/dnsmasq_runtime.sh",
+        "podkop/files/usr/lib/rules_nft_runtime.sh",
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh"
+      ],
+      "defaults": [
+        "podkop/files/etc/config/podkop:list:br-lan"
+      ],
+      "examples": [],
+      "migrations": []
+    },
+    "subscription_detect_server_countries": {
+      "ui": [],
+      "backend": [],
+      "defaults": [],
+      "examples": [],
+      "migrations": [
+        "podkop/files/usr/lib/config_validation.sh"
+      ]
+    },
+    "subscription_group_by_countries": {
+      "ui": [],
+      "backend": [],
+      "defaults": [],
+      "examples": [],
+      "migrations": [
+        "podkop/files/usr/lib/config_validation.sh"
+      ]
+    },
+    "subscription_update_enabled": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.Flag",
+          "default": "1",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:1"
+      ],
+      "migrations": [
+        "podkop/files/usr/lib/config_validation.sh"
+      ]
+    },
+    "subscription_update_interval": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.Value",
+          "default": "1h",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:1h"
+      ],
+      "migrations": []
+    },
+    "subscription_update_interval_disabled": {
+      "ui": [],
+      "backend": [
+        "podkop/files/usr/lib/config_validation.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": [
+        "podkop/files/usr/lib/config_validation.sh"
+      ]
+    },
+    "subscription_url": {
+      "ui": [],
+      "backend": [
+        "podkop/files/usr/lib/config_validation.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": [
+        "podkop/files/usr/lib/config_validation.sh"
+      ]
+    },
+    "subscription_urls": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.DynamicList",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/config_validation.sh",
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/subscription_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:list:https://example.com/api/sub | CustomAgent/1.0"
+      ],
+      "migrations": [
+        "podkop/files/usr/lib/config_validation.sh"
+      ]
+    },
+    "subscription_user_agent": {
+      "ui": [],
+      "backend": [
+        "podkop/files/usr/lib/config_validation.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": [
+        "podkop/files/usr/lib/config_validation.sh"
+      ]
+    },
+    "tailscale_accept_routes": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.Flag",
+          "default": "0",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:0"
+      ],
+      "migrations": []
+    },
+    "tailscale_advertise_exit_node": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.Flag",
+          "default": "1",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:1"
+      ],
+      "migrations": []
+    },
+    "tailscale_advertise_routes": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.DynamicList",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "tailscale_auth_key": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.Value",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:tskey-auth-..."
+      ],
+      "migrations": []
+    },
+    "tailscale_control_url": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.Value",
+          "default": "https://controlplane.tailscale.com",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:https://controlplane.tailscale.com"
+      ],
+      "migrations": []
+    },
+    "tailscale_hostname": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.Value",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:podkop-server-tailscale-example"
+      ],
+      "migrations": []
+    },
+    "tls_alpn": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.MultiValue",
+          "default": "",
+          "values": [
+            "h2",
+            "h3",
+            "http/1.1"
+          ]
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "tls_certificate_path": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.Value",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "tls_key_path": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.Value",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "tls_server_name": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.Value",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:www.microsoft.com"
+      ],
+      "migrations": []
+    },
+    "transport": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.ListValue",
+          "default": "tcp",
+          "values": [
+            "grpc",
+            "http",
+            "httpupgrade",
+            "tcp",
+            "ws",
+            "xhttp"
+          ]
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/config_validation.sh",
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:tcp"
+      ],
+      "migrations": []
+    },
+    "transport_host": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.Value",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "transport_hosts": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.DynamicList",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "transport_path": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.Value",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "transport_service_name": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.Value",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "transport_xhttp_mode": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.ListValue",
+          "default": "auto",
+          "values": [
+            "auto",
+            "packet-up",
+            "stream-one",
+            "stream-up"
+          ]
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "update_interval": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/settings.js",
+          "type": "form.Value",
+          "default": "1d",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/config_validation.sh",
+        "podkop/files/usr/lib/runtime_state.sh"
+      ],
+      "defaults": [
+        "podkop/files/etc/config/podkop:option:1d"
+      ],
+      "examples": [],
+      "migrations": [
+        "podkop/files/usr/lib/config_validation.sh"
+      ]
+    },
+    "urltest_check_interval": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.Value",
+          "default": "3m",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:3m"
+      ],
+      "migrations": []
+    },
+    "urltest_check_interval_disabled": {
+      "ui": [],
+      "backend": [
+        "podkop/files/usr/lib/config_validation.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": [
+        "podkop/files/usr/lib/config_validation.sh"
+      ]
+    },
+    "urltest_enabled": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.Flag",
+          "default": "0",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/config_validation.sh",
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:1"
+      ],
+      "migrations": [
+        "podkop/files/usr/lib/config_validation.sh"
+      ]
+    },
+    "urltest_exclude_countries": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.DynamicList",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:list:US"
+      ],
+      "migrations": []
+    },
+    "urltest_exclude_outbounds": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.DynamicList",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:list:Example server name"
+      ],
+      "migrations": []
+    },
+    "urltest_exclude_regex": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.DynamicList",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:list:.*backup.*"
+      ],
+      "migrations": []
+    },
+    "urltest_filter_mode": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.ListValue",
+          "default": "disabled",
+          "values": [
+            "disabled",
+            "exclude",
+            "include",
+            "mixed"
+          ]
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/config_validation.sh",
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:disabled"
+      ],
+      "migrations": [
+        "podkop/files/usr/lib/config_validation.sh"
+      ]
+    },
+    "urltest_hide_filtered_outbounds": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.Flag",
+          "default": "0",
+          "values": []
+        }
+      ],
+      "backend": [],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:0"
+      ],
+      "migrations": []
+    },
+    "urltest_include_countries": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.DynamicList",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:list:NL"
+      ],
+      "migrations": []
+    },
+    "urltest_include_outbounds": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.DynamicList",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:list:Example server name"
+      ],
+      "migrations": []
+    },
+    "urltest_include_regex": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.DynamicList",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:list:.*primary.*"
+      ],
+      "migrations": []
+    },
+    "urltest_proxy_links": {
+      "ui": [],
+      "backend": [],
+      "defaults": [],
+      "examples": [],
+      "migrations": [
+        "podkop/files/usr/lib/config_validation.sh"
+      ]
+    },
+    "urltest_testing_url": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.Value",
+          "default": "https://www.gstatic.com/generate_204",
+          "values": [
+            "https://captive.apple.com",
+            "https://connectivity-check.ubuntu.com",
+            "https://cp.cloudflare.com/generate_204",
+            "https://www.gstatic.com/generate_204"
+          ]
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:https://www.gstatic.com/generate_204"
+      ],
+      "migrations": []
+    },
+    "urltest_tolerance": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js",
+          "type": "form.Value",
+          "default": "50",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:50"
+      ],
+      "migrations": []
+    },
+    "user_domain_list_type": {
+      "ui": [],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "user_domains": {
+      "ui": [],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "user_domains_text": {
+      "ui": [],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "vless_flow": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.ListValue",
+          "default": "none",
+          "values": [
+            "none",
+            "xtls-rprx-vision"
+          ]
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [
+        "podkop/files/etc/config/podkop:option:none"
+      ],
+      "migrations": []
+    },
+    "vmess_alter_id": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/server.js",
+          "type": "form.Value",
+          "default": "0",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/server_runtime.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "workdir": {
+      "ui": [],
+      "backend": [
+        "install.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh",
+        "podkop/files/usr/lib/updater.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    },
+    "yacd_secret_key": {
+      "ui": [
+        {
+          "file": "luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/settings.js",
+          "type": "form.Value",
+          "default": "",
+          "values": []
+        }
+      ],
+      "backend": [
+        "podkop/files/usr/lib/runtime_state.sh",
+        "podkop/files/usr/lib/sing_box_runtime.sh",
+        "podkop/files/usr/lib/status_diagnostics.sh"
+      ],
+      "defaults": [],
+      "examples": [],
+      "migrations": []
+    }
+  }
+}

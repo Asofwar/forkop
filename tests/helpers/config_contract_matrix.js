@@ -9,7 +9,8 @@ const legacyStem = String.fromCharCode(112, 111, 100, 107, 111, 112);
 const legacyAppDir = `luci-app-${legacyStem}-plus`;
 
 function usage() {
-  console.error("Usage: config_contract_matrix.js --current <repo> --stable <repo> [--check]");
+  console.error("Usage: config_contract_matrix.js --current <repo> (--stable <repo> | --stable-inventory <file>) [--check]");
+  console.error("       config_contract_matrix.js --inventory <repo> [--version <version>] [--commit <sha>]");
   process.exit(2);
 }
 
@@ -19,14 +20,18 @@ function parseArgs(argv) {
     const arg = argv[i];
     if (arg === "--check") {
       args.check = true;
-    } else if (arg === "--current" || arg === "--stable") {
+    } else if (["--current", "--stable", "--stable-inventory", "--inventory"].includes(arg)) {
       if (!argv[i + 1]) usage();
       args[arg.slice(2)] = path.resolve(argv[++i]);
+    } else if (arg === "--version" || arg === "--commit") {
+      if (!argv[i + 1]) usage();
+      args[arg.slice(2)] = argv[++i];
     } else {
       usage();
     }
   }
-  if (!args.current || !args.stable) usage();
+  if (args.inventory) return args;
+  if (!args.current || !args.stable === !args["stable-inventory"]) usage();
   return args;
 }
 
@@ -290,8 +295,36 @@ function classify(stable, current) {
   return "added_current";
 }
 
-function buildMatrix(currentRepo, stableRepo) {
-  const stable = extractRepo(stableRepo);
+// A committed inventory keeps the stable side hermetic: the test does not need
+// the stable release in git history, network access or any git ref writes.
+function repoInventory(repo, version, commit) {
+  const fields = {};
+  for (const [name, field] of [...extractRepo(repo).entries()].sort(([a], [b]) => a.localeCompare(b)))
+    fields[name] = compactField(field);
+  return { version: version || gitDescribe(repo), commit: commit || "", fields };
+}
+
+function loadInventory(file) {
+  const inventory = JSON.parse(fs.readFileSync(file, "utf8"));
+  if (!inventory || typeof inventory.version !== "string" || !inventory.fields || typeof inventory.fields !== "object") {
+    throw new Error(`invalid stable inventory: ${file}`);
+  }
+  const fields = new Map();
+  for (const [name, field] of Object.entries(inventory.fields)) {
+    fields.set(name, {
+      name,
+      ui: (field.ui || []).map((item) => JSON.stringify(item)),
+      backend: (field.backend || []).slice(),
+      defaults: (field.defaults || []).slice(),
+      examples: (field.examples || []).slice(),
+      migrations: (field.migrations || []).slice(),
+    });
+  }
+  return { path: file, version: inventory.version, fields };
+}
+
+function buildMatrix(currentRepo, stableSource) {
+  const stable = stableSource.fields;
   const current = extractRepo(currentRepo);
   const names = Array.from(new Set([...stable.keys(), ...current.keys()])).sort();
   const fields = names.map((name) => {
@@ -310,8 +343,8 @@ function buildMatrix(currentRepo, stableRepo) {
 
   return {
     stable: {
-      path: stableRepo,
-      version: gitDescribe(stableRepo),
+      path: stableSource.path,
+      version: stableSource.version,
     },
     current: {
       path: currentRepo,
@@ -324,7 +357,15 @@ function buildMatrix(currentRepo, stableRepo) {
 
 function main() {
   const args = parseArgs(process.argv);
-  const matrix = buildMatrix(args.current, args.stable);
+  if (args.inventory) {
+    process.stdout.write(JSON.stringify(repoInventory(args.inventory, args.version, args.commit), null, 2) + "\n");
+    return;
+  }
+
+  const stableSource = args.stable
+    ? { path: args.stable, version: gitDescribe(args.stable), fields: extractRepo(args.stable) }
+    : loadInventory(args["stable-inventory"]);
+  const matrix = buildMatrix(args.current, stableSource);
   process.stdout.write(JSON.stringify(matrix, null, 2) + "\n");
 
   if (args.check) {

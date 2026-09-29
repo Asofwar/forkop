@@ -936,6 +936,15 @@ function reload_begin_value(reason, owner_pid, runtime_running_value, service_en
     }
 
     if (list_update_worker_running() || !acquire_runtime_dir_lock(RELOAD_LOCK_DIR, owner_pid || owner_pid_value())) {
+        // A stop under way (its request is recorded, the runtime is not down
+        // yet) drops what is queued for the runtime it takes down
+        // (service/lifecycle.uc stop()): not queued, and a transaction caller
+        // is told "stopped", not "queued" (D-15, UC-056).
+        if (stop_requested()) {
+            command_success_from_args([ "logger", "-t", SERVICE_NAME, "[info] Reload '" + reason +
+                "' not queued: Forkop is being stopped; only a start brings its runtime back" ]);
+            return { action: "skip", job_id: "", stopped: true };
+        }
         mark_pending_reload(PENDING_RELOAD_FILE, reason || "reload_busy");
         return { action: "skip", job_id: "" };
     }

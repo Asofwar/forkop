@@ -18,13 +18,20 @@ set -eu
 # needs_attention, is released, so it cannot outlive the start that the
 # runtime now waits for. A snapshot that does not validate is put back, the
 # same way. An autotune apply is refused before anything changes; a stop
-# that overtakes it puts the previous configuration back.
+# that overtakes it puts the previous configuration back. A stop that is
+# already under way (it holds reload.lock, the runtime is not down yet) gets
+# the same answer: before, the reload and its rollback were only queued
+# behind it, the stop dropped both, and the restore guard stayed active past
+# the next start.
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LIB="$ROOT/forkop/files/usr/lib"
 SCRIPT="$LIB/config/snapshots.uc"
 REAL_UCODE="$(command -v ucode)"
 WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT HUP INT TERM
+# Owns reload.lock for a stop that is under way (case 9).
+sleep 300 &
+STOP_HOLDER=$!
+trap 'kill "$STOP_HOLDER" 2>/dev/null || true; rm -rf "$WORK"' EXIT HUP INT TERM
 fail() {
   printf 'FAIL: %s\n' "$1" >&2
   [ ! -s "$WORK/state/events" ] || sed 's/^/  event: /' "$WORK/state/events" >&2
@@ -40,7 +47,7 @@ export FORKOP_RUNTIME_STATE_DIR="$WORK/run/forkop"
 export FORKOP_PENDING_RELOAD_FILE="$WORK/run/forkop/reload.pending"
 export FORKOP_RELOAD_LOCK_DIR="$WORK/run/forkop.reload.lock"
 export FORKOP_RELOAD_COMMAND="$WORK/init.d" FORKOP_SERVICE_INIT="$WORK/init.d"
-export STOP_MARKER="$FORKOP_RUNTIME_STATE_DIR/stop.requested"
+export STOP_MARKER="$FORKOP_RUNTIME_STATE_DIR/stop.requested" STOP_HOLDER
 mkdir -p "$WORK/bin" "$WORK/run/forkop" "$STATE"
 echo absent > "$STATE/guard"
 echo up > "$STATE/runtime"
@@ -61,6 +68,14 @@ case "${3:-}" in
     exit 0 ;;
   */config/validator.uc)
     echo validate >> "$STATE/events"
+    # A stop that begins after the restore's busy check: it records its
+    # request and takes reload.lock while the runtime is still up.
+    if [ -e "$STATE/stop-takes-lock" ]; then
+      rm -f "$STATE/stop-takes-lock"
+      echo stop > "$STOP_MARKER"
+      "$REAL_UCODE" -L "$TEST_LIB" "$TEST_LIB/service/state.uc" acquire-runtime-dir-lock \
+        "$FORKOP_RELOAD_LOCK_DIR" "$STOP_HOLDER" || exit 99
+    fi
     ! grep -q "marker 'invalid'" "$FORKOP_CONFIG_FILE"
     exit $? ;;
   */diagnostics/health.uc) echo "health:$5:$6" >> "$STATE/events"; exit 0 ;;
@@ -231,5 +246,39 @@ run restore "$good_id"
 expect success "" "restore of a crashed runtime"
 events | grep -q "^runtime-reload:config-restore:marker 'good'$" || fail "restore of a crashed runtime did not reload it"
 [ "$(lkg)" = "$good_id" ] || fail "restore of a crashed runtime did not confirm LKG"
+
+# 9. A stop that takes reload.lock after the restore's busy check, while the
+#    runtime is still up: the restore's reload is not queued behind it (the
+#    stop drops what is queued for the runtime it takes down), so neither the
+#    reload nor its rollback ends "queued" with the restore guard kept past
+#    the next start. The restore is kept for that start, as in case 1.
+stop_finishes() {
+  "$REAL_UCODE" -L "$LIB" "$LIB/service/state.uc" release-runtime-dir-lock "$FORKOP_RELOAD_LOCK_DIR" "$STOP_HOLDER"
+  echo down > "$STATE/runtime"
+  rm -f "$FORKOP_PENDING_RELOAD_FILE"
+}
+user_start; config bad; snap confirm-working > /dev/null; base_lkg="$(lkg)"
+: > "$STATE/stop-takes-lock"
+run restore "$good_id"
+stop_finishes
+[ ! -e "$STATE/stop-takes-lock" ] || fail "fixture: the stop did not take reload.lock"
+expect restored_not_started service_stopped "restore overtaken by a stop that holds reload.lock"
+{ [ "$(marker)" = "marker 'good'" ] && [ "$(lkg)" = "$base_lkg" ]; } ||
+  fail "restore behind a stop that holds reload.lock: configuration or LKG"
+[ "$(cat "$STATE/guard")" = absent ] || fail "restore behind a stop that holds reload.lock left the restore guard behind"
+! events | grep -q '^runtime-reload:' || fail "restore behind a stop that holds reload.lock reloaded the runtime"
+
+# 9b. The same for an autotune apply: the candidate is put back and the guard
+#     goes.
+user_start; config bad; snap confirm-working > /dev/null; base_lkg="$(lkg)"; base_hash="$(chash)"
+: > "$STATE/stop-takes-lock"
+run apply "$WORK/candidate" "$base_hash"
+stop_finishes
+[ ! -e "$STATE/stop-takes-lock" ] || fail "fixture: the stop did not take reload.lock"
+expect failed service_stopped "autotune apply overtaken by a stop that holds reload.lock"
+[ "$(field "$WORK/result.json" runtime)" = stopped ] || fail "apply behind a stop that holds reload.lock: $(cat "$WORK/result.json")"
+[ "$(chash)" = "$base_hash" ] || fail "apply behind a stop that holds reload.lock kept the candidate"
+{ [ "$(cat "$STATE/guard")" = absent ] && [ "$(lkg)" = "$base_lkg" ]; } ||
+  fail "apply behind a stop that holds reload.lock: guard or LKG"
 
 printf 'config_restore_user_stop: PASS\n'

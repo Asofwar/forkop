@@ -1,6 +1,7 @@
 import { renderButton } from '../../../../partials';
 import {
   renderCircleCheckBigIcon24,
+  renderCircleXIcon24,
   renderCirclePlayIcon24,
   renderCircleStopIcon24,
   renderCogIcon24,
@@ -20,6 +21,7 @@ interface ActionProps {
 }
 
 interface IRenderAvailableActionsProps {
+  restartBlocked: boolean;
   restart: ActionProps;
   start: ActionProps;
   stop: ActionProps;
@@ -32,6 +34,7 @@ interface IRenderAvailableActionsProps {
 }
 
 export function renderAvailableActions({
+  restartBlocked,
   restart,
   start,
   stop,
@@ -44,6 +47,28 @@ export function renderAvailableActions({
 }: IRenderAvailableActionsProps) {
   return E('div', { class: 'fkp_diagnostic-page__right-bar__actions' }, [
     E('b', {}, _('Available actions')),
+    // Restart is hidden in this state, so say why and what to do instead.
+    ...insertIf(restartBlocked, [
+      E('div', { class: 'fkp_diagnostic_alert fkp_diagnostic_alert--error' }, [
+        E('span', { class: 'fkp_diagnostic_alert__icon' }, [
+          renderCircleXIcon24(),
+        ]),
+        E('div', { class: 'fkp_diagnostic_alert__content' }, [
+          E(
+            'b',
+            { class: 'fkp_diagnostic_alert__title' },
+            _('Cannot restart Forkop X'),
+          ),
+          E(
+            'div',
+            { class: 'fkp_diagnostic_alert__description' },
+            _(
+              'Multiple sing-box processes were found or their ownership is unclear. Restart is unavailable; traffic routing was not changed. To stop all sing-box processes, use Stop Forkop X, then start Forkop X again.',
+            ),
+          ),
+        ]),
+      ]),
+    ]),
     ...insertIf(restart.visible, [
       renderButton({
         classNames: ['cbi-button-apply'],

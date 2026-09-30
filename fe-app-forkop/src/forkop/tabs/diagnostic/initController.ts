@@ -842,26 +842,32 @@ function renderDiagnosticAvailableActionsWidget() {
       mutatingServiceActionLoading: atLeastOneMutatingActionLoading,
       componentActionLoading,
     });
+  const restartBlocked = Boolean(servicesInfoWidget.data.forkopRestartBlocked);
+  const stopAvailable = Boolean(servicesInfoWidget.data.forkopStopAvailable);
   const startVisible = shouldShowStartAction({
     forkopRunning,
     restartLoading,
     startLoading,
+    stopAvailable,
     stopLoading,
   });
   const stopVisible = shouldShowStopAction({
     forkopRunning,
     restartLoading,
     startLoading,
+    stopAvailable,
     stopLoading,
   });
 
   const container = document.getElementById('fkp_diagnostic-page-actions');
 
   const renderedActions = renderAvailableActions({
+    restartBlocked,
     restart: {
       loading: restartLoading,
       visible: shouldShowRestartAction({
         forkopRunning,
+        restartBlocked,
         restartLoading,
         startLoading,
         stopLoading,

@@ -324,7 +324,7 @@
     "call": "Available actions",
     "key": "Available actions",
     "places": [
-      "src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:46"
+      "src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:49"
     ]
   },
   {
@@ -527,6 +527,13 @@
     ]
   },
   {
+    "call": "Cannot restart Forkop X",
+    "key": "Cannot restart Forkop X",
+    "places": [
+      "src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:60"
+    ]
+  },
+  {
     "call": "Cannot save settings",
     "key": "Cannot save settings",
     "places": [
@@ -576,7 +583,7 @@
     "call": "Checking, please wait",
     "key": "Checking, please wait",
     "places": [
-      "src/forkop/tabs/diagnostic/initController.ts:1047",
+      "src/forkop/tabs/diagnostic/initController.ts:1053",
       "src/forkop/tabs/diagnostic/checks/runByedpiCheck.ts:14",
       "src/forkop/tabs/diagnostic/checks/runDnsCheck.ts:15",
       "src/forkop/tabs/diagnostic/checks/runFakeIPCheck.ts:15",
@@ -598,17 +605,17 @@
     "call": "Checks failed",
     "key": "Checks failed",
     "places": [
-      "src/forkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:10",
-      "src/forkop/tabs/diagnostic/helpers/getMeta.ts:26"
+      "src/forkop/tabs/diagnostic/helpers/getMeta.ts:26",
+      "src/forkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:10"
     ]
   },
   {
     "call": "Checks passed",
     "key": "Checks passed",
     "places": [
+      "src/forkop/tabs/diagnostic/helpers/getMeta.ts:13",
       "src/forkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:23",
-      "src/forkop/tabs/diagnostic/checks/runFakeIPCheck.ts:43",
-      "src/forkop/tabs/diagnostic/helpers/getMeta.ts:13"
+      "src/forkop/tabs/diagnostic/checks/runFakeIPCheck.ts:43"
     ]
   },
   {
@@ -646,11 +653,11 @@
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3202",
       "src/partials/modal/renderModal.ts:263",
+      "src/forkop/tabs/monitoring/initController.ts:747",
+      "src/forkop/tabs/monitoring/initController.ts:797",
       "src/forkop/tabs/dashboard/initController.ts:1013",
       "src/forkop/tabs/dashboard/initController.ts:1391",
-      "src/forkop/tabs/updates/releaseSelector.ts:121",
-      "src/forkop/tabs/monitoring/initController.ts:747",
-      "src/forkop/tabs/monitoring/initController.ts:797"
+      "src/forkop/tabs/updates/releaseSelector.ts:121"
     ]
   },
   {
@@ -959,7 +966,7 @@
     "call": "Disable autostart",
     "key": "Disable autostart",
     "places": [
-      "src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:82"
+      "src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:107"
     ]
   },
   {
@@ -1292,7 +1299,7 @@
     "call": "Download support report",
     "key": "Download support report",
     "places": [
-      "src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:128"
+      "src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:153"
     ]
   },
   {
@@ -1372,7 +1379,7 @@
     "call": "Enable autostart",
     "key": "Enable autostart",
     "places": [
-      "src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:92"
+      "src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:117"
     ]
   },
   {
@@ -1857,7 +1864,7 @@
     "call": "Get global check",
     "key": "Get global check",
     "places": [
-      "src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:101"
+      "src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:126"
     ]
   },
   {
@@ -2503,8 +2510,8 @@
     "call": "Issues detected",
     "key": "Issues detected",
     "places": [
-      "src/forkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:17",
-      "src/forkop/tabs/diagnostic/helpers/getMeta.ts:20"
+      "src/forkop/tabs/diagnostic/helpers/getMeta.ts:20",
+      "src/forkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:17"
     ]
   },
   {
@@ -2762,6 +2769,13 @@
     "key": "More details",
     "places": [
       "src/forkop/tabs/dashboard/partials/renderSections.ts:130"
+    ]
+  },
+  {
+    "call": "Multiple sing-box processes were found or their ownership is unclear. Restart is unavailable; traffic routing was not changed. To stop all sing-box processes, use Stop Forkop X, then start Forkop X again.",
+    "key": "Multiple sing-box processes were found or their ownership is unclear. Restart is unavailable; traffic routing was not changed. To stop all sing-box processes, use Stop Forkop X, then start Forkop X again.",
+    "places": [
+      "src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:65"
     ]
   },
   {
@@ -3452,7 +3466,7 @@
     "call": "Restart Forkop X",
     "key": "Restart Forkop X",
     "places": [
-      "src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:52"
+      "src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:77"
     ]
   },
   {
@@ -3836,7 +3850,7 @@
     "key": "Show sing-box config",
     "places": [
       "src/forkop/tabs/diagnostic/initController.ts:770",
-      "src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:119"
+      "src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:144"
     ]
   },
   {
@@ -4005,7 +4019,7 @@
     "call": "Start Forkop",
     "key": "Start Forkop",
     "places": [
-      "src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:72"
+      "src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:97"
     ]
   },
   {
@@ -4019,7 +4033,7 @@
     "call": "Stop Forkop X",
     "key": "Stop Forkop X",
     "places": [
-      "src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:62"
+      "src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:87"
     ]
   },
   {
@@ -4757,7 +4771,7 @@
     "key": "View logs",
     "places": [
       "src/forkop/tabs/diagnostic/initController.ts:736",
-      "src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:110"
+      "src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:135"
     ]
   },
   {

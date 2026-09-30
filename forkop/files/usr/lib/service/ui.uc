@@ -1112,13 +1112,24 @@ function current_ui_state_json() {
     else if (active_action == "reload")
         forkop_status = "reloading";
 
+    let restart_blocked = module_success(STATE_UC, [ "sing-box-process-conflict" ]);
+    // Health requires sole procd ownership, but Stop has to stay reachable
+    // exactly when that check fails: something is still intercepting traffic
+    // and the user needs a way to take it down.
+    let stop_available = forkop_is_running ||
+        int(trim(command_output_from_args([ "ucode", "-L", LIB_DIR, STATE_UC, "sing-box-process-count" ]))) > 0 ||
+        dns_configured() ||
+        command_success_from_args([ "nft", "list", "table", "inet", NFT_TABLE_NAME ]);
+
     write_json({
         service: {
             forkop: {
                 running: forkop_is_running,
                 enabled: forkop_is_enabled,
                 status: forkop_status,
-                dns_configured: dns_configured() ? 1 : 0
+                dns_configured: dns_configured() ? 1 : 0,
+                restart_blocked: restart_blocked ? 1 : 0,
+                stop_available: stop_available ? 1 : 0
             },
             sing_box: {
                 running: sing_box_is_running,

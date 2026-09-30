@@ -161,6 +161,8 @@ export interface StoreType {
       forkopRunning: number;
       forkopEnabled: number;
       forkopStatus: string;
+      forkopRestartBlocked: number;
+      forkopStopAvailable: number;
     };
   };
   sectionsWidget: {
@@ -282,6 +284,8 @@ const initialStore: StoreType = {
       forkopRunning: 0,
       forkopEnabled: 0,
       forkopStatus: '',
+      forkopRestartBlocked: 0,
+      forkopStopAvailable: 0,
     },
   },
   sectionsWidget: {

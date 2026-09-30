@@ -4586,7 +4586,9 @@ var initialStore = {
       singbox: 0,
       forkopRunning: 0,
       forkopEnabled: 0,
-      forkopStatus: ""
+      forkopStatus: "",
+      forkopRestartBlocked: 0,
+      forkopStopAvailable: 0
     }
   },
   sectionsWidget: {
@@ -4983,7 +4985,9 @@ function applyServiceState(uiState) {
         singbox: uiState.service.sing_box.running,
         forkopRunning: uiState.service.forkop.running,
         forkopEnabled: uiState.service.forkop.enabled,
-        forkopStatus: uiState.service.forkop.status
+        forkopStatus: uiState.service.forkop.status,
+        forkopRestartBlocked: uiState.service.forkop.restart_blocked ?? 0,
+        forkopStopAvailable: uiState.service.forkop.stop_available ?? 0
       }
     },
     diagnosticsSystemInfo: normalizeSingBoxVariantFields(nextSystemInfo)
@@ -5550,7 +5554,9 @@ async function fetchServicesInfo() {
         singbox: singbox.success ? singbox.data.running : previousData.singbox,
         forkopRunning: forkop.success ? forkop.data.running : previousData.forkopRunning,
         forkopEnabled: forkop.success ? forkop.data.enabled : previousData.forkopEnabled,
-        forkopStatus: forkop.success ? forkop.data.status : previousData.forkopStatus
+        forkopStatus: forkop.success ? forkop.data.status : previousData.forkopStatus,
+        forkopRestartBlocked: forkop.success ? forkop.data.restart_blocked ?? 0 : previousData.forkopRestartBlocked,
+        forkopStopAvailable: forkop.success ? forkop.data.stop_available ?? 0 : previousData.forkopStopAvailable
       }
     }
   });
@@ -9011,6 +9017,7 @@ ${styles3}
 
 // src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts
 function renderAvailableActions({
+  restartBlocked,
   restart,
   start,
   stop,
@@ -9023,6 +9030,28 @@ function renderAvailableActions({
 }) {
   return E("div", { class: "fkp_diagnostic-page__right-bar__actions" }, [
     E("b", {}, _("Available actions")),
+    // Restart is hidden in this state, so say why and what to do instead.
+    ...insertIf(restartBlocked, [
+      E("div", { class: "fkp_diagnostic_alert fkp_diagnostic_alert--error" }, [
+        E("span", { class: "fkp_diagnostic_alert__icon" }, [
+          renderCircleXIcon24()
+        ]),
+        E("div", { class: "fkp_diagnostic_alert__content" }, [
+          E(
+            "b",
+            { class: "fkp_diagnostic_alert__title" },
+            _("Cannot restart Forkop X")
+          ),
+          E(
+            "div",
+            { class: "fkp_diagnostic_alert__description" },
+            _(
+              "Multiple sing-box processes were found or their ownership is unclear. Restart is unavailable; traffic routing was not changed. To stop all sing-box processes, use Stop Forkop X, then start Forkop X again."
+            )
+          )
+        ])
+      ])
+    ]),
     ...insertIf(restart.visible, [
       renderButton({
         classNames: ["cbi-button-apply"],
@@ -9543,27 +9572,30 @@ function getAvailableActionsDisabledState({
 }
 function shouldShowRestartAction({
   forkopRunning,
+  restartBlocked = false,
   restartLoading,
   startLoading,
   stopLoading
 }) {
-  return restartLoading || forkopRunning && !startLoading && !stopLoading;
+  return restartLoading || forkopRunning && !restartBlocked && !startLoading && !stopLoading;
 }
 function shouldShowStartAction({
   forkopRunning,
   restartLoading,
   startLoading,
+  stopAvailable = false,
   stopLoading
 }) {
-  return startLoading || !restartLoading && !forkopRunning && !stopLoading;
+  return startLoading || !restartLoading && !forkopRunning && !stopAvailable && !stopLoading;
 }
 function shouldShowStopAction({
   forkopRunning,
   restartLoading,
   startLoading,
+  stopAvailable = false,
   stopLoading
 }) {
-  return stopLoading || restartLoading || forkopRunning && !startLoading;
+  return stopLoading || restartLoading || (forkopRunning || stopAvailable) && !startLoading;
 }
 
 // src/forkop/tabs/diagnostic/diagnosticRunPersistence.ts
@@ -10443,24 +10475,30 @@ function renderDiagnosticAvailableActionsWidget() {
     mutatingServiceActionLoading: atLeastOneMutatingActionLoading,
     componentActionLoading
   });
+  const restartBlocked = Boolean(servicesInfoWidget.data.forkopRestartBlocked);
+  const stopAvailable = Boolean(servicesInfoWidget.data.forkopStopAvailable);
   const startVisible = shouldShowStartAction({
     forkopRunning,
     restartLoading,
     startLoading,
+    stopAvailable,
     stopLoading
   });
   const stopVisible = shouldShowStopAction({
     forkopRunning,
     restartLoading,
     startLoading,
+    stopAvailable,
     stopLoading
   });
   const container = document.getElementById("fkp_diagnostic-page-actions");
   const renderedActions = renderAvailableActions({
+    restartBlocked,
     restart: {
       loading: restartLoading,
       visible: shouldShowRestartAction({
         forkopRunning,
+        restartBlocked,
         restartLoading,
         startLoading,
         stopLoading

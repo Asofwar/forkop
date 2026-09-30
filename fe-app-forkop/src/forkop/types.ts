@@ -391,6 +391,8 @@ export namespace Forkop {
     enabled: number;
     status: string;
     dns_configured?: number;
+    restart_blocked?: number;
+    stop_available?: number;
   }
 
   export interface GetOutboundMetadata {

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-26 21:35+0300\n"
-"PO-Revision-Date: 2026-09-26 21:35+0300\n"
+"POT-Creation-Date: 2026-09-30 20:01+0300\n"
+"PO-Revision-Date: 2026-09-30 20:01+0300\n"
 "Last-Translator: slayer <greatmetall326@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -205,7 +205,7 @@ msgstr ""
 msgid "Automatically select the fastest node in the current level"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:46
+#: src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:49
 msgid "Available actions"
 msgstr ""
 
@@ -330,6 +330,10 @@ msgstr ""
 msgid "Cannot receive checks result"
 msgstr ""
 
+#: src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:60
+msgid "Cannot restart Forkop X"
+msgstr ""
+
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3135
 msgid "Cannot save settings"
 msgstr ""
@@ -358,7 +362,7 @@ msgstr ""
 msgid "Check URL"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/initController.ts:1047
+#: src/forkop/tabs/diagnostic/initController.ts:1053
 #: src/forkop/tabs/diagnostic/checks/runByedpiCheck.ts:14
 #: src/forkop/tabs/diagnostic/checks/runDnsCheck.ts:15
 #: src/forkop/tabs/diagnostic/checks/runFakeIPCheck.ts:15
@@ -374,14 +378,14 @@ msgstr ""
 msgid "checks"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:10
 #: src/forkop/tabs/diagnostic/helpers/getMeta.ts:26
+#: src/forkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:10
 msgid "Checks failed"
 msgstr ""
 
+#: src/forkop/tabs/diagnostic/helpers/getMeta.ts:13
 #: src/forkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:23
 #: src/forkop/tabs/diagnostic/checks/runFakeIPCheck.ts:43
-#: src/forkop/tabs/diagnostic/helpers/getMeta.ts:13
 msgid "Checks passed"
 msgstr ""
 
@@ -404,11 +408,11 @@ msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3202
 #: src/partials/modal/renderModal.ts:263
+#: src/forkop/tabs/monitoring/initController.ts:747
+#: src/forkop/tabs/monitoring/initController.ts:797
 #: src/forkop/tabs/dashboard/initController.ts:1013
 #: src/forkop/tabs/dashboard/initController.ts:1391
 #: src/forkop/tabs/updates/releaseSelector.ts:121
-#: src/forkop/tabs/monitoring/initController.ts:747
-#: src/forkop/tabs/monitoring/initController.ts:797
 msgid "Close"
 msgstr ""
 
@@ -588,7 +592,7 @@ msgstr ""
 msgid "Disable"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:82
+#: src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:107
 msgid "Disable autostart"
 msgstr ""
 
@@ -783,7 +787,7 @@ msgstr ""
 msgid "Download subscriptions via the selected section"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:128
+#: src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:153
 msgid "Download support report"
 msgstr ""
 
@@ -830,7 +834,7 @@ msgstr ""
 msgid "Enable automatic updates for remote lists and rule sets"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:92
+#: src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:117
 msgid "Enable autostart"
 msgstr ""
 
@@ -1117,7 +1121,7 @@ msgstr ""
 msgid "Fuzzing is not supported here because Forkop needs deterministic runtime validation."
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:101
+#: src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:126
 msgid "Get global check"
 msgstr ""
 
@@ -1496,8 +1500,8 @@ msgstr ""
 msgid "IPv6 only"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:17
 #: src/forkop/tabs/diagnostic/helpers/getMeta.ts:20
+#: src/forkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:17
 msgid "Issues detected"
 msgstr ""
 
@@ -1651,6 +1655,10 @@ msgstr ""
 
 #: src/forkop/tabs/dashboard/partials/renderSections.ts:130
 msgid "More details"
+msgstr ""
+
+#: src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:65
+msgid "Multiple sing-box processes were found or their ownership is unclear. Restart is unavailable; traffic routing was not changed. To stop all sing-box processes, use Stop Forkop X, then start Forkop X again."
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2000
@@ -2061,7 +2069,7 @@ msgstr ""
 msgid "Resource selection by IP or CIDR inside nfqws2 is not supported here; sing-box selects resources before NFQUEUE."
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:52
+#: src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:77
 msgid "Restart Forkop X"
 msgstr ""
 
@@ -2286,7 +2294,7 @@ msgid "Settings"
 msgstr ""
 
 #: src/forkop/tabs/diagnostic/initController.ts:770
-#: src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:119
+#: src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:144
 msgid "Show sing-box config"
 msgstr ""
 
@@ -2383,7 +2391,7 @@ msgstr ""
 msgid "Standalone Zapret2 service is inactive"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:72
+#: src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:97
 msgid "Start Forkop"
 msgstr ""
 
@@ -2391,7 +2399,7 @@ msgstr ""
 msgid "Stop checking when URLTest group is not used. Use sing-box duration format like 1d, 12h or 30m."
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:62
+#: src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:87
 msgid "Stop Forkop X"
 msgstr ""
 
@@ -2841,7 +2849,7 @@ msgid "Via country.is"
 msgstr ""
 
 #: src/forkop/tabs/diagnostic/initController.ts:736
-#: src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:110
+#: src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts:135
 msgid "View logs"
 msgstr ""
 

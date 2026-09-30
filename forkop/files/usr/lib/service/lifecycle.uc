@@ -1043,21 +1043,27 @@ function start_impl() {
     return 0;
 }
 
-function stop_main() {
+function stop_main(allow_process_conflict) {
     let status = 0;
 
-    // A stop must never tear down Forkop's DNS, nftables and routing state
-    // before it has proved that the live sing-box belongs to the managed procd
-    // service. This function removes the policy before the controlled sing-box
-    // stop would reject ambiguous ownership, so without this gate a stop could
-    // discard the fail-closed policy while an unknown process stays alive.
-    // procd can also briefly report an old PID while replacing its child;
-    // treat that unsettled observation exactly like a foreign process and let
-    // the serialized caller retry once ownership has converged.
-    if (module_success(STATE_UC, [ "sing-box-process-conflict" ])) {
+    // A reload or package transition must never tear down Forkop's DNS,
+    // nftables and routing state before it has proved that the live sing-box
+    // belongs to the managed procd service: this function removes the policy
+    // before the controlled sing-box stop would reject ambiguous ownership,
+    // so without this gate it could discard the fail-closed policy while an
+    // unknown process stays alive. procd can also briefly report an old PID
+    // while replacing its child; treat that unsettled observation exactly
+    // like a foreign process and let the serialized caller retry.
+    //
+    // An explicit Stop is different: the user asked for interception to end,
+    // so it removes every sing-box rather than leaving one behind.
+    let process_conflict = module_success(STATE_UC, [ "sing-box-process-conflict" ]);
+    if (process_conflict && !allow_process_conflict) {
         log_message("Refusing Forkop stop: sing-box process ownership is ambiguous; preserving the existing runtime", "fatal");
-        return 1;
+        return 2;
     }
+    if (process_conflict)
+        log_message("Additional sing-box process detected; explicit Stop will terminate all sing-box runtimes", "warn");
 
     log_message("Stopping Forkop", "info");
     module_success(DNS_FAILOVER_UC, [ "stop-runtime" ]);
@@ -1090,7 +1096,7 @@ function stop_main() {
         command_success_from_args([ "ip", "-6", "route", "flush", "table", RT_TABLE_NAME ]);
 
     let sing_box_status = module_status(STATE_UC, [
-        "stop-managed-sing-box-runtime",
+        allow_process_conflict ? "stop-all-sing-box-runtime" : "stop-managed-sing-box-runtime",
         getenv("FORKOP_SING_BOX_RELOAD_PID_TIMEOUT") || "15"
     ]);
     if (sing_box_status != 0)
@@ -1104,7 +1110,7 @@ function cleanup_failed_runtime() {
 
     log_message("Cleaning up Forkop runtime after failed start/reload", "info");
 
-    let stop_status = stop_main();
+    let stop_status = stop_main(false);
     if (stop_status != 0)
         status = stop_status;
 
@@ -1446,7 +1452,7 @@ function start() {
     return status;
 }
 
-function stop_impl() {
+function stop_impl(allow_process_conflict) {
     let status = 0;
 
     if (!setting_bool("dont_touch_dhcp", false)) {
@@ -1460,7 +1466,11 @@ function stop_impl() {
             status = dns_status;
     }
 
-    let runtime_status = stop_main();
+    let runtime_status = stop_main(allow_process_conflict);
+    // A refused stop left the dataplane untouched. Report that distinctly so
+    // callers can leave DNS with the runtime that is still serving it.
+    if (runtime_status == 2)
+        return 2;
     if (runtime_status != 0)
         status = runtime_status;
 
@@ -1481,7 +1491,12 @@ function stop_impl() {
 }
 
 function stop() {
-    return stop_impl();
+    // The UI button and a plain init.d stop are explicit shutdowns. Package
+    // upgrades and internal component transitions keep the ownership guard,
+    // because they intend to bring the same runtime back up afterwards.
+    let internal_stop = getenv("FORKOP_INTERNAL_SERVICE_STOP") == "1" ||
+        fs.stat(MANAGED_UPGRADE_SING_BOX_MARKER) != null;
+    return stop_impl(!internal_stop);
 }
 
 function restart_runtime_for_reload() {
@@ -1490,7 +1505,7 @@ function restart_runtime_for_reload() {
 
     log_message("Reload requires a full Forkop runtime restart", "info");
 
-    status = stop_main();
+    status = stop_main(false);
     if (status != 0)
         return status;
 
@@ -2058,7 +2073,7 @@ function restart() {
     }
 
     let selector_state = capture_selector_state();
-    let status = stop_impl();
+    let status = stop_impl(false);
     if (status != 0)
         return status;
 

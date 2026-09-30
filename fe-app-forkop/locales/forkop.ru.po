@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-26 00:35+0300\n"
-"PO-Revision-Date: 2026-09-26 00:35+0300\n"
+"POT-Creation-Date: 2026-09-30 23:01+0300\n"
+"PO-Revision-Date: 2026-09-30 23:01+0300\n"
 "Last-Translator: slayer\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -229,6 +229,9 @@ msgstr "Отмена"
 
 msgid "Cannot receive checks result"
 msgstr "Не удалось получить результаты проверки"
+
+msgid "Cannot restart Forkop X"
+msgstr "Перезапуск Forkop X невозможен"
 
 msgid "Cannot save settings"
 msgstr "Не удалось сохранить настройки"
@@ -1144,6 +1147,9 @@ msgstr "Мониторинг"
 
 msgid "More details"
 msgstr "Подробнее"
+
+msgid "Multiple sing-box processes were found or their ownership is unclear. Restart is unavailable; traffic routing was not changed. To stop all sing-box processes, use Stop Forkop X, then start Forkop X again."
+msgstr "Обнаружено несколько процессов sing-box или их принадлежность неясна. Перезапуск недоступен, маршрутизация трафика не изменена. Чтобы остановить все процессы sing-box, нажмите «Остановить Forkop X», затем запустите Forkop X заново."
 
 msgid "Must be a number in the range of 0 - 10000"
 msgstr "Должно быть числом в диапазоне 0 - 10000"

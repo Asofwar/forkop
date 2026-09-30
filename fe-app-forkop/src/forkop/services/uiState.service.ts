@@ -97,6 +97,8 @@ function applyServiceState(uiState: Forkop.UiState) {
         forkopRunning: uiState.service.forkop.running,
         forkopEnabled: uiState.service.forkop.enabled,
         forkopStatus: uiState.service.forkop.status,
+        forkopRestartBlocked: uiState.service.forkop.restart_blocked ?? 0,
+        forkopStopAvailable: uiState.service.forkop.stop_available ?? 0,
       },
     },
     diagnosticsSystemInfo: normalizeSingBoxVariantFields(nextSystemInfo),

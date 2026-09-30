@@ -41,6 +41,8 @@ import {
   targetRows,
   ruleListLabel,
   listErrorText,
+  runProgressView,
+  type RunProgressView,
   workerView,
   type ApplyResultView,
   type GroupCard,
@@ -48,6 +50,9 @@ import {
 } from './model';
 
 const REFRESH_INTERVAL_MS = 15000;
+// While a check runs (a scheduled one too) its progress is followed closely.
+const RUNNING_REFRESH_INTERVAL_MS = 3000;
+let statusLoadedAt = 0;
 // Group membership needs a DNS lookup per target on the router: refreshed
 // less often, and after every change.
 const GROUPS_REFRESH_INTERVAL_MS = 120000;
@@ -107,6 +112,7 @@ function timeNode(timestamp: number) {
 
 async function loadStatus() {
   const id = mountId;
+  statusLoadedAt = Date.now();
   const [statusResponse, historyResponse] = await Promise.allSettled([
     ForkopShellMethods.autotuneStatus(),
     ForkopShellMethods.getHistory(),
@@ -873,12 +879,17 @@ function renderState() {
       _('State'),
       renderStatus({ label: _('Applying a strategy'), tone: 'loading' }),
     ]);
-  else if (runningScope || status.worker?.state === 'running')
+  else if (runningScope || status.worker?.state === 'running') {
+    const run = runProgressView(status.worker, Math.floor(Date.now() / 1000));
     facts.push([
       _('State'),
-      renderStatus(worker ?? { label: _('Checking targets'), tone: 'loading' }),
+      run
+        ? renderRunProgress(run)
+        : renderStatus(
+            worker ?? { label: _('Checking targets'), tone: 'loading' },
+          ),
     ]);
-  else if (worker && status.worker?.finished_at)
+  } else if (worker && status.worker?.finished_at)
     facts.push([
       _('Last check'),
       E('span', { class: 'fkp-autotune__row' }, [
@@ -991,6 +1002,72 @@ function renderState() {
             : []),
         ]),
   );
+}
+
+// A running check: a bar, the target measured now and its phase, the time
+// left, and every target of the run with its result as it comes.
+function renderRunProgress(run: RunProgressView) {
+  const icon: Record<string, string> = {
+    done: '✓',
+    skipped: '!',
+    running: '…',
+    pending: '·',
+  };
+  const bar = E('div', { class: 'fkp-autotune__bar' }, [
+    E('div', { style: `width: ${run.percent}%` }),
+  ]) as HTMLElement;
+  bar.setAttribute('role', 'progressbar');
+  bar.setAttribute('aria-valuemin', '0');
+  bar.setAttribute('aria-valuemax', '100');
+  bar.setAttribute('aria-valuenow', String(run.percent));
+  return E('div', { class: 'fkp-autotune__run' }, [
+    E('div', { class: 'fkp-autotune__row' }, [
+      renderStatus({ label: _('Checking targets'), tone: 'loading' }),
+      E('strong', {}, `${run.percent}%`),
+      ...(run.remaining
+        ? [
+            E(
+              'span',
+              { class: 'fkp-autotune__muted' },
+              `${_('left')}: ${run.remaining}`,
+            ),
+          ]
+        : []),
+    ]),
+    bar,
+    E('div', {}, [
+      E('strong', {}, run.title),
+      ...(run.phase ? [' — ', run.phase] : []),
+    ]),
+    E(
+      'ul',
+      { class: 'fkp-autotune__run-items' },
+      run.items.map((item) =>
+        E(
+          'li',
+          {
+            class: `fkp-autotune__run-item fkp-autotune__run-item--${item.state}`,
+          },
+          [
+            E(
+              'span',
+              { class: 'fkp-autotune__run-icon' },
+              icon[item.state] ?? '·',
+            ),
+            E('span', { class: 'fkp-autotune__what' }, item.host),
+            renderStatus({ label: item.text, tone: item.tone }),
+          ],
+        ),
+      ),
+    ),
+    E(
+      'p',
+      { class: 'fkp-autotune__muted' },
+      _(
+        'Each target is measured in isolation; production traffic is not changed. After the probes Forkop X waits until their connections close, which can take a few minutes on a blocked site.',
+      ),
+    ),
+  ]);
 }
 
 function renderProgress(progress: NonNullable<GroupCard['progress']>) {
@@ -1434,10 +1511,15 @@ function onPageMount() {
   void loadAll();
   refreshTimer = setInterval(() => {
     if (busy) return;
-    void loadStatus();
+    const running = status?.worker?.state === 'running';
+    if (
+      Date.now() - statusLoadedAt >=
+      (running ? RUNNING_REFRESH_INTERVAL_MS : REFRESH_INTERVAL_MS)
+    )
+      void loadStatus();
     if (Date.now() - liveLoadedAt > GROUPS_REFRESH_INTERVAL_MS)
       void loadGroups();
-  }, REFRESH_INTERVAL_MS);
+  }, RUNNING_REFRESH_INTERVAL_MS);
 }
 
 function onPageUnmount() {

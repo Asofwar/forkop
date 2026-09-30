@@ -54,6 +54,13 @@ const TMP_DIR = getenv("FORKOP_AUTOTUNE_TMPDIR") || "/tmp";
 const DIG = getenv("FORKOP_AUTOTUNE_DIG") || "dig";
 const STATE_DIR = getenv("FORKOP_AUTOTUNE_STATE_DIR") || "/var/run/forkop/autotune";
 const WORKER_LOCK = STATE_DIR + "/worker.lock";
+// The phase of the running tune (autotune/isolation.uc progress), tmpfs.
+const TUNE_PROGRESS = STATE_DIR + "/tune-progress.json";
+// The targets of the running run and their states, tmpfs (never the state
+// file on flash: it changes with every target).
+const RUN_PROGRESS = STATE_DIR + "/run-progress.json";
+// A target never measured before is expected to take this long.
+const DEFAULT_TUNE_SECONDS = 150;
 // Samples of rule-list targets (autotune/lists.uc), tmpfs.
 const LIST_CACHE_DIR = STATE_DIR + "/lists";
 const STATE_LOCK = STATE_DIR + "/state.lock";
@@ -97,6 +104,12 @@ function config_sections() {
 // finishing: the worker crashed or the router rebooted during the run.
 function worker_view(worker) {
     if (type(worker) != "object" || worker.state != "running") return worker;
+    let run = null, tune = null;
+    try { run = json(fs.readfile(RUN_PROGRESS)); } catch (e) { run = null; }
+    try { tune = json(fs.readfile(TUNE_PROGRESS)); } catch (e) { tune = null; }
+    // Only the progress of this very run.
+    if (type(run) == "object" && run.started_at == worker.started_at)
+        worker = { ...worker, progress: run, tune: type(tune) == "object" ? tune : null };
     let handle = fs.open(WORKER_LOCK, "re");
     if (!handle) return { ...worker, state: "crashed" };
     let free = handle.lock("xn");
@@ -106,8 +119,8 @@ function worker_view(worker) {
 }
 
 // A Stage 3-5 tool, invoked as its lock identity requires; its JSON output.
-function run_tool(name, args) {
-    let r = capture([ "ucode", "-L", LIB_DIR, LIB_DIR + "/autotune/" + name + ".uc", ...args ]);
+function run_tool(name, args, env) {
+    let r = capture([ ...(env ? [ "env", ...env ] : []), "ucode", "-L", LIB_DIR, LIB_DIR + "/autotune/" + name + ".uc", ...args ]);
     let parsed = null;
     try { parsed = json(r.output); } catch (e) { parsed = null; }
     return type(parsed) == "object" ? parsed : null;
@@ -528,7 +541,8 @@ function blocker(for_apply) {
 function tune_target(t, probes, dns_resolver) {
     // The policy value is an upper bound: a run has a fixed number of source
     // ports, shared by every supported candidate (isolation.uc tune).
-    return run_tool("isolation", [ "tune", t.host, "max:" + as_string(probes), dns_resolver ]) ||
+    fs.unlink(TUNE_PROGRESS);
+    return run_tool("isolation", [ "tune", t.host, "max:" + as_string(probes), dns_resolver ], [ "FORKOP_AUTOTUNE_PROGRESS=" + TUNE_PROGRESS ]) ||
         { status: "failed", reason: "tune_output_invalid" };
 }
 
@@ -679,6 +693,26 @@ function run_locked(scope, trigger) {
         outside = computed.outside;
         chosen = choose(keys(computed.groups), scope, local.rotation);
         if (chosen == null) { unknown_group = true; chosen = []; }
+        // What the page shows while the run goes: every target of the run in
+        // order, its state and result, and how long it is expected to take
+        // (its last measurement, else a default).
+        let items = [];
+        for (let name in chosen)
+            for (let id in computed.groups[name].targets) {
+                let t = filter(measured, (x) => x.id == id)[0];
+                let last = summary_of(local, t);
+                push(items, { id, host: t.host, parent: t.parent || null, group: name, state: "pending",
+                    expected_s: last != null && int(last.duration_s) > 0 ? int(last.duration_s) : DEFAULT_TUNE_SECONDS });
+            }
+        let set_item = (id, change) => {
+            for (let item in items) if (item.id == id) for (let k, v in change) item[k] = v;
+            let tmp = RUN_PROGRESS + ".tmp";
+            if (fs.writefile(tmp, sprintf("%J
+", { started_at: started, total: length(items),
+                done: length(filter(items, (i) => i.state == "done" || i.state == "skipped")), items })) != null)
+                fs.rename(tmp, RUN_PROGRESS);
+        };
+        if (length(items) > 0) set_item(null, {});
         for (let name in chosen) {
             let g = computed.groups[name];
             for (let id in g.targets) {
@@ -687,13 +721,22 @@ function run_locked(scope, trigger) {
                 if (stop != null) break;
                 let t = filter(measured, (x) => x.id == id)[0];
                 let dns_resolver = resolver_for(t, sections);
-                if (dns_resolver == null) { push(unmeasured, { id, reason: "resolver_missing" }); continue; }
+                if (dns_resolver == null) {
+                    push(unmeasured, { id, reason: "resolver_missing" });
+                    set_item(id, { state: "skipped", reason: "resolver_missing" });
+                    continue;
+                }
+                let begun = now();
+                set_item(id, { state: "running", started_at: begun });
                 let result = tune_target(t, policy.probes, dns_resolver.ip);
                 // Neither says anything about the target: nothing is recorded.
                 if (result.status == "busy") { stop = "autotune_in_progress"; break; }
                 if (result.status == "interrupted") { stop = "interrupted"; break; }
                 updates.targets[id] = state_module.record_tune(local, id, result,
                     { host: t.host, group: name, fingerprint: g.fingerprint }, now());
+                updates.targets[id].duration_s = now() - begun;
+                set_item(id, { state: "done", finished_at: now(), status: result.status, selected: result.selected || null,
+                    confidence: result.confidence || null, reason: result.reason || null });
                 results[id] = { full: result, resolver: dns_resolver.ip };
                 push(tuned, id);
             }
@@ -741,6 +784,8 @@ function run_locked(scope, trigger) {
         recovered: crashed != null ? { started_at: crashed.started_at, trigger: crashed.trigger, phase: crashed.phase,
             group: crashed.group || null } : null };
     merge(updates);
+    fs.unlink(RUN_PROGRESS);
+    fs.unlink(TUNE_PROGRESS);
     if (unknown_group) return { status: "failed", reason: "unknown_group", group: scope };
     return { status: "ok", result, reason, trigger, scope, groups: report, tuned, unmeasured, outside,
         applied, recovered: updates.worker.recovered, next_run_at: updates.next_run_at };

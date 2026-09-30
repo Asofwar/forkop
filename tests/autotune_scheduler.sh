@@ -183,11 +183,21 @@ STUB_TUNE_SLEEP=1 manager run-async youtube >"$WORK/job.json"
 job="$(node -e 'console.log(require(process.argv[1]).job)' "$WORK/job.json")"
 [[ "$job" =~ ^[0-9]+_[0-9]+$ ]] || fail "job id: $(cat "$WORK/job.json")"
 wait_until 30 job_state_is "$job" running "$WORK/job-status.json" || fail "job running: $(cat "$WORK/job-status.json")"
+# While it runs the status shows every target of the run, the one measured
+# now and the phase of its tune.
+running_target() { manager status >"$WORK/progress.json" && node -e 'const w=require(process.argv[1]).worker; if (!w.progress || !w.progress.items.some((i) => i.state === "running")) process.exit(1)' "$WORK/progress.json"; }
+wait_until 30 running_target || fail "progress while running: $(cat "$WORK/progress.json")"
+node -e 'const w=require(process.argv[1]).worker, a=require("node:assert/strict");
+  a.equal(w.progress.total, 2); a.deepEqual(w.progress.items.map((i) => i.host), ["www.youtube.com", "i.ytimg.com"]);
+  a.ok(w.progress.items.every((i) => i.expected_s > 0)); a.deepEqual(w.tune, { phase: "measuring", done: 3, total: 8 });' "$WORK/progress.json" ||
+  fail "run progress: $(cat "$WORK/progress.json")"
 if manager run-async all >"$WORK/job-busy.json"; then fail "one job at a time"; fi
 [ "$(json_get "$WORK/job-busy.json" reason)" = '"autotune_worker_running"' ] || fail "busy job reason"
 wait_until 60 job_state_is "$job" finished "$WORK/job-status.json" || fail "job finished: $(cat "$WORK/job-status.json")"
 [ "$(json_get "$WORK/job-status.json" job.result.result)" = '"completed"' ] || fail "job result"
 [ "$(json_get "$FORKOP_AUTOTUNE_STATE_FILE" worker.trigger)" = '"manual"' ] || fail "job runs are manual"
+[ ! -e "$FORKOP_AUTOTUNE_STATE_DIR/run-progress.json" ] || fail "the progress is removed when the run ends"
+[ "$(json_get "$FORKOP_AUTOTUNE_STATE_FILE" targets.yt.duration_s)" != null ] || fail "the tune duration is kept for the next estimate"
 
 STUB_TUNE_SLEEP=3 manager run-async youtube >"$WORK/job2.json"
 job2="$(node -e 'console.log(require(process.argv[1]).job)' "$WORK/job2.json")"

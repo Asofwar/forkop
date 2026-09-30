@@ -88,6 +88,9 @@ const HOLD_TIMEOUT = int(getenv("FORKOP_AUTOTUNE_HOLD_TIMEOUT") || "300");
 // Seconds to wait for production queues to be momentarily empty before the
 // temporary hooks are registered or unregistered.
 const QUIET_TIMEOUT = int(getenv("FORKOP_AUTOTUNE_QUIET_TIMEOUT") || "2");
+// Where a tune reports its phase while it runs, for the page (the manager
+// passes it; none: no reports). { phase, done, total, waited_s, timeout_s }.
+const PROGRESS_FILE = getenv("FORKOP_AUTOTUNE_PROGRESS") || "";
 const PROBE_MARK_VALUE = contract.mark_number(PROBE_MARK);
 const DESYNC_MARK_VALUE = contract.mark_number(DESYNC_MARK);
 const REQUIRED_COUNTERS = [ "probe_mark", "reinjected", "reinjected_bare", "unexpected" ];
@@ -124,6 +127,14 @@ function now() {
     let t = localtime(sec);
     return sprintf("%02d:%02d:%02d.%03d", t.hour, t.min, t.sec, msec);
 }
+// The phase of a running tune: preparing, measuring (done/total probes),
+// holding (waiting for probe connections to close), cleaning. Best effort.
+function progress(phase, extra) {
+    if (PROGRESS_FILE == "") return;
+    let tmp = PROGRESS_FILE + ".tmp";
+    if (fs.writefile(tmp, sprintf("%J\n", { phase, at: time(), ...(extra || {}) })) != null) fs.rename(tmp, PROGRESS_FILE);
+}
+
 function mark(step, event, extra) {
     let entry = { step, event, at: now() };
     if (extra != null) entry.detail = extra;
@@ -659,6 +670,7 @@ function hold(ip) {
         result.sockets = probe_sockets(ip).total;
         if (result.sockets == 0) { result.settled = true; break; }
         if (i >= HOLD_TIMEOUT) break;
+        if (i % 5 == 0) progress("holding", { waited_s: result.waited_s, timeout_s: HOLD_TIMEOUT, sockets: result.sockets });
         pause();
         result.waited_s++;
     }
@@ -941,6 +953,9 @@ function tune(host, probes, resolver, list, ip) {
     }
     result.isolation.queues = map(entries, (e) => e.queue);
     result.schedule = select_module.schedule(order, probes);
+    let total_probes = 0;
+    for (let r in result.schedule) total_probes += length(r);
+    progress("preparing", { done: 0, total: total_probes, candidates: length(order) });
 
     let pre = preflight(result, host, resolver, ip, (resolved) => {
         result.status = "inconclusive"; result.reason = "target_unresolved";
@@ -974,6 +989,7 @@ function tune(host, probes, resolver, list, ip) {
         }
         mark("T2", "temporary nfqws started", pids);
         mark("T3", "measurement begins", { rounds: length(result.schedule), candidates: order });
+        progress("measuring", { done: 0, total: total_probes, candidates: length(order) });
         let current = "direct";
         for (let r = 0; r < length(result.schedule); r++) {
             let round = [];
@@ -1012,6 +1028,7 @@ function tune(host, probes, resolver, list, ip) {
                 push(records[id], record);
                 push(result.probes, record);
                 push(round, record);
+                progress("measuring", { done: length(result.probes), total: total_probes, candidates: length(order) });
             }
             // No candidate can repair a TCP connect failure: when every
             // candidate of a round fails before the connection is established,
@@ -1029,6 +1046,7 @@ function tune(host, probes, resolver, list, ip) {
     catch (e) { failure = "exception: " + as_string(e.message); }
 
     let actions = [], report = result.teardown || {};
+    progress("cleaning", { done: length(result.probes), total: total_probes });
     let torn_down = teardown(read_active() || { nfqws: entries, ip: target.ip }, actions, report);
     result.teardown = report;
     let verified = verify_clean();

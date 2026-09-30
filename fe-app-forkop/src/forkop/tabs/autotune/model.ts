@@ -683,6 +683,147 @@ function targetRow(
   };
 }
 
+export interface RunProgressItem {
+  host: string;
+  state: string;
+  text: string;
+  tone: StatusTone;
+}
+
+export interface RunProgressView {
+  // 0..100, weighted by how long each target is expected to take.
+  percent: number;
+  // "Target 2 of 3: youtube.com".
+  title: string;
+  // What the running target does now.
+  phase: string;
+  // "about 3 min left", or '' when nothing can be estimated.
+  remaining: string;
+  items: RunProgressItem[];
+}
+
+// Share of a target's check done at a tune phase: probes are most of it;
+// the wait for probe connections to close can take minutes on a blocked site.
+function phaseShare(tune: Forkop.AutotuneTuneProgress | null | undefined) {
+  if (!tune) return 0;
+  const done = Number(tune.done) || 0;
+  const total = Number(tune.total) || 0;
+  switch (tune.phase) {
+    case 'preparing':
+      return 0.05;
+    case 'measuring':
+      return 0.05 + (total ? 0.75 * Math.min(done / total, 1) : 0);
+    case 'cleaning':
+      return 0.8;
+    case 'holding':
+      return (
+        0.8 +
+        0.15 *
+          Math.min(
+            (Number(tune.waited_s) || 0) / (Number(tune.timeout_s) || 300),
+            1,
+          )
+      );
+    default:
+      return 0;
+  }
+}
+
+function tunePhaseText(tune: Forkop.AutotuneTuneProgress | null | undefined) {
+  switch (tune?.phase) {
+    case 'preparing':
+      return _('preparing the isolated check');
+    case 'measuring':
+      return _('probes: %d of %d')
+        .replace('%d', String(tune.done ?? 0))
+        .replace('%d', String(tune.total ?? 0));
+    case 'cleaning':
+      return _('probes done, removing the temporary rules');
+    case 'holding':
+      return _('waiting for probe connections to close: %d s (up to %d s)')
+        .replace('%d', String(tune.waited_s ?? 0))
+        .replace('%d', String(tune.timeout_s ?? 300));
+    default:
+      return _('starting');
+  }
+}
+
+export function durationText(seconds: number) {
+  if (seconds < 60) return _('less than a minute');
+  return _('about %d min').replace('%d', String(Math.round(seconds / 60)));
+}
+
+function runItemText(item: Forkop.AutotuneRunItem): {
+  text: string;
+  tone: StatusTone;
+} {
+  switch (item.state) {
+    case 'running':
+      return { text: _('Checking now'), tone: 'loading' };
+    case 'pending':
+      return { text: _('Waiting'), tone: 'neutral' };
+    case 'skipped':
+      return { text: targetReasonText(item.reason), tone: 'warning' };
+    default:
+      if (item.status === 'selected' && item.selected)
+        return {
+          text: `${_('Best')}: ${strategyLabel(item.selected)} (${_('confidence')} ${confidenceLabel(item.confidence ?? null)})`,
+          tone: 'success',
+        };
+      return {
+        text: targetReasonText(item.reason) || _('No usable result'),
+        tone: 'warning',
+      };
+  }
+}
+
+// A running check as the page shows it; null when the worker reports no
+// progress (an older worker, or an apply).
+export function runProgressView(
+  worker: Forkop.AutotuneWorker | null | undefined,
+  nowSeconds: number,
+): RunProgressView | null {
+  const progress = worker?.state === 'running' ? worker.progress : undefined;
+  if (!progress || !progress.items.length) return null;
+  const items = progress.items;
+  const weight = items.reduce((sum, i) => sum + Math.max(i.expected_s, 1), 0);
+  const running = items.find((i) => i.state === 'running') ?? null;
+  const share = phaseShare(worker?.tune);
+  let doneWeight = 0;
+  for (const item of items)
+    if (item.state === 'done' || item.state === 'skipped')
+      doneWeight += Math.max(item.expected_s, 1);
+    else if (item === running)
+      doneWeight += Math.max(item.expected_s, 1) * share;
+  const elapsed =
+    running?.started_at !== undefined
+      ? Math.max(nowSeconds - running.started_at, 0)
+      : 0;
+  const left =
+    items
+      .filter((i) => i.state === 'pending')
+      .reduce((sum, i) => sum + i.expected_s, 0) +
+    (running ? Math.max(running.expected_s - elapsed, 15) : 0);
+  const position = running
+    ? items.indexOf(running) + 1
+    : Math.min(progress.done + 1, items.length);
+  return {
+    percent: Math.min(Math.round((100 * doneWeight) / weight), 99),
+    title:
+      _('Target %d of %d')
+        .replace('%d', String(position))
+        .replace('%d', String(items.length)) +
+      (running ? `: ${running.host}` : ''),
+    phase: running ? tunePhaseText(worker?.tune) : '',
+    remaining: left > 0 ? durationText(left) : '',
+    items: items.map((item) => ({
+      host: item.host,
+      state: item.state,
+      ...runItemText(item),
+    })),
+  };
+}
+
 // Worker state for the summary line.
 export function workerView(
   worker: Forkop.AutotuneWorker | null,

@@ -68,6 +68,15 @@ export const styles = `
 }
 .fkp-autotune__name { font-weight: 600; flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
 .fkp-autotune__progress { display: inline-flex; gap: 3px; vertical-align: middle; }
+/* A running check. */
+.fkp-autotune__run { display: grid; gap: var(--fkp-space-1); min-width: 0; }
+.fkp-autotune__bar { height: 6px; border-radius: 3px; background: var(--fkp-border); overflow: hidden; max-width: 480px; }
+.fkp-autotune__bar > div { height: 100%; background: var(--fkp-tone-loading); transition: width 0.5s; }
+.fkp-autotune__run-items { list-style: none; margin: 0; padding: 0; }
+.fkp-autotune__run-item { display: flex; flex-wrap: wrap; align-items: center; gap: var(--fkp-space-1) var(--fkp-space-2); padding: 2px 0; min-width: 0; }
+.fkp-autotune__run-item--pending { color: var(--fkp-tone-neutral); }
+.fkp-autotune__run-icon { width: 1em; text-align: center; flex: none; }
+.fkp-autotune__run-item .fkp-autotune__what { flex: 0 1 16em; }
 .fkp-autotune__dot {
     width: 0.7em;
     height: 0.7em;

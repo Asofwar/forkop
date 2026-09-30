@@ -125,7 +125,10 @@ tune() { ucode -L "$LIB" "$LIB/autotune/isolation.uc" tune example.com "$@" > "$
 
 # 13. one resolution, one pinned IP for every candidate; interleaving; selection
 reset_state
-CURL_STUB_PLAN="direct=reset,4600=success:120,4601=success:118" tune 3 192.0.2.53 multisplit,fake
+CURL_STUB_PLAN="direct=reset,4600=success:120,4601=success:118" FORKOP_AUTOTUNE_PROGRESS="$WORK/progress.json" tune 3 192.0.2.53 multisplit,fake
+# The last phase reported is the cleanup, after all 9 probes.
+node -e 'const p=require(process.argv[1]); if (p.phase !== "cleaning" || p.done !== 9 || p.total !== 9) process.exit(1)' "$WORK/progress.json" ||
+  fail "tune progress: $(cat "$WORK/progress.json" 2>/dev/null)"
 json '
 a.equal(r.status, "selected", JSON.stringify(r).slice(0, 400)); a.equal(r.selected, "multisplit");
 a.equal(r.reason, "direct_failed_candidate_stable"); a.equal(r.confidence, "high"); a.equal(r.applied, false);

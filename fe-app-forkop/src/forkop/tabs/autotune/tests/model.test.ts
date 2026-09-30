@@ -21,6 +21,7 @@ import {
   ruleListName,
   ruleListLabel,
   listErrorText,
+  runProgressView,
   workerView,
 } from '../model';
 import type { Forkop } from '../../../types';
@@ -1219,5 +1220,78 @@ describe('recorded apply and its rollback', () => {
     expect(card.lastApply?.outcome.label).toBe(
       'Rolled back by an administrator',
     );
+  });
+});
+
+describe('runProgressView', () => {
+  const item = (
+    host: string,
+    state: string,
+    extra: Partial<Forkop.AutotuneRunItem> = {},
+  ): Forkop.AutotuneRunItem => ({
+    id: host,
+    host,
+    group: 'Zapret',
+    state,
+    expected_s: 100,
+    ...extra,
+  });
+  const worker = (
+    items: Forkop.AutotuneRunItem[],
+    tune: Forkop.AutotuneTuneProgress | null = null,
+  ): Forkop.AutotuneWorker => ({
+    state: 'running',
+    progress: { started_at: 1000, total: items.length, done: 0, items },
+    tune,
+  });
+
+  it('shows the target measured now, its probes and the time left', () => {
+    const view = runProgressView(
+      worker(
+        [
+          item('youtube.com', 'done', {
+            status: 'selected',
+            selected: 'multisplit',
+            confidence: 'high',
+          }),
+          item('youtu.be', 'running', { started_at: 1100 }),
+          item('ytimg.com', 'pending'),
+        ],
+        { phase: 'measuring', done: 16, total: 32 },
+      ),
+      1140,
+    )!;
+    // 100 + 100 * (0.05 + 0.75 * 0.5) = 142.5 of 300.
+    expect(view.percent).toBe(48);
+    expect(view.title).toBe('Target 2 of 3: youtu.be');
+    expect(view.phase).toBe('probes: 16 of 32');
+    // 100 pending + 60 left of the running target.
+    expect(view.remaining).toBe('about 3 min');
+    expect(view.items.map((i) => i.tone)).toEqual([
+      'success',
+      'loading',
+      'neutral',
+    ]);
+    expect(view.items[0].text).toContain('multisplit');
+  });
+
+  it('explains the wait for probe connections', () => {
+    const view = runProgressView(
+      worker([item('youtube.com', 'running', { started_at: 1000 })], {
+        phase: 'holding',
+        waited_s: 40,
+        timeout_s: 300,
+      }),
+      1200,
+    )!;
+    expect(view.phase).toBe(
+      'waiting for probe connections to close: 40 s (up to 300 s)',
+    );
+    expect(view.remaining).toBe('less than a minute');
+  });
+
+  it('has nothing to show without progress', () => {
+    expect(runProgressView({ state: 'running' }, 0)).toBeNull();
+    expect(runProgressView({ state: 'finished' }, 0)).toBeNull();
   });
 });

@@ -251,6 +251,41 @@ export namespace Forkop {
     job?: string | null;
     group?: string;
     candidate?: string;
+    // A running check: its targets in order and the phase of the one
+    // measured now (autotune/manager.uc, autotune/isolation.uc progress).
+    progress?: AutotuneRunProgress;
+    tune?: AutotuneTuneProgress | null;
+  }
+
+  export interface AutotuneRunItem {
+    id: string;
+    host: string;
+    parent?: string | null;
+    group: string;
+    state: string;
+    expected_s: number;
+    started_at?: number;
+    finished_at?: number;
+    status?: string;
+    selected?: string | null;
+    confidence?: string | null;
+    reason?: string | null;
+  }
+
+  export interface AutotuneRunProgress {
+    started_at: number;
+    total: number;
+    done: number;
+    items: AutotuneRunItem[];
+  }
+
+  export interface AutotuneTuneProgress {
+    phase: string;
+    at?: number;
+    done?: number;
+    total?: number;
+    waited_s?: number;
+    timeout_s?: number;
   }
 
   export interface AutotuneStatus {

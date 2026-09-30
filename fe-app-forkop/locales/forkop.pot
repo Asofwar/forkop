@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-30 18:39+0300\n"
-"PO-Revision-Date: 2026-09-30 18:39+0300\n"
+"POT-Creation-Date: 2026-09-30 19:01+0300\n"
+"PO-Revision-Date: 2026-09-30 19:01+0300\n"
 "Last-Translator: Asofwar <7397608+Asofwar@users.noreply.github.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -25,7 +25,7 @@ msgstr ""
 msgid "-- Select --"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:800
+#: src/forkop/tabs/autotune/initController.ts:806
 msgid "%d confirmations"
 msgstr ""
 
@@ -33,7 +33,7 @@ msgstr ""
 msgid "%d connections now"
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:788
+#: src/forkop/tabs/autotune/model.ts:929
 msgid "%d d"
 msgstr ""
 
@@ -41,7 +41,7 @@ msgstr ""
 msgid "%d entries without a domain name are skipped"
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:787
+#: src/forkop/tabs/autotune/model.ts:928
 msgid "%d h"
 msgstr ""
 
@@ -61,8 +61,8 @@ msgstr ""
 msgid "%d more: refine the search"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1075
 #: src/forkop/tabs/autotune/model.ts:522
+#: src/forkop/tabs/dashboard/initController.ts:1075
 #: src/forkop/tabs/dashboard/partials/renderSections.ts:318
 #: src/forkop/tabs/dashboard/partials/renderSections.ts:487
 msgid "%d ms"
@@ -101,7 +101,7 @@ msgstr ""
 msgid "%s (unavailable)"
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1089
+#: src/forkop/tabs/autotune/model.ts:1230
 msgid "%s in the rule \"%t\""
 msgstr ""
 
@@ -109,7 +109,7 @@ msgstr ""
 msgid "%s is “%s”: sing-box and the firewall read it differently"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:1053
+#: src/forkop/tabs/autotune/initController.ts:1130
 msgid "%s is not applied again before %t"
 msgstr ""
 
@@ -141,21 +141,21 @@ msgstr ""
 msgid "+ Add URLTest"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:512
+#: src/forkop/tabs/autotune/initController.ts:518
 msgid "0–5; 0 turns automatic changes off."
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:678
+#: src/forkop/tabs/autotune/initController.ts:684
 msgid "1–8 domains, spread evenly over the list; a domain without an address is replaced by the next one."
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:524
+#: src/forkop/tabs/autotune/initController.ts:530
 msgid "3–7 attempts per strategy and target in each check."
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:218
-#: src/forkop/tabs/autotune/initController.ts:376
-#: src/forkop/tabs/autotune/model.ts:745
+#: src/forkop/tabs/autotune/initController.ts:224
+#: src/forkop/tabs/autotune/initController.ts:382
+#: src/forkop/tabs/autotune/model.ts:886
 msgid "A check is already running."
 msgstr ""
 
@@ -163,7 +163,7 @@ msgstr ""
 msgid "A configuration backup will be saved in /etc/forkop-backups. Older versions may not support all current settings."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1163
+#: src/forkop/tabs/autotune/model.ts:1304
 msgid "A configuration change did not finish and its protection is still active. Restore a snapshot in History and recovery."
 msgstr ""
 
@@ -183,11 +183,11 @@ msgstr ""
 msgid "A configuration restore did not finish. Traffic that needs DPI bypass stays blocked until you restore the last known good snapshot."
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:711
+#: src/forkop/tabs/autotune/initController.ts:717
 msgid "A domain, or a list of a DPI rule measured through a few of its domains."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:723
+#: src/forkop/tabs/autotune/model.ts:864
 msgid "a failed change left the DPI guard in place; restart Forkop X"
 msgstr ""
 
@@ -203,15 +203,15 @@ msgstr ""
 msgid "A group is one Zapret DPI rule. Forkop X changes only the strategy of an existing rule, for all its targets at once. It never creates or deletes rules and never turns DPI bypass off."
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:669
+#: src/forkop/tabs/autotune/initController.ts:675
 msgid "A list of a DPI rule. Each check takes a few of its domains; keywords and regular expressions are skipped."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:729
+#: src/forkop/tabs/autotune/model.ts:870
 msgid "a previous apply is not resolved"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:517
+#: src/forkop/tabs/autotune/initController.ts:523
 msgid "A rolled back strategy is not applied again before this time passes."
 msgstr ""
 
@@ -231,11 +231,11 @@ msgstr ""
 msgid "A safe isolated check is not possible right now."
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:663
+#: src/forkop/tabs/autotune/initController.ts:669
 msgid "A site or service checked through the DPI rule that routes it."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:725
+#: src/forkop/tabs/autotune/model.ts:866
 msgid "a snapshot operation is in progress"
 msgstr ""
 
@@ -243,13 +243,17 @@ msgstr ""
 msgid "A strategy is set for the whole rule, so Forkop X does not change it. You can split the targets into separate rules."
 msgstr ""
 
+#: src/forkop/tabs/autotune/model.ts:753
+msgid "about %d min"
+msgstr ""
+
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8315
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8368
 msgid "Action"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:911
-#: src/forkop/tabs/autotune/initController.ts:1017
+#: src/forkop/tabs/autotune/initController.ts:922
+#: src/forkop/tabs/autotune/initController.ts:1094
 msgid "Action required"
 msgstr ""
 
@@ -296,7 +300,7 @@ msgstr ""
 msgid "Add a rule"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:970
+#: src/forkop/tabs/autotune/initController.ts:981
 msgid "Add a target first"
 msgstr ""
 
@@ -312,8 +316,8 @@ msgstr ""
 msgid "Add prefix to nodes"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:705
-#: src/forkop/tabs/autotune/initController.ts:1245
+#: src/forkop/tabs/autotune/initController.ts:711
+#: src/forkop/tabs/autotune/initController.ts:1322
 msgid "Add target"
 msgstr ""
 
@@ -325,7 +329,7 @@ msgstr ""
 msgid "add the interface item %s with the DNS resolver %s %s"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:1190
+#: src/forkop/tabs/autotune/initController.ts:1267
 msgid "Add the sites that go through your DPI rules, for example youtube.com."
 msgstr ""
 
@@ -399,8 +403,8 @@ msgstr ""
 msgid "All devices"
 msgstr ""
 
+#: src/forkop/tabs/autotune/initController.ts:1493
 #: src/forkop/tabs/dashboard/overviewCards.ts:275
-#: src/forkop/tabs/autotune/initController.ts:1416
 msgid "All events"
 msgstr ""
 
@@ -448,7 +452,7 @@ msgstr ""
 msgid "Allows limiting the list of servers for URLTest"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:918
+#: src/forkop/tabs/autotune/initController.ts:929
 msgid "An administrator can roll it back."
 msgstr ""
 
@@ -477,12 +481,12 @@ msgstr ""
 msgid "Anime"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:310
-#: src/forkop/tabs/autotune/model.ts:926
+#: src/forkop/tabs/autotune/initController.ts:316
+#: src/forkop/tabs/autotune/model.ts:1067
 msgid "Another autotune operation is running."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:727
+#: src/forkop/tabs/autotune/model.ts:868
 msgid "another check is running"
 msgstr ""
 
@@ -514,15 +518,15 @@ msgstr ""
 msgid "Applied, check passed"
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:816
+#: src/forkop/tabs/autotune/model.ts:957
 msgid "Apply"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:1115
+#: src/forkop/tabs/autotune/initController.ts:1192
 msgid "Apply %s"
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:803
+#: src/forkop/tabs/autotune/model.ts:944
 msgid "Apply %s?"
 msgstr ""
 
@@ -534,8 +538,8 @@ msgstr ""
 msgid "Apply section rules only to the specified local IP addresses"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:874
-#: src/forkop/tabs/autotune/model.ts:693
+#: src/forkop/tabs/autotune/initController.ts:880
+#: src/forkop/tabs/autotune/model.ts:834
 msgid "Applying a strategy"
 msgstr ""
 
@@ -548,7 +552,7 @@ msgstr ""
 msgid "Applying Forkop configuration…"
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1048
+#: src/forkop/tabs/autotune/model.ts:1189
 msgid "Applying the new strategy did not finish: its reload did not succeed, and the configuration was changed meanwhile. Forkop X kept that change instead of rolling back. Check the rule, or restore the snapshot you need in History and recovery."
 msgstr ""
 
@@ -568,7 +572,7 @@ msgstr ""
 msgid "At least one valid IP or subnet must be specified."
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:191
+#: src/forkop/tabs/autotune/initController.ts:197
 msgid "At most %d change(s) per day; a rolled back strategy waits %s."
 msgstr ""
 
@@ -588,7 +592,7 @@ msgstr ""
 msgid "Automatic apply requires high confidence."
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:510
+#: src/forkop/tabs/autotune/initController.ts:516
 msgid "Automatic changes per day"
 msgstr ""
 
@@ -596,11 +600,11 @@ msgstr ""
 msgid "Automatic component update checks"
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1069
+#: src/forkop/tabs/autotune/model.ts:1210
 msgid "Automatic recovery did not finish."
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:572
+#: src/forkop/tabs/autotune/initController.ts:578
 msgid "Automatically"
 msgstr ""
 
@@ -633,7 +637,7 @@ msgstr ""
 msgid "Autotune apply"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:1370
+#: src/forkop/tabs/autotune/initController.ts:1447
 msgid "Autotune checks only the sites listed here."
 msgstr ""
 
@@ -641,16 +645,16 @@ msgstr ""
 msgid "Autotune history"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:1084
+#: src/forkop/tabs/autotune/initController.ts:1161
 msgid "Autotune is off. To apply the recommendation, switch to \"Recommendations only\" and apply it here, or to \"Automatic\"."
 msgstr ""
 
 #: src/forkop/ui/status.ts:284
-#: src/forkop/tabs/autotune/initController.ts:202
+#: src/forkop/tabs/autotune/initController.ts:208
 msgid "Autotune mode changed"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:494
+#: src/forkop/tabs/autotune/initController.ts:500
 msgid "Autotune policy"
 msgstr ""
 
@@ -662,7 +666,7 @@ msgstr ""
 msgid "Autotune run"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:819
+#: src/forkop/tabs/autotune/initController.ts:825
 msgid "Autotune state is unavailable"
 msgstr ""
 
@@ -718,6 +722,7 @@ msgid "Before restore"
 msgstr ""
 
 #: src/forkop/tabs/autotune/model.ts:668
+#: src/forkop/tabs/autotune/model.ts:770
 msgid "Best"
 msgstr ""
 
@@ -858,8 +863,8 @@ msgstr ""
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:353
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:4978
 #: src/forkop/ui/confirmAction.ts:30
+#: src/forkop/tabs/autotune/initController.ts:434
 #: src/forkop/tabs/dashboard/initController.ts:1426
-#: src/forkop/tabs/autotune/initController.ts:428
 #: src/forkop/tabs/updates/fullUninstall.ts:11
 #: src/forkop/tabs/updates/releaseSelector.ts:50
 #: src/forkop/tabs/updates/releaseSelector.ts:111
@@ -902,7 +907,7 @@ msgstr ""
 msgid "Changes"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:194
+#: src/forkop/tabs/autotune/initController.ts:200
 msgid "Changes are made only by scheduled checks, one group at a time."
 msgstr ""
 
@@ -920,7 +925,7 @@ msgstr ""
 msgid "Check"
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:756
+#: src/forkop/tabs/autotune/model.ts:897
 msgid "Check 1 to 8 domains of the list."
 msgstr ""
 
@@ -936,15 +941,15 @@ msgstr ""
 msgid "Check all"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:974
+#: src/forkop/tabs/autotune/initController.ts:985
 msgid "Check all now"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:216
+#: src/forkop/tabs/autotune/initController.ts:222
 msgid "Check completed"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:496
+#: src/forkop/tabs/autotune/initController.ts:502
 msgid "Check every"
 msgstr ""
 
@@ -970,11 +975,11 @@ msgstr ""
 msgid "Check interval"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:1130
+#: src/forkop/tabs/autotune/initController.ts:1207
 msgid "Check now"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:368
+#: src/forkop/tabs/autotune/initController.ts:374
 msgid "Check started. Targets are measured in isolation; production traffic is not changed."
 msgstr ""
 
@@ -1000,7 +1005,7 @@ msgstr ""
 msgid "Check URL"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:1040
+#: src/forkop/tabs/autotune/initController.ts:1117
 msgid "Checked"
 msgstr ""
 
@@ -1008,20 +1013,25 @@ msgstr ""
 msgid "Checked %d of %d domains"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:879
-#: src/forkop/tabs/autotune/model.ts:694
+#: src/forkop/tabs/autotune/model.ts:762
+msgid "Checking now"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:889
+#: src/forkop/tabs/autotune/initController.ts:1025
+#: src/forkop/tabs/autotune/model.ts:835
 msgid "Checking targets"
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:827
+#: src/forkop/tabs/autotune/model.ts:968
 msgid "Checking the configuration before the change"
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:831
+#: src/forkop/tabs/autotune/model.ts:972
 msgid "Checking the real production path"
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:836
+#: src/forkop/tabs/autotune/model.ts:977
 msgid "Checking the recommendation"
 msgstr ""
 
@@ -1038,17 +1048,17 @@ msgid "Checking, please wait"
 msgstr ""
 
 #: src/forkop/ui/status.ts:140
-#: src/forkop/tabs/dashboard/overview.ts:219
-#: src/forkop/tabs/autotune/initController.ts:974
-#: src/forkop/tabs/autotune/initController.ts:1130
+#: src/forkop/tabs/autotune/initController.ts:985
+#: src/forkop/tabs/autotune/initController.ts:1207
 #: src/forkop/tabs/diagnostic/connectivityMatrix.ts:104
 #: src/forkop/tabs/diagnostic/dpiPlayground.ts:48
 #: src/forkop/tabs/diagnostic/siteCheck.ts:243
 #: src/forkop/tabs/diagnostic/statusLabels.ts:28
+#: src/forkop/tabs/dashboard/overview.ts:219
 msgid "Checking…"
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1153
+#: src/forkop/tabs/autotune/model.ts:1294
 msgid "Checks and changes wait until it is rolled back."
 msgstr ""
 
@@ -1075,11 +1085,11 @@ msgstr ""
 msgid "Checks that the parameters are valid. It does not test site reachability or bypass effectiveness."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:754
+#: src/forkop/tabs/autotune/model.ts:895
 msgid "Choose a list of a DPI rule."
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:631
+#: src/forkop/tabs/autotune/initController.ts:637
 msgid "Choose at least one domain of the list."
 msgstr ""
 
@@ -1088,7 +1098,7 @@ msgstr ""
 msgid "Choose Forkop X version"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:573
+#: src/forkop/tabs/autotune/initController.ts:579
 msgid "Choose from the list"
 msgstr ""
 
@@ -1118,10 +1128,10 @@ msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3581
 #: src/partials/modal/renderModal.ts:263
+#: src/forkop/tabs/autotune/initController.ts:795
+#: src/forkop/tabs/history/initController.ts:228
 #: src/forkop/tabs/dashboard/initController.ts:1300
 #: src/forkop/tabs/dashboard/initController.ts:1685
-#: src/forkop/tabs/autotune/initController.ts:789
-#: src/forkop/tabs/history/initController.ts:228
 #: src/forkop/tabs/updates/releaseSelector.ts:121
 msgid "Close"
 msgstr ""
@@ -1184,10 +1194,11 @@ msgid "Conditions"
 msgstr ""
 
 #: src/forkop/tabs/autotune/model.ts:668
+#: src/forkop/tabs/autotune/model.ts:770
 msgid "confidence"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:1037
+#: src/forkop/tabs/autotune/initController.ts:1114
 msgid "Confidence"
 msgstr ""
 
@@ -1231,15 +1242,15 @@ msgstr ""
 msgid "Confirm version change"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:1039
+#: src/forkop/tabs/autotune/initController.ts:1116
 msgid "Confirmation"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:1007
+#: src/forkop/tabs/autotune/initController.ts:1084
 msgid "Confirmation %d / %d"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:498
+#: src/forkop/tabs/autotune/initController.ts:504
 msgid "Confirmations"
 msgstr ""
 
@@ -1340,7 +1351,7 @@ msgstr ""
 msgid "Could not delete snapshot"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:1170
+#: src/forkop/tabs/autotune/initController.ts:1247
 msgid "Could not determine the current rule of each target; results of the last check are shown."
 msgstr ""
 
@@ -1372,13 +1383,13 @@ msgstr ""
 msgid "Could not start removal. Another component action may be running."
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:312
-#: src/forkop/tabs/autotune/initController.ts:316
+#: src/forkop/tabs/autotune/initController.ts:318
+#: src/forkop/tabs/autotune/initController.ts:322
 msgid "Could not start the apply"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:378
-#: src/forkop/tabs/autotune/initController.ts:382
+#: src/forkop/tabs/autotune/initController.ts:384
+#: src/forkop/tabs/autotune/initController.ts:388
 msgid "Could not start the check"
 msgstr ""
 
@@ -1386,7 +1397,7 @@ msgstr ""
 msgid "Create snapshot"
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:829
+#: src/forkop/tabs/autotune/model.ts:970
 msgid "Creating a snapshot and reloading the service"
 msgstr ""
 
@@ -1473,8 +1484,8 @@ msgstr ""
 msgid "Destination"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:1276
-#: src/forkop/tabs/autotune/initController.ts:1317
+#: src/forkop/tabs/autotune/initController.ts:1353
+#: src/forkop/tabs/autotune/initController.ts:1394
 #: src/forkop/tabs/monitoring/connectionView.ts:198
 #: src/forkop/tabs/diagnostic/partials/renderCheckSection.ts:180
 msgid "Details"
@@ -1485,7 +1496,7 @@ msgstr ""
 msgid "Detect server country"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:1162
+#: src/forkop/tabs/autotune/initController.ts:1239
 msgid "Determining which rule routes each target…"
 msgstr ""
 
@@ -1659,7 +1670,7 @@ msgstr ""
 msgid "DNS server address cannot be empty"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:721
+#: src/forkop/tabs/autotune/initController.ts:727
 msgid "DNS server for checks"
 msgstr ""
 
@@ -1720,8 +1731,8 @@ msgstr ""
 msgid "Does not work without bypass; a stable strategy was found."
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:536
-#: src/forkop/tabs/autotune/initController.ts:661
+#: src/forkop/tabs/autotune/initController.ts:542
+#: src/forkop/tabs/autotune/initController.ts:667
 msgid "Domain"
 msgstr ""
 
@@ -1753,11 +1764,11 @@ msgstr ""
 msgid "Domains in rules may not resolve, or resolve past Forkop, so their rules do not apply."
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:683
+#: src/forkop/tabs/autotune/initController.ts:689
 msgid "Domains of the list"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:676
+#: src/forkop/tabs/autotune/initController.ts:682
 msgid "Domains to check"
 msgstr ""
 
@@ -1842,7 +1853,7 @@ msgstr ""
 msgid "DPI guard"
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:719
+#: src/forkop/tabs/autotune/model.ts:860
 msgid "DPI protection is active"
 msgstr ""
 
@@ -1875,6 +1886,10 @@ msgstr ""
 msgid "Duration"
 msgstr ""
 
+#: src/forkop/tabs/autotune/initController.ts:1066
+msgid "Each target is measured in isolation; production traffic is not changed. After the probes Forkop X waits until their connections close, which can take a few minutes on a blocked site."
+msgstr ""
+
 #: src/forkop/tabs/dashboard/initController.ts:1288
 msgid "Edit"
 msgstr ""
@@ -1883,7 +1898,7 @@ msgstr ""
 msgid "Edit rule action"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:705
+#: src/forkop/tabs/autotune/initController.ts:711
 msgid "Edit target"
 msgstr ""
 
@@ -1891,7 +1906,7 @@ msgstr ""
 msgid "Edit URLTest"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:1326
+#: src/forkop/tabs/autotune/initController.ts:1403
 msgid "Edit…"
 msgstr ""
 
@@ -1941,7 +1956,7 @@ msgstr ""
 msgid "Enable YACD WAN Access"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:727
+#: src/forkop/tabs/autotune/initController.ts:733
 #: src/forkop/tabs/updates/initController.ts:1070
 #: src/forkop/tabs/updates/initController.ts:1100
 msgid "Enabled"
@@ -1958,7 +1973,7 @@ msgstr ""
 msgid "Enter a display name"
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:747
+#: src/forkop/tabs/autotune/model.ts:888
 msgid "Enter a domain name, for example youtube.com."
 msgstr ""
 
@@ -2006,11 +2021,11 @@ msgstr ""
 msgid "Errors: %d"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:799
+#: src/forkop/tabs/autotune/initController.ts:805
 msgid "every %s"
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1209
+#: src/forkop/tabs/autotune/model.ts:1350
 msgid "Every change made since the last known working configuration is undone, your own edits included. The current configuration is kept as a \"Before restore\" snapshot in History and recovery."
 msgstr ""
 
@@ -2106,12 +2121,12 @@ msgstr ""
 msgid "Failed to create support report"
 msgstr ""
 
-#: src/forkop/methods/shell/index.ts:173
-#: src/forkop/methods/shell/index.ts:180
 #: src/forkop/tabs/updates/initController.ts:541
 #: src/forkop/tabs/updates/initController.ts:542
 #: src/forkop/tabs/updates/initController.ts:602
 #: src/forkop/tabs/updates/initController.ts:784
+#: src/forkop/methods/shell/index.ts:173
+#: src/forkop/methods/shell/index.ts:180
 msgid "Failed to execute"
 msgstr ""
 
@@ -2191,7 +2206,7 @@ msgstr ""
 msgid "For a DPI rule this can mean the strategy does not work with your provider."
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:505
+#: src/forkop/tabs/autotune/initController.ts:511
 msgid "For recommendations. Automatic apply always requires high confidence."
 msgstr ""
 
@@ -2251,7 +2266,7 @@ msgstr ""
 msgid "Forkop X is running"
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:731
+#: src/forkop/tabs/autotune/model.ts:872
 msgid "Forkop X is stopped; start it first"
 msgstr ""
 
@@ -2289,7 +2304,7 @@ msgid "Forkop X never turns DPI bypass off by itself; remove the targets from th
 msgstr ""
 
 #: src/forkop/tabs/autotune/model.ts:222
-#: src/forkop/tabs/autotune/model.ts:899
+#: src/forkop/tabs/autotune/model.ts:1040
 msgid "Forkop X never turns DPI bypass off by itself."
 msgstr ""
 
@@ -2297,11 +2312,11 @@ msgstr ""
 msgid "Forkop X reloads the configuration. If the reload fails, the previous configuration is restored automatically."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1225
+#: src/forkop/tabs/autotune/model.ts:1366
 msgid "Forkop X restores the \"Before autotune\" snapshot, reloads the service and checks that the previous strategy works."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1206
+#: src/forkop/tabs/autotune/model.ts:1347
 msgid "Forkop X restores the last known working configuration if the current one differs from it, and reloads the service."
 msgstr ""
 
@@ -2321,15 +2336,15 @@ msgstr ""
 msgid "Forkop X was not stopped by the user: its start failed or it stopped unexpectedly."
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:184
+#: src/forkop/tabs/autotune/initController.ts:190
 msgid "Forkop X will change the strategy of existing DPI rules by itself, only after several confirmations in a row, with a production check and automatic rollback."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:809
+#: src/forkop/tabs/autotune/model.ts:950
 msgid "Forkop X will create a configuration snapshot, reload the service and check the new strategy with router requests sent through the queue of this rule. If the check fails, the previous configuration is restored automatically."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:812
+#: src/forkop/tabs/autotune/model.ts:953
 msgid "Forkop X will create a configuration snapshot, reload the service and check the real production path. If the check fails, the previous configuration is restored automatically."
 msgstr ""
 
@@ -2449,7 +2464,7 @@ msgstr ""
 msgid "History is kept in memory until the router restarts."
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:1380
+#: src/forkop/tabs/autotune/initController.ts:1457
 #: src/forkop/tabs/history/initController.ts:134
 msgid "History is unavailable"
 msgstr ""
@@ -2907,11 +2922,11 @@ msgstr ""
 msgid "It is not routed by a DPI rule."
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:188
+#: src/forkop/tabs/autotune/initController.ts:194
 msgid "It never creates or deletes rules, never turns DPI bypass off and never moves targets between rules."
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:736
+#: src/forkop/tabs/autotune/initController.ts:742
 msgid "Its measurements are deleted as well. Routing rules are not changed."
 msgstr ""
 
@@ -2958,27 +2973,27 @@ msgstr ""
 msgid "Keyword must not contain spaces or commas"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:908
-#: src/forkop/tabs/autotune/initController.ts:1043
+#: src/forkop/tabs/autotune/initController.ts:919
+#: src/forkop/tabs/autotune/initController.ts:1120
 msgid "Last change"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:751
+#: src/forkop/tabs/autotune/initController.ts:757
 msgid "last check"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:883
-#: src/forkop/tabs/autotune/initController.ts:889
-#: src/forkop/tabs/autotune/initController.ts:890
+#: src/forkop/tabs/autotune/initController.ts:894
+#: src/forkop/tabs/autotune/initController.ts:900
+#: src/forkop/tabs/autotune/initController.ts:901
 #: src/forkop/tabs/diagnostic/partials/renderRunAction.ts:53
 msgid "Last check"
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:702
+#: src/forkop/tabs/autotune/model.ts:843
 msgid "Last check completed"
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:707
+#: src/forkop/tabs/autotune/model.ts:848
 msgid "Last check postponed"
 msgstr ""
 
@@ -3011,10 +3026,10 @@ msgstr ""
 msgid "Last reload: %s"
 msgstr ""
 
-#: src/forkop/methods/shell/index.ts:640
-#: src/forkop/methods/shell/index.ts:661
 #: src/forkop/tabs/dashboard/initController.ts:1028
 #: src/forkop/tabs/dashboard/initController.ts:1036
+#: src/forkop/methods/shell/index.ts:640
+#: src/forkop/methods/shell/index.ts:661
 msgid "Latency test failed"
 msgstr ""
 
@@ -3031,8 +3046,16 @@ msgstr ""
 msgid "Latest version:"
 msgstr ""
 
+#: src/forkop/tabs/autotune/initController.ts:1032
+msgid "left"
+msgstr ""
+
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9471
 msgid "Legacy settings"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:752
+msgid "less than a minute"
 msgstr ""
 
 #: src/forkop/tabs/dashboard/initController.ts:1514
@@ -3043,7 +3066,7 @@ msgstr ""
 msgid "Level name"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:667
+#: src/forkop/tabs/autotune/initController.ts:673
 #: src/forkop/tabs/autotune/model.ts:640
 msgid "List"
 msgstr ""
@@ -3052,7 +3075,7 @@ msgstr ""
 msgid "List must be an HTTP(S) URL or a local .lst path"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:540
+#: src/forkop/tabs/autotune/initController.ts:546
 msgid "List of a rule"
 msgstr ""
 
@@ -3086,9 +3109,8 @@ msgid "Loading..."
 msgstr ""
 
 #: src/forkop/ui/states.ts:36
-#: src/forkop/tabs/dashboard/render.ts:14
 #: src/forkop/tabs/autotune/domainPicker.ts:121
-#: src/forkop/tabs/autotune/initController.ts:1186
+#: src/forkop/tabs/autotune/initController.ts:1263
 #: src/forkop/tabs/autotune/render.ts:14
 #: src/forkop/tabs/autotune/render.ts:25
 #: src/forkop/tabs/autotune/render.ts:29
@@ -3097,6 +3119,7 @@ msgstr ""
 #: src/forkop/tabs/history/render.ts:13
 #: src/forkop/tabs/history/render.ts:17
 #: src/forkop/tabs/history/render.ts:29
+#: src/forkop/tabs/dashboard/render.ts:14
 msgid "Loading…"
 msgstr ""
 
@@ -3132,7 +3155,7 @@ msgstr ""
 msgid "Manual"
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:915
+#: src/forkop/tabs/autotune/model.ts:1056
 msgid "Manual apply is available only in \"Recommendations only\" mode."
 msgstr ""
 
@@ -3156,7 +3179,7 @@ msgstr ""
 msgid "Maximum time to wait for example.com to resolve during a DNS health check."
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:755
+#: src/forkop/tabs/autotune/initController.ts:761
 msgid "measured in isolation from production traffic"
 msgstr ""
 
@@ -3164,7 +3187,7 @@ msgstr ""
 msgid "medium"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:503
+#: src/forkop/tabs/autotune/initController.ts:509
 msgid "Minimum confidence"
 msgstr ""
 
@@ -3184,8 +3207,8 @@ msgstr ""
 msgid "Mixed Proxy Username"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:832
-#: src/forkop/tabs/autotune/initController.ts:840
+#: src/forkop/tabs/autotune/initController.ts:838
+#: src/forkop/tabs/autotune/initController.ts:846
 msgid "Mode"
 msgstr ""
 
@@ -3262,7 +3285,7 @@ msgstr ""
 msgid "News"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:892
+#: src/forkop/tabs/autotune/initController.ts:903
 msgid "Next scheduled check"
 msgstr ""
 
@@ -3312,7 +3335,7 @@ msgstr ""
 msgid "No active connections"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:1407
+#: src/forkop/tabs/autotune/initController.ts:1484
 msgid "No autotune events yet"
 msgstr ""
 
@@ -3349,8 +3372,8 @@ msgid "no data"
 msgstr ""
 
 #: src/forkop/ui/states.ts:102
-#: src/forkop/tabs/autotune/initController.ts:1150
-#: src/forkop/tabs/autotune/initController.ts:1252
+#: src/forkop/tabs/autotune/initController.ts:1227
+#: src/forkop/tabs/autotune/initController.ts:1329
 #: src/forkop/tabs/autotune/model.ts:414
 msgid "No data"
 msgstr ""
@@ -3367,7 +3390,7 @@ msgstr ""
 msgid "No domain of the list has an address at the DNS server."
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:714
+#: src/forkop/tabs/autotune/initController.ts:720
 msgid "No DPI rule has a downloaded list; only domains can be added."
 msgstr ""
 
@@ -3375,8 +3398,8 @@ msgstr ""
 msgid "No events of this kind"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/overviewCards.ts:274
 #: src/forkop/tabs/history/initController.ts:172
+#: src/forkop/tabs/dashboard/overviewCards.ts:274
 msgid "No events recorded yet"
 msgstr ""
 
@@ -3401,8 +3424,8 @@ msgstr ""
 msgid "No recovery needed"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/overview.ts:348
 #: src/forkop/tabs/history/model.ts:154
+#: src/forkop/tabs/dashboard/overview.ts:348
 msgid "No reload recorded yet"
 msgstr ""
 
@@ -3436,7 +3459,7 @@ msgstr ""
 msgid "No snapshots yet"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:780
+#: src/forkop/tabs/autotune/initController.ts:786
 msgid "No strategies were measured"
 msgstr ""
 
@@ -3444,12 +3467,12 @@ msgstr ""
 msgid "No strategy is stable. The current strategy is kept."
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:1185
+#: src/forkop/tabs/autotune/initController.ts:1262
 msgid "No target is routed through a Zapret DPI rule"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:1187
-#: src/forkop/tabs/autotune/initController.ts:1367
+#: src/forkop/tabs/autotune/initController.ts:1264
+#: src/forkop/tabs/autotune/initController.ts:1444
 msgid "No targets yet"
 msgstr ""
 
@@ -3458,6 +3481,7 @@ msgid "no transit rule is selected"
 msgstr ""
 
 #: src/forkop/tabs/autotune/model.ts:671
+#: src/forkop/tabs/autotune/model.ts:774
 msgid "No usable result"
 msgstr ""
 
@@ -3502,7 +3526,7 @@ msgstr ""
 msgid "Not checked"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:890
+#: src/forkop/tabs/autotune/initController.ts:901
 msgid "Not checked yet"
 msgstr ""
 
@@ -3547,12 +3571,12 @@ msgstr ""
 msgid "Not responding"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/overview.ts:205
 #: src/forkop/tabs/diagnostic/diagnostic.store.ts:131
 #: src/forkop/tabs/diagnostic/initController.ts:106
 #: src/forkop/tabs/diagnostic/initController.ts:330
 #: src/forkop/tabs/diagnostic/initController.ts:385
 #: src/forkop/tabs/diagnostic/initController.ts:458
+#: src/forkop/tabs/dashboard/overview.ts:205
 msgid "Not running"
 msgstr ""
 
@@ -3583,20 +3607,20 @@ msgstr ""
 msgid "Nothing to check"
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1344
-#: src/forkop/tabs/autotune/model.ts:1350
-#: src/forkop/tabs/autotune/model.ts:1359
-#: src/forkop/tabs/autotune/model.ts:1365
-#: src/forkop/tabs/autotune/model.ts:1373
+#: src/forkop/tabs/autotune/model.ts:1485
+#: src/forkop/tabs/autotune/model.ts:1491
+#: src/forkop/tabs/autotune/model.ts:1500
+#: src/forkop/tabs/autotune/model.ts:1506
+#: src/forkop/tabs/autotune/model.ts:1514
 msgid "Nothing was rolled back"
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1328
+#: src/forkop/tabs/autotune/model.ts:1469
 msgid "Nothing was rolled back: the router has uncommitted uci changes of Forkop X (made with \"uci set\" without a commit). Commit or revert them, then roll back again."
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:1033
-#: src/forkop/tabs/autotune/model.ts:807
+#: src/forkop/tabs/autotune/initController.ts:1110
+#: src/forkop/tabs/autotune/model.ts:948
 #: src/forkop/tabs/history/initController.ts:191
 msgid "Now"
 msgstr ""
@@ -3656,7 +3680,7 @@ msgstr ""
 msgid "Open"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:1026
+#: src/forkop/tabs/autotune/initController.ts:1103
 msgid "Open History and recovery"
 msgstr ""
 
@@ -3669,7 +3693,7 @@ msgstr ""
 msgid "Open priority settings and enter a display name"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:1139
+#: src/forkop/tabs/autotune/initController.ts:1216
 #: src/forkop/tabs/diagnostic/partials/renderCheckSection.ts:94
 msgid "Open rules"
 msgstr ""
@@ -3688,7 +3712,7 @@ msgstr ""
 msgid "Option \"%s\" contains an invalid input value."
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:723
+#: src/forkop/tabs/autotune/initController.ts:729
 msgid "Optional IPv4 address. By default the first IPv4 DNS server of Forkop X is used."
 msgstr ""
 
@@ -3802,15 +3826,15 @@ msgstr ""
 msgid "Path type"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:1052
+#: src/forkop/tabs/autotune/initController.ts:1129
 msgid "Pause"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:515
+#: src/forkop/tabs/autotune/initController.ts:521
 msgid "Pause after a rollback"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:805
+#: src/forkop/tabs/autotune/initController.ts:811
 msgid "pause after a rollback %s"
 msgstr ""
 
@@ -3833,7 +3857,7 @@ msgstr ""
 msgid "Pin on dashboard"
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:758
+#: src/forkop/tabs/autotune/model.ts:899
 msgid "Pinned domains must be domain names, at most 8."
 msgstr ""
 
@@ -3841,15 +3865,15 @@ msgstr ""
 msgid "Pinned domains: %d"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:861
+#: src/forkop/tabs/autotune/initController.ts:867
 msgid "Policy"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:488
+#: src/forkop/tabs/autotune/initController.ts:494
 msgid "Policy saved"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:961
+#: src/forkop/tabs/autotune/initController.ts:972
 msgid "Policy…"
 msgstr ""
 
@@ -3896,8 +3920,12 @@ msgstr ""
 msgid "Prefix text"
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:835
+#: src/forkop/tabs/autotune/model.ts:976
 msgid "Preparing the change"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:735
+msgid "preparing the isolated check"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8820
@@ -3934,8 +3962,16 @@ msgstr ""
 msgid "Probe tool is missing on the router"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:522
+#: src/forkop/tabs/autotune/model.ts:741
+msgid "probes done, removing the temporary rules"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:528
 msgid "Probes per strategy"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:737
+msgid "probes: %d of %d"
 msgstr ""
 
 #: src/forkop/tabs/dashboard/partials/renderSections.ts:130
@@ -3980,7 +4016,7 @@ msgstr ""
 msgid "Recommendations only"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:1035
+#: src/forkop/tabs/autotune/initController.ts:1112
 msgid "Recommended"
 msgstr ""
 
@@ -4022,7 +4058,7 @@ msgid "Removal did not finish. See the removal log in /tmp/forkop-uninstall.*/ou
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:5119
-#: src/forkop/tabs/autotune/initController.ts:737
+#: src/forkop/tabs/autotune/initController.ts:743
 #: src/forkop/tabs/diagnostic/connectivityMatrix.ts:279
 #: src/forkop/tabs/diagnostic/connectivityMatrix.ts:280
 #: src/forkop/tabs/updates/initController.ts:720
@@ -4067,7 +4103,7 @@ msgstr ""
 msgid "Remove servers whose names match the expression from this level."
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:735
+#: src/forkop/tabs/autotune/initController.ts:741
 msgid "Remove target?"
 msgstr ""
 
@@ -4076,7 +4112,7 @@ msgid "Remove the specified servers from this level."
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:5112
-#: src/forkop/tabs/autotune/initController.ts:1331
+#: src/forkop/tabs/autotune/initController.ts:1408
 msgid "Remove…"
 msgstr ""
 
@@ -4219,7 +4255,7 @@ msgstr ""
 msgid "Restore…"
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:833
+#: src/forkop/tabs/autotune/model.ts:974
 msgid "Restoring the previous configuration"
 msgstr ""
 
@@ -4248,20 +4284,20 @@ msgstr ""
 msgid "Retry this check"
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1215
-#: src/forkop/tabs/autotune/model.ts:1233
+#: src/forkop/tabs/autotune/model.ts:1356
+#: src/forkop/tabs/autotune/model.ts:1374
 msgid "Roll back"
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1218
+#: src/forkop/tabs/autotune/model.ts:1359
 msgid "Roll back %s?"
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1203
+#: src/forkop/tabs/autotune/model.ts:1344
 msgid "Roll back the last autotune change?"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:988
+#: src/forkop/tabs/autotune/initController.ts:999
 msgid "Roll back the last change…"
 msgstr ""
 
@@ -4278,11 +4314,11 @@ msgstr ""
 msgid "Rolled back by an administrator"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:867
+#: src/forkop/tabs/autotune/initController.ts:873
 msgid "Rolling back the last change"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:987
+#: src/forkop/tabs/autotune/initController.ts:998
 msgid "Rolling back…"
 msgstr ""
 
@@ -4300,7 +4336,7 @@ msgstr ""
 msgid "Route requests to this DNS server through another section."
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:609
+#: src/forkop/tabs/autotune/initController.ts:615
 msgid "Router DNS"
 msgstr ""
 
@@ -4405,9 +4441,9 @@ msgid "Russia: blocked inside"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3590
+#: src/forkop/tabs/autotune/initController.ts:533
+#: src/forkop/tabs/autotune/initController.ts:735
 #: src/forkop/tabs/dashboard/initController.ts:1421
-#: src/forkop/tabs/autotune/initController.ts:527
-#: src/forkop/tabs/autotune/initController.ts:729
 msgid "Save"
 msgstr ""
 
@@ -4567,10 +4603,10 @@ msgstr ""
 msgid "Service"
 msgstr ""
 
-#: src/forkop/methods/shell/index.ts:532
-#: src/forkop/methods/shell/index.ts:582
 #: src/forkop/tabs/diagnostic/serviceTransition.ts:97
 #: src/forkop/tabs/diagnostic/serviceTransition.ts:98
+#: src/forkop/methods/shell/index.ts:532
+#: src/forkop/methods/shell/index.ts:582
 msgid "Service action failed"
 msgstr ""
 
@@ -4694,7 +4730,7 @@ msgstr ""
 msgid "Snapshots: %d"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:929
+#: src/forkop/tabs/autotune/initController.ts:940
 msgid "Some autotune settings are invalid; safe defaults are used for them."
 msgstr ""
 
@@ -4722,7 +4758,7 @@ msgstr ""
 msgid "Source Network Interface"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:763
+#: src/forkop/tabs/autotune/initController.ts:769
 msgid "Stability"
 msgstr ""
 
@@ -4788,6 +4824,10 @@ msgstr ""
 msgid "Started"
 msgstr ""
 
+#: src/forkop/tabs/autotune/model.ts:747
+msgid "starting"
+msgstr ""
+
 #: src/forkop/tabs/dashboard/overview.ts:176
 #: src/forkop/tabs/dashboard/overviewCards.ts:122
 #: src/forkop/tabs/shared/startService.ts:28
@@ -4795,10 +4835,10 @@ msgstr ""
 msgid "Starting…"
 msgstr ""
 
+#: src/forkop/tabs/autotune/initController.ts:871
+#: src/forkop/tabs/autotune/initController.ts:879
+#: src/forkop/tabs/autotune/initController.ts:885
 #: src/forkop/tabs/dashboard/overviewCards.ts:155
-#: src/forkop/tabs/autotune/initController.ts:865
-#: src/forkop/tabs/autotune/initController.ts:873
-#: src/forkop/tabs/autotune/initController.ts:878
 msgid "State"
 msgstr ""
 
@@ -4833,12 +4873,12 @@ msgstr ""
 msgid "Stopped by user"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:761
+#: src/forkop/tabs/autotune/initController.ts:767
 #: src/forkop/tabs/diagnostic/renderDiagnostic.ts:40
 msgid "Strategy"
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:959
+#: src/forkop/tabs/autotune/model.ts:1100
 msgid "Strategy %s applied and checked."
 msgstr ""
 
@@ -4880,7 +4920,7 @@ msgstr ""
 msgid "Succeeded"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:762
+#: src/forkop/tabs/autotune/initController.ts:768
 msgid "Successful"
 msgstr ""
 
@@ -4916,29 +4956,33 @@ msgstr ""
 msgid "Table exist"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:1324
+#: src/forkop/tabs/autotune/model.ts:813
+msgid "Target %d of %d"
+msgstr ""
+
+#: src/forkop/tabs/autotune/initController.ts:1401
 msgid "Target actions"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:743
+#: src/forkop/tabs/autotune/initController.ts:749
 msgid "Target removed"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:656
+#: src/forkop/tabs/autotune/initController.ts:662
 msgid "Target saved"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:1057
+#: src/forkop/tabs/autotune/initController.ts:1134
 #: src/forkop/tabs/autotune/render.ts:28
 msgid "Targets"
 msgstr ""
 
 #: src/forkop/tabs/autotune/model.ts:331
-#: src/forkop/tabs/autotune/model.ts:897
+#: src/forkop/tabs/autotune/model.ts:1038
 msgid "Targets of this rule need different strategies."
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:1200
+#: src/forkop/tabs/autotune/initController.ts:1277
 msgid "Targets outside DPI rules (%d)"
 msgstr ""
 
@@ -4994,7 +5038,7 @@ msgstr ""
 msgid "The address is blocked by a rule"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:897
+#: src/forkop/tabs/autotune/initController.ts:908
 msgid "The autotune state was damaged and has been reset; automatic changes wait for the pause after a rollback."
 msgstr ""
 
@@ -5002,7 +5046,7 @@ msgstr ""
 msgid "The autotune state was restored after damage; automatic apply waits for the cooldown."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:919
+#: src/forkop/tabs/autotune/model.ts:1060
 msgid "The autotune state was restored after damage. Run the check again."
 msgstr ""
 
@@ -5014,7 +5058,7 @@ msgstr ""
 msgid "The cascade setting is cleared. Save the rule to keep the change."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:804
+#: src/forkop/tabs/autotune/model.ts:945
 msgid "The change affects the whole group:"
 msgstr ""
 
@@ -5026,11 +5070,11 @@ msgstr ""
 msgid "The change is kept in the configuration, but no snapshot of it could be saved."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:765
+#: src/forkop/tabs/autotune/model.ts:906
 msgid "The change was not saved."
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:225
+#: src/forkop/tabs/autotune/initController.ts:231
 msgid "The check did not complete"
 msgstr ""
 
@@ -5038,23 +5082,23 @@ msgstr ""
 msgid "The check gave no usable result."
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:229
+#: src/forkop/tabs/autotune/initController.ts:235
 msgid "The check stopped unexpectedly"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:221
+#: src/forkop/tabs/autotune/initController.ts:227
 msgid "The check was postponed. See the state above."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:903
+#: src/forkop/tabs/autotune/model.ts:1044
 msgid "The confidence of the recommendation is below the policy minimum."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1265
+#: src/forkop/tabs/autotune/model.ts:1406
 msgid "The configuration before the change is restored."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1300
+#: src/forkop/tabs/autotune/model.ts:1441
 msgid "The configuration was changed after the apply, so nothing was rolled back. Restore a snapshot in History and recovery if needed."
 msgstr ""
 
@@ -5070,11 +5114,11 @@ msgstr ""
 msgid "The daily limit of automatic applies is reached."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1212
+#: src/forkop/tabs/autotune/model.ts:1353
 msgid "The damaged record is kept aside for inspection."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1257
+#: src/forkop/tabs/autotune/model.ts:1398
 msgid "The damaged record is set aside; the configuration already was the last known working one."
 msgstr ""
 
@@ -5083,7 +5127,7 @@ msgstr ""
 msgid "The desync fwmark is managed by Forkop for loop prevention and must not be overridden here."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:749
+#: src/forkop/tabs/autotune/model.ts:890
 msgid "The DNS server must be an IPv4 address."
 msgstr ""
 
@@ -5104,27 +5148,27 @@ msgstr ""
 msgid "The editor has no field for downloaded lists: they cannot be converted and stay as they are."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1170
+#: src/forkop/tabs/autotune/model.ts:1311
 msgid "The last autotune change is not resolved."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1188
+#: src/forkop/tabs/autotune/model.ts:1329
 msgid "The last change (%s) can be rolled back to the configuration before it."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1110
+#: src/forkop/tabs/autotune/model.ts:1251
 msgid "The last change (%s) failed its check, and the automatic rollback did not finish."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1106
+#: src/forkop/tabs/autotune/model.ts:1247
 msgid "The last change (%s) passed its check, but it could not be recorded as the last known working configuration."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1115
+#: src/forkop/tabs/autotune/model.ts:1256
 msgid "The last change (%s) was not checked to the end."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1180
+#: src/forkop/tabs/autotune/model.ts:1321
 msgid "The last change (%s) was not confirmed by its check, and the configuration was changed since; the rule still uses that strategy. Until you choose another strategy for the rule, turn the rule off or restore a snapshot in History and recovery, Forkop X does not record this configuration as the last known working one, and autotune applies nothing."
 msgstr ""
 
@@ -5132,7 +5176,7 @@ msgstr ""
 msgid "The last change was rolled back automatically."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:711
+#: src/forkop/tabs/autotune/model.ts:852
 msgid "The last check failed"
 msgstr ""
 
@@ -5140,8 +5184,8 @@ msgstr ""
 msgid "The last check gave no usable result. The current strategy is kept."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:697
-#: src/forkop/tabs/autotune/model.ts:704
+#: src/forkop/tabs/autotune/model.ts:838
+#: src/forkop/tabs/autotune/model.ts:845
 msgid "The last check was interrupted"
 msgstr ""
 
@@ -5154,11 +5198,11 @@ msgstr ""
 msgid "The last known good snapshot cannot be deleted"
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1316
+#: src/forkop/tabs/autotune/model.ts:1457
 msgid "The last known working configuration is missing; nothing was rolled back. Restore a snapshot in History and recovery first."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1254
+#: src/forkop/tabs/autotune/model.ts:1395
 msgid "The last known working configuration is restored; the damaged record is set aside."
 msgstr ""
 
@@ -5187,7 +5231,7 @@ msgstr ""
 msgid "The list is not downloaded on the router; update the lists or save the rule."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:751
+#: src/forkop/tabs/autotune/model.ts:892
 msgid "The maximum number of targets is reached."
 msgstr ""
 
@@ -5195,23 +5239,23 @@ msgstr ""
 msgid "The name does not resolve on the router, so no rule can open it. Check the DNS results above."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1032
+#: src/forkop/tabs/autotune/model.ts:1173
 msgid "The new strategy did not pass the check, but the configuration was changed during the check, so Forkop X kept that change and did not roll back. The rule may still use the new strategy: check it, or restore the \"Before autotune\" snapshot in History and recovery."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1040
+#: src/forkop/tabs/autotune/model.ts:1181
 msgid "The new strategy did not pass the check. Forkop X began to restore the \"Before autotune\" snapshot, but the configuration was changed meanwhile, and Forkop X kept that change. It is not known whether Forkop X now runs the snapshot or the change: check the rule, or restore the snapshot you need in History and recovery."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:965
+#: src/forkop/tabs/autotune/model.ts:1106
 msgid "The new strategy did not pass the check. Forkop X restored the previous configuration automatically."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1010
+#: src/forkop/tabs/autotune/model.ts:1151
 msgid "The new strategy was not applied: the service reload failed and the previous configuration was restored automatically."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1002
+#: src/forkop/tabs/autotune/model.ts:1143
 msgid "The new strategy was not applied: the service was busy and only queued the reload. The previous configuration is kept."
 msgstr ""
 
@@ -5225,43 +5269,43 @@ msgid "The package is removed from the router."
 msgstr ""
 
 #: src/forkop/tabs/autotune/model.ts:200
-#: src/forkop/tabs/autotune/model.ts:893
+#: src/forkop/tabs/autotune/model.ts:1034
 msgid "The recommendation is not confirmed yet."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:950
+#: src/forkop/tabs/autotune/model.ts:1091
 msgid "The recommendation is outdated: the configuration changed after the check. Run the check again."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:880
+#: src/forkop/tabs/autotune/model.ts:1021
 msgid "The recommended strategy is not an HTTPS (TCP/443) strategy."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1142
+#: src/forkop/tabs/autotune/model.ts:1283
 msgid "The record of the last autotune change is damaged, and the last known working configuration is missing. Restore a snapshot in History and recovery: it becomes the last known working one, and the change can then be rolled back here."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1204
+#: src/forkop/tabs/autotune/model.ts:1345
 msgid "The record of the last autotune change is damaged."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1139
+#: src/forkop/tabs/autotune/model.ts:1280
 msgid "The record of the last autotune change is damaged. Checks and changes wait until an administrator rolls it back: Forkop X then makes sure the last known working configuration is active."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1282
+#: src/forkop/tabs/autotune/model.ts:1423
 msgid "The rollback did not finish: the configuration was changed while the \"Before autotune\" snapshot was being restored, and Forkop X kept that change. It is not known whether Forkop X now runs the snapshot or the change: check the rule, or restore the snapshot you need in History and recovery."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1290
+#: src/forkop/tabs/autotune/model.ts:1431
 msgid "The rollback did not finish. Open History and recovery."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1376
+#: src/forkop/tabs/autotune/model.ts:1517
 msgid "The rollback failed."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1114
+#: src/forkop/tabs/autotune/model.ts:1255
 msgid "The rollback of the last change (%s) did not finish."
 msgstr ""
 
@@ -5277,7 +5321,7 @@ msgstr ""
 msgid "The router could not resolve the address."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1245
+#: src/forkop/tabs/autotune/model.ts:1386
 msgid "The router did not report the outcome of the rollback; it may still be running. This page shows it once the rollback ends."
 msgstr ""
 
@@ -5311,11 +5355,11 @@ msgstr ""
 
 #: src/forkop/tabs/autotune/model.ts:204
 #: src/forkop/tabs/autotune/model.ts:424
-#: src/forkop/tabs/autotune/model.ts:911
+#: src/forkop/tabs/autotune/model.ts:1052
 msgid "The rule has a custom strategy; Forkop X keeps it."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:878
+#: src/forkop/tabs/autotune/model.ts:1019
 msgid "The rule has no strategy."
 msgstr ""
 
@@ -5327,15 +5371,15 @@ msgstr ""
 msgid "The rule matches the same traffic as before. Closing the window without saving discards the conversion."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:868
+#: src/forkop/tabs/autotune/model.ts:1009
 msgid "The rule strategy handles HTTPS together with other traffic in one profile; Forkop X does not split it. Give HTTPS (--filter-tcp=443) its own profile."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:872
+#: src/forkop/tabs/autotune/model.ts:1013
 msgid "The rule strategy has no HTTPS (TCP/443) profile."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:874
+#: src/forkop/tabs/autotune/model.ts:1015
 msgid "The rule strategy writes a filter as two words (--filter-tcp 443); write it as --filter-tcp=443."
 msgstr ""
 
@@ -5355,7 +5399,7 @@ msgstr ""
 msgid "the rules connect through each other in a loop"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:500
+#: src/forkop/tabs/autotune/initController.ts:506
 msgid "The same result this many checks in a row (2–10)."
 msgstr ""
 
@@ -5374,7 +5418,7 @@ msgstr ""
 msgid "The selected section no longer exists. Choose another section."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:733
+#: src/forkop/tabs/autotune/model.ts:874
 msgid "the service is busy"
 msgstr ""
 
@@ -5394,15 +5438,15 @@ msgstr ""
 msgid "The site opens from the router. If it does not open on a device, look at its real connections."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1308
+#: src/forkop/tabs/autotune/model.ts:1449
 msgid "The snapshot to return to is missing; nothing was rolled back."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1154
+#: src/forkop/tabs/autotune/model.ts:1295
 msgid "The snapshot to return to is missing: restore a snapshot in History and recovery. Checks and changes wait until then."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1132
+#: src/forkop/tabs/autotune/model.ts:1273
 msgid "The state of the last autotune change could not be read."
 msgstr ""
 
@@ -5410,7 +5454,7 @@ msgstr ""
 msgid "The strategy contains an error"
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1018
+#: src/forkop/tabs/autotune/model.ts:1159
 msgid "The strategy could not be applied. The previous configuration is kept."
 msgstr ""
 
@@ -5426,26 +5470,26 @@ msgstr ""
 msgid "The strategy is noticeably faster."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1220
+#: src/forkop/tabs/autotune/model.ts:1361
 msgid "The strategy of the DPI rule \"%s\" returns to the one before autotune."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:804
+#: src/forkop/tabs/autotune/model.ts:945
 msgid "The strategy of the DPI rule \"%s\" will be changed."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1223
+#: src/forkop/tabs/autotune/model.ts:1364
 msgid "The strategy returns to the one before autotune."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:890
-#: src/forkop/tabs/autotune/model.ts:931
-#: src/forkop/tabs/autotune/model.ts:935
-#: src/forkop/tabs/autotune/model.ts:936
+#: src/forkop/tabs/autotune/model.ts:1031
+#: src/forkop/tabs/autotune/model.ts:1072
+#: src/forkop/tabs/autotune/model.ts:1076
+#: src/forkop/tabs/autotune/model.ts:1077
 msgid "The strategy was not applied"
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:992
+#: src/forkop/tabs/autotune/model.ts:1133
 msgid "The strategy was not applied: the current configuration is not yet the last known working one. Forkop X records it once it starts or reloads with it; while a rule still uses a strategy that did not pass its check, it is not recorded."
 msgstr ""
 
@@ -5485,7 +5529,7 @@ msgstr ""
 msgid "The unsupported settings are removed. Save the rule to keep the change."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:763
+#: src/forkop/tabs/autotune/model.ts:904
 msgid "The value is outside the allowed range."
 msgstr ""
 
@@ -5505,15 +5549,15 @@ msgstr ""
 msgid "There are unsaved changes of Forkop X in this session. Save & Apply or revert them, then restore the snapshot."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:741
+#: src/forkop/tabs/autotune/model.ts:882
 msgid "There are unsaved configuration changes. Save or reset them in Settings first."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:895
+#: src/forkop/tabs/autotune/model.ts:1036
 msgid "There is no recommendation to apply."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1337
+#: src/forkop/tabs/autotune/model.ts:1478
 msgid "There is nothing to roll back."
 msgstr ""
 
@@ -5583,20 +5627,20 @@ msgstr ""
 msgid "This rule keeps settings in a legacy form, from an earlier version, the podkop migration or the command line. The fields show what the rule matches; the legacy options stay as they are until you convert or remove them."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:973
+#: src/forkop/tabs/autotune/model.ts:1114
 msgid "This strategy is already active; nothing was changed."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:1228
+#: src/forkop/tabs/autotune/model.ts:1369
 msgid "This strategy is not applied again during the pause after a rollback."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:901
+#: src/forkop/tabs/autotune/model.ts:1042
 msgid "This strategy is not supported by the installed Zapret."
 msgstr ""
 
 #: src/forkop/tabs/autotune/model.ts:206
-#: src/forkop/tabs/autotune/model.ts:907
+#: src/forkop/tabs/autotune/model.ts:1048
 msgid "This strategy was rolled back recently; it waits for the cooldown."
 msgstr ""
 
@@ -5616,7 +5660,7 @@ msgstr ""
 msgid "TLS or certificate error"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:764
+#: src/forkop/tabs/autotune/initController.ts:770
 msgid "TLS, median"
 msgstr ""
 
@@ -5683,11 +5727,11 @@ msgstr ""
 msgid "TTL value cannot be empty"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:196
+#: src/forkop/tabs/autotune/initController.ts:202
 msgid "Turn on"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:183
+#: src/forkop/tabs/autotune/initController.ts:189
 msgid "Turn on automatic mode?"
 msgstr ""
 
@@ -5801,7 +5845,7 @@ msgstr ""
 msgid "Unknown NFQWS2 flag."
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:733
+#: src/forkop/tabs/autotune/model.ts:874
 msgid "unknown reason"
 msgstr ""
 
@@ -5817,11 +5861,11 @@ msgstr ""
 msgid "Unstable without bypass; a stable strategy was found."
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:801
+#: src/forkop/tabs/autotune/initController.ts:807
 msgid "up to %d automatic change(s) per day"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:685
+#: src/forkop/tabs/autotune/initController.ts:691
 msgid "Up to 8 domains; exactly these are checked."
 msgstr ""
 
@@ -5991,6 +6035,14 @@ msgstr ""
 msgid "vless://, vmess://, ss://, trojan://, socks4/5://, hy2/hysteria2:// links"
 msgstr ""
 
+#: src/forkop/tabs/autotune/model.ts:764
+msgid "Waiting"
+msgstr ""
+
+#: src/forkop/tabs/autotune/model.ts:743
+msgid "waiting for probe connections to close: %d s (up to %d s)"
+msgstr ""
+
 #: src/forkop/tabs/diagnostic/initController.ts:551
 msgid "Waiting for the service action to finish."
 msgstr ""
@@ -6005,8 +6057,8 @@ msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:825
 #: src/forkop/ui/status.ts:160
-#: src/forkop/tabs/autotune/initController.ts:895
-#: src/forkop/tabs/autotune/initController.ts:927
+#: src/forkop/tabs/autotune/initController.ts:906
+#: src/forkop/tabs/autotune/initController.ts:938
 msgid "Warning"
 msgstr ""
 
@@ -6026,7 +6078,7 @@ msgstr ""
 msgid "What it means"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:708
+#: src/forkop/tabs/autotune/initController.ts:714
 msgid "What to check"
 msgstr ""
 
@@ -6046,11 +6098,11 @@ msgstr ""
 msgid "Where to"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:673
+#: src/forkop/tabs/autotune/initController.ts:679
 msgid "Which domains to check"
 msgstr ""
 
-#: src/forkop/tabs/autotune/model.ts:807
+#: src/forkop/tabs/autotune/model.ts:948
 msgid "Will be"
 msgstr ""
 
@@ -6102,7 +6154,7 @@ msgstr ""
 msgid "Zapret provider binary is not available"
 msgstr ""
 
-#: src/forkop/tabs/autotune/initController.ts:1064
+#: src/forkop/tabs/autotune/initController.ts:1141
 msgid "Zapret rule"
 msgstr ""
 

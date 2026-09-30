@@ -20490,6 +20490,113 @@ function targetRow(target, lists, members) {
     list: null,
   };
 }
+function phaseShare(tune) {
+  if (!tune) return 0;
+  const done = Number(tune.done) || 0;
+  const total = Number(tune.total) || 0;
+  switch (tune.phase) {
+    case "preparing":
+      return 0.05;
+    case "measuring":
+      return 0.05 + (total ? 0.75 * Math.min(done / total, 1) : 0);
+    case "cleaning":
+      return 0.8;
+    case "holding":
+      return (
+        0.8 +
+        0.15 *
+          Math.min(
+            (Number(tune.waited_s) || 0) / (Number(tune.timeout_s) || 300),
+            1,
+          )
+      );
+    default:
+      return 0;
+  }
+}
+function tunePhaseText(tune) {
+  switch (tune?.phase) {
+    case "preparing":
+      return _("preparing the isolated check");
+    case "measuring":
+      return _("probes: %d of %d")
+        .replace("%d", String(tune.done ?? 0))
+        .replace("%d", String(tune.total ?? 0));
+    case "cleaning":
+      return _("probes done, removing the temporary rules");
+    case "holding":
+      return _("waiting for probe connections to close: %d s (up to %d s)")
+        .replace("%d", String(tune.waited_s ?? 0))
+        .replace("%d", String(tune.timeout_s ?? 300));
+    default:
+      return _("starting");
+  }
+}
+function durationText(seconds) {
+  if (seconds < 60) return _("less than a minute");
+  return _("about %d min").replace("%d", String(Math.round(seconds / 60)));
+}
+function runItemText(item) {
+  switch (item.state) {
+    case "running":
+      return { text: _("Checking now"), tone: "loading" };
+    case "pending":
+      return { text: _("Waiting"), tone: "neutral" };
+    case "skipped":
+      return { text: targetReasonText(item.reason), tone: "warning" };
+    default:
+      if (item.status === "selected" && item.selected)
+        return {
+          text: `${_("Best")}: ${strategyLabel(item.selected)} (${_("confidence")} ${confidenceLabel(item.confidence ?? null)})`,
+          tone: "success",
+        };
+      return {
+        text: targetReasonText(item.reason) || _("No usable result"),
+        tone: "warning",
+      };
+  }
+}
+function runProgressView(worker, nowSeconds) {
+  const progress = worker?.state === "running" ? worker.progress : void 0;
+  if (!progress || !progress.items.length) return null;
+  const items = progress.items;
+  const weight = items.reduce((sum, i) => sum + Math.max(i.expected_s, 1), 0);
+  const running = items.find((i) => i.state === "running") ?? null;
+  const share = phaseShare(worker?.tune);
+  let doneWeight = 0;
+  for (const item of items)
+    if (item.state === "done" || item.state === "skipped")
+      doneWeight += Math.max(item.expected_s, 1);
+    else if (item === running)
+      doneWeight += Math.max(item.expected_s, 1) * share;
+  const elapsed =
+    running?.started_at !== void 0
+      ? Math.max(nowSeconds - running.started_at, 0)
+      : 0;
+  const left =
+    items
+      .filter((i) => i.state === "pending")
+      .reduce((sum, i) => sum + i.expected_s, 0) +
+    (running ? Math.max(running.expected_s - elapsed, 15) : 0);
+  const position = running
+    ? items.indexOf(running) + 1
+    : Math.min(progress.done + 1, items.length);
+  return {
+    percent: Math.min(Math.round((100 * doneWeight) / weight), 99),
+    title:
+      _("Target %d of %d")
+        .replace("%d", String(position))
+        .replace("%d", String(items.length)) +
+      (running ? `: ${running.host}` : ""),
+    phase: running ? tunePhaseText(worker?.tune) : "",
+    remaining: left > 0 ? durationText(left) : "",
+    items: items.map((item) => ({
+      host: item.host,
+      state: item.state,
+      ...runItemText(item),
+    })),
+  };
+}
 function workerView(worker) {
   if (!worker) return null;
   if (worker.state === "running")
@@ -21086,6 +21193,8 @@ function rollbackResultView(result) {
 
 // src/forkop/tabs/autotune/initController.ts
 var REFRESH_INTERVAL_MS2 = 15e3;
+var RUNNING_REFRESH_INTERVAL_MS = 3e3;
+var statusLoadedAt = 0;
 var GROUPS_REFRESH_INTERVAL_MS = 12e4;
 var JOB_POLL_INTERVAL_MS = 2e3;
 var JOB_TIMEOUT_MS = 20 * 60 * 1e3;
@@ -21126,6 +21235,7 @@ function timeNode(timestamp) {
 }
 async function loadStatus() {
   const id = mountId2;
+  statusLoadedAt = Date.now();
   const [statusResponse, historyResponse] = await Promise.allSettled([
     ForkopShellMethods.autotuneStatus(),
     ForkopShellMethods.getHistory(),
@@ -21842,12 +21952,17 @@ function renderState2() {
       _("State"),
       renderStatus({ label: _("Applying a strategy"), tone: "loading" }),
     ]);
-  else if (runningScope || status.worker?.state === "running")
+  else if (runningScope || status.worker?.state === "running") {
+    const run = runProgressView(status.worker, Math.floor(Date.now() / 1e3));
     facts.push([
       _("State"),
-      renderStatus(worker ?? { label: _("Checking targets"), tone: "loading" }),
+      run
+        ? renderRunProgress(run)
+        : renderStatus(
+            worker ?? { label: _("Checking targets"), tone: "loading" },
+          ),
     ]);
-  else if (worker && status.worker?.finished_at)
+  } else if (worker && status.worker?.finished_at)
     facts.push([
       _("Last check"),
       E("span", { class: "fkp-autotune__row" }, [
@@ -21956,6 +22071,69 @@ function renderState2() {
             : []),
         ]),
   );
+}
+function renderRunProgress(run) {
+  const icon = {
+    done: "\u2713",
+    skipped: "!",
+    running: "\u2026",
+    pending: "\xB7",
+  };
+  const bar = E("div", { class: "fkp-autotune__bar" }, [
+    E("div", { style: `width: ${run.percent}%` }),
+  ]);
+  bar.setAttribute("role", "progressbar");
+  bar.setAttribute("aria-valuemin", "0");
+  bar.setAttribute("aria-valuemax", "100");
+  bar.setAttribute("aria-valuenow", String(run.percent));
+  return E("div", { class: "fkp-autotune__run" }, [
+    E("div", { class: "fkp-autotune__row" }, [
+      renderStatus({ label: _("Checking targets"), tone: "loading" }),
+      E("strong", {}, `${run.percent}%`),
+      ...(run.remaining
+        ? [
+            E(
+              "span",
+              { class: "fkp-autotune__muted" },
+              `${_("left")}: ${run.remaining}`,
+            ),
+          ]
+        : []),
+    ]),
+    bar,
+    E("div", {}, [
+      E("strong", {}, run.title),
+      ...(run.phase ? [" \u2014 ", run.phase] : []),
+    ]),
+    E(
+      "ul",
+      { class: "fkp-autotune__run-items" },
+      run.items.map((item) =>
+        E(
+          "li",
+          {
+            class: `fkp-autotune__run-item fkp-autotune__run-item--${item.state}`,
+          },
+          [
+            E(
+              "span",
+              { class: "fkp-autotune__run-icon" },
+              icon[item.state] ?? "\xB7",
+            ),
+            E("span", { class: "fkp-autotune__what" }, item.host),
+            renderStatus({ label: item.text, tone: item.tone }),
+          ],
+        ),
+      ),
+    ),
+    E(
+      "p",
+      { class: "fkp-autotune__muted" },
+      _(
+        "Each target is measured in isolation; production traffic is not changed. After the probes Forkop X waits until their connections close, which can take a few minutes on a blocked site.",
+      ),
+    ),
+  ]);
 }
 function renderProgress(progress) {
   return E("span", { class: "fkp-autotune__row" }, [
@@ -22384,10 +22562,15 @@ function onPageMount6() {
   void loadAll2();
   refreshTimer2 = setInterval(() => {
     if (busy) return;
-    void loadStatus();
+    const running = status?.worker?.state === "running";
+    if (
+      Date.now() - statusLoadedAt >=
+      (running ? RUNNING_REFRESH_INTERVAL_MS : REFRESH_INTERVAL_MS2)
+    )
+      void loadStatus();
     if (Date.now() - liveLoadedAt > GROUPS_REFRESH_INTERVAL_MS)
       void loadGroups();
-  }, REFRESH_INTERVAL_MS2);
+  }, RUNNING_REFRESH_INTERVAL_MS);
 }
 function onPageUnmount6() {
   mounted2 = false;
@@ -22489,6 +22672,15 @@ var styles8 = `
 }
 .fkp-autotune__name { font-weight: 600; flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
 .fkp-autotune__progress { display: inline-flex; gap: 3px; vertical-align: middle; }
+/* A running check. */
+.fkp-autotune__run { display: grid; gap: var(--fkp-space-1); min-width: 0; }
+.fkp-autotune__bar { height: 6px; border-radius: 3px; background: var(--fkp-border); overflow: hidden; max-width: 480px; }
+.fkp-autotune__bar > div { height: 100%; background: var(--fkp-tone-loading); transition: width 0.5s; }
+.fkp-autotune__run-items { list-style: none; margin: 0; padding: 0; }
+.fkp-autotune__run-item { display: flex; flex-wrap: wrap; align-items: center; gap: var(--fkp-space-1) var(--fkp-space-2); padding: 2px 0; min-width: 0; }
+.fkp-autotune__run-item--pending { color: var(--fkp-tone-neutral); }
+.fkp-autotune__run-icon { width: 1em; text-align: center; flex: none; }
+.fkp-autotune__run-item .fkp-autotune__what { flex: 0 1 16em; }
 .fkp-autotune__dot {
     width: 0.7em;
     height: 0.7em;

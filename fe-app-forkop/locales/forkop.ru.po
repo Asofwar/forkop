@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-30 21:39+0300\n"
-"PO-Revision-Date: 2026-09-30 21:39+0300\n"
+"POT-Creation-Date: 2026-09-30 22:01+0300\n"
+"PO-Revision-Date: 2026-09-30 22:01+0300\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -175,6 +175,9 @@ msgstr "идёт операция со снимком"
 
 msgid "A strategy is set for the whole rule, so Forkop X does not change it. You can split the targets into separate rules."
 msgstr "Стратегия задаётся на всё правило, поэтому Forkop X её не меняет. Можно разнести цели по разным правилам вручную."
+
+msgid "about %d min"
+msgstr "около %d мин"
 
 msgid "Action"
 msgstr "Действие"
@@ -709,6 +712,9 @@ msgstr "Проверено"
 
 msgid "Checked %d of %d domains"
 msgstr "Проверяется доменов: %d из %d"
+
+msgid "Checking now"
+msgstr "Проверяется"
 
 msgid "Checking targets"
 msgstr "Идёт проверка целей"
@@ -1297,6 +1303,9 @@ msgstr "Дублирующееся значение"
 
 msgid "Duration"
 msgstr "Длительность"
+
+msgid "Each target is measured in isolation; production traffic is not changed. After the probes Forkop X waits until their connections close, which can take a few minutes on a blocked site."
+msgstr "Каждая цель измеряется изолированно, рабочий трафик не меняется. После проб Forkop X ждёт закрытия их соединений — на заблокированном сайте это может занять несколько минут."
 
 msgid "Edit"
 msgstr "Изменить"
@@ -2108,8 +2117,14 @@ msgstr "Установлена последняя версия"
 msgid "Latest version:"
 msgstr "Последняя версия:"
 
+msgid "left"
+msgstr "осталось"
+
 msgid "Legacy settings"
 msgstr "Устаревшие настройки"
+
+msgid "less than a minute"
+msgstr "меньше минуты"
 
 msgid "Level"
 msgstr "Уровень"
@@ -2684,6 +2699,9 @@ msgstr "Текст префикса"
 msgid "Preparing the change"
 msgstr "Подготовка изменения"
 
+msgid "preparing the isolated check"
+msgstr "подготовка изолированной проверки"
+
 msgid "Priority"
 msgstr "Приоритет"
 
@@ -2705,8 +2723,14 @@ msgstr "Настройки приоритета"
 msgid "Probe tool is missing on the router"
 msgstr "На роутере нет инструмента для проверки"
 
+msgid "probes done, removing the temporary rules"
+msgstr "пробы завершены, удаление временных правил"
+
 msgid "Probes per strategy"
 msgstr "Проб на стратегию"
+
+msgid "probes: %d of %d"
+msgstr "пробы: %d из %d"
 
 msgid "Profile"
 msgstr "Профиль"
@@ -3314,6 +3338,9 @@ msgstr "Время начала"
 msgid "Started"
 msgstr "Начало"
 
+msgid "starting"
+msgstr "запуск"
+
 msgid "Starting…"
 msgstr "Запуск…"
 
@@ -3400,6 +3427,9 @@ msgstr "Системная информация"
 
 msgid "Table exist"
 msgstr "Таблица существует"
+
+msgid "Target %d of %d"
+msgstr "Цель %d из %d"
 
 msgid "Target actions"
 msgstr "Действия с целью"
@@ -4141,6 +4171,12 @@ msgstr "Видимое имя этой секции"
 
 msgid "vless://, vmess://, ss://, trojan://, socks4/5://, hy2/hysteria2:// links"
 msgstr "ссылки vless://, vmess://, ss://, trojan://, socks4/5://, hy2/hysteria2://"
+
+msgid "Waiting"
+msgstr "В очереди"
+
+msgid "waiting for probe connections to close: %d s (up to %d s)"
+msgstr "ожидание закрытия соединений проб: %d с (до %d с)"
 
 msgid "Waiting for the service action to finish."
 msgstr "Ожидание завершения действия со службой."

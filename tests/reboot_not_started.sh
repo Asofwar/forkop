@@ -30,7 +30,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB="$ROOT/forkop/files/usr/lib"
 REAL_UCODE="$(command -v ucode)"
 WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT
+holder=
+trap '[ -z "$holder" ] || kill "$holder" 2>/dev/null || true; rm -rf "$WORK"' EXIT
 trap 'exit 1' HUP INT TERM
 
 STATE="$WORK/model"
@@ -138,6 +139,7 @@ case "$action" in
   restart) stop_service; start_service "$@" ;;
   reload) reload_service "$@" ;;
   status) status_service ;;
+  retry_start_on_wan_up) retry_start_on_wan_up ;;
   *) exit 64 ;;
 esac
 STUB
@@ -321,6 +323,94 @@ snap restore "$good_id" >"$WORK/result.json" || true
 [ "$(field "$WORK/result.json" status)" = success ] || fail "restore after a crash following the boot start: $(cat "$WORK/result.json")"
 [ "$(lkg)" = "$good_id" ] || fail "the restore after a crash following the boot start did not confirm last-known-working"
 rm -f "$ETC/rc.d/S99forkop"
+
+# 4b. Reboot with autostart enabled while another operation holds
+#     reload.lock: the start at boot is deferred, not dropped. It was asked
+#     for, so it is recorded before it waits for the lock: a runtime that is
+#     down meanwhile is no Forkop that nobody started (the UI would call it
+#     harmless and no reload would repair it). The deferred start runs once
+#     the lock is released.
+hold_reload_lock() {
+  sleep 300 &
+  holder=$!
+  "$REAL_UCODE" -L "$LIB" -e 'exit(require("core.runtime_lock").acquire(ARGV[0], ARGV[1]) ? 0 : 1);' \
+    "$FORKOP_RELOAD_LOCK_DIR" "$holder" || fail "fixture: could not hold reload.lock"
+}
+release_reload_lock() {
+  "$REAL_UCODE" -L "$LIB" -e 'exit(require("core.runtime_lock").release(ARGV[0], ARGV[1]) ? 0 : 1);' \
+    "$FORKOP_RELOAD_LOCK_DIR" "$holder" || fail "fixture: could not release reload.lock"
+  kill "$holder" 2>/dev/null || true
+  wait "$holder" 2>/dev/null || true
+  holder=
+}
+# The deferred start is done: the runtime is up, the start released
+# reload.lock and ended its retry.
+wait_deferred_start_done() {
+  for _ in $(seq 1 100); do
+    if [ "$(runtime)" = up ] && [ ! -e "$FORKOP_RELOAD_LOCK_DIR" ] && [ ! -e "$RUN/forkop/start.retry" ] &&
+      [ ! -e "$RUN/forkop/start-retry.pid" ]; then
+      return 0
+    fi
+    sleep 0.2
+  done
+  return 1
+}
+reboot
+: >"$ETC/rc.d/S99forkop"
+hold_reload_lock
+FORKOP_START_RUNTIME_LOCK_WAIT_SECONDS=1 FORKOP_START_DEFERRED_RETRY_DELAY_SECONDS=1 \
+  "$WORK/init.d" boot >/dev/null 2>&1 || true
+grep -q '^reason=start_deferred$' "$RUN/forkop/start.retry" 2>/dev/null || fail "fixture: the boot start was not deferred"
+[ "$(runtime)" = down ] || fail "fixture: the deferred boot start ran while reload.lock was held"
+[ -e "$START_RECORD" ] || fail "the start at boot that waits for reload.lock was not recorded as an explicit start"
+release_reload_lock
+wait_deferred_start_done || fail "the deferred start at boot did not start Forkop once reload.lock was released"
+has_event '^runtime-start:' || fail "the deferred start at boot did not run the start"
+
+# 4c. The same, and the retry of the deferred start cannot be scheduled: the
+#     start at boot failed, and a reload repairs the runtime as after any
+#     failed start.
+rm -f "$ETC/rc.d/S99forkop"
+reboot
+: >"$ETC/rc.d/S99forkop"
+: >"$WORK/not-a-dir"
+hold_reload_lock
+FORKOP_START_RUNTIME_LOCK_WAIT_SECONDS=1 FORKOP_START_RETRY_PID_FILE="$WORK/not-a-dir/start-retry.pid" \
+  "$WORK/init.d" boot >/dev/null 2>&1 || true
+grep -q 'its retry could not be scheduled' "$STATE/syslog" || fail "fixture: the retry of the deferred boot start was scheduled"
+[ "$(runtime)" = down ] || fail "fixture: the boot start ran while reload.lock was held"
+[ -e "$START_RECORD" ] || fail "a start at boot whose retry could not be scheduled was not recorded as an explicit start"
+release_reload_lock
+initd reload "" >/dev/null || fail "the reload after the failed boot start failed"
+has_event '^runtime-reload::' || fail "a reload did not repair the runtime after the start at boot failed"
+[ "$(runtime)" = up ] || fail "the runtime is down after the repairing reload"
+rm -f "$ETC/rc.d/S99forkop"
+
+# 4d. The user stops Forkop while a start waits for reload.lock: the stop
+#     ends the start recorded when it was asked for, the start is skipped
+#     once it gets the lock, and nothing starts Forkop afterwards.
+reboot
+hold_reload_lock
+FORKOP_START_RUNTIME_LOCK_WAIT_SECONDS=20 "$WORK/init.d" start >/dev/null 2>&1 &
+waiting_start=$!
+for _ in $(seq 1 100); do
+  [ -e "$START_RECORD" ] && break
+  sleep 0.1
+done
+[ -e "$START_RECORD" ] || fail "the start that waits for reload.lock was not recorded"
+FORKOP_STOP_RUNTIME_LOCK_WAIT_SECONDS=1 initd stop || fail "the stop during the waiting start failed"
+[ ! -e "$START_RECORD" ] || fail "the user's stop kept the record of the start it overtook"
+release_reload_lock
+wait "$waiting_start" || true
+no_event '^runtime-start:' || fail "a start overtaken by the user's stop started Forkop"
+[ ! -e "$START_RECORD" ] || fail "a start overtaken by the user's stop recorded an explicit start"
+[ -e "$STOP_MARKER" ] || fail "a start overtaken by the user's stop removed the stop"
+# The WAN retry of a failed start is no explicit start either.
+initd start triggered >/dev/null || true
+no_event '^runtime-start:' || fail "the WAN retry started Forkop after the user's stop"
+[ ! -e "$START_RECORD" ] || fail "the WAN retry after the user's stop recorded an explicit start"
+initd reload "" >/dev/null || fail "the reload after the stop failed"
+no_event '^runtime-reload:' || fail "a reload started Forkop after the user's stop overtook its start"
 
 # 5. A package upgrade of a running Forkop that the previous version started
 #    (it kept no start record): prerm hands the restart to postinst, whose

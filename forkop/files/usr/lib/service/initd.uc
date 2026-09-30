@@ -58,11 +58,11 @@ const START_DEFERRED_RETRY_DELAY_SECONDS = getenv("FORKOP_START_DEFERRED_RETRY_D
 // again (service/state.uc runtime-apply-allowed; UC-012).
 const STOP_RUNTIME_LOCK_WAIT_SECONDS = getenv("FORKOP_STOP_RUNTIME_LOCK_WAIT_SECONDS") || "30";
 const STOP_REQUESTED_FILE = getenv("FORKOP_STOP_REQUESTED_FILE") || RUNTIME_STATE_DIR + "/stop.requested";
-// An explicit start since boot: written by every start that runs
-// (start_service: the start at boot with autostart, a UI or CLI start or
-// restart, init.d start or restart; service/lifecycle.uc start and restart;
-// the package postinst for a Forkop that ran before the upgrade) and removed
-// by the user's stop. Like the stop request it lives in runtime state and
+// An explicit start since boot: written by every start that is asked for
+// (start_service, already while it waits for reload.lock: the start at boot
+// with autostart, a UI or CLI start or restart, init.d start or restart;
+// service/lifecycle.uc start and restart; the package postinst for a Forkop
+// that ran before the upgrade) and removed by the user's stop. Like the stop request it lives in runtime state and
 // ends with a reboot. A runtime that is down without it was not started
 // since boot, or the user stopped it: no reload, restore or list update
 // starts it (D-15(a), UC-056). One that is down with it went down after an
@@ -894,6 +894,15 @@ function start_service(reason, owner_pid) {
         if (stop_request_before == null)
             return 0;
     }
+    // The explicit start is recorded when it is asked for, before it waits
+    // for reload.lock, and also when it then fails: a runtime that is down
+    // after it did not stay down on request, and a reload repairs it. So is
+    // one whose start is deferred behind a long holder of the lock, or never
+    // gets the lock (its retry could not be scheduled, its worker died): the
+    // start was asked for, not "not started since boot" (D-15(a), UC-056).
+    // A stop requested after this start ends it again (mark_stop_requested).
+    if (!stop_requested() || stop_request_value() == stop_request_before)
+        mark_explicit_start();
     if (!acquire_runtime_dir_lock_wait(RELOAD_LOCK_DIR, owner_pid, START_RUNTIME_LOCK_WAIT_SECONDS)) {
         if (stop_requested() && stop_request_value() != stop_request_before) {
             command_success_from_args([ "logger", "-t", SERVICE_NAME, "[info] Forkop start skipped: a stop was requested after it" ]);
@@ -918,9 +927,8 @@ function start_service(reason, owner_pid) {
         command_success_from_args([ "logger", "-t", SERVICE_NAME, "[info] Running the deferred Forkop start: the runtime lock was released" ]);
     }
     // An explicit start ends an explicit stop; a stop request seen after
-    // this point was made during this start. It is recorded first, also
-    // when it fails: a runtime that is down after it did not stay down on
-    // request, and a reload repairs it.
+    // this point was made during this start. The start that runs is recorded
+    // again, in case its record went away while it waited for the lock.
     mark_explicit_start();
     unlink_file(STOP_REQUESTED_FILE);
 

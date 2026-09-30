@@ -64,6 +64,10 @@ export FORKOP_BIN="$WORK_DIR/bin/forkop"
 export FORKOP_UCI_STATE_FILE="$WORK_DIR/uci.state"
 export B_GATE="$WORK_DIR/b.gate"
 unset FORKOP_UI_ACTION_TRACKED
+# The init.d reload reads and tidies the UI jobs (service/ui.uc).
+export FORKOP_UI_STATE_DIR="$WORK_DIR/run/ui-state"
+export FORKOP_UI_COMPONENT_ACTION_DIR="$FORKOP_UI_STATE_DIR/component-actions"
+export FORKOP_UI_SUBSCRIPTION_ACTION_DIR="$FORKOP_UI_STATE_DIR/subscription-actions"
 
 # Nothing here may reach the host's syslog or init scripts.
 printf '#!/bin/sh\nexit 0\n' >"$WORK_DIR/bin/logger"
@@ -195,9 +199,21 @@ run_case() {
     fail "$label: the queued reload was not applied after the update released reload.lock"
 }
 
+# The init.d reload reads the UI jobs through service/ui.uc, which also marks
+# the job of a dead worker as ended: the jobs of the test's own UI state, not
+# the host's. One such job, past its start grace, stands in the test's UI
+# state.
+stale_job="$WORK_DIR/run/ui-state/service-actions/1-1.json"
+mkdir -p "${stale_job%/*}"
+dead_pid="$(sh -c 'echo $$')"
+printf '{ "success": true, "running": true, "kind": "service", "action": "start", "source": "initd", "message": "Service action is running", "pid": "%s", "started_at": %s, "updated_at": null, "exit_code": null, "pid_ticks": "1" }\n' \
+  "$dead_pid" "$(($(date +%s) - 600))" >"$stale_job"
+
 # 1. The due (unforced) update tries each lock once.
 run_case "due update" subscription-update-if-due 0
 [ ! -e "$FORKOP_PENDING_RELOAD_FILE" ] || fail "due update: the queued reload is still pending ($(pending_reason))"
+grep -q '"running": *false' "$stale_job" ||
+  fail "the init.d reload did not read the test's own UI state: $(cat "$stale_job")"
 
 # 2. A forced update waits for subscription-update.lock and then gives up. It
 #    applies the queued reload and still leaves its own request for the

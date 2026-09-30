@@ -79,6 +79,11 @@ export FORKOP_STOP_RUNTIME_LOCK_WAIT_SECONDS=1
 export FORKOP_START_WAIT_TIMEOUT_SECONDS=40
 export FORKOP_START_SETTLE_SECONDS=3
 export FORKOP_UI_ACTION_TRACKED=1
+# A retried start opens a UI job of its own: the UI state of the cases before
+# case 6 (which has a directory of its own) stays in the work directory too.
+export FORKOP_UI_STATE_DIR="$WORK_DIR/ui-state-cases"
+export FORKOP_UI_COMPONENT_ACTION_DIR="$FORKOP_UI_STATE_DIR/component-actions"
+export FORKOP_UI_SUBSCRIPTION_ACTION_DIR="$FORKOP_UI_STATE_DIR/subscription-actions"
 
 # Nothing here may reach the host's syslog, nftables or init scripts.
 cat >"$WORK_DIR/bin/logger" <<'SH'
@@ -302,6 +307,10 @@ no_event '^forkop start' || fail "the retried start ran while another process he
 release_reload_lock
 started_once "automatic start"
 logged 'Running the deferred Forkop start' || fail "the deferred start did not log that it runs"
+# The retried start opens a UI job of its own (it drops
+# FORKOP_UI_ACTION_TRACKED): the job is the test's, not the host's.
+ls "$WORK_DIR"/ui-state-cases/service-actions/*.json >/dev/null 2>&1 ||
+  fail "the retried start opened no UI job in the test's own UI state directory"
 
 # 1b. Switching autostart off (init.d disable cancels the scheduled retry of a
 #     failed start) during the deferral is no stop: the explicit start still

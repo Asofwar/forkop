@@ -580,6 +580,24 @@ function diagnose(s) {
     return { diagnosis, config_is, config_hash: hash, guards, pre_snapshot: find_pre_snapshot(s) };
 }
 
+// Whether the rule the record changed still runs the candidate's strategy
+// in `text`: an enabled zapret rule whose nfqws_opt is the candidate's. The
+// same definition as config/snapshots.uc runs_strategy.
+function runs_candidate_strategy(s, text) {
+    let m = s.mutation;
+    if (type(m) != "object" || type(m.section) != "string" || type(m.to) != "string") return false;
+    let section = find_section(parse_config(text), m.section);
+    return section != null && resolver.enabled(section) && section.options.action == "zapret" &&
+        type(section.options.nfqws_opt) == "string" && normalize(section.options.nfqws_opt) == normalize(m.to);
+}
+
+// A record still waiting for a decision on its candidate, whatever the
+// configuration is now: unfinished, needs_attention, or failed with a
+// rollback left to do (as config/snapshots.uc autotune_objection reads it).
+function undecided(s) {
+    return index(TERMINAL_PHASES, s.phase) < 0 || s.phase == "needs_attention" || (s.phase == "failed" && s.rollback_available === true);
+}
+
 // A recorded apply that still needs a decision: an unfinished one that may
 // have changed production, a verification interrupted after the reload while
 // the candidate is still active, or needs_attention while production is not
@@ -909,6 +927,15 @@ function status() {
         let finished = index(TERMINAL_PHASES, s.phase) >= 0 || !autotune_lock.held();
         result.resolved = finished && !unresolved(s, d);
         result.diagnosis = d.diagnosis;
+        // Superseded, the record blocks nothing (UC-020). But while it is
+        // undecided and its candidate never passed verification, a rule that
+        // still runs the candidate's strategy keeps the configuration from
+        // becoming last-known-working (config/snapshots.uc
+        // autotune_objection), and every apply waits for that
+        // (config_not_last_known_good) until the strategy is changed, the
+        // rule disabled or a snapshot restored: the page says so.
+        result.unverified_strategy = d.diagnosis == "superseded" && s.applied !== true && undecided(s) &&
+            runs_candidate_strategy(s, text);
     }
     return result;
 }

@@ -41,7 +41,7 @@ node -e '
 const a = require("node:assert/strict");
 const r = require(process.argv[1]).apply;
 a.deepEqual(r, { phase: "verifying", reason: null, group: "youtube", candidate: "fake", finished_at: null,
-  resolved: false, diagnosis: "candidate_active", in_progress: false, rollback: true });' "$WORK/status.json" ||
+  resolved: false, diagnosis: "candidate_active", in_progress: false, rollback: true, unverified_strategy: false });' "$WORK/status.json" ||
   fail "summary of an interrupted verification: $(cat "$WORK/status.json")"
 ! grep -Eq 'SECRET|secret\.example|192\.0\.2\.77|aaaa|bbbb' "$WORK/status.json" || fail "the summary leaks the configuration"
 
@@ -62,6 +62,17 @@ a.equal(r.resolved, true); a.equal(r.rollback, true); a.equal(r.finished_at, 9);
 # The configuration changed since: nothing to roll back.
 status_with '{"state":{"phase":"applied","selected":"fake","mutation":{"section":"youtube"}},"resolved":true,"diagnosis":"superseded","autotune_lock_held":false,"rollback_source_present":true}'
 [ "$(json_get "$WORK/status.json" apply.rollback)" = false ] || fail "a superseded apply offered a rollback"
+[ "$(json_get "$WORK/status.json" apply.unverified_strategy)" = false ] || fail "a superseded apply named an unverified strategy"
+
+# Edited during a failed check, the rule still runs the candidate's strategy:
+# the record blocks nothing, but no start or reload confirms the
+# configuration, and the page is told so.
+status_with '{"state":{"phase":"needs_attention","reason":"verification_failed:config_changed_during_transaction","selected":"fake","mutation":{"section":"youtube"}},"resolved":true,"diagnosis":"superseded","unverified_strategy":true,"autotune_lock_held":false,"rollback_source_present":true}'
+node -e '
+const a = require("node:assert/strict");
+const r = require(process.argv[1]).apply;
+a.equal(r.resolved, true); a.equal(r.unverified_strategy, true); a.equal(r.rollback, false);' "$WORK/status.json" ||
+  fail "summary of an edited, unverified strategy: $(cat "$WORK/status.json")"
 
 # An unreadable record: needs attention, the rollback settles it.
 status_with '{"state":{"phase":"needs_attention","status":"needs_attention","reason":"apply_state_unreadable","unreadable":true},"resolved":false,"diagnosis":"state_unreadable","autotune_lock_held":false,"rollback_source_present":true}'

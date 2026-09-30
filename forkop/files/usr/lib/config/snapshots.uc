@@ -610,18 +610,23 @@ function guarded_replace(before, content, pre, on_success, reason, apply_mode, o
     return result;
 }
 // Whether the rule an autotune apply changed (mutation: { section, option
-// "nfqws_opt", to }) still has the candidate's strategy in `content`
-// (whitespace as autotune/apply.uc normalizes it). A configuration this
-// reader cannot load might have it (fail closed).
+// "nfqws_opt", to }) still runs the candidate's strategy in `content`: an
+// enabled zapret rule whose nfqws_opt is the candidate's (whitespace as
+// autotune/apply.uc normalizes it; its status reports the same as
+// unverified_strategy). A configuration this reader cannot load might have
+// it (fail closed).
 function runs_strategy(content, mutation) {
     if (type(mutation) != "object" || type(mutation.section) != "string" || type(mutation.to) != "string") return false;
     let sections = uci_sections(content);
     if (sections == null) return true;
     let words = (v) => join(" ", filter(split(v, /[ \t\r\n]+/), (w) => w != ""));
-    for (let s in sections)
-        if (s.name === mutation.section)
-            for (let o in s.options)
-                if (o.name == "nfqws_opt" && !o.list && words(o.value) == words(mutation.to)) return true;
+    for (let s in sections) {
+        if (s.type != "section" || s.name !== mutation.section) continue;
+        let opt = {};
+        for (let o in s.options) if (!o.list) opt[o.name] = o.value;
+        let enabled = opt.enabled == null || index([ "1", "true", "yes", "on" ], lc(opt.enabled)) >= 0;
+        return enabled && opt.action == "zapret" && opt.nfqws_opt != null && words(opt.nfqws_opt) == words(mutation.to);
+    }
     return false;
 }
 // Why the configuration may not become last-known-working because of an
@@ -645,12 +650,15 @@ function autotune_objection(content) {
     if (record.mutation == null) return null;
     let finished = index(AUTOTUNE_TERMINAL_PHASES, record.phase) >= 0;
     if (!finished && require("autotune.lock").held()) return "autotune_apply_in_progress";
+    // A decided record objects to nothing: nothing more is read or parsed
+    // (this runs in every start and reload).
+    let undecided = !finished || record.phase == "needs_attention" || (record.phase == "failed" && record.rollback_available === true);
+    if (!undecided) return null;
     let hash = sha(content);
     let candidate = hash != "" && (hash == record.candidate_hash ||
         (record.candidate_fingerprint != null && user_fingerprint(content) == record.candidate_fingerprint));
     if (!candidate && record.applied !== true) candidate = runs_strategy(content, record.mutation);
-    let undecided = !finished || record.phase == "needs_attention" || (record.phase == "failed" && record.rollback_available === true);
-    return candidate && undecided ? "autotune_apply_unresolved" : null;
+    return candidate ? "autotune_apply_unresolved" : null;
 }
 // expected (optional): the hash, or the user fingerprint, of the
 // configuration the caller means to replace. The automatic rollback of

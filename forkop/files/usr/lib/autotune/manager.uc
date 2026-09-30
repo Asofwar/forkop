@@ -110,7 +110,8 @@ function run_tool(name, args) {
 // (resolved: false; null when the apply tool gave no answer) and whether the
 // operator can roll it back now: its candidate is still the configuration
 // (an unreadable record is settled by a rollback), no apply runs and there
-// is a snapshot to return to (a rollback without one can only fail).
+// is a snapshot to return to (a rollback without one can only fail), and
+// whether the rule still runs a strategy that never passed its check.
 // Nothing of the configuration itself (hashes, options, targets) is shown.
 function apply_summary() {
     if (fs.stat(APPLY_STATE_FILE) == null) return null;
@@ -118,7 +119,7 @@ function apply_summary() {
     let s = st != null && type(st.state) == "object" ? st.state : null;
     if (s == null)
         return { phase: null, reason: "apply_status_unavailable", group: null, candidate: null, finished_at: null,
-            resolved: null, diagnosis: null, in_progress: false, rollback: false };
+            resolved: null, diagnosis: null, in_progress: false, rollback: false, unverified_strategy: false };
     let open = index(APPLY_PHASES, s.phase) >= 0;
     let in_progress = open && st.autotune_lock_held === true;
     let candidate_active = st.diagnosis == "candidate_active" &&
@@ -132,7 +133,11 @@ function apply_summary() {
         resolved: st.resolved === true,
         diagnosis: type(st.diagnosis) == "string" ? st.diagnosis : null,
         in_progress,
-        rollback: !in_progress && st.rollback_source_present === true && (s.unreadable === true || candidate_active)
+        rollback: !in_progress && st.rollback_source_present === true && (s.unreadable === true || candidate_active),
+        // The rule still runs a strategy that never passed its check, on a
+        // configuration edited since: nothing confirms it as last known
+        // working, so applies wait (autotune/apply.uc status).
+        unverified_strategy: st.unverified_strategy === true
     };
 }
 

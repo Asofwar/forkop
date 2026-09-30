@@ -668,10 +668,16 @@ manager_run; json 'a.equal(r.result, "completed", JSON.stringify(r));' "$WORK/ru
 at apply "$WORK/plan.json"; json 'a.equal(r.status, "applied");' "$WORK/out.json"
 crash_in_verification
 sed -i "s/option dns_rewrite_ttl '60'/option dns_rewrite_ttl '40'/" "$FORKOP_CONFIG_FILE"
-at status; json 'a.equal(r.resolved, true); a.equal(r.diagnosis, "superseded");' "$WORK/out.json"
+at status; json 'a.equal(r.resolved, true); a.equal(r.diagnosis, "superseded"); a.equal(r.unverified_strategy, true);' "$WORK/out.json"
 crash_in_verification
 at rollback; json 'a.equal(r.status, "rolled_back"); a.equal(r.reason, "operator_rollback");' "$WORK/out.json"
-at status; json 'a.equal(r.resolved, true);' "$WORK/out.json"
+at status; json 'a.equal(r.resolved, true); a.equal(r.unverified_strategy, false);' "$WORK/out.json"
+# A rolled back record is decided: the strategy chosen again by hand is the
+# operator's, and nothing objects to it.
+sed -i "s|option nfqws_opt '$FAKE'|option nfqws_opt '$MULTISPLIT'|" "$FORKOP_CONFIG_FILE"
+at status; json 'a.equal(r.unverified_strategy, false);' "$WORK/out.json"
+confirm; json 'a.equal(r.status, "confirmed", JSON.stringify(r));' "$WORK/confirm.json"
+sed -i "s|option nfqws_opt '$MULTISPLIT'|option nfqws_opt '$FAKE'|" "$FORKOP_CONFIG_FILE"
 manager_run; json 'a.equal(r.result, "completed");' "$WORK/run.json"
 ok "20c crash during verification -> blocks while the candidate is active; restore, edit or rollback unblocks the next run"
 
@@ -938,15 +944,25 @@ saved="$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv
 node -e 'const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));if(s.reason!=="concurrent-change"||!s.content.includes("dns_rewrite_ttl '"'"'31'"'"'"))process.exit(1)' "$FORKOP_SNAPSHOT_DIR/$saved.json" ||
   fail "the edit is not saved as a snapshot"
 ! grep -q 'restore success' "$STUB_LOG/health.log" || fail "a restore was recorded as a success"
-at status; json 'a.equal(r.diagnosis, "superseded"); a.equal(r.resolved, true);' "$WORK/out.json"
 # The edit was made on top of the candidate, so the rule still runs the
 # strategy that has just failed its production check: the next start or
-# reload does not make that configuration last-known-working. Once the rule's
-# strategy is changed, nothing objects any more.
+# reload does not make that configuration last-known-working, and the status
+# says so (the record itself no longer blocks autotune, UC-020). A disabled
+# rule runs no strategy; once the rule's strategy is changed, nothing objects
+# any more.
+at status; json 'a.equal(r.diagnosis, "superseded"); a.equal(r.resolved, true); a.equal(r.unverified_strategy, true);' "$WORK/out.json"
 grep -qF "option nfqws_opt '$MULTISPLIT'" "$FORKOP_CONFIG_FILE" || fail "fixture: the failed strategy is not in the edited configuration"
 confirm; json 'a.equal(r.status, "not_confirmed"); a.equal(r.reason, "autotune_apply_unresolved");' "$WORK/confirm.json"
 [ "$(lkg)" = "$PRE_LKG" ] || fail "a start or reload confirmed a configuration that still runs the strategy that failed verification"
+dpi_enabled() { sed -i "/^config section 'Dpi'/,/^\$/ s/option enabled '[01]'/option enabled '$1'/" "$FORKOP_CONFIG_FILE"; }
+dpi_enabled 0
+at status; json 'a.equal(r.resolved, true); a.equal(r.unverified_strategy, false);' "$WORK/out.json"
+confirm; json 'a.equal(r.status, "confirmed", JSON.stringify(r));' "$WORK/confirm.json"
+dpi_enabled 1
+at status; json 'a.equal(r.unverified_strategy, true);' "$WORK/out.json"
+confirm; json 'a.equal(r.status, "not_confirmed"); a.equal(r.reason, "autotune_apply_unresolved");' "$WORK/confirm.json"
 sed -i "s|option nfqws_opt '$MULTISPLIT'|option nfqws_opt '$FAKE'|" "$FORKOP_CONFIG_FILE"
+at status; json 'a.equal(r.resolved, true); a.equal(r.unverified_strategy, false);' "$WORK/out.json"
 confirm; json 'a.equal(r.status, "confirmed", JSON.stringify(r));' "$WORK/confirm.json"
 ok "UC-017 verification failed + configuration edited -> no automatic rollback over the edit, needs_attention, edit saved, the failed strategy never confirmed"
 

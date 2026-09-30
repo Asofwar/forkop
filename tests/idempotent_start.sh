@@ -44,6 +44,10 @@ let marker_present = false;
 let marker_resolved = true;
 let conflict = false;
 let transition_guard = false;
+// ForkopTableDpiGuard of a failed DPI rollback, ForkopConfigRestoreDpiGuard of
+// a restore that ended needs_attention (UC-019).
+let dpi_guard = false;
+let restore_guard = false;
 let health = [true, true, true, true, true];
 let calls = [];
 let logs = [];
@@ -114,7 +118,12 @@ function command_status_from_args(args) {
 }
 function command_success_from_args(args) {
     if (args[0] == "nft") {
-        check(join(" ", args) == "nft list chain inet " + NFT_TABLE_NAME + " forkop_transition_guard",
+        let command = join(" ", args);
+        if (command == "nft list table inet " + NFT_TABLE_NAME + "DpiGuard")
+            return dpi_guard;
+        if (command == "nft list table inet ForkopConfigRestoreDpiGuard")
+            return restore_guard;
+        check(command == "nft list chain inet " + NFT_TABLE_NAME + " forkop_transition_guard",
             "unexpected nft command during duplicate start");
         return transition_guard;
     }
@@ -146,6 +155,7 @@ function remove_file(path) {
 }
 function reset_probe() {
     marker_present = false; marker_resolved = true; conflict = false; transition_guard = false;
+    dpi_guard = false; restore_guard = false;
     health = [true, true, true, true, true];
     calls = []; logs = []; released = 0; cold_starts = 0; cleanups = 0;
     retry_status = 0; retry_running = false; retry_enabled = true; retry_pending = true;
@@ -178,6 +188,31 @@ check(!stop_marker_present, "failed start kept the explicit stop");
 check(explicit_start_recorded, "failed start was not recorded as an explicit start");
 check(released == 1 && cold_starts == 0 && cleanups == 0,
     "duplicate start altered the retained fail-closed runtime");
+
+// The DPI guard of a failed DPI rollback is a table of its own that no start
+// removes: neither a duplicate nor a cold start runs over it (UC-019).
+for (let stable in [ true, false ]) {
+    reset_probe();
+    dpi_guard = true;
+    if (!stable) health[0] = false;
+    check(start() == 1, "a start over the kept DPI guard was reported as successful");
+    check(released == 1 && cold_starts == 0 && cleanups == 0,
+        "a start over the kept DPI guard changed the retained fail-closed runtime");
+    check(index(join("\n", logs), "runtime_guard_active") >= 0, "the kept DPI guard refusal gave no reason");
+}
+
+// The guard of an unfinished restore: a duplicate start starts nothing and
+// does not report the guarded runtime as started; a cold start builds the
+// runtime under it.
+reset_probe();
+restore_guard = true;
+check(start() == 1, "a duplicate start under the restore guard was reported as successful");
+check(released == 1 && cold_starts == 0 && cleanups == 0,
+    "a duplicate start under the restore guard changed the runtime");
+reset_probe();
+restore_guard = true;
+health[0] = false;
+check(start() == 23 && cold_starts == 1, "a cold start under the restore guard did not take the guarded cold-start path");
 
 reset_probe();
 marker_present = true;

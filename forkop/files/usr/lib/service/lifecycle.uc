@@ -419,6 +419,19 @@ function mark_pending_reload_if_config_changed(initial_fingerprint, reason) {
     return false;
 }
 
+// A fail-closed guard that a failed lifecycle transition kept (UC-019): the
+// DPI guard table of a reload whose DPI rollback failed (abort_reload), or
+// the transition guard chain of a sing-box transition whose rollback failed
+// (abort_guarded_transition). Both drop the traffic they guard until a stop
+// removes them (stop_main), and both are installed create-only, so no reload
+// can run its own transition over them. init.d runs every reload and start
+// under reload.lock: a guard seen by one is not another one's in flight.
+// The recovery is a restart: its stop removes the guard before the start.
+function runtime_guard_kept() {
+    return command_success_from_args([ "nft", "list", "table", "inet", NFT_TABLE_NAME + "DpiGuard" ]) ||
+        command_success_from_args([ "nft", "list", "chain", "inet", NFT_TABLE_NAME, "forkop_transition_guard" ]);
+}
+
 // Last-known-working names only a configuration that this start or reload
 // proved (UC-019, UC-020): the file is still the one it began with (an edit
 // made meanwhile waits for the reload queued for it), and no DPI transition
@@ -433,8 +446,8 @@ function confirm_working_config(initial_fingerprint) {
         return false;
     if (command_success_from_args([ "nft", "list", "table", "inet", "ForkopConfigRestoreDpiGuard" ]))
         return false;
-    if (command_success_from_args([ "nft", "list", "table", "inet", NFT_TABLE_NAME + "DpiGuard" ])) {
-        log_message("Working configuration not confirmed as last known working: " + NFT_TABLE_NAME + "DpiGuard is still installed", "info");
+    if (runtime_guard_kept()) {
+        log_message("Working configuration not confirmed as last known working: a failed transition kept its fail-closed guard", "info");
         return false;
     }
     let result = module_capture(LIB_DIR + "/config/snapshots.uc", [ "confirm-working" ]);
@@ -1565,6 +1578,15 @@ function start_inner() {
         return 1;
     }
 
+    // The DPI guard of a failed DPI rollback is a table of its own: a start
+    // leaves it in place, and it would go on dropping DPI traffic under a
+    // runtime reported as started (UC-019). Only a restart removes it.
+    if (command_success_from_args([ "nft", "list", "table", "inet", NFT_TABLE_NAME + "DpiGuard" ])) {
+        log_message("Refusing Forkop start: a failed transition kept the fail-closed DPI guard (runtime_guard_active); restart Forkop to recover", "fatal");
+        release_start_subscription_update_lock();
+        return 1;
+    }
+
     // A package install can queue a second start while the first one is
     // building its runtime. initd serializes both with reload.lock; once the
     // second call acquires it, accept only the complete, sole procd-owned
@@ -1578,10 +1600,20 @@ function start_inner() {
     ])) {
         // This fork retains a drop guard when a coordinated rollback fails.
         // Table/route readiness alone must not report that state as recovered.
+        // A cold start rebuilds the production table and the chain with it.
         if (command_success_from_args([
             "nft", "list", "chain", "inet", NFT_TABLE_NAME, "forkop_transition_guard"
         ])) {
-            log_message("Refusing duplicate Forkop start: the failed-transition guard is still active; preserving the fail-closed runtime", "fatal");
+            log_message("Refusing duplicate Forkop start: the failed-transition guard is still active (runtime_guard_active); preserving the fail-closed runtime; restart Forkop to recover", "fatal");
+            release_start_subscription_update_lock();
+            return 1;
+        }
+        // Nor while the guard of a restore or an autotune apply that ended
+        // needs_attention drops DPI traffic: this start starts nothing, and
+        // only a restore of a snapshot releases that guard
+        // (config/snapshots.uc). A cold start builds the runtime under it.
+        if (command_success_from_args([ "nft", "list", "table", "inet", "ForkopConfigRestoreDpiGuard" ])) {
+            log_message("Refusing duplicate Forkop start: the DPI guard of an unfinished configuration restore is still active (runtime_guard_active); restore the last known working snapshot to recover", "fatal");
             release_start_subscription_update_lock();
             return 1;
         }
@@ -1965,6 +1997,14 @@ function reload(reason) {
     if (reason != "list-content" && fs.stat(LIST_UPDATE_RELOAD_FILE) != null) {
         log_message("A committed list generation is pending runtime apply; performing a local list-content reload", "info");
         reason = "list-content";
+    }
+    // The plan below compares configurations only. Over a kept guard a DPI
+    // restart would fail at the create-only install every time, and any
+    // other plan would report success while the guard still drops traffic;
+    // a runtime restart would tear the guard down on its own (UC-019).
+    if (runtime_guard_kept()) {
+        log_message("Reload '" + reason + "' refused: a failed transition kept the fail-closed guard (runtime_guard_active); restart Forkop to recover", "fatal");
+        return 1;
     }
     let status;
     // This remains false until a complete nft transaction was accepted or a

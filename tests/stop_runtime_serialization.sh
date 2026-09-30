@@ -87,6 +87,11 @@ cat >"$WORK_DIR/bin/nft" <<'SH'
 #!/bin/sh
 printf '%s\n' "$*" >>"$NFT_LOG"
 [ "$1" != -t ] || shift
+# Only the production table is modelled: no DPI guard of a failed transition
+# or of a restore (ForkopTableDpiGuard, ForkopConfigRestoreDpiGuard).
+if [ "$1 $2 $3" = "list table inet" ] && [ "$4" != ForkopTable ]; then
+  exit 1
+fi
 if [ "$1 $2 $3" = "list table inet" ]; then
   [ ! -e "$NFT_TABLE_FILE.list-fails" ] || exit 1
   [ -e "$NFT_TABLE_FILE" ]

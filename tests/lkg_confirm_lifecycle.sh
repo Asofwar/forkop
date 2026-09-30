@@ -156,21 +156,25 @@ confirmed || fail "a clean reload did not confirm the working configuration"
 #    (ForkopConfigRestoreDpiGuard) is how every such transaction reloads, and
 #    the transaction moves last-known-working itself: that is routine and not
 #    logged. A leftover guard of a failed lifecycle transition
-#    (ForkopTableDpiGuard) is worth a line in the log.
+#    (ForkopTableDpiGuard) refuses the start and the reload altogether
+#    (runtime_guard_active; tests/runtime_guard_lifecycle.sh).
 not_confirmed_logged() { grep -q 'not confirmed as last known working' "$WORK_DIR/syslog" 2>/dev/null; }
 for guard in ForkopTableDpiGuard ForkopConfigRestoreDpiGuard; do
   for action in start reload; do
     reset_case
     : >"$WORK_DIR/tables/$guard"
-    if [ "$action" = start ]; then
+    if [ "$guard" = ForkopTableDpiGuard ]; then
+      : >"$STATE_DIR/start.explicit"
+      export FAKE_RUNNING=1
+      [ "$(lifecycle "$action" wan-up)" != 0 ] || fail "$guard: the $action succeeded over the kept guard"
+      grep -q 'runtime_guard_active' "$WORK_DIR/syslog" || fail "$guard: the $action did not say why it was refused"
+    elif [ "$action" = start ]; then
       [ "$(lifecycle start)" = 0 ] || fail "$guard: the start failed"
     else
       reload_ok "$guard"
     fi
     ! confirmed || fail "$guard: the $action confirmed the working configuration under the guard"
-    if [ "$guard" = ForkopTableDpiGuard ]; then
-      not_confirmed_logged || fail "$guard: the $action did not log why it did not confirm"
-    else
+    if [ "$guard" = ForkopConfigRestoreDpiGuard ]; then
       ! not_confirmed_logged || fail "$guard: the $action logged the routine transaction guard as a refusal"
     fi
   done

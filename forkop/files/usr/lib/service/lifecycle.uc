@@ -2060,8 +2060,7 @@ function reload(reason) {
         return finish_reload_status(1, reload_config_fingerprint);
     }
 
-    if (restart_under_guard ||
-        !module_success(STATE_UC, [ "forkop-running", RT_TABLE_NAME, NFT_TABLE_NAME, NFT_FAKEIP_MARK ])) {
+    if (!module_success(STATE_UC, [ "forkop-running", RT_TABLE_NAME, NFT_TABLE_NAME, NFT_FAKEIP_MARK ]) || restart_under_guard) {
         log_message("Runtime state is incomplete; restarting Forkop runtime", "info");
         return finish_reload_status(restart_runtime_for_reload(), reload_config_fingerprint);
     }

@@ -423,4 +423,39 @@ wait_until 30 job_finished || fail "the UI start job did not finish after the re
 grep -q '"success": *true' "$UI_JOB" || fail "the deferred UI start did not finish as success: $(cat "$UI_JOB")"
 started_once "UI start"
 
+# 7. A deferral that outlasts the UI job's bound: the job ends saying that the
+#    start is still pending, not that it failed. The retried start that runs
+#    after the job has ended opens a job of its own, as any start outside the
+#    UI does, so the page shows it and refuses a second service action. Here
+#    nothing but the UI worker marks the start as tracked by the UI.
+reset_case
+hold_reload_lock
+started_json="$(FORKOP_UI_SERVICE_ACTION_TIMEOUT_SECONDS=4 env -u FORKOP_UI_ACTION_TRACKED \
+  "$REAL_UCODE" -L "$LIB" "$LIB/service/ui.uc" service-action-async start)" ||
+  fail "the UI start was refused: $started_json"
+job="$(printf '%s\n' "$started_json" | sed -n 's/.*"job_id": *"\([^"]*\)".*/\1/p')"
+[ -n "$job" ] || fail "the UI start named no job: $started_json"
+UI_JOB="$FORKOP_UI_SERVICE_ACTION_DIR/$job.json"
+wait_until 20 job_finished || fail "the UI start job did not end at its bound: $(cat "$UI_JOB")"
+no_event '^forkop start' || fail "the start ran while another process held reload.lock"
+grep -q '"message": *"[^"]*still pending' "$UI_JOB" ||
+  fail "the UI job of a start still deferred at its bound does not say that it is pending: $(cat "$UI_JOB")"
+release_reload_lock
+# The job that the retried start opened.
+retried_start_job() {
+  local path
+  for path in "$FORKOP_UI_SERVICE_ACTION_DIR"/*.json; do
+    [ "$path" != "$UI_JOB" ] || continue
+    grep -q '"action": *"start"' "$path" 2>/dev/null && grep -q '"source": *"initd"' "$path" 2>/dev/null &&
+      RETRIED_JOB="$path" && return 0
+  done
+  return 1
+}
+RETRIED_JOB=""
+wait_until 20 test -e "$WORK_DIR/runtime.up" || fail "Forkop was not started after the lock was released"
+wait_until 20 retried_start_job || fail "the retried start after the UI job had ended opened no job of its own"
+wait_until 20 grep -q '"running": *false' "$RETRIED_JOB" || fail "the retried start's job did not finish: $(cat "$RETRIED_JOB")"
+grep -q '"success": *true' "$RETRIED_JOB" || fail "the retried start's job did not finish as success: $(cat "$RETRIED_JOB")"
+started_once "UI start beyond its bound"
+
 printf 'deferred start retry checks passed\n'

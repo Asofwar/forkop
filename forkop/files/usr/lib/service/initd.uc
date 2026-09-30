@@ -357,8 +357,11 @@ function start_failure_blocks_retry(path) {
 const START_RETRY_SHELL = "/bin/sh";
 
 function start_retry_argv(path) {
-    // The retry is not the start a start-and-wait caller waits for.
-    return [ START_RETRY_SHELL, "-c", "unset FORKOP_START_REQUEST; sleep \"$1\"; " +
+    // The retry is not the start a start-and-wait caller waits for, nor is
+    // it tracked by the UI job that waited for that start: that job may have
+    // ended, and the retried start opens a job of its own
+    // (begin_external_service_action).
+    return [ START_RETRY_SHELL, "-c", "unset FORKOP_START_REQUEST FORKOP_UI_ACTION_TRACKED; sleep \"$1\"; " +
         command_from_args([ "rm", "-f", path ]) + "; exec " + command_from_args([ SERVICE_INIT, "retry_start_on_wan_up" ]) ];
 }
 

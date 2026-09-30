@@ -119,8 +119,14 @@ function run_args(args) {
         let words = [];
         for (let i = 1; i < length(args); i++)
             push(words, args[i]);
-        let line = join(" ", words);
-        return fs.writefile(NFT_BATCH_FILE, (fs.readfile(NFT_BATCH_FILE) || "") + line + "\n") != null;
+        // Appended, never rewritten: element lines of large sets are long,
+        // and rewriting the whole file per command grew quadratically.
+        let batch = fs.open(NFT_BATCH_FILE, "a");
+        if (!batch)
+            return false;
+        let written = batch.write(join(" ", words) + "\n") != null;
+        batch.close();
+        return written;
     }
     return system(command_from_args(args)) == 0;
 }

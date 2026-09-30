@@ -296,29 +296,35 @@ snapshot_apply() { ucode -L "$LIB" "$LIB/config/snapshots.uc" apply "$WORK_DIR/c
 autotune_action() {
   ucode -L "$LIB" "$LIB/autotune/apply.uc" status | grep -o '"service_action": *[a-z_"]*' || true
 }
+# busy: the readers found a service action; free: they found none, and the
+# snapshot apply stops at its next check (the snapshot store is full). A
+# queued reload without a live owner is no service action.
+busy_answer='{ "status": "stale", "reason": "service_action_in_progress" }'
+free_answer='{ "status": "failed", "reason": "snapshot_retention_full" }'
 reader_case() {
-  local label="$1" snapshot="$2" autotune="$3" answer
+  local label="$1" answer
   answer="$(snapshot_apply)"
-  [ "$answer" = "{ \"status\": \"stale\", \"reason\": \"$snapshot\" }" ] ||
+  if [ "$2" = busy ]; then [ "$answer" = "$busy_answer" ]; else [ "$answer" = "$free_answer" ]; fi ||
     fail "$label: snapshot apply answered $answer"
   answer="$(autotune_action)"
-  [ "$answer" = "\"service_action\": \"$autotune\"" ] || fail "$label: autotune apply saw '$answer'"
+  if [ "$2" = busy ]; then [ "$answer" = '"service_action": "service_action_in_progress"' ]; else [ "$answer" = '"service_action": null' ]; fi ||
+    fail "$label: autotune apply saw '$answer'"
 }
-# A queued reload shows that the readers found no service action.
+for _ in $(seq 1 10); do ucode -L "$LIB" "$LIB/config/snapshots.uc" create manual >/dev/null; done
 : >"$FORKOP_PENDING_RELOAD_FILE"
 acquire "$B" || fail "the reader lock was refused"
-reader_case "live owner" service_action_in_progress service_action_in_progress
+reader_case "live owner" busy
 answer="$(ucode -L "$LIB" "$LIB/service/ui.uc" latency-test-async proxy main test 5000 || true)"
 printf '%s\n' "$answer" | grep -Fq 'Another latency test is already running' ||
   fail "the UI started a latency test next to a live owner: $answer"
 reset_lock; mkdir "$LOCK"
-reader_case "lock being set up" service_action_in_progress service_action_in_progress
+reader_case "lock being set up" busy
 reset_lock; mkdir "$LOCK"; : >"$LOCK/owner.$B.$((b_ticks + 1))"
-reader_case "reused pid" reload_pending reload_pending
+reader_case "reused pid" free
 reset_lock; mkdir "$LOCK"; printf '%s\n' "$B" >"$LOCK/pid"
-reader_case "previous-version live owner" service_action_in_progress service_action_in_progress
+reader_case "previous-version live owner" busy
 reset_lock; mkdir "$LOCK"; printf '%s\n' "$DEAD" >"$LOCK/pid"
-reader_case "previous-version dead owner" reload_pending reload_pending
+reader_case "previous-version dead owner" free
 reset_lock
 rm -f "$FORKOP_PENDING_RELOAD_FILE"
 

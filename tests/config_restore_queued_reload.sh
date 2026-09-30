@@ -207,8 +207,9 @@ events | grep -q '^health:restore:recovered$' || fail "recovered restore not rec
 guard_removed_only_after_reload "recovered restore"
 [ ! -e "$FORKOP_PENDING_RELOAD_FILE" ] || fail "the drained queue left reload.pending"
 
-# 5. Autotune apply (apply mode) through the same path: busy lock or a queued
-#    reload -> stale before any change; lock taken after the check -> never
+# 5. Autotune apply (apply mode) through the same path: busy lock -> stale
+#    before any change; a queued reload without a live owner is drained by the
+#    apply's own reload, as for a restore; lock taken after the check -> never
 #    success.
 config bad; snap confirm-working > /dev/null; base_lkg="$(lkg)"; base_hash="$(chash)"
 config good; cp "$FORKOP_CONFIG_FILE" "$WORK/candidate"; config bad
@@ -219,9 +220,13 @@ expect stale service_action_in_progress "apply under a live reload lock"
 release_lock
 printf 'reason=reload_busy\nupdated_at=1\n' > "$FORKOP_PENDING_RELOAD_FILE"
 run apply "$WORK/candidate" "$base_hash"
-expect stale reload_pending "apply with a queued reload"
-{ [ "$(snaps)" = "$before" ] && [ "$(chash)" = "$base_hash" ] && [ -z "$(events)" ]; } || fail "apply with a queued reload changed state"
-rm -f "$FORKOP_PENDING_RELOAD_FILE"
+expect success "" "apply with a queued reload without a live owner"
+{ [ "$(marker)" = "marker 'good'" ] && [ "$(lkg)" = "$base_lkg" ] && [ "$(cat "$STATE/guard")" = absent ]; } ||
+  fail "apply with a queued reload without a live owner: $(cat "$WORK/result.json")"
+events | grep -q "^runtime-reload:autotune:marker 'good'$" || fail "the apply did not reload its candidate: $(events)"
+events | grep -q "^runtime-reload:pending:marker 'good'$" || fail "the apply's reload did not drain the queued reload: $(events)"
+[ ! -e "$FORKOP_PENDING_RELOAD_FILE" ] || fail "the apply left the queued reload behind"
+config bad; before="$(snaps)"
 : > "$STATE/take-lock"
 run apply "$WORK/candidate" "$base_hash"
 expect needs_attention rollback_reload_queued "apply: target and rollback reload queued"

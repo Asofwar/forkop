@@ -737,17 +737,36 @@ json 'a.equal(r.status, "stale"); a.equal(r.reason, "runtime_not_on_planned_stra
 { [ "$(chash)" = "$PRE_HASH" ] && [ "$(reloads)" = 0 ] && [ "$(snaps)" = 1 ]; } || fail "incoherent runtime applied"
 ok "runtime not on the planned strategy -> stale, no mutation"
 
-# Lifecycle actions: a live reload lock or a queued reload blocks.
+# Lifecycle actions: a live reload lock blocks; its owner drains the queue.
 reset_apply; plan_ready; mkdir -p "$FORKOP_RELOAD_LOCK_DIR"; sleep 30 & holder=$!; echo "$holder" > "$FORKOP_RELOAD_LOCK_DIR/pid"
-at apply "$WORK/plan.json"
-json 'a.equal(r.status, "stale"); a.equal(r.reason, "service_action_in_progress");' "$WORK/out.json"
-kill "$holder"; wait "$holder" 2>/dev/null || true
 touch "$FORKOP_PENDING_RELOAD_FILE"; at apply "$WORK/plan.json"
-json 'a.equal(r.status, "stale"); a.equal(r.reason, "reload_pending");' "$WORK/out.json"
+json 'a.equal(r.status, "stale"); a.equal(r.reason, "service_action_in_progress");' "$WORK/out.json"
 [ "$(reloads)" = 0 ] || fail "applied during a lifecycle action"
-rm -f "$FORKOP_PENDING_RELOAD_FILE"; at apply "$WORK/plan.json"
-json 'a.equal(r.status, "applied");' "$WORK/out.json"
-ok "live reload lock or queued reload -> stale; a dead lock owner does not block"
+kill "$holder"; wait "$holder" 2>/dev/null || true
+# A queued reload that no live action owns (reload.pending left behind, the
+# lock free) is no refusal: the apply's own reload takes the lock and, as
+# init.d does at the end of every reload, drains the queue while the guard
+# still stands; nothing confirms last-known-working meanwhile. The operator's
+# rollback, a recovery, is not refused by it either.
+cat > "$WORK/reload-drain" <<'SH'
+#!/usr/bin/env bash
+"$WORK_RELOAD" "$@" || exit
+[ -e "$FORKOP_PENDING_RELOAD_FILE" ] || exit 0
+rm -f "$FORKOP_PENDING_RELOAD_FILE"; echo "drained $*" >> "$STUB_LOG/drain.log"
+"$WORK_RELOAD" pending
+SH
+chmod +x "$WORK/reload-drain"
+touch "$FORKOP_PENDING_RELOAD_FILE"
+WORK_RELOAD="$WORK/reload" FORKOP_RELOAD_COMMAND="$WORK/reload-drain" at apply "$WORK/plan.json"
+json 'a.equal(r.status, "applied", JSON.stringify(r).slice(0, 300));' "$WORK/out.json"
+grep -q '^drained reload autotune$' "$STUB_LOG/drain.log" || fail "the apply's reload did not drain the queued reload"
+touch "$FORKOP_PENDING_RELOAD_FILE"; WORK_RELOAD="$WORK/reload" FORKOP_RELOAD_COMMAND="$WORK/reload-drain" at rollback
+json 'a.equal(r.status, "rolled_back", JSON.stringify(r).slice(0, 300));' "$WORK/out.json"
+{ [ "$(chash)" = "$PRE_HASH" ] && [ ! -e "$FORKOP_PENDING_RELOAD_FILE" ]; } || fail "the rollback did not restore and drain"
+touch "$FORKOP_PENDING_RELOAD_FILE"; at status
+json 'a.equal(r.service_action, null);' "$WORK/out.json"
+rm -f "$FORKOP_PENDING_RELOAD_FILE"
+ok "live reload lock -> stale; a queued reload without a live owner is drained by the apply's own reload, never refused"
 
 # An explicit stop holds the runtime down until an explicit start (D-15,
 # UC-056): an apply and an operator rollback are refused before any change.

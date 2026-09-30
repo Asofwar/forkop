@@ -54,7 +54,6 @@ const PROC_QUEUE = getenv("FORKOP_AUTOTUNE_PROC_QUEUE") || "/proc/net/netfilter/
 const CHILD_PID_DIR = getenv("ZAPRET_CHILD_PID_DIR") || constants.ZAPRET_CHILD_PID_DIR;
 const DESYNC_MARK = getenv("ZAPRET_DESYNC_MARK") || constants.ZAPRET_DESYNC_MARK;
 const RELOAD_LOCK = getenv("FORKOP_RELOAD_LOCK_DIR") || "/var/run/forkop.reload.lock";
-const PENDING_RELOAD = getenv("FORKOP_PENDING_RELOAD_FILE") || "/var/run/forkop/reload.pending";
 // An explicit stop (service/initd.uc, service/lifecycle.uc): until an
 // explicit start no reload brings the runtime back (D-15, UC-056).
 const STOP_REQUESTED = getenv("FORKOP_STOP_REQUESTED_FILE") ||
@@ -262,15 +261,18 @@ function guards_present() {
     return result;
 }
 // A lifecycle action (reload/start, and a stop once its bounded wait got the
-// lock) holds the reload lock, a running list update gets every reload
-// queued for it with or without the lock, and a reload requested meanwhile
-// is queued: either would run outside this transaction
-// (a queued reload after the guard is gone would confirm LKG unverified).
+// lock) holds the reload lock, and a running list update gets every reload
+// queued for it with or without the lock: either would run outside this
+// transaction. A queued reload (reload.pending) without such a live owner is
+// no action: the transaction's own reload takes the free lock, and init.d
+// drains the queue at its end, still under the guard; a start or reload
+// never confirms an unsettled candidate as last-known-working
+// (config/snapshots.uc confirm-working). Refusing it instead would stall
+// autotune, and its rollback, until some other reload came by.
 // The lock and its owner record: core/runtime_lock.uc; the list worker:
 // core/list_worker.uc.
 function service_action() {
     if (runtime_lock.busy(RELOAD_LOCK) || list_worker.running(LIB_DIR)) return "service_action_in_progress";
-    if (fs.stat(PENDING_RELOAD) != null) return "reload_pending";
     return null;
 }
 // An apply or rollback never changes a runtime that an explicit stop holds

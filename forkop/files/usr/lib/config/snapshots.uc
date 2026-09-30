@@ -497,9 +497,9 @@ function do_apply(candidate_file, expected_hash, keep_id) {
     // since boot is refused by the caller (autotune/apply.uc); here its
     // reload answers "stopped" and the candidate is put back.
     if (fs.stat(STOP_REQUESTED) != null) return { status: "stale", reason: "service_stopped" };
-    // An apply also waits for a queued reload: that request would reload the
-    // candidate outside this transaction.
-    let action = service_action() || (fs.stat(PENDING_RELOAD) != null ? "reload_pending" : null);
+    // A queued reload without a live owner is no refusal, as for a restore:
+    // the transaction's own reload drains it while the guard stands.
+    let action = service_action();
     if (action != null) return { status: "stale", reason: action };
     // Room for the before-autotune snapshot and for the pre-restore snapshot
     // of a later rollback, which may not remove the before-autotune one. A

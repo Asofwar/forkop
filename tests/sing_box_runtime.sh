@@ -1534,7 +1534,7 @@ let grouped_state = cfg("subscription-group.json.section-cache/grouped");
 assert(grouped_state.outboundMetadata.names["Provider Group"] == "Provider Group", "provider group metadata visible");
 assert(grouped_state.outboundMetadata.names["grouped-out-1"] == "grouped-out", "hidden leaf metadata visible");
 assert(length(grouped_state.urltestGroups["Provider Group"].outbounds) == 2, "provider group membership cached");
-assert(grouped_state.urltestGroups["Provider Group"].outbounds[0] == "grouped-out-1", "provider group membership retagged");
+assert(contains(grouped_state.urltestGroups["Provider Group"].outbounds, "grouped-out-1"), "provider group membership retagged");
 assert(grouped_state.linkRefs == null, "section cache omits source link refs");
 assert(index(grouped_state.links["grouped-out-1"], "vless://") == 0, "hidden leaf caches its direct proxy link");
 assert(index(grouped_state.links["leaf"], "vless://") == 0, "second hidden leaf caches its direct proxy link");

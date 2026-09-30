@@ -41,13 +41,15 @@ awk '
 ' "$LIFECYCLE_UC" || fail "restart must keep refusing an ambiguous runtime"
 
 # The gate is fail-closed: each refusal returns a failure, never success.
+# stop_main distinguishes a refusal (2) from a teardown failure, so accept any
+# non-zero status rather than pinning the exact number.
 for fn in stop_main reload restart; do
   awk -v fn="$fn" '
     $0 ~ "^function " fn "\\(" { inside = 1 }
     inside && /"sing-box-process-conflict"/ { armed = 1 }
     armed && /return/ { print; armed = 0 }
     inside && /^}/ { exit }
-  ' "$LIFECYCLE_UC" | grep -qE 'return (1|finish_reload_status\(1)' ||
+  ' "$LIFECYCLE_UC" | grep -qE 'return ([1-9][0-9]*|finish_reload_status\(1)' ||
     fail "$fn must fail closed when sing-box ownership is ambiguous"
 done
 

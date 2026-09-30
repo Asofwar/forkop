@@ -94,10 +94,10 @@ marker() { grep -o "marker '[a-z]*'" "$FORKOP_CONFIG_FILE" | sed "s/marker '\(.*
 field() { node -e 'const r=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));const v=process.argv[2].split(".").reduce((o,k)=>o==null?o:o[k],r);console.log(v===undefined||v===null?"":v)' "$WORK/result.json" "$1"; }
 sha() { sha256sum "$1" | cut -d' ' -f1; }
 lkg() { cat "$FORKOP_SNAPSHOT_DIR/last-known-working" 2>/dev/null || true; }
-# snapshot_holding <marker> <reason>: the id of a snapshot whose content has
-# the marker and whose reason is the given one, or nothing.
+# snapshot_holding <marker> [reason]: the id of a snapshot whose content has
+# the marker (and the given reason, if any), or nothing.
 snapshot_holding() {
-  node - "$FORKOP_SNAPSHOT_DIR" "$1" "$2" <<'JS'
+  node - "$FORKOP_SNAPSHOT_DIR" "$1" "${2:-}" <<'JS'
 const fs = require('node:fs');
 const [dir, marker, reason] = process.argv.slice(2);
 for (const f of fs.readdirSync(dir).filter((f) => f.endsWith('.json'))) {
@@ -262,8 +262,54 @@ run apply "$WORK/candidate" "$before_hash"
 [ "$(field status)" = needs_attention ] && [ "$(field reason)" = config_changed_during_transaction ] ||
   fail "edit during a failed candidate reload: $(cat "$WORK/result.json")"
 [ "$(marker)" = edit ] && [ "$(reloads)" = 1 ] || fail "apply: the edit was overwritten or a rollback reload ran"
-[ -n "$(snapshot_holding edit concurrent-change)" ] || fail "apply: the edit is not saved"
+saved="$(field saved_snapshot)"
+[ -n "$saved" ] && [ "$(snapshot_holding edit concurrent-change)" != "" ] &&
+  grep -q '"reason": *"concurrent-change"' "$FORKOP_SNAPSHOT_DIR/$saved.json" &&
+  grep -q "option marker 'edit'" "$FORKOP_SNAPSHOT_DIR/$saved.json" || fail "apply: the edit is not saved: $(cat "$WORK/result.json")"
 [ -n "$(field pre_snapshot)" ] || fail "apply: the before-autotune snapshot is not named"
 ok "autotune apply: edit during a failed candidate reload -> kept, saved, needs_attention"
+
+# 9. Another snapshot (here an automatic before-reload one, next in line for
+#    retention) already holds exactly the edited configuration. The edit is
+#    still saved as a "Concurrent edit" snapshot of its own, and the result
+#    names that one: the page says so, and retention does not take it first.
+#    Without room for a snapshot the result names none (the edit stays in the
+#    file only).
+rm -rf "$FORKOP_SNAPSHOT_DIR"
+config good
+good_id="$("$REAL_UCODE" -L "$LIB" "$SCRIPT" create manual | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).snapshot.id))')"
+config good; sed -i "s/option marker 'good'/option marker 'edit'/" "$FORKOP_CONFIG_FILE"
+other="$("$REAL_UCODE" -L "$LIB" "$SCRIPT" create automatic | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).snapshot.id))')"
+[ -n "$other" ] || fail "fixture: the before-reload snapshot was not created"
+config bad
+restore absent "e1"
+[ "$(field status)" = needs_attention ] && [ "$(field reason)" = config_changed_during_transaction ] ||
+  fail "edit held by another snapshot: $(cat "$WORK/result.json")"
+saved="$(field saved_snapshot)"
+[ -n "$saved" ] && [ "$saved" != "$other" ] && grep -q '"reason": *"concurrent-change"' "$FORKOP_SNAPSHOT_DIR/$saved.json" &&
+  grep -q "option marker 'edit'" "$FORKOP_SNAPSHOT_DIR/$saved.json" ||
+  fail "the result names no Concurrent edit snapshot of the edit: $(cat "$WORK/result.json")"
+count="$(snapshot_count)"
+config bad
+restore absent "e1"
+[ "$(field saved_snapshot)" = "$saved" ] && [ "$(snapshot_count)" = "$((count + 1))" ] ||
+  fail "the same edit is saved twice as a Concurrent edit: $(cat "$WORK/result.json"), $(snapshot_count) snapshots"
+# Retention full: 8 manual snapshots, last-known-working and the
+# pre-restore snapshot leave no room, so nothing is saved, nor named.
+rm -rf "$FORKOP_SNAPSHOT_DIR"
+for i in 1 2 3 4 5 6 7 8; do
+  config "manual$(printf '%s' "$i" | tr 0-9 a-j)"
+  "$REAL_UCODE" -L "$LIB" "$SCRIPT" create manual >/dev/null
+done
+config working; "$REAL_UCODE" -L "$LIB" "$SCRIPT" confirm-working >/dev/null
+config other; "$REAL_UCODE" -L "$LIB" "$SCRIPT" create automatic >/dev/null
+[ "$(snapshot_count)" = 10 ] || fail "fixture: $(snapshot_count) snapshots instead of 10"
+good_id="$(snapshot_holding manualb manual)"
+config bad
+restore absent "e1"
+[ "$(field status)" = needs_attention ] && [ "$(field reason)" = config_changed_during_transaction ] && [ "$(marker)" = edit ] ||
+  fail "retention full: $(cat "$WORK/result.json"), config $(marker)"
+[ -z "$(field saved_snapshot)" ] && [ -z "$(snapshot_holding edit)" ] || fail "retention full: a snapshot is named or saved: $(cat "$WORK/result.json")"
+ok "edit already held by another kind of snapshot -> saved as a Concurrent edit of its own, once; retention full -> none named"
 
 printf 'config_restore_concurrent_edit: PASS\n'

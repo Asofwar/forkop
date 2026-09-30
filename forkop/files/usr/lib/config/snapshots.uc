@@ -206,6 +206,8 @@ function headroom(keep) {
         if (item.kind != "manual" && item.id != working && index(keep || [], item.id) < 0) free++;
     return free;
 }
+// dedupe: true returns any snapshot that already holds the configuration, a
+// reason only one of that reason.
 function create(kind, reason, dedupe, keep) {
     let content = read_config();
     if (content == null) return { status: "failed", reason: "config_unavailable" };
@@ -213,7 +215,7 @@ function create(kind, reason, dedupe, keep) {
     if (hash == "") return { status: "failed", reason: "hash_unavailable" };
     if (dedupe)
         for (let item in list_snapshots())
-            if (item.config_hash == hash) return { status: "existing", snapshot: item };
+            if (item.config_hash == hash && (dedupe === true || item.reason == dedupe)) return { status: "existing", snapshot: item };
     if (!trim_retention(keep)) return { status: "failed", reason: "retention_full" };
     let id = sprintf("%d_%d", clock()[0], clock()[1]);
     let version = trim(capture([ BIN, "show_version" ]));
@@ -501,10 +503,13 @@ function config_holds(content) {
 // (a LuCI Save & Apply, an autotune policy change, a URLTest override: UCI
 // commits never take the snapshot lock). It stays in place and is saved as an
 // automatic snapshot (dedupe: once), so a later restore cannot discard it
-// either (UC-023, UC-017). The id, or null when no snapshot could be written
+// either (UC-023, UC-017). Another kind of snapshot that happens to hold the
+// same configuration does not count: the id returned is always a "Concurrent
+// edit" one, as the page names it, and not, say, a pre-restore snapshot next
+// in line for retention. The id, or null when no snapshot could be written
 // (retention full of manual snapshots): the edit then lives in the file only.
 function save_concurrent_edit(keep) {
-    let saved = create("automatic", "concurrent-change", true, keep);
+    let saved = create("automatic", "concurrent-change", "concurrent-change", keep);
     return saved.snapshot != null ? saved.snapshot.id : null;
 }
 // Replace the configuration with `content` under the restore guard, validate

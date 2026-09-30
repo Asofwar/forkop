@@ -417,6 +417,15 @@ export const ForkopShellMethods = {
       '/usr/bin/forkop',
       { allowNonZeroWithStdout: true },
     ),
+  // Restores the snapshot taken before the apply and reloads the service,
+  // like a snapshot restore.
+  autotuneRollback: async () =>
+    callBaseMethod<Forkop.AutotuneRollbackResult>(
+      Forkop.AvailableMethods.AUTOTUNE_ROLLBACK,
+      [],
+      '/usr/bin/forkop',
+      { timeout: 120000, allowNonZeroWithStdout: true },
+    ),
   autotuneRunStatus: async (job: string) =>
     callBaseMethod<Forkop.AutotuneJobStatus>(
       Forkop.AvailableMethods.AUTOTUNE_RUN_STATUS,

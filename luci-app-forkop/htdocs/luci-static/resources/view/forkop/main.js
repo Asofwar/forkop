@@ -2614,6 +2614,7 @@ var Forkop;
     AvailableMethods2["AUTOTUNE_TARGET_REMOVE"] = "autotune_target_remove";
     AvailableMethods2["AUTOTUNE_RUN_ASYNC"] = "autotune_run_async";
     AvailableMethods2["AUTOTUNE_APPLY_ASYNC"] = "autotune_apply_async";
+    AvailableMethods2["AUTOTUNE_ROLLBACK"] = "autotune_rollback";
     AvailableMethods2["AUTOTUNE_RUN_STATUS"] = "autotune_run_status";
   })(
     (AvailableMethods =
@@ -2959,6 +2960,15 @@ var ForkopShellMethods = {
       [group],
       "/usr/bin/forkop",
       { allowNonZeroWithStdout: true },
+    ),
+  // Restores the snapshot taken before the apply and reloads the service,
+  // like a snapshot restore.
+  autotuneRollback: async () =>
+    callBaseMethod(
+      Forkop.AvailableMethods.AUTOTUNE_ROLLBACK,
+      [],
+      "/usr/bin/forkop",
+      { timeout: 12e4, allowNonZeroWithStdout: true },
     ),
   autotuneRunStatus: async (job) =>
     callBaseMethod(
@@ -19682,11 +19692,13 @@ function decisionText(reason) {
       return "";
   }
 }
-function applyOutcomeView(status2) {
+function applyOutcomeView(status2, reason) {
   switch (status2) {
     case "applied":
       return { label: _("Applied, check passed"), tone: "success" };
     case "rolled_back":
+      if (reason === "operator_rollback")
+        return { label: _("Rolled back by an administrator"), tone: "neutral" };
       return {
         label: _("Check failed, rolled back automatically"),
         tone: "warning",
@@ -19828,7 +19840,7 @@ function groupCards(status2, live2) {
                 apply.trigger === "manual"
                   ? `${strategyLabel(apply.candidate)} (${_("manually")})`
                   : strategyLabel(apply.candidate),
-              outcome: applyOutcomeView(apply.status),
+              outcome: applyOutcomeView(apply.status, apply.reason),
             }
           : null,
       cooldowns: Object.entries(state?.cooldowns ?? {})
@@ -20161,6 +20173,168 @@ function applyResultView(result, candidate) {
     attention: true,
   };
 }
+function changeName(apply, groupTitle) {
+  const candidate = strategyLabel(apply.candidate);
+  return groupTitle
+    ? _('%s in the rule "%t"')
+        .replace("%s", candidate)
+        .replace("%t", groupTitle)
+    : candidate;
+}
+function recordedApplyView(apply, groupTitle) {
+  if (!apply || apply.in_progress) return null;
+  if (apply.resolved === null)
+    return {
+      tone: "warning",
+      text: _("The state of the last autotune change could not be read."),
+      attention: false,
+    };
+  if (apply.diagnosis === "state_unreadable")
+    return {
+      tone: "error",
+      text: _(
+        "The record of the last autotune change is damaged. Checks and changes wait until an administrator rolls it back: Forkop X then makes sure the last known working configuration is active.",
+      ),
+      attention: true,
+    };
+  if (apply.resolved === false) {
+    if (apply.diagnosis === "candidate_active")
+      return {
+        tone: "error",
+        text: _(
+          "The last change (%s) was not checked to the end. Checks and changes wait until it is rolled back.",
+        ).replace("%s", changeName(apply, groupTitle)),
+        attention: true,
+      };
+    if (apply.diagnosis === "in_transaction")
+      return {
+        tone: "error",
+        text: _(
+          "A configuration change did not finish and its protection is still active. Restore a snapshot in History and recovery.",
+        ),
+        attention: true,
+      };
+    return {
+      tone: "warning",
+      text: _("The last autotune change is not resolved."),
+      attention: true,
+    };
+  }
+  if (apply.rollback)
+    return {
+      tone: "neutral",
+      text: _(
+        "The last change (%s) can be rolled back to the configuration before it.",
+      ).replace("%s", changeName(apply, groupTitle)),
+      attention: false,
+    };
+  return null;
+}
+function rollbackConfirmation(apply, groupTitle) {
+  if (apply.diagnosis === "state_unreadable" || !apply.candidate)
+    return {
+      title: _("Roll back the last autotune change?"),
+      message: _("The record of the last autotune change is damaged."),
+      consequences: [
+        _(
+          "Forkop X restores the last known working configuration if the current one differs from it, and reloads the service.",
+        ),
+        _("The damaged record is kept aside for inspection."),
+      ],
+      notes: [],
+      confirmLabel: _("Roll back"),
+    };
+  return {
+    title: _("Roll back %s?").replace("%s", strategyLabel(apply.candidate)),
+    message: groupTitle
+      ? _(
+          'The strategy of the DPI rule "%s" returns to the one before autotune.',
+        ).replace("%s", groupTitle)
+      : _("The strategy returns to the one before autotune."),
+    consequences: [
+      _(
+        'Forkop X restores the "Before autotune" snapshot, reloads the service and checks that the previous strategy works.',
+      ),
+      _(
+        "This strategy is not applied again during the pause after a rollback.",
+      ),
+    ],
+    notes: [],
+    confirmLabel: _("Roll back"),
+  };
+}
+function rollbackResultView(result) {
+  if (result?.status === "ok")
+    return {
+      tone: "success",
+      text: _("The configuration before the change is restored."),
+      attention: false,
+    };
+  if (result?.status === "busy")
+    return {
+      tone: "warning",
+      text: refusalText("autotune_worker_running"),
+      attention: false,
+    };
+  if (result?.result === "needs_attention")
+    return {
+      tone: "error",
+      text: _("The rollback did not finish. Open History and recovery."),
+      attention: true,
+    };
+  switch (result?.reason) {
+    case "rollback_needs_candidate_config":
+      return {
+        tone: "warning",
+        text: _(
+          "The configuration was changed after the apply, so nothing was rolled back. Restore a snapshot in History and recovery if needed.",
+        ),
+        attention: false,
+      };
+    case "pre_apply_snapshot_missing":
+    case "last_known_working_missing":
+      return {
+        tone: "error",
+        text: _(
+          "The snapshot to return to is missing; nothing was rolled back.",
+        ),
+        attention: false,
+      };
+    case "nothing_to_roll_back":
+    case "no_recorded_apply":
+      return {
+        tone: "neutral",
+        text: _("There is nothing to roll back."),
+        attention: false,
+      };
+    case "service_stopped":
+    case "service_action_in_progress":
+      return {
+        tone: "warning",
+        text: `${_("Nothing was rolled back")}: ${blockerText(result.reason)}.`,
+        attention: false,
+      };
+    case "restore_guard_active":
+      return {
+        tone: "warning",
+        text: `${_("Nothing was rolled back")}: ${blockerText("dpi_guard_present")}.`,
+        attention: false,
+      };
+    case "snapshot_operation_in_progress":
+      return {
+        tone: "warning",
+        text: `${_("Nothing was rolled back")}: ${blockerText("snapshot_operation_active")}.`,
+        attention: false,
+      };
+  }
+  if (result?.reason?.startsWith("rollback_not_started"))
+    return {
+      tone: "warning",
+      text: `${_("Nothing was rolled back")}.`,
+      attention: false,
+    };
+  return { tone: "error", text: _("The rollback failed."), attention: false };
+}
 
 // src/forkop/tabs/autotune/initController.ts
 var REFRESH_INTERVAL_MS2 = 15e3;
@@ -20183,8 +20357,9 @@ var busy = false;
 var runningScope = null;
 var applying = null;
 var applyNotice = null;
+var rollingBack = false;
 function locked() {
-  return busy || Boolean(runningScope) || Boolean(applying);
+  return busy || Boolean(runningScope) || Boolean(applying) || rollingBack;
 }
 function replace2(id, ...nodes) {
   const container = document.getElementById(id);
@@ -20393,6 +20568,35 @@ async function applyGroup(card3) {
   }
   renderAll2();
   if (applying) await pollApply();
+}
+function recordedGroupTitle(apply) {
+  if (!apply.group) return null;
+  return (
+    live?.groups[apply.group]?.label ??
+    status?.groups?.[apply.group]?.label ??
+    apply.group
+  );
+}
+async function rollbackApply() {
+  const apply = status?.apply;
+  if (locked() || !apply?.rollback) return;
+  const confirmed = await confirmAction(
+    rollbackConfirmation(apply, recordedGroupTitle(apply)),
+  );
+  if (!confirmed || locked()) return;
+  rollingBack = true;
+  renderAll2();
+  try {
+    const response = await ForkopShellMethods.autotuneRollback();
+    const view = rollbackResultView(response.success ? response.data : null);
+    showToast(view.text, toastType(view.tone), view.attention ? 15e3 : 1e4);
+  } catch (error) {
+    logger.error("[AUTOTUNE]", "rollback failed", error);
+    showToast(_("The rollback failed."), "error", 8e3);
+  } finally {
+    rollingBack = false;
+  }
+  if (mounted2) await loadAll2();
 }
 async function runCheck(scope) {
   if (locked()) return;
@@ -20743,7 +20947,15 @@ function renderState2() {
     ],
     [_("Policy"), policySummary(policy)],
   ];
-  if (applying)
+  if (rollingBack)
+    facts.push([
+      _("State"),
+      renderStatus({
+        label: _("Rolling back the last change"),
+        tone: "loading",
+      }),
+    ]);
+  else if (applying)
     facts.push([
       _("State"),
       renderStatus({ label: _("Applying a strategy"), tone: "loading" }),
@@ -20774,6 +20986,28 @@ function renderState2() {
         ),
         tone: "warning",
       }),
+    ]);
+  const recorded = status.apply
+    ? recordedApplyView(status.apply, recordedGroupTitle(status.apply))
+    : null;
+  if (recorded)
+    facts.push([
+      _("Last change"),
+      recorded.attention
+        ? E("div", { class: "fkp-autotune__alert", role: "alert" }, [
+            E("strong", {}, _("Action required")),
+            E("p", {}, recorded.text),
+            ...(readonly && status.apply?.rollback
+              ? [
+                  E(
+                    "p",
+                    { class: "fkp-autotune__muted" },
+                    _("An administrator can roll it back."),
+                  ),
+                ]
+              : []),
+          ])
+        : renderStatus({ label: recorded.text, tone: recorded.tone }),
     ]);
   if (status.errors.length)
     facts.push([
@@ -20822,6 +21056,22 @@ function renderState2() {
             },
             runningScope === "all" ? _("Checking\u2026") : _("Check all now"),
           ),
+          ...(status.apply?.rollback
+            ? [
+                E(
+                  "button",
+                  {
+                    type: "button",
+                    class: "btn cbi-button-negative",
+                    disabled: locked() ? true : void 0,
+                    click: () => void rollbackApply(),
+                  },
+                  rollingBack
+                    ? _("Rolling back\u2026")
+                    : _("Roll back the last change\u2026"),
+                ),
+              ]
+            : []),
         ]),
   );
 }

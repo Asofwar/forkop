@@ -214,7 +214,10 @@ export function decisionText(reason: string | null | undefined) {
   }
 }
 
-export function applyOutcomeView(status: string): {
+export function applyOutcomeView(
+  status: string,
+  reason?: string | null,
+): {
   label: string;
   tone: StatusTone;
 } {
@@ -222,6 +225,8 @@ export function applyOutcomeView(status: string): {
     case 'applied':
       return { label: _('Applied, check passed'), tone: 'success' };
     case 'rolled_back':
+      if (reason === 'operator_rollback')
+        return { label: _('Rolled back by an administrator'), tone: 'neutral' };
       return {
         label: _('Check failed, rolled back automatically'),
         tone: 'warning',
@@ -406,7 +411,7 @@ export function groupCards(
                 apply.trigger === 'manual'
                   ? `${strategyLabel(apply.candidate)} (${_('manually')})`
                   : strategyLabel(apply.candidate),
-              outcome: applyOutcomeView(apply.status),
+              outcome: applyOutcomeView(apply.status, apply.reason),
             }
           : null,
       cooldowns: Object.entries(state?.cooldowns ?? {})
@@ -808,4 +813,196 @@ export function applyResultView(
     text: _('Automatic recovery did not finish.'),
     attention: true,
   };
+}
+
+// ---- the recorded apply and its rollback -----------------------------------
+
+export interface RecordedApplyView {
+  tone: 'neutral' | 'warning' | 'error';
+  text: string;
+  // It blocks autotune until an administrator decides.
+  attention: boolean;
+}
+
+function changeName(
+  apply: Forkop.AutotuneRecordedApply,
+  groupTitle: string | null,
+) {
+  const candidate = strategyLabel(apply.candidate);
+  return groupTitle
+    ? _('%s in the rule "%t"')
+        .replace('%s', candidate)
+        .replace('%t', groupTitle)
+    : candidate;
+}
+
+// What the page says about the last Stage 5 apply (manager.uc status
+// apply): nothing while it is settled and cannot be rolled back, or while
+// it still runs (the apply itself reports its steps).
+export function recordedApplyView(
+  apply: Forkop.AutotuneRecordedApply | null | undefined,
+  groupTitle: string | null,
+): RecordedApplyView | null {
+  if (!apply || apply.in_progress) return null;
+  if (apply.resolved === null)
+    return {
+      tone: 'warning',
+      text: _('The state of the last autotune change could not be read.'),
+      attention: false,
+    };
+  if (apply.diagnosis === 'state_unreadable')
+    return {
+      tone: 'error',
+      text: _(
+        'The record of the last autotune change is damaged. Checks and changes wait until an administrator rolls it back: Forkop X then makes sure the last known working configuration is active.',
+      ),
+      attention: true,
+    };
+  if (apply.resolved === false) {
+    if (apply.diagnosis === 'candidate_active')
+      return {
+        tone: 'error',
+        text: _(
+          'The last change (%s) was not checked to the end. Checks and changes wait until it is rolled back.',
+        ).replace('%s', changeName(apply, groupTitle)),
+        attention: true,
+      };
+    if (apply.diagnosis === 'in_transaction')
+      return {
+        tone: 'error',
+        text: _(
+          'A configuration change did not finish and its protection is still active. Restore a snapshot in History and recovery.',
+        ),
+        attention: true,
+      };
+    return {
+      tone: 'warning',
+      text: _('The last autotune change is not resolved.'),
+      attention: true,
+    };
+  }
+  if (apply.rollback)
+    return {
+      tone: 'neutral',
+      text: _(
+        'The last change (%s) can be rolled back to the configuration before it.',
+      ).replace('%s', changeName(apply, groupTitle)),
+      attention: false,
+    };
+  return null;
+}
+
+// The confirmation of the rollback: what returns, never options.
+export function rollbackConfirmation(
+  apply: Forkop.AutotuneRecordedApply,
+  groupTitle: string | null,
+) {
+  if (apply.diagnosis === 'state_unreadable' || !apply.candidate)
+    return {
+      title: _('Roll back the last autotune change?'),
+      message: _('The record of the last autotune change is damaged.'),
+      consequences: [
+        _(
+          'Forkop X restores the last known working configuration if the current one differs from it, and reloads the service.',
+        ),
+        _('The damaged record is kept aside for inspection.'),
+      ],
+      notes: [] as string[],
+      confirmLabel: _('Roll back'),
+    };
+  return {
+    title: _('Roll back %s?').replace('%s', strategyLabel(apply.candidate)),
+    message: groupTitle
+      ? _(
+          'The strategy of the DPI rule "%s" returns to the one before autotune.',
+        ).replace('%s', groupTitle)
+      : _('The strategy returns to the one before autotune.'),
+    consequences: [
+      _(
+        'Forkop X restores the "Before autotune" snapshot, reloads the service and checks that the previous strategy works.',
+      ),
+      _(
+        'This strategy is not applied again during the pause after a rollback.',
+      ),
+    ],
+    notes: [] as string[],
+    confirmLabel: _('Roll back'),
+  };
+}
+
+// What the finished rollback means for the user.
+export function rollbackResultView(
+  result: Forkop.AutotuneRollbackResult | null,
+): ApplyResultView {
+  if (result?.status === 'ok')
+    return {
+      tone: 'success',
+      text: _('The configuration before the change is restored.'),
+      attention: false,
+    };
+  if (result?.status === 'busy')
+    return {
+      tone: 'warning',
+      text: refusalText('autotune_worker_running'),
+      attention: false,
+    };
+  if (result?.result === 'needs_attention')
+    return {
+      tone: 'error',
+      text: _('The rollback did not finish. Open History and recovery.'),
+      attention: true,
+    };
+  switch (result?.reason) {
+    case 'rollback_needs_candidate_config':
+      return {
+        tone: 'warning',
+        text: _(
+          'The configuration was changed after the apply, so nothing was rolled back. Restore a snapshot in History and recovery if needed.',
+        ),
+        attention: false,
+      };
+    case 'pre_apply_snapshot_missing':
+    case 'last_known_working_missing':
+      return {
+        tone: 'error',
+        text: _(
+          'The snapshot to return to is missing; nothing was rolled back.',
+        ),
+        attention: false,
+      };
+    case 'nothing_to_roll_back':
+    case 'no_recorded_apply':
+      return {
+        tone: 'neutral',
+        text: _('There is nothing to roll back.'),
+        attention: false,
+      };
+    case 'service_stopped':
+    case 'service_action_in_progress':
+      return {
+        tone: 'warning',
+        text: `${_('Nothing was rolled back')}: ${blockerText(result.reason)}.`,
+        attention: false,
+      };
+    case 'restore_guard_active':
+      return {
+        tone: 'warning',
+        text: `${_('Nothing was rolled back')}: ${blockerText('dpi_guard_present')}.`,
+        attention: false,
+      };
+    case 'snapshot_operation_in_progress':
+      return {
+        tone: 'warning',
+        text: `${_('Nothing was rolled back')}: ${blockerText('snapshot_operation_active')}.`,
+        attention: false,
+      };
+  }
+  // The restore refused before it changed anything.
+  if (result?.reason?.startsWith('rollback_not_started'))
+    return {
+      tone: 'warning',
+      text: `${_('Nothing was rolled back')}.`,
+      attention: false,
+    };
+  return { tone: 'error', text: _('The rollback failed.'), attention: false };
 }

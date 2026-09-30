@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-30 02:10+0000\n"
-"PO-Revision-Date: 2026-09-30 02:10+0000\n"
+"POT-Creation-Date: 2026-09-30 05:31+0000\n"
+"PO-Revision-Date: 2026-09-30 05:31+0000\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -65,6 +65,9 @@ msgstr "%s (провайдер не установлен)"
 msgid "%s (unavailable)"
 msgstr "%s (недоступна)"
 
+msgid "%s in the rule \"%t\""
+msgstr "%s в правиле «%t»"
+
 msgid "%s is “%s”: sing-box and the firewall read it differently"
 msgstr "%s = «%s»: sing-box и файрвол читают это значение по-разному"
 
@@ -103,6 +106,9 @@ msgstr "Проверка уже идёт."
 
 msgid "A configuration backup will be saved in /etc/forkop-backups. Older versions may not support all current settings."
 msgstr "Резервная копия настроек будет сохранена в /etc/forkop-backups. Старые версии могут поддерживать не все текущие настройки."
+
+msgid "A configuration change did not finish and its protection is still active. Restore a snapshot in History and recovery."
+msgstr "Изменение конфигурации не завершилось, и его защита всё ещё активна. Восстановите снимок в разделе «История и восстановление»."
 
 msgid "A configuration change was not confirmed. Traffic that needs DPI bypass may be blocked until recovery completes."
 msgstr "Изменение конфигурации не подтвердилось. Трафик, которому нужен обход DPI, может блокироваться, пока не завершится восстановление."
@@ -271,6 +277,9 @@ msgstr "Обеспечивает доступ к YACD из WAN. Убедитес
 
 msgid "Allows limiting the list of servers for URLTest"
 msgstr "Позволяет ограничить список серверов для URLTest"
+
+msgid "An administrator can roll it back."
+msgstr "Откатить его может администратор."
 
 msgid "an earlier rule re-resolves the address, so the route depends on its answer"
 msgstr "раньше стоит правило, которое заново разрешает адрес, поэтому маршрут зависит от его ответа"
@@ -1478,6 +1487,12 @@ msgstr "Forkop X никогда сам не отключает обход DPI."
 msgid "Forkop X reloads the configuration. If the reload fails, the previous configuration is restored automatically."
 msgstr "Forkop X перезагрузит конфигурацию. Если перезагрузка не удастся, прежняя конфигурация восстановится автоматически."
 
+msgid "Forkop X restores the \"Before autotune\" snapshot, reloads the service and checks that the previous strategy works."
+msgstr "Forkop X восстановит снимок «Перед автоподбором», перезагрузит службу и проверит, что прежняя стратегия работает."
+
+msgid "Forkop X restores the last known working configuration if the current one differs from it, and reloads the service."
+msgstr "Forkop X восстановит последнюю рабочую конфигурацию, если текущая от неё отличается, и перезагрузит службу."
+
 msgid "Forkop X stays stopped until you start it: reloads, restores and updates do not start it."
 msgstr "Forkop X останется остановленным, пока вы его не запустите: перезагрузка конфигурации, восстановление и обновления его не запускают."
 
@@ -2315,6 +2330,9 @@ msgstr "Не поддерживается"
 msgid "not used"
 msgstr "не используется"
 
+msgid "Nothing was rolled back"
+msgstr "Ничего не откачено"
+
 msgid "Now"
 msgstr "Сейчас"
 
@@ -2729,11 +2747,32 @@ msgstr "Повторите проверку. Если ошибка повтор�
 msgid "Retry this check"
 msgstr "Повторить эту проверку"
 
+msgid "Roll back"
+msgstr "Откатить"
+
+msgid "Roll back %s?"
+msgstr "Откатить %s?"
+
+msgid "Roll back the last autotune change?"
+msgstr "Откатить последнее изменение автоподбора?"
+
+msgid "Roll back the last change…"
+msgstr "Откатить последнее изменение…"
+
 msgid "Rollback did not finish"
 msgstr "Откат не завершился"
 
 msgid "Rolled back"
 msgstr "Откачено"
+
+msgid "Rolled back by an administrator"
+msgstr "Откачено администратором"
+
+msgid "Rolling back the last change"
+msgstr "Откат последнего изменения"
+
+msgid "Rolling back…"
+msgstr "Откат…"
 
 msgid "Route"
 msgstr "Маршрут"
@@ -3266,6 +3305,12 @@ msgstr "Проверка отложена. Причина — в состоян�
 msgid "The confidence of the recommendation is below the policy minimum."
 msgstr "Уверенность рекомендации ниже минимума политики."
 
+msgid "The configuration before the change is restored."
+msgstr "Конфигурация до изменения восстановлена."
+
+msgid "The configuration was changed after the apply, so nothing was rolled back. Restore a snapshot in History and recovery if needed."
+msgstr "После применения конфигурация менялась, поэтому ничего не откачено. При необходимости восстановите снимок в разделе «История и восстановление»."
+
 msgid "The current strategy is already the best."
 msgstr "Текущая стратегия уже лучшая."
 
@@ -3274,6 +3319,9 @@ msgstr "Текущая стратегия оставлена."
 
 msgid "The daily limit of automatic applies is reached."
 msgstr "Исчерпан суточный лимит автоматических изменений."
+
+msgid "The damaged record is kept aside for inspection."
+msgstr "Повреждённая запись будет сохранена отдельно для разбора."
 
 msgid "The desync fwmark is managed by Forkop for loop prevention and must not be overridden here."
 msgstr "Desync fwmark управляется Forkop для защиты от циклов и не должен переопределяться здесь."
@@ -3289,6 +3337,15 @@ msgstr "Не удалось надёжно определить DPI-правил
 
 msgid "The editor has no field for downloaded lists: they cannot be converted and stay as they are."
 msgstr "Для загружаемых списков в редакторе нет поля: их нельзя конвертировать, они остаются как есть."
+
+msgid "The last autotune change is not resolved."
+msgstr "Последнее изменение автоподбора не завершено."
+
+msgid "The last change (%s) can be rolled back to the configuration before it."
+msgstr "Последнее изменение (%s) можно откатить к конфигурации до него."
+
+msgid "The last change (%s) was not checked to the end. Checks and changes wait until it is rolled back."
+msgstr "Последнее изменение (%s) не было проверено до конца. Проверки и изменения ждут, пока его не откатят."
 
 msgid "The last change was rolled back automatically."
 msgstr "Последнее изменение было автоматически откачено."
@@ -3340,6 +3397,18 @@ msgstr "Рекомендация ещё не подтверждена."
 
 msgid "The recommendation is outdated: the configuration changed after the check. Run the check again."
 msgstr "Рекомендация устарела: конфигурация изменилась после проверки. Запустите проверку ещё раз."
+
+msgid "The record of the last autotune change is damaged."
+msgstr "Запись о последнем изменении автоподбора повреждена."
+
+msgid "The record of the last autotune change is damaged. Checks and changes wait until an administrator rolls it back: Forkop X then makes sure the last known working configuration is active."
+msgstr "Запись о последнем изменении автоподбора повреждена. Проверки и изменения ждут, пока администратор не выполнит откат: Forkop X убедится, что активна последняя рабочая конфигурация."
+
+msgid "The rollback did not finish. Open History and recovery."
+msgstr "Откат не завершился. Откройте «История и восстановление»."
+
+msgid "The rollback failed."
+msgstr "Откат не удался."
 
 msgid "The route check did not complete. Try again."
 msgstr "Проверка маршрута не завершилась. Повторите попытку."
@@ -3416,6 +3485,12 @@ msgstr "С роутера сайт не открылся. Роутер може�
 msgid "The site opens from the router. If it does not open on a device, look at its real connections."
 msgstr "С роутера сайт открывается. Если на устройстве он не открывается — посмотрите его реальные соединения."
 
+msgid "The snapshot to return to is missing; nothing was rolled back."
+msgstr "Снимка, к которому нужно вернуться, нет; ничего не откачено."
+
+msgid "The state of the last autotune change could not be read."
+msgstr "Не удалось прочитать состояние последнего изменения автоподбора."
+
 msgid "The strategy contains an error"
 msgstr "В стратегии есть ошибка"
 
@@ -3431,8 +3506,14 @@ msgstr "Стратегия надёжнее, чем работа без обхо
 msgid "The strategy is noticeably faster."
 msgstr "Стратегия заметно быстрее."
 
+msgid "The strategy of the DPI rule \"%s\" returns to the one before autotune."
+msgstr "Стратегия DPI-правила «%s» вернётся к той, что была до автоподбора."
+
 msgid "The strategy of the DPI rule \"%s\" will be changed."
 msgstr "Будет изменена стратегия DPI-правила «%s»."
+
+msgid "The strategy returns to the one before autotune."
+msgstr "Стратегия вернётся к той, что была до автоподбора."
 
 msgid "The strategy was not applied"
 msgstr "Стратегия не применена"
@@ -3481,6 +3562,9 @@ msgstr "Есть несохранённые изменения конфигур�
 
 msgid "There is no recommendation to apply."
 msgstr "Нет рекомендации для применения."
+
+msgid "There is nothing to roll back."
+msgstr "Откатывать нечего."
 
 msgid "This browser could not reach the check service, so FakeIP for devices is not proven either way."
 msgstr "Этот браузер не смог обратиться к сервису проверки, поэтому работа FakeIP для устройств не доказана ни в одну сторону."
@@ -3532,6 +3616,9 @@ msgstr "Это правило хранит настройки в устарев�
 
 msgid "This strategy is already active; nothing was changed."
 msgstr "Эта стратегия уже активна; ничего не изменено."
+
+msgid "This strategy is not applied again during the pause after a rollback."
+msgstr "Во время паузы после отката эта стратегия не будет применена снова."
 
 msgid "This strategy is not supported by the installed Zapret."
 msgstr "Эта стратегия не поддерживается установленным Zapret."

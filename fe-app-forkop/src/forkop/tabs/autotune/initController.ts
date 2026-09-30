@@ -32,6 +32,9 @@ import {
   MODES,
   mutationErrorText,
   outsideReasonText,
+  recordedApplyView,
+  rollbackConfirmation,
+  rollbackResultView,
   strategyLabel,
   targetIdFor,
   targetRows,
@@ -72,10 +75,12 @@ let applying: {
 } | null = null;
 // The outcome of the last manual apply, shown on its group card.
 let applyNotice: { group: string; view: ApplyResultView } | null = null;
+// The administrator's rollback of the recorded apply is running.
+let rollingBack = false;
 
-// No other change while a change, a check or an apply runs.
+// No other change while a change, a check, an apply or a rollback runs.
 function locked() {
-  return busy || Boolean(runningScope) || Boolean(applying);
+  return busy || Boolean(runningScope) || Boolean(applying) || rollingBack;
 }
 
 function replace(id: string, ...nodes: Node[]) {
@@ -310,6 +315,39 @@ async function applyGroup(card: GroupCard) {
   }
   renderAll();
   if (applying) await pollApply();
+}
+
+// ---- rollback of the recorded apply ---------------------------------------
+
+function recordedGroupTitle(apply: Forkop.AutotuneRecordedApply) {
+  if (!apply.group) return null;
+  return (
+    live?.groups[apply.group]?.label ??
+    status?.groups?.[apply.group]?.label ??
+    apply.group
+  );
+}
+
+async function rollbackApply() {
+  const apply = status?.apply;
+  if (locked() || !apply?.rollback) return;
+  const confirmed = await confirmAction(
+    rollbackConfirmation(apply, recordedGroupTitle(apply)),
+  );
+  if (!confirmed || locked()) return;
+  rollingBack = true;
+  renderAll();
+  try {
+    const response = await ForkopShellMethods.autotuneRollback();
+    const view = rollbackResultView(response.success ? response.data : null);
+    showToast(view.text, toastType(view.tone), view.attention ? 15000 : 10000);
+  } catch (error) {
+    logger.error('[AUTOTUNE]', 'rollback failed', error);
+    showToast(_('The rollback failed.'), 'error', 8000);
+  } finally {
+    rollingBack = false;
+  }
+  if (mounted) await loadAll();
 }
 
 async function runCheck(scope: string) {
@@ -679,7 +717,15 @@ function renderState() {
     ],
     [_('Policy'), policySummary(policy)],
   ];
-  if (applying)
+  if (rollingBack)
+    facts.push([
+      _('State'),
+      renderStatus({
+        label: _('Rolling back the last change'),
+        tone: 'loading',
+      }),
+    ]);
+  else if (applying)
     facts.push([
       _('State'),
       renderStatus({ label: _('Applying a strategy'), tone: 'loading' }),
@@ -710,6 +756,28 @@ function renderState() {
         ),
         tone: 'warning',
       }),
+    ]);
+  const recorded = status.apply
+    ? recordedApplyView(status.apply, recordedGroupTitle(status.apply))
+    : null;
+  if (recorded)
+    facts.push([
+      _('Last change'),
+      recorded.attention
+        ? E('div', { class: 'fkp-autotune__alert', role: 'alert' }, [
+            E('strong', {}, _('Action required')),
+            E('p', {}, recorded.text),
+            ...(readonly && status.apply?.rollback
+              ? [
+                  E(
+                    'p',
+                    { class: 'fkp-autotune__muted' },
+                    _('An administrator can roll it back.'),
+                  ),
+                ]
+              : []),
+          ])
+        : renderStatus({ label: recorded.text, tone: recorded.tone }),
     ]);
   if (status.errors.length)
     facts.push([
@@ -762,6 +830,22 @@ function renderState() {
             },
             runningScope === 'all' ? _('Checking…') : _('Check all now'),
           ),
+          ...(status.apply?.rollback
+            ? [
+                E(
+                  'button',
+                  {
+                    type: 'button',
+                    class: 'btn cbi-button-negative',
+                    disabled: locked() ? true : undefined,
+                    click: () => void rollbackApply(),
+                  },
+                  rollingBack
+                    ? _('Rolling back…')
+                    : _('Roll back the last change…'),
+                ),
+              ]
+            : []),
         ]),
   );
 }

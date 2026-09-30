@@ -11,6 +11,9 @@ import {
   groupCards,
   mutationErrorText,
   outsideReasonText,
+  recordedApplyView,
+  rollbackConfirmation,
+  rollbackResultView,
   strategyLabel,
   targetIdFor,
   targetRows,
@@ -626,5 +629,173 @@ describe('manual apply', () => {
       live(),
     );
     expect(card.lastApply?.candidate).toBe('multisplit (manually)');
+  });
+});
+
+describe('recorded apply and its rollback', () => {
+  const recorded = (
+    overrides: Partial<Forkop.AutotuneRecordedApply> = {},
+  ): Forkop.AutotuneRecordedApply => ({
+    phase: 'applied',
+    reason: null,
+    group: 'youtube',
+    candidate: 'multisplit',
+    finished_at: NOW - 30,
+    resolved: true,
+    diagnosis: 'not_applied',
+    in_progress: false,
+    rollback: false,
+    ...overrides,
+  });
+
+  it('says nothing about a settled apply that cannot be rolled back', () => {
+    expect(recordedApplyView(null, 'YouTube')).toBeNull();
+    expect(recordedApplyView(recorded(), 'YouTube')).toBeNull();
+    expect(
+      recordedApplyView(
+        recorded({ phase: 'verifying', in_progress: true, resolved: false }),
+        'YouTube',
+      ),
+    ).toBeNull();
+  });
+
+  it('asks for a decision about an unverified candidate', () => {
+    const view = recordedApplyView(
+      recorded({
+        phase: 'verifying',
+        resolved: false,
+        diagnosis: 'candidate_active',
+        rollback: true,
+      }),
+      'YouTube',
+    );
+    expect(view?.attention).toBe(true);
+    expect(view?.text).toContain('multisplit');
+    expect(view?.text).toContain('"YouTube"');
+    expect(view?.text).toContain('rolled back');
+  });
+
+  it('names a damaged record and an unknown state', () => {
+    const damaged = recordedApplyView(
+      recorded({
+        phase: 'needs_attention',
+        reason: 'apply_state_unreadable',
+        group: null,
+        candidate: null,
+        resolved: false,
+        diagnosis: 'state_unreadable',
+        rollback: true,
+      }),
+      null,
+    );
+    expect(damaged?.attention).toBe(true);
+    expect(damaged?.text).toContain('damaged');
+    expect(damaged?.text).toContain('last known working');
+    const unknown = recordedApplyView(
+      recorded({ phase: null, resolved: null, diagnosis: null }),
+      null,
+    );
+    expect(unknown?.tone).toBe('warning');
+    expect(unknown?.attention).toBe(false);
+    const open = recordedApplyView(
+      recorded({
+        phase: 'applying',
+        resolved: false,
+        diagnosis: 'in_transaction',
+      }),
+      'YouTube',
+    );
+    expect(open?.attention).toBe(true);
+    expect(open?.text).toContain('History and recovery');
+  });
+
+  it('offers the rollback of a verified apply without alarm', () => {
+    const view = recordedApplyView(
+      recorded({ diagnosis: 'candidate_active', rollback: true }),
+      'YouTube',
+    );
+    expect(view).toMatchObject({ tone: 'neutral', attention: false });
+    expect(view?.text).toContain('can be rolled back');
+  });
+
+  it('confirms with the rule and strategy names only', () => {
+    const confirm = rollbackConfirmation(
+      recorded({ diagnosis: 'candidate_active', rollback: true }),
+      'YouTube',
+    );
+    expect(confirm.title).toBe('Roll back multisplit?');
+    expect(confirm.message).toContain('"YouTube"');
+    expect(confirm.consequences?.join(' ')).toContain('Before autotune');
+    expect(confirm.confirmLabel).toBe('Roll back');
+    const damaged = rollbackConfirmation(
+      recorded({
+        group: null,
+        candidate: null,
+        diagnosis: 'state_unreadable',
+        rollback: true,
+      }),
+      null,
+    );
+    expect(damaged.consequences?.join(' ')).toContain('last known working');
+    expect(JSON.stringify(damaged)).not.toContain('null');
+  });
+
+  it('explains every rollback outcome', () => {
+    expect(
+      rollbackResultView({ status: 'ok', result: 'rolled_back' }),
+    ).toMatchObject({ tone: 'success', attention: false });
+    expect(
+      rollbackResultView({
+        status: 'busy',
+        result: 'refused',
+        reason: 'autotune_worker_running',
+      }).text,
+    ).toBe('Another autotune operation is running.');
+    expect(
+      rollbackResultView({
+        status: 'failed',
+        result: 'failed',
+        reason: 'rollback_needs_candidate_config',
+      }).text,
+    ).toContain('changed after the apply');
+    expect(
+      rollbackResultView({
+        status: 'failed',
+        result: 'failed',
+        reason: 'service_stopped',
+      }).text,
+    ).toContain('stopped');
+    expect(
+      rollbackResultView({
+        status: 'failed',
+        result: 'needs_attention',
+        reason: 'operator_rollback:rollback_needs_attention',
+      }),
+    ).toMatchObject({ tone: 'error', attention: true });
+    expect(rollbackResultView(null)).toMatchObject({ tone: 'error' });
+  });
+
+  it('labels a rollback by the administrator as such on the group', () => {
+    const [card] = groupCards(
+      status({
+        groups: {
+          youtube: groupState({
+            last_apply: {
+              at: NOW - 10,
+              group: 'youtube',
+              candidate: 'multisplit',
+              status: 'rolled_back',
+              reason: 'operator_rollback',
+              counted: false,
+              trigger: 'manual',
+            },
+          }),
+        },
+      }),
+      live(),
+    );
+    expect(card.lastApply?.outcome.label).toBe(
+      'Rolled back by an administrator',
+    );
   });
 });

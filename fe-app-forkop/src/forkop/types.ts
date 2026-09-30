@@ -220,6 +220,31 @@ export namespace Forkop {
     worker: AutotuneWorker | null;
     recovered_at: number | null;
     state_recovered: string | null;
+    // The recorded Stage 5 apply; null when none was recorded.
+    apply?: AutotuneRecordedApply | null;
+  }
+
+  // What the last Stage 5 apply changed, whether it still waits for a
+  // decision (resolved: false; null when unknown) and whether an
+  // administrator can roll it back now.
+  export interface AutotuneRecordedApply {
+    phase: string | null;
+    reason: string | null;
+    group: string | null;
+    candidate: string | null;
+    finished_at: number | null;
+    resolved: boolean | null;
+    diagnosis: string | null;
+    in_progress: boolean;
+    rollback: boolean;
+  }
+
+  export interface AutotuneRollbackResult {
+    status: 'ok' | 'failed' | 'busy';
+    result?: string;
+    reason?: string | null;
+    group?: string | null;
+    candidate?: string | null;
   }
 
   // Membership calculated from the routing now (DNS lookups on the router).
@@ -407,6 +432,7 @@ export namespace Forkop {
     AUTOTUNE_TARGET_REMOVE = 'autotune_target_remove',
     AUTOTUNE_RUN_ASYNC = 'autotune_run_async',
     AUTOTUNE_APPLY_ASYNC = 'autotune_apply_async',
+    AUTOTUNE_ROLLBACK = 'autotune_rollback',
     AUTOTUNE_RUN_STATUS = 'autotune_run_status',
   }
 

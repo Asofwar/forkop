@@ -886,10 +886,14 @@ function start_service(reason, owner_pid) {
     }
 
     let status = command_status_from_args([ BIN_PATH, "start" ]);
+    // This start served a start deferred meanwhile: its retry ends before
+    // reload.lock is released, or it may take the lock next, still find its
+    // record and start Forkop once more.
+    if (status == 0)
+        drop_start_retry(0);
     release_runtime_dir_lock(RELOAD_LOCK_DIR, owner_pid);
     report_start_result(reason, status, stop_requested());
     if (status == 0) {
-        drop_start_retry(0);
         // A reload requested during the start was queued behind reload.lock.
         // A service action drains the queue when it finishes; without one,
         // the start is the last holder and applies it, as a reload does.

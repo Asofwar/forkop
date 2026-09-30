@@ -81,7 +81,20 @@ export FORKOP_START_SETTLE_SECONDS=3
 export FORKOP_UI_ACTION_TRACKED=1
 
 # Nothing here may reach the host's syslog, nftables or init scripts.
-printf '#!/bin/sh\nprintf "%%s\\n" "$*" >>"$TEST_WORK/syslog"\n' >"$WORK_DIR/bin/logger"
+cat >"$WORK_DIR/bin/logger" <<'SH'
+#!/bin/sh
+printf '%s\n' "$*" >>"$TEST_WORK/syslog"
+# A case holds a start that has released reload.lock where it logs the
+# recovery of a WAN-up retry (report_start_result).
+case "$*" in
+  *"recovered automatically"*)
+    if [ -e "$TEST_WORK/logger.hold" ]; then
+      : >"$TEST_WORK/logger.held"
+      while [ -e "$TEST_WORK/logger.hold" ] && [ -d "$TEST_WORK" ]; do sleep 0.05; done
+    fi
+    ;;
+esac
+SH
 printf '#!/bin/sh\nexit 1\n' >"$WORK_DIR/bin/nft"
 printf '#!/bin/sh\nexit 0\n' >"$WORK_DIR/bin/ip"
 
@@ -99,6 +112,8 @@ case "$1" in
       *"service/initd.uc start-service"*) ev "forkop start" ;;
       *) ev "forkop start (without reload.lock)" ;;
     esac
+    # A case holds the start while it owns reload.lock.
+    while [ -e "$TEST_WORK/start.hold" ] && [ -d "$TEST_WORK" ]; do sleep 0.05; done
     : >"$TEST_WORK/runtime.up"
     ;;
   stop)
@@ -232,6 +247,7 @@ reset_case() {
     kill -KILL "$pid" 2>/dev/null || true
   fi
   rm -f "$WORK_DIR"/runtime.up "$WORK_DIR"/hold.gate "$WORK_DIR"/hold.acquired \
+    "$WORK_DIR"/start.hold "$WORK_DIR"/logger.hold "$WORK_DIR"/logger.held \
     "$STATE_DIR"/start.retry "$STATE_DIR"/start-retry.pid "$STOP_MARKER" "$STATE_DIR"/start-result.*
   : >"$EVENTS"
   : >"$WORK_DIR/syslog"
@@ -357,6 +373,30 @@ wait_until 15 start_deferred || fail "the WAN-up retry did not give up waiting f
 logged 'recovery attempt failed' && fail "a deferred WAN-up retry was logged as a failed recovery"
 release_reload_lock
 started_once "WAN-up retry"
+
+# 4b. A start that runs while another start is deferred serves it: the
+#     deferred start's retry ends before that start releases reload.lock.
+#     Otherwise the retry, waiting for the lock, may take it next, find its
+#     record and start Forkop once more. The running start is held just after
+#     it has released the lock; the deferred start's retry is scheduled late
+#     enough to be still waiting then.
+reset_case
+: >"$WORK_DIR/start.hold"
+: >"$WORK_DIR/logger.hold"
+start_actor "$REAL_UCODE" -L "$LIB" "$LIB/service/initd.uc" start-service triggered >/dev/null 2>&1
+HOLDING_START="$LAST_ACTOR"
+wait_until 15 has_event "forkop start" || fail "the first start did not run"
+FORKOP_START_DEFERRED_RETRY_DELAY_SECONDS=30 launch_start
+wait_until 15 start_deferred || fail "the second start did not give up waiting for reload.lock"
+grep -qx 'reason=start_deferred' "$STATE_DIR/start.retry" 2>/dev/null || fail "the second start left no retry"
+rm -f "$WORK_DIR/start.hold"
+wait_until 15 test -e "$WORK_DIR/logger.held" || fail "the first start did not finish"
+[ ! -e "$RELOAD_LOCK" ] || fail "the first start still holds reload.lock after it finished"
+[ ! -e "$STATE_DIR/start.retry" ] ||
+  fail "the deferred start was still pending after the start that served it released reload.lock"
+rm -f "$WORK_DIR/logger.hold"
+wait_until 20 group_done "$HOLDING_START" || fail "the first start did not exit"
+started_once "start deferred behind another start"
 
 # 5. start-and-wait (component actions, the package postinst) is told that
 #    the start was deferred and waits for the retried start's own result.

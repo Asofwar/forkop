@@ -100,6 +100,11 @@ function runtime_is_running() { return retry_running; }
 function service_is_enabled() { return retry_enabled; }
 function start_retry_pending(path) { return retry_pending; }
 function stop_requested() { return retry_stop_requested; }
+// No start deferred for reload.lock is pending in these cases
+// (tests/deferred_start_retry.sh).
+function deferred_start_stop_request() { return null; }
+function start_retry_stop_requested() { return retry_stop_requested; }
+function resolve_deferred_start_results(status) { return true; }
 function clear_start_retry(path) { push(calls, "clear-retry"); }
 function command_status_from_args(args) {
     check(join(" ", args) == SERVICE_INIT + " start triggered", "retry used destructive restart");

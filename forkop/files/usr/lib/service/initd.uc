@@ -44,6 +44,12 @@ const START_SETTLE_SECONDS = getenv("FORKOP_START_SETTLE_SECONDS") || "30";
 // reload_service() so that start never classifies that expected transient as
 // an orphaned sing-box process.
 const START_RUNTIME_LOCK_WAIT_SECONDS = getenv("FORKOP_START_RUNTIME_LOCK_WAIT_SECONDS") || "30";
+// A start holds reload.lock for its whole duration, and so do a forced
+// subscription update or the automatic latency test: a start that does not
+// get the lock within that wait is deferred, not dropped. The start-retry
+// worker runs it again after this delay, and that start waits for the lock
+// again, until the holder has released it (UC-057).
+const START_DEFERRED_RETRY_DELAY_SECONDS = getenv("FORKOP_START_DEFERRED_RETRY_DELAY_SECONDS") || "5";
 // A stop takes the same lock, so the work that holds it (a subscription
 // update, a DNS-failover apply, a start) finishes before the runtime is torn
 // down. The wait is bounded: a stop must not fail because of a download. The
@@ -256,6 +262,29 @@ function mark_start_retry(path, reason) {
     return write_text_file(path, "reason=" + reason + "\nupdated_at=" + current_epoch() + "\n");
 }
 
+// The retry of a deferred start (start_service) records the stop request
+// that preceded the start: only a stop requested after the start wins over
+// the retry (D-15, UC-012). The start was requested explicitly, so its retry
+// does not depend on autostart either.
+function mark_deferred_start_retry(stop_request) {
+    if (!ensure_parent_dir(START_RETRY_FILE))
+        return false;
+
+    return write_text_file(START_RETRY_FILE, "reason=start_deferred\nupdated_at=" + current_epoch() +
+        "\nstop_request=" + as_string(stop_request) + "\n");
+}
+
+// The stop request that a deferred start followed ("" for none), or null
+// when no deferred start is pending: a start that ran since served it, a
+// stop cancelled it.
+function deferred_start_stop_request() {
+    let data = fs.readfile(START_RETRY_FILE);
+    if (data == null || match(data, /(^|\n)reason=start_deferred(\n|$)/) == null)
+        return null;
+    let recorded = match(data, /(^|\n)stop_request=([^\n]*)/);
+    return recorded == null ? "" : recorded[2];
+}
+
 // Who asked for a stop, recorded with it as "by=<source>". "package" (the
 // package maintainer scripts) and "component" (a component change) stop
 // Forkop for a start that follows; any other stop is the user's. Only the
@@ -295,6 +324,15 @@ function stop_request_value() {
     if (!stop_requested())
         return "";
     return first_line_value(STOP_REQUESTED_FILE) || "requested";
+}
+
+// An explicit stop outlasts a pending start retry (UC-012), except the
+// retry of a start that was requested after that stop and deferred.
+function start_retry_stop_requested() {
+    if (!stop_requested())
+        return false;
+    let deferred_after = deferred_start_stop_request();
+    return deferred_after == null || stop_request_value() != deferred_after;
 }
 
 function clear_start_retry(path) {
@@ -358,6 +396,51 @@ function schedule_start_retry(path, delay_seconds) {
         return false;
 
     return process_identity.record(path, pid);
+}
+
+// A start-and-wait result: "status=<N>", or "status=deferred" while the
+// start waits for its retry (start_service).
+function read_start_result(path) {
+    let data = fs.readfile(path);
+    if (data == null)
+        return null;
+    data = trim(data);
+    if (data == "status=deferred")
+        return "deferred";
+    let matched = match(data, /^status=([0-9]+)$/);
+    return matched != null ? int(matched[1], 10) : null;
+}
+
+function write_start_result(path, value) {
+    let tmp = path + "." + as_string(fs.readlink("/proc/self")) + ".tmp";
+    if (!ensure_parent_dir(path) || !write_text_file(tmp, "status=" + as_string(value) + "\n"))
+        return false;
+    if (fs.rename(tmp, path))
+        return true;
+    unlink_file(tmp);
+    return false;
+}
+
+// A caller whose start was deferred gets the outcome of the start that runs
+// next (its retry, or any other start that got reload.lock first) or of the
+// stop that cancelled the retry.
+function resolve_deferred_start_results(status) {
+    for (let name in (fs.lsdir(RUNTIME_STATE_DIR) || [])) {
+        if (index(name, "start-result.") != 0 || match(name, /\.tmp$/) != null)
+            continue;
+        let path = RUNTIME_STATE_DIR + "/" + name;
+        if (read_start_result(path) === "deferred")
+            write_start_result(path, int(status));
+    }
+}
+
+// Ends a pending start retry. A start deferred meanwhile has either written
+// its result already, which this resolves, or schedules its retry after this
+// (start_service).
+function drop_start_retry(status) {
+    clear_start_retry(START_RETRY_FILE);
+    cancel_scheduled_start_retry(START_RETRY_PID_FILE);
+    resolve_deferred_start_results(status);
 }
 
 // A list update runs its DNS probe and downloads without reload.lock
@@ -566,22 +649,36 @@ function retry_start_on_wan_up_action(runtime_running_value, service_enabled_val
 }
 
 function retry_start_on_wan_up(owner_pid) {
+    // A deferred start was requested explicitly: its retry does not depend
+    // on autostart, and only a stop requested after it wins.
+    let deferred = deferred_start_stop_request() != null;
     let action = retry_start_on_wan_up_action(
         runtime_is_running() ? "1" : "0",
-        service_is_enabled() ? "1" : "0",
+        (deferred || service_is_enabled()) ? "1" : "0",
         start_retry_pending(START_RETRY_FILE) ? "1" : "0",
-        stop_requested() ? "1" : "0"
+        start_retry_stop_requested() ? "1" : "0"
     );
 
     if (action == "skip_stopped" && start_retry_pending(START_RETRY_FILE))
         command_success_from_args([ "logger", "-t", SERVICE_NAME, "[info] Automatic Forkop start retry skipped: Forkop was stopped" ]);
     if (action == "skip_running" || action == "skip_disabled" || action == "skip_stopped") {
         clear_start_retry(START_RETRY_FILE);
+        resolve_deferred_start_results(action == "skip_running" ? 0 : 1);
         return 0;
     }
 
     if (action != "start")
         return 0;
+
+    if (deferred) {
+        command_success_from_args([ "logger", "-t", SERVICE_NAME, "[info] Retrying the deferred Forkop start" ]);
+        let status = command_status_from_args([ SERVICE_INIT, "start", "deferred" ]);
+        if (status != 0) {
+            command_success_from_args([ "logger", "-t", SERVICE_NAME, "[error] Deferred Forkop start request failed with status " + status ]);
+            resolve_deferred_start_results(status);
+        }
+        return status;
+    }
 
     command_success_from_args([ "logger", "-t", SERVICE_NAME, "[info] Retrying failed Forkop start after WAN came up" ]);
     // A failed cold start has no Forkop runtime to tear down. Re-enter the
@@ -618,22 +715,20 @@ function handle_wan_up(owner_pid) {
     let running = runtime_is_running() ? "1" : "0";
     let action = wan_up_action(
         running,
-        service_is_enabled() ? "1" : "0",
+        (deferred_start_stop_request() != null || service_is_enabled()) ? "1" : "0",
         start_retry_pending(START_RETRY_FILE) ? "1" : "0",
         badwan_interface_monitored(settings, "wan") ? "1" : "0",
-        stop_requested() ? "1" : "0"
+        start_retry_stop_requested() ? "1" : "0"
     );
 
     if (action == "reload") {
-        clear_start_retry(START_RETRY_FILE);
-        cancel_scheduled_start_retry(START_RETRY_PID_FILE);
+        drop_start_retry(0);
         command_success_from_args([ "logger", "-t", SERVICE_NAME, "[info] Reloading Forkop after monitored WAN came up" ]);
         return command_status_from_args([ SERVICE_INIT, "reload", "badwan_interface_up" ]);
     }
 
     if (action == "skip_running" || action == "skip_stopped") {
-        clear_start_retry(START_RETRY_FILE);
-        cancel_scheduled_start_retry(START_RETRY_PID_FILE);
+        drop_start_retry(action == "skip_running" ? 0 : 1);
         return 0;
     }
 
@@ -695,15 +790,37 @@ function report_start_result(reason, status, stopped) {
             command_success_from_args([ "logger", "-t", SERVICE_NAME, "[error] Forkop automatic recovery attempt failed; see the preceding startup logs" ]);
     }
 
+    resolve_deferred_start_results(status);
     let request = start_request_value();
     if (request == "")
         return;
-    let path = start_result_path(request);
-    let tmp = path + ".tmp";
-    if (!ensure_parent_dir(path) || !write_text_file(tmp, "status=" + as_string(int(status)) + "\n"))
-        return;
-    if (!fs.rename(tmp, path))
-        unlink_file(tmp);
+    write_start_result(start_result_path(request), int(status));
+}
+
+// reload.lock stayed busy for the whole wait: long work holds it (a forced
+// subscription update, the automatic latency test, a cold start). The start
+// is not dropped: the start-retry worker runs it again (reason "deferred")
+// until it gets the lock or a stop cancels it (retry_start_on_wan_up). Its
+// start-and-wait caller learns "deferred" and waits for the outcome of the
+// start that runs. The result is written before the retry is scheduled: a
+// stop or start that drops the retry meanwhile either resolves the result or
+// leaves this retry in place (drop_start_retry).
+function defer_start(reason, stop_request_before) {
+    let request = start_request_value();
+    if (request != "")
+        write_start_result(start_result_path(request), "deferred");
+    if (!mark_deferred_start_retry(stop_request_before) ||
+        !schedule_start_retry(START_RETRY_PID_FILE, START_DEFERRED_RETRY_DELAY_SECONDS)) {
+        command_success_from_args([ "logger", "-t", SERVICE_NAME, "[error] Forkop start could not get the runtime lock, and its retry could not be scheduled" ]);
+        report_start_result(reason, 1);
+        return 1;
+    }
+    if (as_string(reason) == "deferred")
+        command_success_from_args([ "logger", "-t", SERVICE_NAME, "[info] Deferred Forkop start still waits for the runtime lock" ]);
+    else
+        command_success_from_args([ "logger", "-t", SERVICE_NAME, "[warn] Forkop start deferred: another operation held the runtime lock for " +
+            START_RUNTIME_LOCK_WAIT_SECONDS + " s; the start runs once the lock is released" ]);
+    return 1;
 }
 
 // Without an owner (the detached init.d start, whose rc.common shell exits
@@ -712,21 +829,38 @@ function report_start_result(reason, status, stopped) {
 // start (UC-010).
 function start_service(reason, owner_pid) {
     print("Start Forkop\n");
+    reason = as_string(reason);
     owner_pid = as_string(owner_pid) || owner_pid_value();
     // A stop requested after this start (for the automatic retry: at all)
     // wins over it: the stop may have run while this start waited for
-    // reload.lock, or runs next (UC-012).
-    let stop_request_before = as_string(reason) == "triggered" ? "" : stop_request_value();
+    // reload.lock, or runs next (UC-012). The retry of a deferred start
+    // compares with the stop request that preceded the start it retries, and
+    // does nothing once that start was served or cancelled.
+    let stop_request_before = reason == "triggered" ? "" : stop_request_value();
+    if (reason == "deferred") {
+        stop_request_before = deferred_start_stop_request();
+        if (stop_request_before == null)
+            return 0;
+    }
     if (!acquire_runtime_dir_lock_wait(RELOAD_LOCK_DIR, owner_pid, START_RUNTIME_LOCK_WAIT_SECONDS)) {
-        command_success_from_args([ "logger", "-t", SERVICE_NAME, "[warn] Forkop start deferred because a runtime reload did not finish in time" ]);
-        report_start_result(reason, 1);
-        return 1;
+        if (stop_requested() && stop_request_value() != stop_request_before) {
+            command_success_from_args([ "logger", "-t", SERVICE_NAME, "[info] Forkop start skipped: a stop was requested after it" ]);
+            report_start_result(reason, 1, true);
+            return 1;
+        }
+        if (reason == "deferred" && deferred_start_stop_request() == null)
+            return 0;
+        return defer_start(reason, stop_request_before);
     }
     if (stop_requested() && stop_request_value() != stop_request_before) {
         release_runtime_dir_lock(RELOAD_LOCK_DIR, owner_pid);
         command_success_from_args([ "logger", "-t", SERVICE_NAME, "[info] Forkop start skipped: a stop was requested after it" ]);
         report_start_result(reason, 1, true);
         return 1;
+    }
+    if (reason == "deferred" && deferred_start_stop_request() == null) {
+        release_runtime_dir_lock(RELOAD_LOCK_DIR, owner_pid);
+        return 0;
     }
     // An explicit start ends an explicit stop; a stop request seen after
     // this point was made during this start.
@@ -743,8 +877,7 @@ function start_service(reason, owner_pid) {
     release_runtime_dir_lock(RELOAD_LOCK_DIR, owner_pid);
     report_start_result(reason, status, stop_requested());
     if (status == 0) {
-        clear_start_retry(START_RETRY_FILE);
-        cancel_scheduled_start_retry(START_RETRY_PID_FILE);
+        drop_start_retry(0);
         // A reload requested during the start was queued behind reload.lock.
         // A service action drains the queue when it finishes; without one,
         // the start is the last holder and applies it, as a reload does.
@@ -753,13 +886,11 @@ function start_service(reason, owner_pid) {
     }
     else if (stop_requested()) {
         // The start was abandoned for, or overtaken by, an explicit stop.
-        clear_start_retry(START_RETRY_FILE);
-        cancel_scheduled_start_retry(START_RETRY_PID_FILE);
+        drop_start_retry(status);
         command_success_from_args([ "logger", "-t", SERVICE_NAME, "[info] Forkop start did not complete because a stop was requested; no automatic retry" ]);
     }
     else if (start_failure_blocks_retry(START_FAILURE_FILE)) {
-        clear_start_retry(START_RETRY_FILE);
-        cancel_scheduled_start_retry(START_RETRY_PID_FILE);
+        drop_start_retry(status);
         command_success_from_args([ "logger", "-t", SERVICE_NAME, "[error] Forkop startup retry suppressed because all rule-set download sources failed; see the fatal startup error in LuCI logs" ]);
     }
     else {
@@ -769,14 +900,6 @@ function start_service(reason, owner_pid) {
     }
     finish_external_service_action("start", plan.job_id, status);
     return status;
-}
-
-function read_start_result(path) {
-    let data = fs.readfile(path);
-    if (data == null)
-        return null;
-    let matched = match(trim(data), /^status=([0-9]+)$/);
-    return matched != null ? int(matched[1], 10) : null;
 }
 
 // A start reports its result also when its caller has stopped waiting; any
@@ -797,8 +920,10 @@ function remove_stale_start_results() {
 // result, then checks that the runtime runs: init.d under procd returns 0
 // before the start has run. For callers that act on the outcome (component
 // actions, the package postinst, UI actions). Waiting outside init.d keeps
-// procd's lock free for the start worker and other service calls.
-function start_and_wait(action, reason, timeout) {
+// procd's lock free for the start worker and other service calls. A start
+// deferred for reload.lock is no failure: the wait goes on for the start
+// that runs, and the UI job `ui_job` (service/ui.uc) says that it waits.
+function start_and_wait(action, reason, timeout, ui_job) {
     action = as_string(action);
     if (action != "start" && action != "restart")
         return 2;
@@ -818,7 +943,13 @@ function start_and_wait(action, reason, timeout) {
 
     let result = read_start_result(path);
     let deadline = int(current_epoch(), 10) + timeout;
-    while (status == 0 && result == null && int(current_epoch(), 10) < deadline) {
+    let deferred = false;
+    while (status == 0 && (result == null || result === "deferred") && int(current_epoch(), 10) < deadline) {
+        if (result === "deferred" && !deferred) {
+            deferred = true;
+            if (as_string(ui_job) != "" && file_exists(UI_UC))
+                command_success_from_args(module_args(UI_UC, [ "service-action-deferred", as_string(ui_job) ]));
+        }
         command_success_from_args([ "sleep", "1" ]);
         result = read_start_result(path);
     }
@@ -826,6 +957,11 @@ function start_and_wait(action, reason, timeout) {
 
     if (status != 0)
         return status;
+    if (result === "deferred") {
+        command_success_from_args([ "logger", "-t", SERVICE_NAME, "[warn] Forkop " + action + " was deferred for the runtime lock and did not run within " + as_string(timeout) + " s" ]);
+        print("pending\n");
+        return 1;
+    }
     if (result == null) {
         command_success_from_args([ "logger", "-t", SERVICE_NAME, "[warn] Forkop " + action + " did not report its result within " + as_string(timeout) + " s" ]);
         // The start may still be at work: a caller with a shorter bound (the
@@ -870,8 +1006,9 @@ function stop_finish(job_id, status) {
 // releases the lock itself.
 function stop_service(owner_pid) {
     mark_stop_requested();
-    clear_start_retry(START_RETRY_FILE);
-    cancel_scheduled_start_retry(START_RETRY_PID_FILE);
+    // The stop wins over a pending retry, and over a deferred start whose
+    // caller still waits for it.
+    drop_start_retry(1);
     let job_id = begin_external_service_action("stop", "initd", owner_pid);
     if (!file_executable(BIN_PATH)) {
         restore_dnsmasq_failsafe();
@@ -883,10 +1020,9 @@ function stop_service(owner_pid) {
     let locked = acquire_runtime_dir_lock_wait(RELOAD_LOCK_DIR, lock_owner, STOP_RUNTIME_LOCK_WAIT_SECONDS);
     if (!locked)
         command_success_from_args([ "logger", "-t", SERVICE_NAME, "[warn] Forkop stop did not get the runtime lock within " + STOP_RUNTIME_LOCK_WAIT_SECONDS + " s; stopping without it, the work that holds it will not start the runtime again" ]);
-    // A start that held reload.lock meanwhile and failed may have scheduled
-    // its retry before it saw this stop request.
-    clear_start_retry(START_RETRY_FILE);
-    cancel_scheduled_start_retry(START_RETRY_PID_FILE);
+    // A start that held reload.lock meanwhile and failed, or one that did not
+    // get it, may have scheduled its retry before it saw this stop request.
+    drop_start_retry(1);
     let status = command_status_from_args([ BIN_PATH, "stop" ]);
     if (locked)
         release_runtime_dir_lock(RELOAD_LOCK_DIR, lock_owner);
@@ -1099,7 +1235,7 @@ else if (mode == "start-plan")
 else if (mode == "start-service")
     exit(start_service(ARGV[1], ARGV[2]));
 else if (mode == "start-and-wait")
-    exit(start_and_wait(ARGV[1], ARGV[2], ARGV[3]));
+    exit(start_and_wait(ARGV[1], ARGV[2], ARGV[3], ARGV[4]));
 else if (mode == "start-plan-fixture") {
     let settings = {
         shutdown_correctly: ARGV[2],

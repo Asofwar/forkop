@@ -7,6 +7,8 @@ WORK_DIR="$(mktemp -d)"
 holder=""
 cleanup() {
   [ -z "$holder" ] || kill "$holder" 2>/dev/null || true
+  # The retry that the blocked start scheduled.
+  pkill -KILL -f "$WORK_DIR/run/start-retry.pid" 2>/dev/null || true
   rm -rf "$WORK_DIR"
 }
 trap cleanup EXIT
@@ -27,12 +29,16 @@ printf 'start\n' >>"$START_TEST_LOG"
 exit "${START_TEST_STATUS:-0}"
 SH
 chmod +x "$WORK_DIR/forkop"
+# The init script that a scheduled start retry would run.
+printf '#!/bin/sh\nexit 0\n' >"$WORK_DIR/init"
+chmod +x "$WORK_DIR/init"
 
 start() {
   env FORKOP_LIB="$WORK_DIR/lib" FORKOP_UCI_STATE_FILE="$WORK_DIR/uci.state" \
     FORKOP_UI_ACTION_TRACKED=1 FORKOP_RUNTIME_STATE_DIR="$WORK_DIR/run" \
     FORKOP_RELOAD_LOCK_DIR="$WORK_DIR/run/reload.lock" \
     FORKOP_START_RUNTIME_LOCK_WAIT_SECONDS="${START_TEST_WAIT:-0}" \
+    FORKOP_SERVICE_INIT="$WORK_DIR/init" FORKOP_START_DEFERRED_RETRY_DELAY_SECONDS=300 \
     FORKOP_BIN="${START_TEST_BIN:-$WORK_DIR/forkop}" \
     START_TEST_LOG="$WORK_DIR/start.log" START_TEST_STATUS="${START_TEST_STATUS:-0}" \
     ucode -L "$FORKOP_LIB" "$FORKOP_LIB/service/initd.uc" start-service manual "$$"
@@ -46,6 +52,9 @@ if start; then fail "start ignored an active reload"; fi
 [ ! -e "$WORK_DIR/start.log" ] || fail "blocked start invoked the backend"
 [ "$(state runtime-dir-lock-owner "$WORK_DIR/run/reload.lock")" = "$holder" ] ||
   fail "blocked start removed another owner's lock"
+# It is deferred, not dropped: it is retried once the lock is released.
+grep -qx 'reason=start_deferred' "$WORK_DIR/run/start.retry" 2>/dev/null ||
+  fail "blocked start scheduled no retry"
 
 (
   sleep 1
@@ -56,6 +65,7 @@ START_TEST_WAIT=5 start || fail "start did not resume after reload released its 
 wait "$release_pid"
 [ "$(cat "$WORK_DIR/start.log")" = start ] || fail "backend did not start exactly once"
 [ ! -d "$WORK_DIR/run/reload.lock" ] || fail "successful start leaked its lock"
+[ ! -e "$WORK_DIR/run/start.retry" ] || fail "successful start left the deferred start pending"
 
 # A failed backend may suppress retry; its runtime lock must still be released.
 printf 'blocked\n' >"$WORK_DIR/run/start.failure"

@@ -1,0 +1,411 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# A start that does not get reload.lock in time is retried, not dropped
+# (UC-057, UC-010, UC-012, UC-013).
+#
+# A start holds reload.lock for its whole duration, and so do a forced
+# subscription update or the automatic latency test: a start that arrives
+# meanwhile waits for the lock only for START_RUNTIME_LOCK_WAIT_SECONDS. Once
+# that wait runs out the start is deferred: the start-retry worker starts it
+# after the holder has released the lock, unless an explicit stop came
+# meanwhile (the stop wins, D-15). A caller that waits for the outcome
+# (start-and-wait: the UI, component actions, the package postinst) is told
+# "deferred", not "failed", and gets the result of the retried start.
+#
+# The init script is the real one behind an rc.common stand-in that holds the
+# procd lock on fd 1000 like procd.sh (a nested init.d call reuses the lock
+# it inherits), service/initd.uc, service/ui.uc and the lock helpers are
+# real; `forkop` is a double. The waits are scaled down: the start waits 2 s
+# for the lock, a deferred start is retried 1 s later.
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+LIB="$ROOT_DIR/forkop/files/usr/lib"
+REAL_INITD="$ROOT_DIR/forkop/files/etc/init.d/forkop"
+REAL_UCODE="$(command -v ucode)"
+WORK_DIR="$(mktemp -d)"
+# shellcheck source=tests/helpers/wait.sh
+. "$ROOT_DIR/tests/helpers/wait.sh"
+
+actors=()
+cleanup() {
+  local pid
+  for pid in "${actors[@]}"; do
+    kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
+  done
+  # Retry workers, detached start workers and UI waiters.
+  pkill -KILL -f "$WORK_DIR" 2>/dev/null || true
+  rm -rf "$WORK_DIR"
+}
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
+
+EVENTS="$WORK_DIR/events"
+fail() {
+  printf 'FAIL: %s\n' "$1" >&2
+  if [ -s "$EVENTS" ]; then
+    sed 's/^/  event: /' "$EVENTS" >&2
+  fi
+  if [ -s "$WORK_DIR/syslog" ]; then
+    sed 's/^/  syslog: /' "$WORK_DIR/syslog" >&2
+  fi
+  exit 1
+}
+
+mkdir -p "$WORK_DIR/bin" "$WORK_DIR/run/forkop" "$WORK_DIR/tmp"
+printf 'forkop.settings=settings\n' >"$WORK_DIR/uci.state"
+
+export TMPDIR="$WORK_DIR/tmp"
+export PATH="$WORK_DIR/bin:$PATH"
+export TEST_WORK="$WORK_DIR" EVENTS REAL_INITD REAL_UCODE
+export TEST_LIB="$LIB"
+export RC_PROCD_LOCK="$WORK_DIR/procd_forkop.lock"
+export RELOAD_LOCK="$WORK_DIR/run/forkop.reload.lock"
+export STATE_DIR="$WORK_DIR/run/forkop"
+export STOP_MARKER="$STATE_DIR/stop.requested"
+export FORKOP_LIB="$LIB"
+export FORKOP_BIN="$WORK_DIR/bin/forkop"
+export FORKOP_SERVICE_INIT="$WORK_DIR/bin/init"
+export FORKOP_RELOAD_LOCK_DIR="$RELOAD_LOCK"
+export FORKOP_RUNTIME_STATE_DIR="$STATE_DIR"
+export FORKOP_PENDING_RELOAD_FILE="$STATE_DIR/reload.pending"
+export FORKOP_START_IN_PROGRESS_FILE="$STATE_DIR/start.in-progress"
+export FORKOP_UCI_STATE_FILE="$WORK_DIR/uci.state"
+export FORKOP_START_RUNTIME_LOCK_WAIT_SECONDS=2
+export FORKOP_START_DEFERRED_RETRY_DELAY_SECONDS=1
+# A failed start is not what these cases are about.
+export FORKOP_START_RETRY_DELAY_SECONDS=300
+export FORKOP_STOP_RUNTIME_LOCK_WAIT_SECONDS=1
+export FORKOP_START_WAIT_TIMEOUT_SECONDS=40
+export FORKOP_START_SETTLE_SECONDS=3
+export FORKOP_UI_ACTION_TRACKED=1
+
+# Nothing here may reach the host's syslog, nftables or init scripts.
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >>"$TEST_WORK/syslog"\n' >"$WORK_DIR/bin/logger"
+printf '#!/bin/sh\nexit 1\n' >"$WORK_DIR/bin/nft"
+printf '#!/bin/sh\nexit 0\n' >"$WORK_DIR/bin/ip"
+
+# `forkop` behind initd.uc: start brings the modelled runtime up (under its
+# own reload.lock), stop takes it down.
+cat >"$WORK_DIR/bin/forkop" <<'SH'
+#!/bin/sh
+ev() { printf '%s\n' "$1" >>"$EVENTS"; }
+case "$1" in
+  start)
+    owner="$(ucode -L "$TEST_LIB" "$TEST_LIB/service/state.uc" runtime-dir-lock-owner "$RELOAD_LOCK" || true)"
+    cmd=""
+    [ -z "$owner" ] || cmd="$(tr '\0' ' ' <"/proc/$owner/cmdline" 2>/dev/null || true)"
+    case "$cmd" in
+      *"service/initd.uc start-service"*) ev "forkop start" ;;
+      *) ev "forkop start (without reload.lock)" ;;
+    esac
+    : >"$TEST_WORK/runtime.up"
+    ;;
+  stop)
+    ev "forkop stop"
+    rm -f "$TEST_WORK/runtime.up"
+    ;;
+  get_status)
+    if [ -e "$TEST_WORK/runtime.up" ]; then printf '{"running":1}\n'; else printf '{"running":0}\n'; fi
+    ;;
+esac
+exit 0
+SH
+
+# /etc/init.d/forkop as procd runs it: rc.common with the procd lock on fd
+# 1000 (procd.sh procd_lock: a nested call that inherits the locked fd keeps
+# using it). bash stands in for busybox ash (dash has no fd above 9).
+cat >"$WORK_DIR/bin/init" <<'SH'
+#!/bin/sh
+exec bash "$TEST_WORK/rc" "$@"
+SH
+cat >"$WORK_DIR/rc" <<'SH'
+#!/usr/bin/env bash
+action="$1"
+shift
+if ! flock -n 1000 2>/dev/null; then
+  exec 1000>"$RC_PROCD_LOCK"
+  flock 1000
+fi
+initscript="$REAL_INITD"
+# shellcheck disable=SC1090
+. "$REAL_INITD"
+FORKOP_LIB="$TEST_LIB"
+FORKOP_INITD_UC="$TEST_LIB/service/initd.uc"
+case "$action" in
+  start) start_service "$@"; service_started ;;
+  stop) stop_service "$@" ;;
+  retry_start_on_wan_up) retry_start_on_wan_up ;;
+  handle_wan_up) handle_wan_up ;;
+  *) exit 64 ;;
+esac
+SH
+
+# service/ui.uc asks service/state.uc whether the runtime is stably running.
+cat >"$WORK_DIR/bin/ucode" <<'SH'
+#!/bin/sh
+case "${3:-}" in
+  */service/state.uc)
+    if [ "${4:-}" = forkop-stably-running ]; then
+      [ -e "$TEST_WORK/runtime.up" ]
+      exit $?
+    fi
+    ;;
+  */dns/apply.uc | */diagnostics/health.uc) exit 0 ;;
+esac
+exec "$REAL_UCODE" "$@"
+SH
+chmod +x "$WORK_DIR/bin/"* "$WORK_DIR/rc"
+
+initd() { "$REAL_UCODE" -L "$LIB" "$LIB/service/initd.uc" "$@"; }
+
+has_event() { grep -qx "$1" "$EVENTS" 2>/dev/null; }
+no_event() { ! grep -q "$1" "$EVENTS" 2>/dev/null; }
+logged() { grep -q "$1" "$WORK_DIR/syslog" 2>/dev/null; }
+starts() { grep -c '^forkop start' "$EVENTS" 2>/dev/null || true; }
+
+# Actors run in their own process group under a hard deadline. The detached
+# start worker and the retry worker it schedules stay in that group.
+start_actor() {
+  setsid timeout -s KILL 120 "$@" &
+  LAST_ACTOR=$!
+  actors+=("$LAST_ACTOR")
+}
+
+group_done() { ! pgrep -g "$1" >/dev/null 2>&1; }
+
+# Some long work (a forced subscription update, the automatic latency test)
+# holds reload.lock until the gate opens.
+hold_reload_lock() {
+  rm -f "$WORK_DIR/hold.gate" "$WORK_DIR/hold.acquired"
+  start_actor sh -c '
+    ucode -L "$TEST_LIB" "$TEST_LIB/service/state.uc" acquire-runtime-dir-lock "$RELOAD_LOCK" "$$" || exit 1
+    : >"$TEST_WORK/hold.acquired"
+    while [ ! -e "$TEST_WORK/hold.gate" ]; do sleep 0.05; done
+    ucode -L "$TEST_LIB" "$TEST_LIB/service/state.uc" release-runtime-dir-lock "$RELOAD_LOCK" "$$"
+  '
+  HOLDER="$LAST_ACTOR"
+  wait_until 10 test -e "$WORK_DIR/hold.acquired" || fail "the lock holder did not get reload.lock"
+}
+
+release_reload_lock() {
+  : >"$WORK_DIR/hold.gate"
+  wait_until 10 process_gone "$HOLDER" || fail "the lock holder did not finish"
+  wait "$HOLDER" 2>/dev/null || true
+}
+
+launch_start() {
+  start_actor "$FORKOP_SERVICE_INIT" start
+  START_ACTOR="$LAST_ACTOR"
+}
+
+# The start gave up waiting for reload.lock ...
+start_deferred() { logged 'start deferred'; }
+# ... and its retry has run at least once while the lock was still held.
+deferred_start_retried() { logged 'Retrying the deferred Forkop start'; }
+
+retry_worker_running() {
+  local pid
+  pid="$(head -n 1 "$STATE_DIR/start-retry.pid" 2>/dev/null)" || return 1
+  [ -n "$pid" ] && process_running "$pid"
+}
+
+# Some part of a start of this test is still at work: an init.d call, a
+# scheduled retry, a detached start worker or a WAN-up handler. Other tests
+# run the same initd.uc: its processes are told apart by their state
+# directory.
+start_work_running() {
+  local pid
+  pgrep -f "$WORK_DIR/(rc|bin/init)|$STATE_DIR/start-retry.pid" >/dev/null 2>&1 && return 0
+  for pid in $(pgrep -f 'service/initd.uc (start-service|retry-start-on-wan-up|handle-wan-up)' 2>/dev/null); do
+    tr '\0' '\n' <"/proc/$pid/environ" 2>/dev/null | grep -qx "FORKOP_RUNTIME_STATE_DIR=$STATE_DIR" && return 0
+  done
+  return 1
+}
+start_work_done() { ! start_work_running; }
+
+reset_case() {
+  local pid
+  pid="$(head -n 1 "$STATE_DIR/start-retry.pid" 2>/dev/null || true)"
+  if [ -n "$pid" ]; then
+    pkill -KILL -P "$pid" 2>/dev/null || true
+    kill -KILL "$pid" 2>/dev/null || true
+  fi
+  rm -f "$WORK_DIR"/runtime.up "$WORK_DIR"/hold.gate "$WORK_DIR"/hold.acquired \
+    "$STATE_DIR"/start.retry "$STATE_DIR"/start-retry.pid "$STOP_MARKER" "$STATE_DIR"/start-result.*
+  : >"$EVENTS"
+  : >"$WORK_DIR/syslog"
+  [ ! -e "$RELOAD_LOCK" ] || fail "reload.lock leaked from the previous case"
+}
+
+# The start happened once, under its own reload.lock, and left nothing to
+# retry.
+started_once() {
+  local label="$1"
+  wait_until 20 test -e "$WORK_DIR/runtime.up" || fail "$label: Forkop was not started after the lock was released"
+  wait_until 20 start_work_done || fail "$label: the start or its retry did not finish"
+  [ "$(starts)" = 1 ] || fail "$label: Forkop was not started exactly once"
+  has_event "forkop start" || fail "$label: the start ran without reload.lock"
+  [ ! -e "$STATE_DIR/start.retry" ] || fail "$label: a start retry is still pending after the start"
+  retry_worker_running && fail "$label: a start retry is still scheduled after the start"
+  [ ! -e "$RELOAD_LOCK" ] || fail "$label: the start left reload.lock behind"
+  if logged 'recovery attempt failed' || logged 'start failed'; then
+    fail "$label: the deferred start was reported as a failure"
+  fi
+}
+
+# 1. An automatic start (boot, postinst, component restart: init.d start
+#    under procd) that loses the race for reload.lock is retried once the
+#    holder has released it. Autostart is off on this host: the deferred
+#    start is an explicit request and does not depend on it.
+reset_case
+hold_reload_lock
+launch_start
+wait_until 15 start_deferred || fail "the start did not give up waiting for reload.lock"
+no_event '^forkop start' || fail "the start ran while another process held reload.lock"
+grep -qx 'reason=start_deferred' "$STATE_DIR/start.retry" 2>/dev/null ||
+  fail "the deferred start left no retry: $(cat "$STATE_DIR/start.retry" 2>/dev/null || printf 'no start.retry')"
+# The holder keeps the lock beyond the retry's own wait: the retry defers
+# again instead of giving up.
+wait_until 15 deferred_start_retried || fail "the deferred start was not retried"
+wait_until 15 logged 'still waits for the runtime lock' || fail "the retried start did not wait for the lock again"
+no_event '^forkop start' || fail "the retried start ran while another process held reload.lock"
+release_reload_lock
+started_once "automatic start"
+
+# 2. An explicit stop during the deferral wins: the deferred start does not
+#    run after the holder has released the lock.
+reset_case
+hold_reload_lock
+launch_start
+wait_until 15 start_deferred || fail "the start did not give up waiting for reload.lock"
+start_actor "$FORKOP_SERVICE_INIT" stop
+STOP_ACTOR="$LAST_ACTOR"
+wait_until 20 group_done "$STOP_ACTOR" || fail "the stop did not finish"
+[ -e "$STOP_MARKER" ] || fail "the stop was not recorded"
+release_reload_lock
+wait_until 20 group_done "$START_ACTOR" || fail "the deferred start or its retry is still at work after the stop"
+no_event '^forkop start' || fail "a deferred start ran after an explicit stop"
+[ ! -e "$WORK_DIR/runtime.up" ] || fail "Forkop runs after an explicit stop"
+[ ! -e "$STATE_DIR/start.retry" ] || fail "the stop left the deferred start pending"
+[ -e "$STOP_MARKER" ] || fail "the explicit stop is no longer recorded"
+
+# 2b. The same when the stop comes while the retried start waits for the
+#     lock again.
+reset_case
+hold_reload_lock
+launch_start
+wait_until 15 deferred_start_retried || fail "the deferred start was not retried"
+start_actor "$FORKOP_SERVICE_INIT" stop
+STOP_ACTOR="$LAST_ACTOR"
+wait_until 20 group_done "$STOP_ACTOR" || fail "the stop did not finish"
+release_reload_lock
+wait_until 20 group_done "$START_ACTOR" || fail "the retried start is still at work after the stop"
+no_event '^forkop start' || fail "a retried start ran after an explicit stop"
+[ ! -e "$WORK_DIR/runtime.up" ] || fail "Forkop runs after an explicit stop"
+[ ! -e "$STATE_DIR/start.retry" ] || fail "the stop left the deferred start pending"
+
+# 2c. WAN-up during the deferral after a stop does not start Forkop either.
+reset_case
+hold_reload_lock
+launch_start
+wait_until 15 start_deferred || fail "the start did not give up waiting for reload.lock"
+printf 'later-stop\nby=user\n' >"$STOP_MARKER"
+initd handle-wan-up >/dev/null 2>&1 || fail "WAN-up during a deferred start failed"
+release_reload_lock
+wait_until 20 group_done "$START_ACTOR" || fail "the deferred start or its retry is still at work after the stop"
+no_event '^forkop start' || fail "a deferred start ran after a stop requested during its deferral"
+
+# 3. Control: a start requested after an earlier stop is not undone by that
+#    stop while it is deferred; it runs and ends the stop. Neither WAN-up
+#    during the deferral cancels it.
+reset_case
+printf 'earlier-stop\nby=user\n' >"$STOP_MARKER"
+hold_reload_lock
+launch_start
+wait_until 15 start_deferred || fail "the start after an earlier stop did not give up waiting for reload.lock"
+initd handle-wan-up >/dev/null 2>&1 || fail "WAN-up during a deferred start failed"
+grep -qx 'reason=start_deferred' "$STATE_DIR/start.retry" 2>/dev/null ||
+  fail "WAN-up dropped a start deferred after an earlier stop"
+wait_until 15 deferred_start_retried || fail "the deferred start after an earlier stop was not retried"
+release_reload_lock
+started_once "start after an earlier stop"
+[ ! -e "$STOP_MARKER" ] || fail "a start after an earlier stop kept the explicit stop"
+
+# 4. The WAN-up retry of a failed start ("triggered") that is deferred is not
+#    a failed recovery: it is retried as well.
+reset_case
+hold_reload_lock
+start_actor "$REAL_UCODE" -L "$LIB" "$LIB/service/initd.uc" start-service triggered >/dev/null 2>&1
+START_ACTOR="$LAST_ACTOR"
+wait_until 15 start_deferred || fail "the WAN-up retry did not give up waiting for reload.lock"
+logged 'recovery attempt failed' && fail "a deferred WAN-up retry was logged as a failed recovery"
+release_reload_lock
+started_once "WAN-up retry"
+
+# 5. start-and-wait (component actions, the package postinst) is told that
+#    the start was deferred and waits for the retried start's own result.
+reset_case
+hold_reload_lock
+rm -f "$WORK_DIR/wait.status"
+start_actor sh -c 'status=0; "$0" -L "$1" "$1/service/initd.uc" start-and-wait start "" 40 >"$2/wait.out" 2>&1 || status=$?; echo "$status" >"$2/wait.status"' \
+  "$REAL_UCODE" "$LIB" "$WORK_DIR"
+START_ACTOR="$LAST_ACTOR"
+deferred_result() { grep -qx 'status=deferred' "$STATE_DIR"/start-result.* 2>/dev/null; }
+wait_until 15 deferred_result || fail "the waiting caller was not told that the start was deferred"
+[ ! -e "$WORK_DIR/wait.status" ] || fail "start-and-wait returned for a deferred start: $(cat "$WORK_DIR/wait.status")"
+release_reload_lock
+wait_until 30 test -e "$WORK_DIR/wait.status" || fail "start-and-wait did not return after the retried start"
+[ "$(cat "$WORK_DIR/wait.status")" = 0 ] || fail "a deferred start that ran was reported as failed: $(cat "$WORK_DIR/wait.out")"
+started_once "start-and-wait"
+
+# 5b. A stop during the deferral ends the wait with a failure at once, not
+#     at the wait's timeout.
+reset_case
+hold_reload_lock
+rm -f "$WORK_DIR/wait.status"
+start_actor sh -c 'status=0; "$0" -L "$1" "$1/service/initd.uc" start-and-wait start "" 40 >"$2/wait.out" 2>&1 || status=$?; echo "$status" >"$2/wait.status"' \
+  "$REAL_UCODE" "$LIB" "$WORK_DIR"
+START_ACTOR="$LAST_ACTOR"
+wait_until 15 deferred_result || fail "the waiting caller was not told that the start was deferred"
+start_actor "$FORKOP_SERVICE_INIT" stop
+STOP_ACTOR="$LAST_ACTOR"
+wait_until 20 group_done "$STOP_ACTOR" || fail "the stop did not finish"
+wait_until 10 test -e "$WORK_DIR/wait.status" || fail "start-and-wait kept waiting for a start that a stop cancelled"
+[ "$(cat "$WORK_DIR/wait.status")" != 0 ] || fail "a deferred start cancelled by a stop was reported as successful"
+release_reload_lock
+wait_until 20 group_done "$START_ACTOR" || fail "the deferred start is still at work after the stop"
+no_event '^forkop start' || fail "a deferred start ran after an explicit stop"
+
+# 6. A UI start: its job stays running and says that the start is deferred,
+#    then finishes as success once the retried start has run.
+export FORKOP_UI_STATE_DIR="$WORK_DIR/ui-state"
+export FORKOP_UI_SERVICE_ACTION_DIR="$FORKOP_UI_STATE_DIR/service-actions"
+export FORKOP_UI_SERVICE_ACTION_LOCK_DIR="$FORKOP_UI_STATE_DIR/service-actions.lock"
+export FORKOP_UI_LATENCY_ACTION_DIR="$FORKOP_UI_STATE_DIR/latency-actions"
+export FORKOP_UI_COMPONENT_ACTION_DIR="$FORKOP_UI_STATE_DIR/component-actions"
+export FORKOP_UI_SUBSCRIPTION_ACTION_DIR="$FORKOP_UI_STATE_DIR/subscription-actions"
+export FORKOP_UI_SERVICE_ACTION_SETTLE_SECONDS=1
+export FORKOP_UI_SERVICE_ACTION_TIMEOUT_SECONDS=40
+ui() { "$REAL_UCODE" -L "$LIB" "$LIB/service/ui.uc" "$@"; }
+reset_case
+hold_reload_lock
+# The Start button: service_action_async launches the job worker.
+started_json="$(ui service-action-async start)" || fail "the UI start was refused: $started_json"
+job="$(printf '%s\n' "$started_json" | sed -n 's/.*"job_id": *"\([^"]*\)".*/\1/p')"
+[ -n "$job" ] || fail "the UI start named no job: $started_json"
+UI_JOB="$FORKOP_UI_SERVICE_ACTION_DIR/$job.json"
+job_deferred() { grep -q '"deferred": *true' "$UI_JOB" 2>/dev/null; }
+job_finished() { grep -q '"running": *false' "$UI_JOB" 2>/dev/null; }
+wait_until 15 job_deferred || fail "the UI start job does not say that the start is deferred: $(cat "$UI_JOB")"
+# What the page polls: the job is still running, not failed.
+status_json="$(ui service-action-status "$job")" || fail "the UI start job status could not be read"
+printf '%s\n' "$status_json" | grep -q '"running": *true' ||
+  fail "the UI start job of a deferred start is no longer running: $status_json"
+printf '%s\n' "$status_json" | grep -q '"deferred": *true' || fail "the UI job status does not show the deferral: $status_json"
+release_reload_lock
+wait_until 30 job_finished || fail "the UI start job did not finish after the retried start: $(cat "$UI_JOB")"
+grep -q '"success": *true' "$UI_JOB" || fail "the deferred UI start did not finish as success: $(cat "$UI_JOB")"
+started_once "UI start"
+
+printf 'deferred start retry checks passed\n'

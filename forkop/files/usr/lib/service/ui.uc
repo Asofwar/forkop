@@ -1375,15 +1375,32 @@ function update_service_action_pid_mode(job_id_value, pid) {
     exit(path != "" && set_running_job_pid_file(path, pid) ? 0 : 1);
 }
 
+// A start that did not get reload.lock in time is retried once the lock is
+// released (service/initd.uc start-and-wait): its job stays running and says
+// that the start waits, instead of failing.
+function mark_service_action_deferred(job_id_value) {
+    let path = job_state_path_value(SERVICE_ACTION_DIR, job_id_value);
+    if (path == "")
+        return false;
+    let value = read_json_file(path);
+    if (type(value) != "object" || value.kind != "service" || value.running !== true)
+        return false;
+    value.deferred = true;
+    value.message = "Service " + as_string(value.action) + " is deferred until another operation releases the runtime lock";
+    return write_state_file(path, value);
+}
+
 function service_action_worker(path, action, job_id_value, reason) {
     let args = [ SERVICE_INIT, action ];
     reason = as_string(reason || "");
     if (reason != "")
         push(args, reason);
     // init.d exits 0 under procd before a detached start has run: wait for
-    // the start's own result through the same init.d call (UC-013).
+    // the start's own result through the same init.d call (UC-013). A start
+    // deferred for reload.lock marks this job (mark_service_action_deferred).
     if (action == "start" || action == "restart")
-        args = [ "ucode", "-L", LIB_DIR, LIB_DIR + "/service/initd.uc", "start-and-wait", action, reason, SERVICE_ACTION_TIMEOUT_SECONDS ];
+        args = [ "ucode", "-L", LIB_DIR, LIB_DIR + "/service/initd.uc", "start-and-wait", action, reason, SERVICE_ACTION_TIMEOUT_SECONDS,
+            as_string(job_id_value) ];
     let command = "FORKOP_UI_ACTION_TRACKED=1 " + command_from_args(args) + " >/dev/null 2>&1";
     let status = command_status(command);
     finish_service_action_after_command(action, job_id_value, status, false);
@@ -1609,6 +1626,8 @@ else if (mode == "service-action-begin-if-idle")
     begin_service_action_mode(ARGV[1], ARGV[2] || "ui");
 else if (mode == "service-action-update-pid")
     update_service_action_pid_mode(ARGV[1], ARGV[2]);
+else if (mode == "service-action-deferred")
+    exit(mark_service_action_deferred(ARGV[1]) ? 0 : 1);
 else if (mode == "service-action-finish")
     finish_service_action_mode(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
 else if (mode == "latency-progress-state")

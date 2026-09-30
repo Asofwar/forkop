@@ -129,6 +129,11 @@ export FORKOP_CONFIG_FILE="$WORK_DIR/forkop.config"
 export FORKOP_INTERNAL_CONFIG_TRIGGER_GUARD="$WORK_DIR/run/internal-config-change"
 export FORKOP_MANAGED_UPGRADE_SING_BOX_MARKER="$WORK_DIR/run/managed-upgrade-sing-box"
 export FORKOP_HISTORY_FILE="$WORK_DIR/history.jsonl"
+# A regressed lifecycle gate goes on with the reload and takes an automatic
+# snapshot (config/snapshots.uc): never in the host's /var/run or /etc.
+export FORKOP_SNAPSHOT_DIR="$WORK_DIR/snapshots"
+export FORKOP_SNAPSHOT_HASH_DIR="$STATE_DIR/snapshot-hash"
+export FORKOP_SNAPSHOT_LOCK_DIR="$STATE_DIR/config-snapshot.lock"
 export FORKOP_OPKG_RECOVERY_DIR="$WORK_DIR/opkg-recovery"
 export TMP_SING_BOX_FOLDER="$WORK_DIR/singbox-tmp"
 export FORKOP_UI_STATE_DIR="$WORK_DIR/ui-state"

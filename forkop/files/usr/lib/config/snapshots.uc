@@ -25,7 +25,8 @@ const STOP_REQUESTED = getenv("FORKOP_STOP_REQUESTED_FILE") ||
 const AUTOTUNE_APPLY_STATE = getenv("FORKOP_AUTOTUNE_APPLY_STATE") || "/etc/forkop/autotune-apply.json";
 const AUTOTUNE_TERMINAL_PHASES = [ "applied", "rolled_back", "failed", "stale", "no_change_required", "needs_attention" ];
 // The save directory of `uci set` without a commit; libuci reads every
-// cursor through it (autotune/apply.uc and manager.uc check it too).
+// cursor through it (autotune/apply.uc and manager.uc check it too, with the
+// override FORKOP_AUTOTUNE_UCI_SAVEDIR). Tests that restore set it.
 const UCI_SAVEDIR = getenv("FORKOP_UCI_SAVEDIR") || "/tmp/.uci";
 const RETENTION = 10;
 

@@ -21,6 +21,9 @@ NAME="$(printf 'f%.0s' $(seq 1 250))"
 mkdir -p "$WORK/bin" "$WORK/run" "$WORK/etc" "$WORK/state"
 export FORKOP_CONFIG_FILE="$WORK/etc/$NAME"
 export FORKOP_SNAPSHOT_DIR="$WORK/snapshots"
+# Changes staged with uci refuse a restore (UC-068): the test has its own
+# save directory, never the host's /tmp/.uci.
+export FORKOP_UCI_SAVEDIR="$WORK/uci-save"
 export FORKOP_SNAPSHOT_HASH_DIR="$WORK/hash"
 export FORKOP_SNAPSHOT_LOCK_DIR="$WORK/run/config-snapshot.lock"
 export FORKOP_LIB="$LIB"

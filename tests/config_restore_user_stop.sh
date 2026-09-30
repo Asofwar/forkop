@@ -42,6 +42,9 @@ export STATE="$WORK/state" REAL_UCODE TEST_LIB="$LIB" REAL_INITD="$ROOT/forkop/f
 export FORKOP_LIB="$LIB" FORKOP_BIN="$WORK/bin/forkop"
 export FORKOP_CONFIG_FILE="$WORK/forkop"
 export FORKOP_SNAPSHOT_DIR="$WORK/snapshots" FORKOP_SNAPSHOT_HASH_DIR="$WORK/hash"
+# Changes staged with uci refuse a restore (UC-068): the test has its own
+# save directory, never the host's /tmp/.uci.
+export FORKOP_UCI_SAVEDIR="$WORK/uci-save"
 export FORKOP_AUTOTUNE_APPLY_STATE="$WORK/autotune-apply.json"
 export FORKOP_SNAPSHOT_LOCK_DIR="$WORK/run/config-snapshot.lock"
 export FORKOP_RUNTIME_STATE_DIR="$WORK/run/forkop"

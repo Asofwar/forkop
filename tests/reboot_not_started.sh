@@ -52,6 +52,9 @@ export FORKOP_LIB="$LIB" FORKOP_BIN="$WORK/bin/forkop"
 export FORKOP_CONFIG_FILE="$ETC/config/forkop"
 export FORKOP_UCI_STATE_FILE="$WORK/uci.state"
 export FORKOP_SNAPSHOT_DIR="$ETC/snapshots" FORKOP_SNAPSHOT_HASH_DIR="$RUN/forkop/snapshot-hash"
+# Changes staged with uci refuse a restore (UC-068): the test has its own
+# save directory, never the host's /tmp/.uci.
+export FORKOP_UCI_SAVEDIR="$WORK/uci-save"
 export FORKOP_AUTOTUNE_APPLY_STATE="$ETC/autotune-apply.json"
 export FORKOP_SNAPSHOT_LOCK_DIR="$RUN/forkop/config-snapshot.lock"
 export FORKOP_RUNTIME_STATE_DIR="$RUN/forkop"

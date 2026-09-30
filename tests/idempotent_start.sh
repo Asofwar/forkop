@@ -99,6 +99,9 @@ function module_success(path, args) {
 }
 function log_message(message, level) { push(logs, level + ":" + message); }
 function release_start_subscription_update_lock() { released++; }
+// The not-retryable mark of a refused start: tests/runtime_guard_lifecycle.sh.
+function clear_start_failure() { }
+function mark_start_failure_not_retryable(reason) { }
 function start_impl() { cold_starts++; return 23; }
 function cleanup_failed_runtime() { cleanups++; }
 function runtime_is_running() { return retry_running; }

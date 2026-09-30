@@ -14,7 +14,12 @@ set -euo pipefail
 #
 # Now a reload and a start refuse with the explicit reason
 # runtime_guard_active; the recovery is a restart, whose stop removes the
-# guard before the start. The guard of a restore or an autotune apply
+# guard before the start. A reload of an incomplete runtime is that restart
+# already (restart_runtime_for_reload): it goes on and removes the guard, as
+# before, instead of leaving the whole runtime down until someone restarts.
+# A refused start is not retried automatically (initd.uc start_service): no
+# retry can succeed before the restart, and each would log a fatal and
+# record a failed start. The guard of a restore or an autotune apply
 # (ForkopConfigRestoreDpiGuard) is how every such transaction reloads: the
 # reload goes on under it, a cold start builds the runtime (the restore of
 # a snapshot releases that guard), and only a duplicate start, which starts
@@ -185,16 +190,15 @@ export FAKE_STABLE=1
 logged 'already stably running' || fail "control: the duplicate start did not take the stable path"
 
 # 2. The DPI guard of a failed DPI rollback is kept. A reload of the running
-#    runtime and of an incomplete one (which would restart it) is refused, a
-#    cold start and a duplicate start too; the guard stays.
-for running in 1 0; do
-  reset_case
-  kept_dpi_guard
-  [ "$running" = 1 ] && export FAKE_RUNNING=1
-  refused_untouched "reload (running=$running) under the kept DPI guard" "$(lifecycle reload wan-up)"
-  logged 'restart Forkop' || fail "reload (running=$running) under the kept DPI guard: no restart guidance in the log"
-  [ -e "$TABLES/ForkopTableDpiGuard" ] || fail "reload (running=$running) removed the kept DPI guard"
-done
+#    runtime is refused, a cold start and a duplicate start too; the guard
+#    stays, and the refused start leaves the marker that keeps init.d from
+#    retrying it.
+reset_case
+kept_dpi_guard
+export FAKE_RUNNING=1
+refused_untouched "reload under the kept DPI guard" "$(lifecycle reload wan-up)"
+logged 'restart Forkop' || fail "reload under the kept DPI guard: no restart guidance in the log"
+[ -e "$TABLES/ForkopTableDpiGuard" ] || fail "reload removed the kept DPI guard"
 for stable in 0 1; do
   reset_case
   kept_dpi_guard
@@ -203,7 +207,40 @@ for stable in 0 1; do
   logged 'restart Forkop' || fail "start (stable=$stable) under the kept DPI guard: no restart guidance in the log"
   has_event '^diagnostics/health.uc record start failure' || fail "start (stable=$stable): the refusal was not recorded as a failed start"
   [ -e "$TABLES/ForkopTableDpiGuard" ] || fail "start (stable=$stable) removed the kept DPI guard"
+  grep -qx 'reason=runtime_guard_active' "$STATE_DIR/start.failure" 2>/dev/null ||
+    fail "start (stable=$stable): the refusal did not mark the start as not to be retried"
 done
+
+# 2b. A reload of an incomplete runtime under the kept DPI guard restarts
+#     the runtime: its stop removes the guard, as the restart the page names
+#     does, and the start builds the runtime again.
+reset_case
+kept_dpi_guard
+[ "$(lifecycle reload wan-up)" = 0 ] || fail "a reload of an incomplete runtime under the kept DPI guard failed"
+logged 'restarting Forkop runtime' || fail "the reload of an incomplete runtime did not restart it"
+[ ! -e "$TABLES/ForkopTableDpiGuard" ] || fail "the restart of an incomplete runtime left the kept DPI guard"
+has_event '^nft/apply.uc nft-rebuild-runtime-from-uci' || fail "the restart of an incomplete runtime did not build it again"
+! has_event '^service/reload.uc plan-state-files' || fail "the reload of an incomplete runtime planned a reload over the guard"
+
+# 2c. init.d does not retry a start refused for the kept guard: no retry is
+#     scheduled, the log says why. The start the retry would run is the real
+#     lifecycle start behind the real service/initd.uc start-service.
+reset_case
+kept_dpi_guard
+cat >"$WORK_DIR/bin/forkop" <<'SH'
+#!/bin/sh
+printf '%s\n' "forkop $*" >>"$EVENTS"
+exec ucode -L "$FORKOP_LIB" "$FORKOP_LIB/service/lifecycle.uc" "$@"
+SH
+status=0
+env FORKOP_START_RUNTIME_LOCK_WAIT_SECONDS=0 FORKOP_START_RETRY_DELAY_SECONDS=300 \
+  timeout -s KILL 60 ucode -L "$LIB" "$LIB/service/initd.uc" start-service triggered "$$" >/dev/null 2>&1 || status=$?
+printf '#!/bin/sh\nprintf "%%s\\n" "forkop $*" >>"$EVENTS"\nexit 0\n' >"$WORK_DIR/bin/forkop"
+[ "$status" != 0 ] || fail "init.d start under the kept DPI guard succeeded"
+has_event '^forkop start' || fail "init.d start did not run the lifecycle start"
+[ ! -e "$STATE_DIR/start.retry" ] || fail "init.d scheduled a retry of a start refused for the kept guard"
+[ ! -e "$STATE_DIR/start-retry.pid" ] || fail "init.d launched a retry of a start refused for the kept guard"
+logged 'retry suppressed.*runtime_guard_active' || fail "init.d did not log why the start is not retried"
 
 # 3. The transition guard chain of a failed sing-box rollback is kept: a
 #    reload and a duplicate start are refused. A cold start rebuilds the

@@ -962,7 +962,12 @@ function start_service(reason, owner_pid) {
     }
     else if (start_failure_blocks_retry(START_FAILURE_FILE)) {
         drop_start_retry(status);
-        command_success_from_args([ "logger", "-t", SERVICE_NAME, "[error] Forkop startup retry suppressed because all rule-set download sources failed; see the fatal startup error in LuCI logs" ]);
+        // A start refused for a guard that a failed transition kept: no
+        // retry succeeds before a restart removes it (service/lifecycle.uc).
+        if (index(as_string(fs.readfile(START_FAILURE_FILE)), "reason=runtime_guard_active") >= 0)
+            command_success_from_args([ "logger", "-t", SERVICE_NAME, "[error] Forkop startup retry suppressed: a failed transition kept its fail-closed guard (runtime_guard_active); restart Forkop to recover" ]);
+        else
+            command_success_from_args([ "logger", "-t", SERVICE_NAME, "[error] Forkop startup retry suppressed because all rule-set download sources failed; see the fatal startup error in LuCI logs" ]);
     }
     else {
         mark_start_retry(START_RETRY_FILE, as_string(reason) == "triggered" ? "wan_retry_failed" : "start_failed");

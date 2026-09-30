@@ -621,6 +621,14 @@ function clear_start_failure() {
     remove_file(START_FAILURE_FILE);
 }
 
+// A start refused for a guard that only a restart removes: init.d does not
+// schedule a retry of it (initd.uc start_service), since none could succeed
+// before that restart and each would record another failed start (UC-019).
+// The next start clears the mark (start_inner, start_main).
+function mark_start_failure_not_retryable(reason) {
+    write_file(START_FAILURE_FILE, "reason=" + as_string(reason) + "\n");
+}
+
 function dns_apply_status(args) {
     return module_status(DNS_APPLY_UC, args);
 }
@@ -1554,6 +1562,7 @@ function abort_guarded_transition(status, stage_path, backup_path, guard_active)
 }
 
 function start_inner() {
+    clear_start_failure();
     // A current installer/updater may have recorded one exact, procd-owned
     // pre-upgrade process. Wait only for that process to exit; a legacy direct
     // opkg/apk upgrade has no marker and remains fail-closed below.
@@ -1583,6 +1592,7 @@ function start_inner() {
     // runtime reported as started (UC-019). Only a restart removes it.
     if (command_success_from_args([ "nft", "list", "table", "inet", NFT_TABLE_NAME + "DpiGuard" ])) {
         log_message("Refusing Forkop start: a failed transition kept the fail-closed DPI guard (runtime_guard_active); restart Forkop to recover", "fatal");
+        mark_start_failure_not_retryable("runtime_guard_active");
         release_start_subscription_update_lock();
         return 1;
     }
@@ -2007,11 +2017,18 @@ function reload(reason) {
     }
     // The plan below compares configurations only. Over a kept guard a DPI
     // restart would fail at the create-only install every time, and any
-    // other plan would report success while the guard still drops traffic;
-    // a runtime restart would tear the guard down on its own (UC-019).
+    // other plan would report success while the guard still drops traffic
+    // (UC-019). A reload of an incomplete runtime plans nothing: it restarts
+    // the runtime (restart_runtime_for_reload), whose stop removes the guard
+    // as the restart named for recovery does, so it goes on.
+    let restart_under_guard = false;
     if (runtime_guard_kept()) {
-        log_message("Reload '" + reason + "' refused: a failed transition kept the fail-closed guard (runtime_guard_active); restart Forkop to recover", "fatal");
-        return 1;
+        if (module_success(STATE_UC, [ "forkop-running", RT_TABLE_NAME, NFT_TABLE_NAME, NFT_FAKEIP_MARK ])) {
+            log_message("Reload '" + reason + "' refused: a failed transition kept the fail-closed guard (runtime_guard_active); restart Forkop to recover", "fatal");
+            return 1;
+        }
+        log_message("Reload '" + reason + "': the runtime is incomplete and a failed transition kept its fail-closed guard; the runtime restart removes the guard", "info");
+        restart_under_guard = true;
     }
     let status;
     // This remains false until a complete nft transaction was accepted or a
@@ -2043,7 +2060,8 @@ function reload(reason) {
         return finish_reload_status(1, reload_config_fingerprint);
     }
 
-    if (!module_success(STATE_UC, [ "forkop-running", RT_TABLE_NAME, NFT_TABLE_NAME, NFT_FAKEIP_MARK ])) {
+    if (restart_under_guard ||
+        !module_success(STATE_UC, [ "forkop-running", RT_TABLE_NAME, NFT_TABLE_NAME, NFT_FAKEIP_MARK ])) {
         log_message("Runtime state is incomplete; restarting Forkop runtime", "info");
         return finish_reload_status(restart_runtime_for_reload(), reload_config_fingerprint);
     }

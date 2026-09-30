@@ -714,6 +714,25 @@ json 'a.equal(r.apply.resolved, true); a.equal(r.apply.rollback, false); a.equal
   a.equal(r.groups.Dpi.last_apply.status, "rolled_back"); a.ok(r.groups.Dpi.cooldowns.multisplit > Date.now() / 1000);' "$WORK/mstatus.json"
 ok "20e operator rollback through forkop autotune_rollback -> pre-apply configuration, record settled, candidate paused"
 
+# 20f. The configuration is edited while an apply still verifies its
+#      candidate: the reload of that edit ends while the apply runs. The file
+#      is no longer the candidate, yet nothing is confirmed until the apply
+#      has settled (autotune_apply_in_progress, UC-020).
+reset_apply; plan_ready; export PROD_SLEEP=1
+ucode -L "$LIB" "$LIB/autotune/apply.uc" apply "$WORK/plan.json" > "$WORK/out.json" &
+runner=$!
+for _ in $(seq 1 200); do grep -q 'curl production' "$STUB_LOG/curl.log" 2>/dev/null && break; sleep 0.05; done
+json 'a.equal(r.phase, "verifying");' "$FORKOP_AUTOTUNE_APPLY_STATE"
+sed -i "s/option dns_rewrite_ttl '60'/option dns_rewrite_ttl '50'/" "$FORKOP_CONFIG_FILE"
+confirm
+kill -0 "$runner" 2>/dev/null || fail "fixture: the apply ended before the confirmation was asked for"
+json 'a.equal(r.status, "not_confirmed"); a.equal(r.reason, "autotune_apply_in_progress");' "$WORK/confirm.json"
+[ "$(lkg)" = "$PRE_LKG" ] || fail "an edit confirmed while an apply was still verifying"
+wait "$runner" || true; unset PROD_SLEEP
+json 'a.equal(r.status, "needs_attention"); a.equal(r.reason, "config_changed_during_verification");' "$WORK/out.json"
+confirm; json 'a.equal(r.status, "confirmed");' "$WORK/confirm.json"
+ok "20f edit while an apply verifies -> not confirmed until the apply settles, then the edit is confirmed"
+
 # Review hardening -------------------------------------------------------------
 
 # Sing-box semantics: disable_quic reject rule (fixture) is skipped for TCP;

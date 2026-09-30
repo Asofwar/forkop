@@ -27,6 +27,7 @@ export FORKOP_AUTOTUNE_ZAPRET_RUNTIME="$WORK/zapret-status.uc"
 export FORKOP_AUTOTUNE_SINGBOX_CONFIG="$WORK/sing-box.json"
 export FORKOP_RELOAD_LOCK_DIR="$WORK/run/reload.lock" FORKOP_PENDING_RELOAD_FILE="$WORK/run/reload.pending"
 export FORKOP_STOP_REQUESTED_FILE="$WORK/run/stop.requested"
+export FORKOP_EXPLICIT_START_FILE="$WORK/run/start.explicit"
 export FORKOP_AUTOTUNE_TMPDIR="$WORK/tmp" FORKOP_AUTOTUNE_UCI_SAVEDIR="$WORK/uci-save"
 SECRET='SECRET-TOKEN-7f3a'
 mkdir -p "$STATE" "$WORK/config" "$WORK/etc" "$WORK/run" "$WORK/tmp" "$WORK/uci-save"
@@ -631,6 +632,20 @@ json 'a.equal(r.status, "failed"); a.equal(r.reason, "service_stopped");' "$WORK
 { [ "$(chash)" = "$applied_hash" ] && [ "$(reloads)" = 1 ]; } || fail "rolled back while stopped by the user"
 rm -f "$FORKOP_STOP_REQUESTED_FILE"
 ok "stopped by the user -> apply and rollback refused, no mutation"
+
+# Forkop not started since boot (no explicit start is recorded) and down (no
+# production table) is held down the same way (D-15(a)). A runtime that went
+# down after an explicit start is not "stopped".
+reset_apply; plan_ready; rm -f "$NFT_STATE/tables/ForkopTable"
+at apply "$WORK/plan.json"
+json 'a.equal(r.status, "stale"); a.equal(r.reason, "service_stopped");' "$WORK/out.json"
+{ [ "$(chash)" = "$PRE_HASH" ] && [ "$(reloads)" = 0 ] && [ "$(snaps)" = 1 ]; } || fail "applied to a Forkop not started since boot"
+at status
+json 'a.equal(r.service_stopped, true);' "$WORK/out.json"
+: > "$FORKOP_EXPLICIT_START_FILE"; at status
+json 'a.equal(r.service_stopped, false);' "$WORK/out.json"
+touch "$NFT_STATE/tables/ForkopTable"; rm -f "$FORKOP_EXPLICIT_START_FILE"
+ok "not started since boot and down -> apply refused as stopped, no mutation"
 
 # The plan file is untrusted input.
 reset_apply; plan_ready

@@ -97,6 +97,10 @@ holder=$!
 trap 'kill "$holder" 2>/dev/null || true; rm -rf "$WORK_DIR"' EXIT
 ucode -L "$FORKOP_LIB" "$FORKOP_LIB/service/state.uc" acquire-runtime-dir-lock "$WORK_DIR/held-reload.lock" "$holder" ||
   fail "the holder could not take reload.lock"
+# Forkop was started since boot: a Forkop that was not is not reloaded at all
+# (D-15(a); tests/reboot_not_started.sh).
+mkdir -p "$WORK_DIR/initd-runtime"
+: >"$WORK_DIR/initd-runtime/start.explicit"
 initd_queue_output="$(
   FORKOP_RUNTIME_STATE_DIR="$WORK_DIR/initd-runtime" \
   FORKOP_PENDING_RELOAD_FILE="$WORK_DIR/initd-reload.pending" \

@@ -19,6 +19,10 @@ const START_IN_PROGRESS_FILE = getenv("FORKOP_START_IN_PROGRESS_FILE") || "/var/
 // explicit start the runtime stays down (D-15, UC-056).
 const STOP_REQUESTED_FILE = getenv("FORKOP_STOP_REQUESTED_FILE") ||
     (getenv("FORKOP_RUNTIME_STATE_DIR") || "/var/run/forkop") + "/stop.requested";
+// An explicit start since boot (service/initd.uc): without it a runtime that
+// is down was not started since boot, or the user stopped it (D-15(a)).
+const EXPLICIT_START_FILE = getenv("FORKOP_EXPLICIT_START_FILE") ||
+    (getenv("FORKOP_RUNTIME_STATE_DIR") || "/var/run/forkop") + "/start.explicit";
 const SERVICE_ACTION_DIR = getenv("FORKOP_UI_SERVICE_ACTION_DIR") || STATE_DIR + "/service-actions";
 const SERVICE_ACTION_LOCK_DIR = getenv("FORKOP_UI_SERVICE_ACTION_LOCK_DIR") || STATE_DIR + "/service-actions.lock";
 const LATENCY_ACTION_DIR = getenv("FORKOP_UI_LATENCY_ACTION_DIR") || STATE_DIR + "/latency-actions";
@@ -1346,11 +1350,12 @@ function finish_service_action_after_command(action, job_id_value, status, spawn
         return 0;
     }
 
-    // A reload after an explicit stop that left the runtime stopped: a
-    // reload skipped under reload.lock (service/lifecycle.uc). Nothing is
-    // left to wait for, and no queued reload is applied on its behalf
-    // (UC-012, UC-056).
-    if (action == "reload" && fs.stat(STOP_REQUESTED_FILE) != null && !forkop_running()) {
+    // A reload after an explicit stop, or of a Forkop not started since
+    // boot, that left the runtime stopped: a reload skipped under
+    // reload.lock (service/lifecycle.uc). Nothing is left to wait for, and
+    // no queued reload is applied on its behalf (UC-012, UC-056, D-15(a)).
+    if (action == "reload" && (fs.stat(STOP_REQUESTED_FILE) != null || fs.stat(EXPLICIT_START_FILE) == null) &&
+        !forkop_running()) {
         write_finished_action_state(path, true, "Service reload completed", 0);
         return 0;
     }

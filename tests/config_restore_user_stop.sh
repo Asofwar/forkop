@@ -48,9 +48,12 @@ export FORKOP_PENDING_RELOAD_FILE="$WORK/run/forkop/reload.pending"
 export FORKOP_RELOAD_LOCK_DIR="$WORK/run/forkop.reload.lock"
 export FORKOP_RELOAD_COMMAND="$WORK/init.d" FORKOP_SERVICE_INIT="$WORK/init.d"
 export STOP_MARKER="$FORKOP_RUNTIME_STATE_DIR/stop.requested" STOP_HOLDER
+START_RECORD="$FORKOP_RUNTIME_STATE_DIR/start.explicit"
 mkdir -p "$WORK/bin" "$WORK/run/forkop" "$STATE"
 echo absent > "$STATE/guard"
 echo up > "$STATE/runtime"
+# Forkop runs after an explicit start (service/initd.uc records it).
+: > "$START_RECORD"
 
 # ucode: the restore guard, the validator (a configuration marked "invalid"
 # fails it), health and the UI are modelled; snapshots.uc, initd.uc and
@@ -141,8 +144,9 @@ expect() { # expect <status> <reason> <what>
   [ "$(field "$WORK/result.json" status)" = "$1" ] || fail "$3: $(cat "$WORK/result.json")"
   [ -z "$2" ] || [ "$(field "$WORK/result.json" reason)" = "$2" ] || fail "$3: $(cat "$WORK/result.json")"
 }
-user_stop() { echo stop > "$STOP_MARKER"; echo down > "$STATE/runtime"; }
-user_start() { rm -f "$STOP_MARKER"; echo up > "$STATE/runtime"; }
+# The user's stop also ends the explicit start; a start records itself.
+user_stop() { echo stop > "$STOP_MARKER"; rm -f "$START_RECORD"; echo down > "$STATE/runtime"; }
+user_start() { rm -f "$STOP_MARKER"; : > "$START_RECORD"; echo up > "$STATE/runtime"; }
 
 # Snapshots "good" and "invalid"; production runs "bad", confirmed as
 # last-known-working.
@@ -239,12 +243,12 @@ expect failed service_stopped "autotune apply overtaken by a stop"
 { [ "$(cat "$STATE/guard")" = absent ] && [ "$(lkg)" = "$base_lkg" ]; } || fail "apply overtaken by a stop: guard or LKG"
 [ "$(cat "$STATE/runtime")" = down ] || fail "apply overtaken by a stop started the runtime"
 
-# 8. Control: a runtime that is down without a stop is repaired by the
-#    restore's reload, as before: one that crashed, and equally one that was
-#    not started since a reboot with autostart disabled (here: no
-#    /etc/rc.d/S99forkop), since the stop marker lives in /var/run and ends
-#    with the reboot (service/state.uc STOP_REQUESTED_FILE).
-rm -f "$STOP_MARKER"; echo down > "$STATE/runtime"; config bad; snap confirm-working > /dev/null
+# 8. Control: a runtime that went down without a stop after an explicit start
+#    (it crashed) is repaired by the restore's reload, as before. One that was
+#    not started since a reboot with autostart disabled is not: the restore
+#    keeps the configuration for the start (D-15(a);
+#    tests/reboot_not_started.sh).
+rm -f "$STOP_MARKER"; : > "$START_RECORD"; echo down > "$STATE/runtime"; config bad; snap confirm-working > /dev/null
 run restore "$good_id"
 expect success "" "restore of a crashed runtime"
 events | grep -q "^runtime-reload:config-restore:marker 'good'$" || fail "restore of a crashed runtime did not reload it"

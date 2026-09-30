@@ -30,10 +30,10 @@ const DIAGNOSTICS_RUNTIME_UC = LIB_DIR + "/diagnostics/runtime.uc";
 // line names who asked for the stop (service/initd.uc stop_request_source).
 // It lives in runtime state (no flash writes) and ends with a reboot. With
 // autostart enabled the start at boot is an explicit start anyway. With
-// autostart disabled nothing marks Forkop stopped after a reboot: a runtime
-// that was not started since boot is not told apart from one that went down,
-// and a reload (a manual one, a snapshot restore, a list update) repairs it
-// by starting it, as before; boot itself is unchanged.
+// autostart disabled no start is recorded after a reboot
+// (service/initd.uc EXPLICIT_START_FILE), and a runtime that was not started
+// since boot is held down like a stopped one: no reload (a manual one, a
+// snapshot restore, a list update) starts it (D-15(a)).
 const STOP_REQUESTED_FILE = getenv("FORKOP_STOP_REQUESTED_FILE") ||
     (getenv("FORKOP_RUNTIME_STATE_DIR") || "/var/run/forkop") + "/stop.requested";
 

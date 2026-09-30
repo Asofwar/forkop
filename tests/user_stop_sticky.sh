@@ -14,9 +14,11 @@ set -euo pipefail
 #
 # Now every reload of a runtime that an explicit stop took down is skipped,
 # whoever requests it, and only an explicit start or restart ends the stop; a
-# stopped runtime that nobody stopped (a crash, a failed start) is still
-# repaired by a reload. `forkop stop` terminates the refresh workers by their
-# recorded identity (core/process_identity.uc) and drops reload.pending.
+# stopped runtime that nobody stopped after an explicit start (a crash, a
+# failed start) is still repaired by a reload; one that nobody started since
+# boot is held down too (D-15(a)). `forkop stop` terminates the refresh
+# workers by their recorded identity (core/process_identity.uc) and drops
+# reload.pending.
 #
 # service/lifecycle.uc, service/initd.uc, init.d and singbox/ruleset_cache.uc
 # are real; sing-box, nft and the modules the lifecycle calls are modelled.
@@ -79,6 +81,7 @@ export TEST_WORK="$WORK_DIR"
 export SING_BOX_STATE="$WORK_DIR/singbox.state"
 export NFT_TABLE_FILE="$WORK_DIR/nft.table"
 export STOP_MARKER="$STATE_DIR/stop.requested"
+START_RECORD="$STATE_DIR/start.explicit"
 export FORKOP_LIB="$LIB"
 export FORKOP_BIN="$WORK_DIR/bin/forkop"
 export FORKOP_SERVICE_INIT="$WORK_DIR/bin/init"
@@ -273,7 +276,7 @@ runtime_down() {
 reset_case() {
   : >"$EVENTS"
   : >"$WORK_DIR/syslog"
-  rm -rf "$STOP_MARKER" "$FORKOP_PENDING_RELOAD_FILE" "$DOWNLOAD_GATE" \
+  rm -rf "$STOP_MARKER" "$START_RECORD" "$FORKOP_PENDING_RELOAD_FILE" "$DOWNLOAD_GATE" \
     "$FORKOP_RULESET_CACHE_DIR" "$FORKOP_RULESET_RUNTIME_CACHE_DIR" "$FORKOP_RULESET_RUNTIME_MANIFEST"
   [ ! -e "$FORKOP_RELOAD_LOCK_DIR" ] || fail "reload.lock leaked from the previous case"
 }
@@ -301,13 +304,27 @@ for reason in "" config-restore autotune list-content ruleset-cache pending on_c
   [ -e "$STOP_MARKER" ] || fail "reload '$reason' ended the explicit stop"
 done
 
-# 1b. Control: a runtime that is down without a stop (it crashed, a start
-#     failed) is still repaired by a reload.
+# 1b. Control: a runtime that is down without a stop after an explicit start
+#     (it crashed, a start failed) is still repaired by a reload.
 reset_case
 runtime_down
+: >"$START_RECORD"
 lifecycle reload "" || true
 grep -q 'Runtime state is incomplete; restarting Forkop runtime' "$WORK_DIR/syslog" ||
   fail "a reload did not repair a runtime that is down without a stop"
+
+# 1c. A runtime that nobody started since boot (no stop, no explicit start
+#     recorded: autostart disabled) is held down like a stopped one
+#     (D-15(a); tests/reboot_not_started.sh).
+for reason in "" config-restore list-content; do
+  reset_case
+  runtime_down
+  lifecycle reload "$reason" || fail "reload '$reason' of a Forkop not started failed: $(cat "$WORK_DIR/lifecycle.out")"
+  no_event '^reload-plan' || fail "reload '$reason' of a Forkop not started reached the reload plan"
+  grep -q "Reload '$reason' skipped: Forkop was not started" "$WORK_DIR/syslog" ||
+    fail "reload '$reason' started a Forkop that nobody started since boot"
+  [ ! -e "$START_RECORD" ] || fail "reload '$reason' recorded an explicit start"
+done
 
 # 2. A reload that restarts a running runtime (its reload state is gone)
 #    while a stop waits for reload.lock does not end that stop: only an
@@ -343,8 +360,9 @@ for reason in "" list-content some-caller config-restore autotune; do
   [ -e "$STOP_MARKER" ] || fail "init.d reload '$reason' ended the explicit stop"
 done
 
-# 3b. Controls: a running runtime, and one that is down without a stop, are
-#     reloaded (the lifecycle repairs the latter); the answer stays empty.
+# 3b. Controls: a running runtime, and one that is down without a stop after
+#     an explicit start, are reloaded (the lifecycle repairs the latter); the
+#     answer stays empty.
 reset_case
 runtime_up
 output="$(initd_reload config-restore)" || fail "init.d reload of a running runtime failed"
@@ -352,6 +370,7 @@ has_event '^reload ran config-restore$' || fail "init.d did not reload a running
 [ -z "$output" ] || fail "a reload of a running runtime answered '$output'"
 reset_case
 runtime_down
+: >"$START_RECORD"
 output="$(initd_reload config-restore)" || fail "init.d reload of a crashed runtime failed"
 has_event '^reload ran config-restore$' || fail "init.d did not pass the reload of a crashed runtime on for repair"
 [ -z "$output" ] || fail "a reload of a crashed runtime answered '$output'"
@@ -425,14 +444,16 @@ process_running "$DECOY_PID" || fail "forkop stop signalled a process that is no
 sleep 1
 no_event '^init reload' || fail "a refresh worker requested a reload after the stop"
 
-# 5. An explicit restart ends the stop, also when its start fails (only a
-#    stop, not a failure, keeps the runtime down).
+# 5. An explicit restart ends the stop and records the explicit start, also
+#    when its start fails (only a stop, not a failure, keeps the runtime
+#    down).
 reset_case
 runtime_down
 printf 'stop\n' >"$STOP_MARKER"
 lifecycle restart || true
 grep -q 'Starting Forkop' "$WORK_DIR/syslog" || fail "forkop restart did not reach the start"
 [ ! -e "$STOP_MARKER" ] || fail "an explicit restart kept the explicit stop"
+[ -e "$START_RECORD" ] || fail "an explicit restart was not recorded as an explicit start"
 
 # 6. A stop records who asked for it: Forkop's own stop for a package or
 #    component change (FORKOP_STOP_SOURCE, followed by a start) is told apart
@@ -448,6 +469,7 @@ for how in init.d lifecycle; do
     want="${rest#*|}"
     reset_case
     runtime_down
+    : >"$START_RECORD"
     [ -z "$previous" ] || printf '1.000000001.42\nby=%s\n' "$previous" >"$STOP_MARKER"
     if [ "$how" = init.d ]; then
       FORKOP_STOP_SOURCE="$source" bash "$WORK_DIR/rc" stop >"$WORK_DIR/stop.out" 2>&1 || true
@@ -459,6 +481,13 @@ for how in init.d lifecycle; do
       fail "$how stop by '$source' after a stop by '$previous' recorded '$(stop_source)', not '$want'"
     head -n 1 "$STOP_MARKER" | grep -Eq '^[0-9]+\.[0-9]{9}\.[0-9]+$' ||
       fail "$how stop by '$source' changed the stop request value: $(head -n 1 "$STOP_MARKER")"
+    # The user's stop ends the explicit start; Forkop's own stop is followed
+    # by a start and keeps it (D-15(a)).
+    if [ "$want" = user ]; then
+      [ ! -e "$START_RECORD" ] || fail "$how stop by the user kept the explicit start"
+    else
+      [ -e "$START_RECORD" ] || fail "$how stop by '$want' ended the explicit start"
+    fi
   done
 done
 # An internal stop holds reloads off like the user's.

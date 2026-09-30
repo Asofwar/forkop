@@ -38,6 +38,10 @@ const START_FAILURE_FILE = getenv("FORKOP_START_FAILURE_FILE") || RUNTIME_STATE_
 // in effect until an explicit start or restart: no reload brings back the
 // runtime it took down (reload_skipped_after_stop; D-15, UC-056).
 const STOP_REQUESTED_FILE = getenv("FORKOP_STOP_REQUESTED_FILE") || RUNTIME_STATE_DIR + "/stop.requested";
+// An explicit start since boot (service/initd.uc EXPLICIT_START_FILE),
+// written by start and restart, removed by the user's stop. A reload does
+// not start a runtime that is down without it (D-15(a), UC-056).
+const EXPLICIT_START_FILE = getenv("FORKOP_EXPLICIT_START_FILE") || RUNTIME_STATE_DIR + "/start.explicit";
 const MANAGED_UPGRADE_SING_BOX_MARKER = getenv("FORKOP_MANAGED_UPGRADE_SING_BOX_MARKER") || "/tmp/forkop-managed-upgrade-sing-box";
 const MANAGED_UPGRADE_SING_BOX_WAIT_SECONDS = int(getenv("FORKOP_MANAGED_UPGRADE_SING_BOX_WAIT_SECONDS") || "15");
 const MANAGED_UPGRADE_SING_BOX_MARKER_MAX_AGE_SECONDS = int(getenv("FORKOP_MANAGED_UPGRADE_SING_BOX_MARKER_MAX_AGE_SECONDS") || "120");
@@ -1578,12 +1582,21 @@ function mark_start_in_progress() {
     return process_identity.record(START_IN_PROGRESS_FILE, owner_pid());
 }
 
+// Also when the start then fails: a runtime that is down after an explicit
+// start is repaired by a reload.
+function mark_explicit_start() {
+    ensure_dir(RUNTIME_STATE_DIR);
+    let now = clock();
+    return write_file(EXPLICIT_START_FILE, sprintf("%d.%09d.%s\n", now[0], now[1], owner_pid()));
+}
+
 function start() {
     // The init.d UI action can fail to register when a stop has only just
     // completed. Track the actual lifecycle worker independently of UI jobs.
     mark_start_in_progress();
     // An explicit start ends an explicit stop, also when it finds the
     // runtime already running and does not start it again.
+    mark_explicit_start();
     remove_file(STOP_REQUESTED_FILE);
     let status = start_inner();
     remove_file(START_IN_PROGRESS_FILE);
@@ -1643,12 +1656,16 @@ function stop_request_source() {
 // rule-set refresh workers, whose final reload is such a trigger, and the
 // reloads queued for the runtime it takes down (the next start applies the
 // whole configuration). Reloads requested from now on are skipped
-// (reload_skipped_after_stop; D-15, UC-056).
+// (reload_skipped_after_stop; D-15, UC-056). The user's stop also ends the
+// explicit start; Forkop's own stop for a package or component change keeps
+// it for the start that follows.
 function stop() {
     ensure_dir(RUNTIME_STATE_DIR);
     let now = clock();
     let source = stop_request_source();
     write_file(STOP_REQUESTED_FILE, sprintf("%d.%09d.%s\nby=%s\n", now[0], now[1], owner_pid(), source));
+    if (source == "user")
+        remove_file(EXPLICIT_START_FILE);
     if (refresh_worker.stop_all(LIB_DIR) > 0)
         log_message("Stopped the rule-set refresh", "info");
     let status = stop_impl();
@@ -1861,17 +1878,21 @@ function dns_failover_apply(candidate_state_path) {
 // A reload never starts a runtime that an explicit stop took down, whoever
 // requests it: background work that began before the stop (UC-012), a manual
 // reload, a snapshot restore, an autotune apply. Only an explicit start
-// brings it back (D-15, UC-056). A runtime that is down without a stop (it
-// crashed, its start failed) is still repaired by the reload. A stop
-// requested while the reload is in progress stops it before its next start
-// step (reload_gives_way_to_stop). service/initd.uc decides the same before
-// it opens a UI job; this is the check under reload.lock.
+// brings it back (D-15, UC-056). Nor does it start a runtime that nobody
+// started since boot (no EXPLICIT_START_FILE; D-15(a)). A runtime that went
+// down after an explicit start (it crashed, its start failed) is still
+// repaired by the reload. A stop requested while the reload is in progress
+// stops it before its next start step (reload_gives_way_to_stop).
+// service/initd.uc decides the same before it opens a UI job; this is the
+// check under reload.lock.
 function reload_skipped_after_stop(reason) {
     reason = as_string(reason || "");
-    if (fs.stat(STOP_REQUESTED_FILE) == null ||
+    let stopped = fs.stat(STOP_REQUESTED_FILE) != null;
+    if ((!stopped && fs.stat(EXPLICIT_START_FILE) != null) ||
         module_success(STATE_UC, [ "forkop-running", RT_TABLE_NAME, NFT_TABLE_NAME, NFT_FAKEIP_MARK ]))
         return false;
-    log_message("Reload '" + reason + "' skipped: Forkop was stopped; only a start brings its runtime back", "info");
+    log_message("Reload '" + reason + (stopped ? "' skipped: Forkop was stopped; only a start brings its runtime back" :
+        "' skipped: Forkop was not started since boot; only a start starts it"), "info");
     return true;
 }
 
@@ -2314,6 +2335,7 @@ function restart() {
 
     // An explicit restart is an explicit start: it ends an earlier explicit
     // stop.
+    mark_explicit_start();
     remove_file(STOP_REQUESTED_FILE);
     status = start_impl();
     if (status != 0) {

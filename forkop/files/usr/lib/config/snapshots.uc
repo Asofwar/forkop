@@ -334,10 +334,10 @@ function pending_stamp() {
     let st = fs.stat(PENDING_RELOAD);
     return st == null ? null : sprintf("%d:%d:%s", st.mtime, st.size, value(fs.readfile(PENDING_RELOAD)));
 }
-// "ran", "queued", "stopped" or "failed". "stopped": an explicit stop holds
-// the runtime down, so the reload was skipped (or the runtime it reloaded is
-// down again) and nothing runs the configuration; init.d says so for this
-// caller's reason (D-15, UC-056).
+// "ran", "queued", "stopped" or "failed". "stopped": an explicit stop, or
+// no explicit start since boot, holds the runtime down, so the reload was
+// skipped (or the runtime it reloaded is down again) and nothing runs the
+// configuration; init.d says so for this caller's reason (D-15, UC-056).
 function reload(reason) {
     let before = pending_stamp();
     let pipe = fs.popen(cmd([ RELOAD, "reload", reason ]) + " 2>/dev/null", "r");
@@ -361,13 +361,14 @@ function reload(reason) {
 // apply_mode (autotune apply): the caller proved no guard was active and the
 // snapshot lock keeps restores out, so the guard is this call's own; an edit
 // made while the guard was installed is never overwritten.
-// A reload that an explicit stop skipped (D-15, UC-056) proves nothing and
-// starts nothing. on_stopped (a restore) keeps the validated configuration
-// for the next explicit start; otherwise the configuration is put back. LKG
-// is not moved either way. The guard goes, also one inherited from an
-// earlier needs_attention: the stop took down the runtime it protected, and
-// only a start, which builds the runtime from the configuration, brings it
-// back; kept, it would outlive that start with no reload left to remove it.
+// A reload that an explicit stop, or the lack of an explicit start since
+// boot, skipped (D-15, UC-056) proves nothing and starts nothing. on_stopped
+// (a restore) keeps the validated configuration for the next explicit start;
+// otherwise the configuration is put back. LKG is not moved either way. The
+// guard goes, also one inherited from an earlier needs_attention: no runtime
+// runs that it could protect (the stop took down the one it protected), and
+// only a start, which builds the runtime from the configuration, brings one
+// up; kept, it would outlive that start with no reload left to remove it.
 function guarded_replace(before, content, pre, on_success, reason, apply_mode, on_stopped) {
     // A guard left by an earlier needs_attention protects a runtime no reload
     // has proved yet: only this call's own guard may go without a reload.
@@ -446,7 +447,9 @@ function do_apply(candidate_file, expected_hash, keep_id) {
     if (sha(before) != value(expected_hash)) return { status: "stale", reason: "config_changed" };
     if (content == before) return { status: "no_change", reason: "candidate_equals_config" };
     // An apply never changes a runtime that an explicit stop holds down:
-    // nothing could verify the candidate (D-15, UC-056).
+    // nothing could verify the candidate (D-15, UC-056). One not started
+    // since boot is refused by the caller (autotune/apply.uc); here its
+    // reload answers "stopped" and the candidate is put back.
     if (fs.stat(STOP_REQUESTED) != null) return { status: "stale", reason: "service_stopped" };
     // An apply also waits for a queued reload: that request would reload the
     // candidate outside this transaction.

@@ -291,6 +291,11 @@ FORKOP_UCI_STATE_FILE="$WORK_DIR/config.state" \
     fail "package postinst (case 11) exited non-zero"
 grep -Fxq start "$WORK_DIR/upgrade-start.log" ||
   fail "package postinst must restart a service that was running before upgrade"
+# That restart is an explicit start, also when init.d records none (an older
+# init.d, a start that never comes): reloads may repair the runtime after it
+# (service/initd.uc EXPLICIT_START_FILE; D-15(a)).
+[ -e "$WORK_DIR/upgrade-run/start.explicit" ] ||
+  fail "package postinst must record the restart after an upgrade as an explicit start"
 [ ! -e "$FORKOP_PACKAGE_UPGRADE_STATE" ] ||
   fail "package postinst must clear the consumed upgrade state"
 

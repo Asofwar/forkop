@@ -115,6 +115,7 @@ export TEST_WORK="$WORK_DIR" EVENTS REAL_INITD
 export TEST_LIB="$LIB"
 export RC_PROCD_LOCK="$WORK_DIR/procd_forkop.lock"
 export STOP_MARKER="$STATE_DIR/stop.requested"
+export START_RECORD="$STATE_DIR/start.explicit"
 export FORKOP_LIB="$LIB"
 export FORKOP_BIN="$WORK_DIR/bin/forkop"
 export FORKOP_SERVICE_INIT="$WORK_DIR/bin/init"
@@ -149,16 +150,17 @@ printf '#!/bin/sh\nexit 1\n' >"$WORK_DIR/bin/nft"
 printf '#!/bin/sh\nexit 0\n' >"$WORK_DIR/bin/ip"
 printf '#!/bin/sh\nexit 1\n' >"$WORK_DIR/bin/ubus"
 
-# `forkop`. A reload after a stop runs the real lifecycle.uc, whose gate
-# returns before it touches anything. Any other reload is only recorded: here
-# it stands for a reload that runs. get_status reports the runtime as running
-# while runtime.up exists.
+# `forkop`. A reload after a stop, or of a Forkop not started since boot (no
+# start record), runs the real lifecycle.uc, whose gate returns before it
+# touches anything. Any other reload is only recorded: here it stands for a
+# reload that runs. get_status reports the runtime as running while
+# runtime.up exists.
 cat >"$WORK_DIR/bin/forkop" <<'SH'
 #!/bin/sh
 ev() { printf '%s\n' "$1" >>"$EVENTS"; }
 case "$1" in
   reload)
-    if [ -e "$STOP_MARKER" ]; then
+    if [ -e "$STOP_MARKER" ] || [ ! -e "$START_RECORD" ]; then
       ev "lifecycle reload ${2:-}"
       exec ucode -L "$TEST_LIB" "$TEST_LIB/service/lifecycle.uc" reload "${2:-}"
     fi
@@ -227,7 +229,7 @@ reset_case() {
   # test's processes: their commands name its own job directory).
   pkill -KILL -f "$FORKOP_UI_SERVICE_ACTION_DIR/" 2>/dev/null || true
   rm -rf "$FORKOP_UI_STATE_DIR" "$STATE_DIR/health-events.json" "$FORKOP_HISTORY_FILE" \
-    "$FORKOP_PENDING_RELOAD_FILE" "$WORK_DIR/runtime.up"
+    "$FORKOP_PENDING_RELOAD_FILE" "$WORK_DIR/runtime.up" "$START_RECORD"
   printf 'stop\n' >"$STOP_MARKER"
   : >"$EVENTS"
   : >"$WORK_DIR/syslog"
@@ -295,13 +297,61 @@ if grep -q '^reload ran' "$EVENTS"; then
 fi
 ui_start_accepted || fail "a UI start was refused after the queued reload job"
 
-# 5. Controls: without a stop request the reload runs as before, a manual
-#    one too.
+# 5. Controls: without a stop request, after an explicit start (the runtime
+#    went down since), the reload runs as before, a manual one too.
 for reason in ruleset-cache ""; do
   reset_case
   rm -f "$STOP_MARKER"
+  : >"$START_RECORD"
   "$FORKOP_SERVICE_INIT" reload "$reason" >/dev/null || fail "reload '$reason' without a stop failed"
   has_event "reload ran $reason" || fail "reload '$reason' without a stop request did not run"
 done
+
+# 6. Forkop not started since boot (here autostart was enabled after the
+#    boot): no stop, no start record. Its reload is skipped like one after a
+#    stop: no UI job, a UI start is accepted at once, health records nothing
+#    and the runtime is left alone (D-15(a)).
+not_started_case() {
+  reset_case
+  rm -f "$STOP_MARKER"
+}
+for reason in ruleset-cache list-content pending ""; do
+  not_started_case
+  output="$("$FORKOP_SERVICE_INIT" reload "$reason")" || fail "reload '$reason' of a Forkop not started failed"
+  [ -z "$output" ] || fail "reload '$reason' of a Forkop not started printed '$output'"
+  no_active_service_action || fail "reload '$reason' of a Forkop not started left a service action running"
+  if compgen -G "$FORKOP_UI_SERVICE_ACTION_DIR/*.json" >/dev/null; then
+    fail "reload '$reason' of a Forkop not started opened a UI job"
+  fi
+  if grep -q '^lifecycle reload\|^reload ran' "$EVENTS"; then
+    fail "init.d ran reload '$reason' of a Forkop not started"
+  fi
+  ui_start_accepted || fail "a UI start was refused after reload '$reason' of a Forkop not started"
+  no_reload_health_event || fail "health recorded reload '$reason' of a Forkop not started"
+  grep -q "Reload '$reason' skipped: Forkop was not started" "$WORK_DIR/syslog" ||
+    fail "skipped reload '$reason' of a Forkop not started was not logged"
+done
+
+# 6b. The runtime went down after init.d's check: the lifecycle gate skips
+#     the reload and the job init.d opened completes at once.
+not_started_case
+: >"$WORK_DIR/runtime.up"
+"$FORKOP_SERVICE_INIT" reload ruleset-cache >/dev/null || fail "a reload of a Forkop not started skipped by the lifecycle gate failed"
+has_event "lifecycle reload ruleset-cache" || fail "the reload of a Forkop not started did not reach the lifecycle gate"
+wait_until 10 no_active_service_action || fail "the job of a reload of a Forkop not started stays running"
+no_reload_health_event || fail "health recorded a reload of a Forkop not started"
+grep -q "Reload 'ruleset-cache' skipped: Forkop was not started" "$WORK_DIR/syslog" ||
+  fail "the lifecycle gate did not skip the reload of a Forkop not started"
+
+# 6c. A queued reload that service/ui.uc applies in a job of its own
+#     completes without waiting for a runtime that nobody started.
+not_started_case
+job="$(ui service-action-begin-if-idle reload initd)" || fail "the queued reload job was not opened"
+timeout -s KILL 30 ucode -L "$LIB" "$LIB/service/ui.uc" service-action-worker \
+  "$FORKOP_UI_SERVICE_ACTION_DIR/$job.json" reload "$job" pending ||
+  fail "the queued reload job worker did not finish in time"
+state="$(job_state "$job")"
+[ "$state" = "running=false success=true message=Service reload completed" ] ||
+  fail "the queued reload job of a Forkop not started did not complete: $state"
 
 printf 'stopped reload job checks passed\n'

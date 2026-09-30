@@ -59,6 +59,10 @@ const PENDING_RELOAD = getenv("FORKOP_PENDING_RELOAD_FILE") || "/var/run/forkop/
 // explicit start no reload brings the runtime back (D-15, UC-056).
 const STOP_REQUESTED = getenv("FORKOP_STOP_REQUESTED_FILE") ||
     (getenv("FORKOP_RUNTIME_STATE_DIR") || "/var/run/forkop") + "/stop.requested";
+// An explicit start since boot (service/initd.uc): a runtime that is down
+// without it was not started since boot, and no reload starts it (D-15(a)).
+const EXPLICIT_START = getenv("FORKOP_EXPLICIT_START_FILE") ||
+    (getenv("FORKOP_RUNTIME_STATE_DIR") || "/var/run/forkop") + "/start.explicit";
 const UCI_SAVEDIR = getenv("FORKOP_AUTOTUNE_UCI_SAVEDIR") || "/tmp/.uci";
 const TMP_DIR = getenv("FORKOP_AUTOTUNE_TMPDIR") || "/tmp";
 const HOLD_SECONDS = 5;
@@ -262,8 +266,12 @@ function service_action() {
     return null;
 }
 // An apply or rollback never changes a runtime that an explicit stop holds
-// down: its reload would be skipped and nothing could verify the result.
-function service_stopped() { return fs.stat(STOP_REQUESTED) != null; }
+// down, nor one that was not started since boot and is down (its production
+// table is missing): its reload would be skipped and nothing could verify
+// the result.
+function service_stopped() {
+    return fs.stat(STOP_REQUESTED) != null || (fs.stat(EXPLICIT_START) == null && table_present(PROD_TABLE) === false);
+}
 // The last-known-working snapshot, compared by user configuration.
 function lkg_fingerprint() {
     let id = trim(as_string(fs.readfile(SNAPSHOT_DIR + "/last-known-working")));

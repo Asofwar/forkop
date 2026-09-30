@@ -57,6 +57,7 @@ let retry_pending = true;
 let retry_stop_requested = false;
 let start_marker_present = false;
 let stop_marker_present = false;
+let explicit_start_recorded = false;
 function as_string(value) { return value == null ? "" : "" + value; }
 function bool_text(value) { return value == "1"; }
 function die(message) { warn("FAIL: " + message + "\n"); exit(1); }
@@ -128,6 +129,12 @@ function mark_start_in_progress() {
     start_marker_present = true;
     return true;
 }
+// start() records the explicit start (EXPLICIT_START_FILE, D-15(a)): a
+// runtime that is down after it is repaired by a reload.
+function mark_explicit_start() {
+    explicit_start_recorded = true;
+    return true;
+}
 function remove_file(path) {
     if (path == STOP_REQUESTED_FILE) {
         stop_marker_present = false;
@@ -145,6 +152,7 @@ function reset_probe() {
     retry_stop_requested = false;
     start_marker_present = false;
     stop_marker_present = true;
+    explicit_start_recorded = false;
 }
 '''
 cases = r'''
@@ -158,14 +166,16 @@ check(released == 1 && cold_starts == 0 && cleanups == 0,
 // survive a start that has already returned, on any outcome.
 check(!start_marker_present, "start left its in-progress marker behind");
 // An explicit start ends an explicit stop even when it finds the runtime
-// already running (UC-012).
+// already running (UC-012), and is recorded as one (D-15(a)).
 check(!stop_marker_present, "duplicate start kept the explicit stop");
+check(explicit_start_recorded, "duplicate start was not recorded as an explicit start");
 
 reset_probe();
 transition_guard = true;
 check(start() == 1, "retained fail-closed guard was reported as successful recovery");
 check(!start_marker_present, "failed start left its in-progress marker behind");
 check(!stop_marker_present, "failed start kept the explicit stop");
+check(explicit_start_recorded, "failed start was not recorded as an explicit start");
 check(released == 1 && cold_starts == 0 && cleanups == 0,
     "duplicate start altered the retained fail-closed runtime");
 

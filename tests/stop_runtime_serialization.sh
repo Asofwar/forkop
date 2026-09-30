@@ -63,6 +63,7 @@ export SING_BOX_STATE="$WORK_DIR/singbox.state"
 export NFT_TABLE_FILE="$WORK_DIR/nft.table"
 export NFT_LOG="$WORK_DIR/nft.log"
 export STOP_MARKER="$WORK_DIR/run/forkop/stop.requested"
+START_RECORD="$WORK_DIR/run/forkop/start.explicit"
 export FORKOP_RELOAD_LOCK_DIR="$RELOAD_LOCK"
 export FORKOP_SUBSCRIPTION_UPDATE_LOCK_DIR="$WORK_DIR/run/forkop/subscription-update.lock"
 export FORKOP_RUNTIME_STATE_DIR="$WORK_DIR/run/forkop"
@@ -298,7 +299,7 @@ reset_case() {
   : >"$EVENTS"
   : >"$WORK_DIR/syslog"
   rm -f "$WORK_DIR/update.gate" "$WORK_DIR/stop-managed.gate" "$WORK_DIR/start-managed.gate" \
-    "$SING_BOX_STATE.gate-armed" "$SING_BOX_STATE.start-gate-armed" "$STOP_MARKER" \
+    "$SING_BOX_STATE.gate-armed" "$SING_BOX_STATE.start-gate-armed" "$STOP_MARKER" "$START_RECORD" \
     "$SING_BOX_STATE".*-fails "$SING_BOX_STATE.stop-meanwhile" "$NFT_TABLE_FILE.list-fails" "$NFT_LOG"
   [ ! -e "$RELOAD_LOCK" ] || fail "reload.lock leaked from the previous case"
 }
@@ -562,13 +563,24 @@ ucode -L "$REAL_LIB" "$REAL_LIB/service/initd.uc" trigger-plan-fixture "$WORK_DI
   >"$WORK_DIR/trigger-plan" || fail "the procd trigger plan could not be built"
 grep -q "^interface	interface\.\*\.up	vpn0	.*	reload	badwan_interface_up\$" "$WORK_DIR/trigger-plan" ||
   fail "the reload for a monitored interface coming up is not marked as a background reload: $(cat "$WORK_DIR/trigger-plan")"
-# Without an explicit stop the gate stays open, for a background and a
-# manual reload alike (the refused ownership check stands in for the rest of
-# the reload): a runtime that is down without a stop is left to the reload
-# to repair.
+# Nor does a reload start a runtime that nobody started since boot: no stop,
+# and no explicit start is recorded (D-15(a); tests/reboot_not_started.sh).
 for reason in list-content ""; do
   reset_case
   runtime_down
+  run_reload "$reason" || fail "reload '$reason' of a Forkop not started failed: $(cat "$WORK_DIR/reload.out")"
+  [ ! -s "$EVENTS" ] || fail "reload '$reason' touched the runtime of a Forkop not started"
+  grep -q "Reload '$reason' skipped: Forkop was not started" "$WORK_DIR/syslog" ||
+    fail "skipped reload '$reason' of a Forkop not started was not logged"
+done
+# After an explicit start and without a stop the gate stays open, for a
+# background and a manual reload alike (the refused ownership check stands
+# in for the rest of the reload): a runtime that went down after the start is
+# left to the reload to repair.
+for reason in list-content ""; do
+  reset_case
+  runtime_down
+  : >"$START_RECORD"
   FAKE_CONFLICT=1 run_reload "$reason" && fail "reload '$reason' without a stop request skipped the runtime checks"
   grep -q 'Reload refused' "$WORK_DIR/syslog" || fail "reload '$reason' without a stop request did not reach the runtime"
 done
@@ -576,18 +588,23 @@ done
 # record a stop either (the modelled start fails early; the attempt counts).
 reset_case
 runtime_down
+: >"$START_RECORD"
 run_reload "" || true
 grep -q 'restarting Forkop runtime' "$WORK_DIR/syslog" || fail "a reload did not repair a runtime that is down without a stop"
 [ ! -e "$STOP_MARKER" ] || fail "a reload that repaired the runtime recorded an explicit stop"
 
-# 7. `forkop stop` records the explicit stop; a start clears it, also when it
-#    fails (only a stop, not a failure, keeps the runtime down).
+# 7. `forkop stop` records the explicit stop and ends the explicit start; a
+#    start clears the stop and records itself, also when it fails (only a
+#    stop, not a failure, keeps the runtime down).
 reset_case
 runtime_up
+: >"$START_RECORD"
 env FORKOP_LIB="$WORK_DIR/fake-lib" ucode -L "$REAL_LIB" "$REAL_LIB/service/lifecycle.uc" stop >"$WORK_DIR/lifecycle.out" 2>&1 || true
 [ -e "$STOP_MARKER" ] || fail "forkop stop did not record the explicit stop"
+[ ! -e "$START_RECORD" ] || fail "forkop stop kept the explicit start"
 env FORKOP_LIB="$WORK_DIR/fake-lib" ucode -L "$REAL_LIB" "$REAL_LIB/service/lifecycle.uc" start >"$WORK_DIR/lifecycle.out" 2>&1 || true
 [ ! -e "$STOP_MARKER" ] || fail "forkop start did not clear the explicit stop"
+[ -e "$START_RECORD" ] || fail "forkop start did not record the explicit start"
 # A start that finds the runtime already running (a stop that failed and kept
 # it) does not start it again, and still ends the explicit stop.
 reset_case

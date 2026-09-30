@@ -9,6 +9,10 @@ INITD="$ROOT_DIR/forkop/files/etc/init.d/forkop"
 WORK_DIR="$(mktemp -d)"
 # Not the host's explicit stop: it holds reloads off (UC-056).
 export FORKOP_STOP_REQUESTED_FILE="$WORK_DIR/stop.requested"
+# Nor the host's explicit start: a Forkop not started since boot holds them
+# off too (D-15(a)). Here it was started, as by the start in progress below.
+export FORKOP_EXPLICIT_START_FILE="$WORK_DIR/start.explicit"
+: >"$FORKOP_EXPLICIT_START_FILE"
 
 cleanup() {
   rm -rf "$WORK_DIR"

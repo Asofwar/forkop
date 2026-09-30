@@ -58,6 +58,16 @@ const START_DEFERRED_RETRY_DELAY_SECONDS = getenv("FORKOP_START_DEFERRED_RETRY_D
 // again (service/state.uc runtime-apply-allowed; UC-012).
 const STOP_RUNTIME_LOCK_WAIT_SECONDS = getenv("FORKOP_STOP_RUNTIME_LOCK_WAIT_SECONDS") || "30";
 const STOP_REQUESTED_FILE = getenv("FORKOP_STOP_REQUESTED_FILE") || RUNTIME_STATE_DIR + "/stop.requested";
+// An explicit start since boot: written by every start that runs
+// (start_service: the start at boot with autostart, a UI or CLI start or
+// restart, init.d start or restart; service/lifecycle.uc start and restart;
+// the package postinst for a Forkop that ran before the upgrade) and removed
+// by the user's stop. Like the stop request it lives in runtime state and
+// ends with a reboot. A runtime that is down without it was not started
+// since boot, or the user stopped it: no reload, restore or list update
+// starts it (D-15(a), UC-056). One that is down with it went down after an
+// explicit start, and a reload repairs it.
+const EXPLICIT_START_FILE = getenv("FORKOP_EXPLICIT_START_FILE") || RUNTIME_STATE_DIR + "/start.explicit";
 const SERVICE_TRIGGER_SYNC_FILE = getenv("FORKOP_SERVICE_TRIGGER_SYNC_FILE") || RUNTIME_STATE_DIR + "/service-triggers.sync";
 const INTERNAL_CONFIG_TRIGGER_GUARD = getenv("FORKOP_INTERNAL_CONFIG_TRIGGER_GUARD") || "/var/run/forkop.internal-config-change";
 const CONFIG_CHANGE_REASON = getenv("FORKOP_CONFIG_CHANGE_REASON") || "on_config_change";
@@ -306,18 +316,42 @@ function stop_request_source() {
 // Removed only by an explicit start or restart (start_service,
 // service/lifecycle.uc): until then no reload brings the runtime back (D-15,
 // UC-056). Each request is distinct, so a start can tell a stop requested
-// while it waited for reload.lock from an earlier one (its first line).
+// while it waited for reload.lock from an earlier one (its first line). The
+// user's stop also ends the explicit start; Forkop's own stop for a package
+// or component change is followed by a start and keeps it.
 function mark_stop_requested() {
     if (!ensure_parent_dir(STOP_REQUESTED_FILE))
         return false;
     let now = clock();
     let source = stop_request_source();
-    return write_text_file(STOP_REQUESTED_FILE, sprintf("%d.%09d.%s\nby=%s\n", now[0], now[1],
+    let written = write_text_file(STOP_REQUESTED_FILE, sprintf("%d.%09d.%s\nby=%s\n", now[0], now[1],
         as_string(fs.readlink("/proc/self")), source));
+    if (source == "user")
+        unlink_file(EXPLICIT_START_FILE);
+    return written;
 }
 
 function stop_requested() {
     return file_exists(STOP_REQUESTED_FILE);
+}
+
+function mark_explicit_start() {
+    if (!ensure_parent_dir(EXPLICIT_START_FILE))
+        return false;
+    let now = clock();
+    return write_text_file(EXPLICIT_START_FILE, sprintf("%d.%09d.%s\n", now[0], now[1],
+        as_string(fs.readlink("/proc/self"))));
+}
+
+function explicit_start_recorded() {
+    return file_exists(EXPLICIT_START_FILE);
+}
+
+// Nobody asks for the runtime to run: a stop holds it down, or no explicit
+// start was made since boot (EXPLICIT_START_FILE). A runtime that is down
+// then stays down until an explicit start (D-15(a), UC-056).
+function start_not_requested() {
+    return stop_requested() || !explicit_start_recorded();
 }
 
 function stop_request_value() {
@@ -884,7 +918,10 @@ function start_service(reason, owner_pid) {
         command_success_from_args([ "logger", "-t", SERVICE_NAME, "[info] Running the deferred Forkop start: the runtime lock was released" ]);
     }
     // An explicit start ends an explicit stop; a stop request seen after
-    // this point was made during this start.
+    // this point was made during this start. It is recorded first, also
+    // when it fails: a runtime that is down after it did not stay down on
+    // request, and a reload repairs it.
+    mark_explicit_start();
     unlink_file(STOP_REQUESTED_FILE);
 
     let plan = start_plan_value(reason, owner_pid, uci_settings(), null);
@@ -1055,18 +1092,19 @@ function stop_service(owner_pid) {
 }
 
 // No reload, whoever requests it, starts a runtime that an explicit stop took
-// down (D-15, UC-056); a runtime that is down without a stop is still left
-// to the reload to repair. Decided before a UI job is opened: a reload that
-// does nothing must not show the stopped Forkop as "reloading" and then fail
-// to reach a running runtime. service/lifecycle.uc checks the same under
-// reload.lock.
+// down, nor one that nobody started since boot (D-15(a), UC-056); a runtime
+// that went down after an explicit start is still left to the reload to
+// repair. Decided before a UI job is opened: a reload that does nothing must
+// not show the stopped Forkop as "reloading" and then fail to reach a running
+// runtime. service/lifecycle.uc checks the same under reload.lock.
 function reload_skipped_after_stop(reason, runtime_running_value) {
-    if (!stop_requested())
+    if (!start_not_requested())
         return false;
     if (runtime_running_value == null ? runtime_is_running() : bool_text(runtime_running_value))
         return false;
     command_success_from_args([ "logger", "-t", SERVICE_NAME, "[info] Reload '" + as_string(reason) +
-        "' skipped: Forkop was stopped; only a start brings its runtime back" ]);
+        (stop_requested() ? "' skipped: Forkop was stopped; only a start brings its runtime back" :
+            "' skipped: Forkop was not started since boot; only a start starts it") ]);
     return true;
 }
 
@@ -1176,10 +1214,11 @@ function reload_service(reason, owner_pid) {
 
     let status = command_status(command_from_args([ "env", "FORKOP_UI_ACTION_TRACKED=1", BIN_PATH, "reload", reason ]) + " >/dev/null 2>&1");
     let finish = reload_finish_value(reason, plan.job_id, status, owner_pid || owner_pid_value());
-    // A stop requested after the check above: the lifecycle skipped the
-    // reload under reload.lock, or the runtime it reloaded is down again.
-    // Either way no runtime runs the new configuration.
-    if (status == 0 && stop_ack && stop_requested() && !runtime_is_running())
+    // A stop requested after the check above, or a runtime not started since
+    // boot that went down after it: the lifecycle skipped the reload under
+    // reload.lock, or the runtime it reloaded is down again. Either way no
+    // runtime runs the new configuration.
+    if (status == 0 && stop_ack && start_not_requested() && !runtime_is_running())
         print("stopped\n");
     else if (finish.sync)
         print("sync\n");
@@ -1250,6 +1289,11 @@ else if (mode == "cancel-scheduled-start-retry")
     cancel_autostart_start_retry(ARGV[1]);
 else if (mode == "deferred-start-pending")
     exit(deferred_start_pending() ? 0 : 1);
+// service/package.uc postinst: the restart of a Forkop that ran before the
+// upgrade, or ("if-running") a runtime that runs across it, is an explicit
+// start; the previous version may have kept no record of it.
+else if (mode == "mark-explicit-start")
+    exit((ARGV[1] == "if-running" && !runtime_is_running()) || mark_explicit_start() ? 0 : 1);
 else if (mode == "begin-action") {
     let job_id = begin_external_service_action(ARGV[1], ARGV[2] || "initd", ARGV[3]);
     if (job_id != "")

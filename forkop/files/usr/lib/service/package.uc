@@ -237,8 +237,18 @@ function postinst_restore() {
         return false;
     }
 
-    if (!path_exists(PACKAGE_UPGRADE_STATE))
+    // Only an explicit start since boot lets a reload start a runtime that
+    // is down (service/initd.uc EXPLICIT_START_FILE; D-15(a)), and a previous
+    // version kept no record of its start. A runtime that runs across the
+    // upgrade (no prerm stopped it) was started explicitly; so was Forkop
+    // that ran before the upgrade, whose restart below is an explicit start
+    // also when it does not come or fails.
+    let initd_module = LIB_DIR + "/service/initd.uc";
+    if (!path_exists(PACKAGE_UPGRADE_STATE)) {
+        command_success_from_args([ "ucode", "-L", LIB_DIR, initd_module, "mark-explicit-start", "if-running" ]);
         return true;
+    }
+    command_success_from_args([ "ucode", "-L", LIB_DIR, initd_module, "mark-explicit-start" ]);
 
     if (!wait_for_upgrade_sing_box_exit()) {
         warn("Timed out waiting for the previous Forkop sing-box runtime to exit; startup was not attempted.

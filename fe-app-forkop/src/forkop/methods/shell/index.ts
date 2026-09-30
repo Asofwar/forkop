@@ -404,6 +404,13 @@ export const ForkopShellMethods = {
       '/usr/bin/forkop',
       { allowNonZeroWithStdout: true },
     ),
+  autotuneListDomains: async (ruleSet: string) =>
+    callBaseMethod<Forkop.AutotuneListDomains>(
+      Forkop.AvailableMethods.AUTOTUNE_LIST_DOMAINS,
+      [ruleSet],
+      '/usr/bin/forkop',
+      { allowNonZeroWithStdout: true },
+    ),
   autotuneTargetRemove: async (id: string) =>
     callBaseMethod<Forkop.AutotuneMutationResult>(
       Forkop.AvailableMethods.AUTOTUNE_TARGET_REMOVE,

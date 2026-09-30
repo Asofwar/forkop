@@ -14,6 +14,8 @@
 //                   a host target, or with an empty host a rule-list
 //                   target (autotune/lists.uc); pins: comma-separated (write)
 //   target-remove <id>                              (write)
+//   list-domains <rule_set>  the domains of a list a DPI rule uses, for
+//                   choosing pinned domains (read-only)
 //   run <all|group>     tune the targets of the groups now (write)
 //   if-due              the scheduled run, when enabled and due (cron); in
 //                       mode "auto" it may apply one confirmed group
@@ -209,6 +211,22 @@ function rule_lists(sections, config) {
         }
     }
     return result;
+}
+
+// The domains a list target can measure, for choosing pinned domains: only
+// lists the routing sends to a DPI rule. At most LIST_DOMAINS_MAX are sent.
+const LIST_DOMAINS_MAX = 2000;
+function list_domains(tag) {
+    tag = as_string(tag);
+    if (!lists_module.valid_tag(tag)) return { status: "failed", reason: "invalid_rule_set" };
+    let sections = config_sections();
+    if (sections == null) return { status: "failed", reason: "config_unavailable" };
+    let config = singbox_config(sections);
+    if (length(filter(rule_lists(sections, config), (l) => l.tag == tag)) == 0) return { status: "failed", reason: "invalid_rule_set" };
+    let d = lists_module.domains(lists_module.local_rule_sets(config)[tag], TMP_DIR);
+    if (d.error) return { status: "failed", reason: d.error, rule_set: tag };
+    return { status: "ok", rule_set: tag, total: length(d.domains), skipped: d.skipped,
+        truncated: length(d.domains) > LIST_DOMAINS_MAX, domains: slice(d.domains, 0, LIST_DOMAINS_MAX) };
 }
 
 function status() {
@@ -1021,7 +1039,7 @@ function run_status(id) {
 // ---- entry ---------------------------------------------------------------
 
 if (sourcepath(1) != null && sourcepath(1) != "")
-    return { status, target, groups, policy_set, target_set, target_remove, run, if_due, run_async, run_status,
+    return { status, target, groups, list_domains, policy_set, target_set, target_remove, run, if_due, run_async, run_status,
         manual_apply, apply_async, operator_rollback, cron_sync, cron_remove };
 
 let mode = ARGV[0] || "";
@@ -1032,6 +1050,7 @@ else if (mode == "groups") output = groups();
 else if (mode == "policy-set") output = policy_set(ARGV[1], ARGV[2]);
 else if (mode == "target-set") output = target_set(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6], ARGV[7]);
 else if (mode == "target-remove") output = target_remove(ARGV[1]);
+else if (mode == "list-domains") output = list_domains(ARGV[1]);
 else if (index([ "run", "if-due", "run-job", "apply", "apply-job" ], mode) >= 0) {
     // A stop request ends the run after the current target.
     if (type(signal) == "function")
@@ -1048,7 +1067,7 @@ else if (mode == "cron-sync") output = cron_sync();
 else if (mode == "cron-remove") output = cron_remove();
 else {
     warn("Usage: autotune/manager.uc <status|target <id>|groups|policy-set <option> <value>|" +
-        "target-set <id> <host> [enabled] [resolver] [rule_set] [sample] [pins]|target-remove <id>|run <all|group>|if-due|" +
+        "target-set <id> <host> [enabled] [resolver] [rule_set] [sample] [pins]|target-remove <id>|list-domains <rule_set>|run <all|group>|if-due|" +
         "run-async <all|group>|run-status <job>|apply <group>|apply-async <group>|rollback|cron-sync|cron-remove>\n");
     exit(1);
 }

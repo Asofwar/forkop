@@ -114,6 +114,7 @@ function show_help() {
     print("    autotune_policy_set     Set an autotune policy option\n");
     print("    autotune_target_set     Add or change an autotune target\n");
     print("    autotune_target_remove  Remove an autotune target\n");
+    print("    autotune_list_domains   Domains of a DPI rule list, for choosing autotune targets\n");
     print("    autotune_run            Tune the targets of all groups or one group now\n");
     print("    autotune_run_async      Start an autotune run as a background job\n");
     print("    autotune_run_status     Get the state and result of an autotune job\n");
@@ -229,6 +230,7 @@ function command_spec(command) {
         autotune_policy_set: [ "autotune/manager.uc", "policy-set", 2 ],
         autotune_target_set: [ "autotune/manager.uc", "target-set", 7 ],
         autotune_target_remove: [ "autotune/manager.uc", "target-remove", 1 ],
+        autotune_list_domains: [ "autotune/manager.uc", "list-domains", 1 ],
         autotune_run: [ "autotune/manager.uc", "run", 1 ],
         autotune_run_async: [ "autotune/manager.uc", "run-async", 1 ],
         autotune_run_status: [ "autotune/manager.uc", "run-status", 1 ],

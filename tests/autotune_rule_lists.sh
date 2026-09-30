@@ -95,6 +95,14 @@ manager groups >"$WORK/groups.json"
 check "$WORK/groups.json" '
   a.deepEqual(r.groups.youtube.targets, ["yt", "ytimg", "ytl__1", "ytl__2", "ytl__3"]);' "members join the group of their rule"
 
+# ---- the domains of a list, for choosing pinned domains ---------------------------
+manager list-domains yt-list >"$WORK/domains.json"
+check "$WORK/domains.json" '
+  a.deepEqual(r.domains, ["m.youtube.com", "music.youtube.com", "noaddr.youtube.com", "studio.youtube.com", "www.youtube.com", "youtube.com"]);
+  a.equal(r.total, 6); a.equal(r.skipped, 3); a.equal(r.truncated, false);' "list domains"
+manager list-domains gone-list >"$WORK/not-dpi.json" || true
+check "$WORK/not-dpi.json" 'a.equal(r.reason, "invalid_rule_set")' "only lists of DPI rules are listed"
+
 # ---- a run measures the members -----------------------------------------------------
 reset_calls
 manager run youtube >"$WORK/run.json"

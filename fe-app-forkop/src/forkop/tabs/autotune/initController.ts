@@ -1,6 +1,7 @@
 import { onMount, preserveScrollForPage } from '../../../helpers';
 import { showToast } from '../../../helpers/showToast';
 import { openForkopPage } from '../../helpers/navigation';
+import { createDomainPicker } from './domainPicker';
 import { isActiveLuciTab } from '../../helpers/isActiveLuciTab';
 import { ForkopShellMethods } from '../../methods';
 import { logger, store, StoreType } from '../../services';
@@ -39,6 +40,7 @@ import {
   targetIdFor,
   targetRows,
   ruleListLabel,
+  listErrorText,
   workerView,
   type ApplyResultView,
   type GroupCard,
@@ -563,14 +565,34 @@ function showTargetEditor(target?: Forkop.AutotuneTarget) {
     name: 'sample',
     value: String(target?.sample ?? 3),
   }) as HTMLInputElement;
-  const pins = E('input', {
-    class: 'cbi-input-text',
-    type: 'text',
-    name: 'pins',
-    value: (target?.pins ?? []).join(', '),
-    placeholder: _('Automatically'),
-    autocomplete: 'off',
-  }) as HTMLInputElement;
+  // Domains of the list: a sample taken automatically, or chosen by hand.
+  const choice = select(
+    'domain_choice',
+    [
+      ['auto', _('Automatically')],
+      ['manual', _('Choose from the list')],
+    ],
+    target?.pins?.length ? 'manual' : 'auto',
+  ) as HTMLSelectElement;
+  const picker = createDomainPicker(
+    target?.pins ?? [],
+    async (tag) => {
+      const response = await ForkopShellMethods.autotuneListDomains(tag);
+      const data = response.success ? response.data : null;
+      return data?.status === 'ok'
+        ? {
+            domains: data.domains ?? [],
+            truncated: data.truncated === true,
+            error: null,
+          }
+        : {
+            domains: [],
+            truncated: false,
+            error: data?.reason ?? 'list_unreadable',
+          };
+    },
+    listErrorText,
+  );
   const host = E('input', {
     class: 'cbi-input-text',
     type: 'text',
@@ -604,6 +626,11 @@ function showTargetEditor(target?: Forkop.AutotuneTarget) {
       showToast(mutationErrorText('invalid_rule_set'), 'error');
       return;
     }
+    const manual = choice.value === 'manual';
+    if (isList && manual && !picker.selected().length) {
+      showToast(_('Choose at least one domain of the list.'), 'error');
+      return;
+    }
     ui.hideModal();
     const taken = status?.targets.map((t) => t.id) ?? [];
     const id =
@@ -622,10 +649,7 @@ function showTargetEditor(target?: Forkop.AutotuneTarget) {
             ? {
                 ruleSet: ruleSet.value,
                 sample: sample.value.trim(),
-                pins: pins.value
-                  .split(/[\s,]+/)
-                  .map((p) => p.trim().toLowerCase())
-                  .filter(Boolean),
+                pins: manual ? picker.selected() : [],
               }
             : undefined,
         ),
@@ -646,27 +670,36 @@ function showTargetEditor(target?: Forkop.AutotuneTarget) {
         'A list of a DPI rule. Each check takes a few of its domains; keywords and regular expressions are skipped.',
       ),
     ),
-    ...field(
-      _('Domains to check'),
-      sample,
-      _(
-        '1–8 domains, spread evenly over the list; a domain without an address is replaced by the next one.',
-      ),
-    ),
-    ...field(
-      _('Pinned domains'),
-      pins,
-      _('Optional, comma-separated: check exactly these domains of the list.'),
-    ),
+    ...field(_('Which domains to check'), choice),
   ];
+  const autoFields = field(
+    _('Domains to check'),
+    sample,
+    _(
+      '1–8 domains, spread evenly over the list; a domain without an address is replaced by the next one.',
+    ),
+  );
+  const manualFields = field(
+    _('Domains of the list'),
+    picker.element,
+    _('Up to 8 domains; exactly these are checked.'),
+  );
+  const show = (els: Node[], visible: boolean) => {
+    for (const el of els)
+      (el as HTMLElement).style.display = visible ? '' : 'none';
+  };
   const showKind = () => {
     const isList = kind.value === 'list';
-    for (const el of hostFields)
-      (el as HTMLElement).style.display = isList ? 'none' : '';
-    for (const el of listFields)
-      (el as HTMLElement).style.display = isList ? '' : 'none';
+    const manual = choice.value === 'manual';
+    show(hostFields, !isList);
+    show(listFields, isList);
+    show(autoFields, isList && !manual);
+    show(manualFields, isList && manual);
+    if (isList && manual && ruleSet.value) void picker.show(ruleSet.value);
   };
   kind.addEventListener('change', showKind);
+  choice.addEventListener('change', showKind);
+  ruleSet.addEventListener('change', showKind);
   showKind();
 
   ui.showModal(target ? _('Edit target') : _('Add target'), [
@@ -682,6 +715,8 @@ function showTargetEditor(target?: Forkop.AutotuneTarget) {
       ),
       ...hostFields,
       ...listFields,
+      ...autoFields,
+      ...manualFields,
       ...field(
         _('DNS server for checks'),
         resolver,

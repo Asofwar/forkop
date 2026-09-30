@@ -85,6 +85,9 @@ export const styles = `
     min-width: 0;
 }
 .fkp-autotune__item:first-child { border-top: 0; }
+/* Choosing pinned domains of a list: a scrollable list of checkboxes. */
+.fkp-autotune__domains { max-height: 240px; overflow-y: auto; margin-top: var(--fkp-space-1); padding: var(--fkp-space-1) var(--fkp-space-2); border: 1px solid var(--fkp-border); border-radius: 4px; }
+.fkp-autotune__domain { display: flex; align-items: center; gap: var(--fkp-space-1); padding: 2px 0; overflow-wrap: anywhere; font-weight: normal; }
 /* The domains of a list target, under it and indented. */
 .fkp-autotune__members { flex: 1 1 100%; min-width: 0; padding-left: var(--fkp-space-3); border-left: 2px solid var(--fkp-border); }
 .fkp-autotune__what { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }

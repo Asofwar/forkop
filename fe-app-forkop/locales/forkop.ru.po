@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-30 21:11+0300\n"
-"PO-Revision-Date: 2026-09-30 21:11+0300\n"
+"POT-Creation-Date: 2026-09-30 21:39+0300\n"
+"PO-Revision-Date: 2026-09-30 21:39+0300\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -43,6 +43,9 @@ msgstr "%d мин назад"
 
 msgid "%d more groups"
 msgstr "Ещё групп: %d"
+
+msgid "%d more: refine the search"
+msgstr "ещё %d: уточните поиск"
 
 msgid "%d ms"
 msgstr "%d мс"
@@ -746,8 +749,14 @@ msgstr "Проверяет корректность параметров. Не �
 msgid "Choose a list of a DPI rule."
 msgstr "Выберите список DPI-правила."
 
+msgid "Choose at least one domain of the list."
+msgstr "Выберите хотя бы один домен списка."
+
 msgid "Choose Forkop X version"
 msgstr "Выбор версии Forkop X"
+
+msgid "Choose from the list"
+msgstr "Выбрать из списка"
 
 msgid "Choose version"
 msgstr "Выбрать версию"
@@ -1201,6 +1210,9 @@ msgstr "Домены"
 
 msgid "Domains in rules may not resolve, or resolve past Forkop, so their rules do not apply."
 msgstr "Домены из правил могут не разрешаться или разрешаться в обход Forkop — тогда правила к ним не применяются."
+
+msgid "Domains of the list"
+msgstr "Домены списка"
 
 msgid "Domains to check"
 msgstr "Доменов для проверки"
@@ -2447,6 +2459,9 @@ msgstr "Не поддерживается"
 msgid "not used"
 msgstr "не используется"
 
+msgid "Nothing found"
+msgstr "Ничего не найдено"
+
 msgid "Nothing to check"
 msgstr "Нечего проверять"
 
@@ -2527,9 +2542,6 @@ msgstr "Необязательное значение здесь нужно пе
 
 msgid "Optional values must be attached with '=' here; a separate token would be ignored by nfqws2."
 msgstr "Необязательные значения здесь должны задаваться через '='; отдельный токен будет проигнорирован nfqws2."
-
-msgid "Optional, comma-separated: check exactly these domains of the list."
-msgstr "Необязательно, через запятую: проверять именно эти домены списка."
 
 msgid "Original repositories could not be restored. Removal was cancelled before deleting packages."
 msgstr "Не удалось восстановить исходные репозитории. Удаление отменено до удаления пакетов."
@@ -2623,9 +2635,6 @@ msgstr "Периодически проверять текущий уровен�
 
 msgid "Pin on dashboard"
 msgstr "Закрепить в дашборде"
-
-msgid "Pinned domains"
-msgstr "Закреплённые домены"
 
 msgid "Pinned domains must be domain names, at most 8."
 msgstr "Закреплённые домены — это доменные имена, не больше 8."
@@ -3044,6 +3053,9 @@ msgstr "Плановые измерения выключены. Админист
 msgid "Search"
 msgstr "Поиск"
 
+msgid "Search domains"
+msgstr "Поиск домена"
+
 msgid "Secret of the Clash API controller used by YACD and the Forkop pages. Required: it is generated on installation and protects the controller with or without WAN access."
 msgstr "Секрет контроллера Clash API, который используют YACD и страницы Forkop. Обязателен: создаётся при установке и защищает контроллер независимо от доступа через WAN."
 
@@ -3112,6 +3124,9 @@ msgstr "Выберите WAN интерфейсы для мониторинга"
 
 msgid "Selected"
 msgstr "Выбран"
+
+msgid "Selected %d of %d"
+msgstr "Выбрано %d из %d"
 
 msgid "Selector and URLTest outbounds must contain a non-empty outbounds array"
 msgstr "Selector и URLTest outbound должны содержать непустой массив outbounds"
@@ -3575,6 +3590,9 @@ msgstr "Список не удалось прочитать."
 msgid "The list has no domain names to check (only keywords, regular expressions or addresses)."
 msgstr "В списке нет доменных имён для проверки (только ключевые слова, регулярные выражения или адреса)."
 
+msgid "The list is long: only its first 2000 domains can be chosen."
+msgstr "Список длинный: выбрать можно только из первых 2000 доменов."
+
 msgid "The list is not downloaded on the router; update the lists or save the rule."
 msgstr "Список не загружен на роутер; обновите списки или сохраните правило."
 
@@ -4022,6 +4040,9 @@ msgstr "Без обхода нестабильно; найдена стабил�
 msgid "up to %d automatic change(s) per day"
 msgstr "до %d автоизменений в сутки"
 
+msgid "Up to 8 domains; exactly these are checked."
+msgstr "До 8 доменов; проверяются именно они."
+
 msgid "Update"
 msgstr "Обновить"
 
@@ -4159,6 +4180,9 @@ msgstr "При переходе на другой уровень тестиро�
 
 msgid "Where to"
 msgstr "Куда"
+
+msgid "Which domains to check"
+msgstr "Какие домены проверять"
 
 msgid "Will be"
 msgstr "Будет"

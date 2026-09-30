@@ -2612,6 +2612,7 @@ var Forkop;
     AvailableMethods2["AUTOTUNE_POLICY_SET"] = "autotune_policy_set";
     AvailableMethods2["AUTOTUNE_TARGET_SET"] = "autotune_target_set";
     AvailableMethods2["AUTOTUNE_TARGET_REMOVE"] = "autotune_target_remove";
+    AvailableMethods2["AUTOTUNE_LIST_DOMAINS"] = "autotune_list_domains";
     AvailableMethods2["AUTOTUNE_RUN_ASYNC"] = "autotune_run_async";
     AvailableMethods2["AUTOTUNE_APPLY_ASYNC"] = "autotune_apply_async";
     AvailableMethods2["AUTOTUNE_ROLLBACK"] = "autotune_rollback";
@@ -2944,6 +2945,13 @@ var ForkopShellMethods = {
         resolver,
         ...(list ? [list.ruleSet, list.sample, list.pins.join(",")] : []),
       ],
+      "/usr/bin/forkop",
+      { allowNonZeroWithStdout: true },
+    ),
+  autotuneListDomains: async (ruleSet) =>
+    callBaseMethod(
+      Forkop.AvailableMethods.AUTOTUNE_LIST_DOMAINS,
+      [ruleSet],
       "/usr/bin/forkop",
       { allowNonZeroWithStdout: true },
     ),
@@ -19835,6 +19843,115 @@ function render6() {
   ]);
 }
 
+// src/forkop/tabs/autotune/domainPicker.ts
+var MAX_PINNED = 8;
+var MAX_ROWS = 300;
+function visibleDomains(domains, pinned, query, limit = MAX_ROWS) {
+  const q = query.trim().toLowerCase();
+  const matches = (d) => !q || d.includes(q);
+  const first = pinned.filter(matches);
+  const rest = domains.filter((d) => matches(d) && !pinned.includes(d));
+  const all = [...first, ...rest];
+  return {
+    shown: all.slice(0, limit),
+    hidden: Math.max(all.length - limit, 0),
+  };
+}
+function createDomainPicker(initial, load, errorText) {
+  const pinned = [...initial];
+  let domains = [];
+  let tag = null;
+  let note = "";
+  const search = E("input", {
+    class: "cbi-input-text",
+    type: "search",
+    placeholder: _("Search domains"),
+    autocomplete: "off",
+  });
+  const box = E("div", { class: "fkp-autotune__domains" });
+  const counter2 = E("div", {
+    class: "fkp-autotune__field-hint",
+  });
+  const render7 = () => {
+    const { shown, hidden } = visibleDomains(domains, pinned, search.value);
+    box.replaceChildren(
+      ...shown.map((domain) => {
+        const checked = pinned.includes(domain);
+        const check = E("input", {
+          type: "checkbox",
+          checked: checked ? true : void 0,
+          disabled: !checked && pinned.length >= MAX_PINNED ? true : void 0,
+        });
+        check.addEventListener("change", () => {
+          const at = pinned.indexOf(domain);
+          if (check.checked && at < 0) pinned.push(domain);
+          if (!check.checked && at >= 0) pinned.splice(at, 1);
+          render7();
+        });
+        return E("label", { class: "fkp-autotune__domain" }, [
+          check,
+          " ",
+          domain,
+          ...(checked &&
+          tag !== null &&
+          domains.length &&
+          !domains.includes(domain)
+            ? [
+                " ",
+                E(
+                  "span",
+                  { class: "fkp-autotune__muted" },
+                  `(${_("not in the list")})`,
+                ),
+              ]
+            : []),
+        ]);
+      }),
+      ...(shown.length
+        ? []
+        : [
+            E(
+              "div",
+              { class: "fkp-autotune__muted" },
+              note || _("Nothing found"),
+            ),
+          ]),
+    );
+    const parts = [
+      _("Selected %d of %d")
+        .replace("%d", String(pinned.length))
+        .replace("%d", String(MAX_PINNED)),
+    ];
+    if (hidden)
+      parts.push(_("%d more: refine the search").replace("%d", String(hidden)));
+    if (note && shown.length) parts.push(note);
+    counter2.textContent = parts.join(" \xB7 ");
+  };
+  search.addEventListener("input", render7);
+  return {
+    element: E("div", {}, [search, box, counter2]),
+    selected: () => [...pinned],
+    // Load the domains of a list; choosing another list clears the choice.
+    async show(next) {
+      if (next === tag) return;
+      if (tag !== null) pinned.splice(0);
+      tag = next;
+      domains = [];
+      note = _("Loading\u2026");
+      render7();
+      const result = await load(next);
+      if (tag !== next) return;
+      domains = result.domains;
+      note = result.error
+        ? errorText(result.error)
+        : result.truncated
+          ? _("The list is long: only its first 2000 domains can be chosen.")
+          : "";
+      render7();
+    },
+  };
+}
+
 // src/forkop/tabs/autotune/model.ts
 var MODES = ["off", "recommend", "auto"];
 function modeLabel(mode) {
@@ -21429,14 +21546,33 @@ function showTargetEditor(target) {
     name: "sample",
     value: String(target?.sample ?? 3),
   });
-  const pins = E("input", {
-    class: "cbi-input-text",
-    type: "text",
-    name: "pins",
-    value: (target?.pins ?? []).join(", "),
-    placeholder: _("Automatically"),
-    autocomplete: "off",
-  });
+  const choice = select(
+    "domain_choice",
+    [
+      ["auto", _("Automatically")],
+      ["manual", _("Choose from the list")],
+    ],
+    target?.pins?.length ? "manual" : "auto",
+  );
+  const picker = createDomainPicker(
+    target?.pins ?? [],
+    async (tag) => {
+      const response = await ForkopShellMethods.autotuneListDomains(tag);
+      const data = response.success ? response.data : null;
+      return data?.status === "ok"
+        ? {
+            domains: data.domains ?? [],
+            truncated: data.truncated === true,
+            error: null,
+          }
+        : {
+            domains: [],
+            truncated: false,
+            error: data?.reason ?? "list_unreadable",
+          };
+    },
+    listErrorText,
+  );
   const host = E("input", {
     class: "cbi-input-text",
     type: "text",
@@ -21469,6 +21605,11 @@ function showTargetEditor(target) {
       showToast(mutationErrorText("invalid_rule_set"), "error");
       return;
     }
+    const manual = choice.value === "manual";
+    if (isList && manual && !picker.selected().length) {
+      showToast(_("Choose at least one domain of the list."), "error");
+      return;
+    }
     ui.hideModal();
     const taken = status?.targets.map((t) => t.id) ?? [];
     const id =
@@ -21487,10 +21628,7 @@ function showTargetEditor(target) {
             ? {
                 ruleSet: ruleSet.value,
                 sample: sample.value.trim(),
-                pins: pins.value
-                  .split(/[\s,]+/)
-                  .map((p) => p.trim().toLowerCase())
-                  .filter(Boolean),
+                pins: manual ? picker.selected() : [],
               }
             : void 0,
         ),
@@ -21510,25 +21648,35 @@ function showTargetEditor(target) {
         "A list of a DPI rule. Each check takes a few of its domains; keywords and regular expressions are skipped.",
       ),
     ),
-    ...field2(
-      _("Domains to check"),
-      sample,
-      _(
-        "1\u20138 domains, spread evenly over the list; a domain without an address is replaced by the next one.",
-      ),
-    ),
-    ...field2(
-      _("Pinned domains"),
-      pins,
-      _("Optional, comma-separated: check exactly these domains of the list."),
-    ),
+    ...field2(_("Which domains to check"), choice),
   ];
+  const autoFields = field2(
+    _("Domains to check"),
+    sample,
+    _(
+      "1\u20138 domains, spread evenly over the list; a domain without an address is replaced by the next one.",
+    ),
+  );
+  const manualFields = field2(
+    _("Domains of the list"),
+    picker.element,
+    _("Up to 8 domains; exactly these are checked."),
+  );
+  const show = (els, visible) => {
+    for (const el of els) el.style.display = visible ? "" : "none";
+  };
   const showKind = () => {
     const isList = kind.value === "list";
-    for (const el of hostFields) el.style.display = isList ? "none" : "";
-    for (const el of listFields) el.style.display = isList ? "" : "none";
+    const manual = choice.value === "manual";
+    show(hostFields, !isList);
+    show(listFields, isList);
+    show(autoFields, isList && !manual);
+    show(manualFields, isList && manual);
+    if (isList && manual && ruleSet.value) void picker.show(ruleSet.value);
   };
   kind.addEventListener("change", showKind);
+  choice.addEventListener("change", showKind);
+  ruleSet.addEventListener("change", showKind);
   showKind();
   ui.showModal(target ? _("Edit target") : _("Add target"), [
     E("div", { class: "fkp-autotune__form" }, [
@@ -21543,6 +21691,8 @@ function showTargetEditor(target) {
       ),
       ...hostFields,
       ...listFields,
+      ...autoFields,
+      ...manualFields,
       ...field2(
         _("DNS server for checks"),
         resolver,
@@ -22356,6 +22506,9 @@ var styles8 = `
     min-width: 0;
 }
 .fkp-autotune__item:first-child { border-top: 0; }
+/* Choosing pinned domains of a list: a scrollable list of checkboxes. */
+.fkp-autotune__domains { max-height: 240px; overflow-y: auto; margin-top: var(--fkp-space-1); padding: var(--fkp-space-1) var(--fkp-space-2); border: 1px solid var(--fkp-border); border-radius: 4px; }
+.fkp-autotune__domain { display: flex; align-items: center; gap: var(--fkp-space-1); padding: 2px 0; overflow-wrap: anywhere; font-weight: normal; }
 /* The domains of a list target, under it and indented. */
 .fkp-autotune__members { flex: 1 1 100%; min-width: 0; padding-left: var(--fkp-space-3); border-left: 2px solid var(--fkp-border); }
 .fkp-autotune__what { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }

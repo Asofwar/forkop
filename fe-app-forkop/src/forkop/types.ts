@@ -170,6 +170,17 @@ export namespace Forkop {
   }
 
   // A local list the routing sends to a DPI rule, for the target editor.
+  // The domains of a DPI rule list, for choosing pinned domains.
+  export interface AutotuneListDomains {
+    status: 'ok' | 'failed';
+    reason?: string;
+    rule_set?: string;
+    total?: number;
+    skipped?: number;
+    truncated?: boolean;
+    domains?: string[];
+  }
+
   export interface AutotuneRuleList {
     tag: string;
     rule: string;
@@ -491,6 +502,7 @@ export namespace Forkop {
     AUTOTUNE_POLICY_SET = 'autotune_policy_set',
     AUTOTUNE_TARGET_SET = 'autotune_target_set',
     AUTOTUNE_TARGET_REMOVE = 'autotune_target_remove',
+    AUTOTUNE_LIST_DOMAINS = 'autotune_list_domains',
     AUTOTUNE_RUN_ASYNC = 'autotune_run_async',
     AUTOTUNE_APPLY_ASYNC = 'autotune_apply_async',
     AUTOTUNE_ROLLBACK = 'autotune_rollback',

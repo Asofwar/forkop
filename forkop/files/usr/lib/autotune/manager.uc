@@ -385,6 +385,8 @@ function blocker(for_apply) {
     let s = run_tool("apply", [ "status" ]);
     if (s == null) return "apply_status_unavailable";
     if (for_apply && s.service_stopped === true) return "service_stopped";
+    // A guard a failed lifecycle transition kept: only a restart removes it.
+    if (s.runtime_guard === true) return "runtime_guard_active";
     if (length(s.guards || []) > 0) return "dpi_guard_present";
     if (s.snapshot_operation) return "snapshot_operation_active";
     if (s.service_action) return s.service_action;

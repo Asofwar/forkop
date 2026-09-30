@@ -217,7 +217,7 @@ ok "a candidate queue that did not take every probe packet invalidates the run"
 reset_state; CURL_STUB_PLAN="direct=reset,4600=success:120,4601=success:118" tune 3 192.0.2.53 multisplit,fake
 json 'a.equal(r.status, "selected"); a.equal(r.production.unchanged, true); a.equal(r.applied, false);
   a.deepEqual(r.production.before, r.production.after);' "$WORK/out.json"
-! grep -vE '^nft (list tables|list table inet [A-Za-z]+|-j list table inet [A-Za-z]+|list ruleset|-j -t list ruleset|-j list set inet ForkopTable forkop_interfaces|-f .*/(probe|switch)\.nft|delete table inet ForkopAutotuneProbe)$' "$STUB_LOG/nft.log" ||
+! grep -vE '^nft (list tables|list table inet [A-Za-z]+|list chain inet ForkopTable forkop_transition_guard|-j list table inet [A-Za-z]+|list ruleset|-j -t list ruleset|-j list set inet ForkopTable forkop_interfaces|-f .*/(probe|switch)\.nft|delete table inet ForkopAutotuneProbe)$' "$STUB_LOG/nft.log" ||
   fail "unexpected nft command: $(grep -vE '^nft (list|-j|-f|delete table inet ForkopAutotuneProbe)' "$STUB_LOG/nft.log" | head -3)"
 kill -0 "$PROD_NFQWS" || fail "production nfqws stand-in signalled"
 assert_clean "no mutation"

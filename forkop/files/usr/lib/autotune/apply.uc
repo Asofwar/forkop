@@ -255,10 +255,24 @@ function snapshot_operation_active() {
     }
     return false;
 }
+// The transition guard chain that a sing-box transition whose rollback
+// failed keeps in the production table (service/lifecycle.uc).
+const TRANSITION_GUARD_CHAIN = "forkop_transition_guard";
+function transition_chain_present() {
+    return capture([ "nft", "list", "chain", "inet", PROD_TABLE, TRANSITION_GUARD_CHAIN ]).status == 0;
+}
 function guards_present() {
     let result = [];
     for (let name in GUARD_TABLES) if (table_present(name) != false) push(result, name);
+    if (transition_chain_present()) push(result, PROD_TABLE + ":" + TRANSITION_GUARD_CHAIN);
     return result;
+}
+// A fail-closed guard that a failed lifecycle transition kept: its DPI guard
+// table or the transition guard chain (service/lifecycle.uc
+// runtime_guard_kept). Only a restart removes it; until then the lifecycle
+// refuses every reload and the snapshot restore refuses to start (UC-019).
+function runtime_guard_kept() {
+    return table_present(PROD_TABLE + "DpiGuard") != false || transition_chain_present();
 }
 // A lifecycle action (reload/start, and a stop once its bounded wait got the
 // lock) holds the reload lock, and a running list update gets every reload
@@ -614,6 +628,7 @@ function unresolved(s, d) {
 // Everything that must still hold for the plan: nothing is changed on failure.
 function stale_reason(p, resolver) {
     if (service_stopped()) return "service_stopped";
+    if (runtime_guard_kept()) return "runtime_guard_active";
     if (length(guards_present()) > 0) return "restore_guard_active";
     if (snapshot_operation_active()) return "snapshot_operation_in_progress";
     let action = service_action();
@@ -859,6 +874,7 @@ function rollback_source(s, pre) {
 // is the configuration to return to: restored when the configuration differs
 // from it, then the record is set aside (.corrupt) for inspection.
 function rollback_unreadable() {
+    if (runtime_guard_kept()) return { status: "failed", reason: "runtime_guard_active" };
     if (length(guards_present()) > 0) return { status: "failed", reason: "restore_guard_active" };
     if (snapshot_operation_active()) return { status: "failed", reason: "snapshot_operation_in_progress" };
     if (service_stopped()) return { status: "failed", reason: "service_stopped" };
@@ -892,6 +908,9 @@ function rollback() {
     let unfinished = index(TERMINAL_PHASES, s.phase) < 0;
     if (!(s.phase == "applied" || s.phase == "needs_attention" || (s.phase == "failed" && s.reason == "interrupted_after_apply") || unfinished))
         return { status: "failed", reason: "nothing_to_roll_back", phase: s.phase };
+    // The restore refuses before any change while a failed lifecycle
+    // transition keeps its guard; the record stays as it is (UC-019).
+    if (runtime_guard_kept()) return { status: "failed", reason: "runtime_guard_active", phase: s.phase };
     if (d.diagnosis != "candidate_active") return { status: "failed", reason: "rollback_needs_candidate_config", diagnosis: d.diagnosis };
     if (service_stopped()) return { status: "failed", reason: "service_stopped" };
     let action = service_action();
@@ -914,7 +933,8 @@ function status() {
     let s = state_read();
     let text = fs.readfile(CONFIG_FILE);
     let hash = text != null ? sha_text(text) : "";
-    let result = { state: s, config_hash: hash, guards: guards_present(), snapshot_operation: snapshot_operation_active(),
+    let result = { state: s, config_hash: hash, guards: guards_present(), runtime_guard: runtime_guard_kept(),
+        snapshot_operation: snapshot_operation_active(),
         service_action: service_action(), service_stopped: service_stopped(), autotune_lock_held: autotune_lock.held() };
     if (type(s) == "object") {
         let d = diagnose(s);

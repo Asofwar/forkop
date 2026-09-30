@@ -61,6 +61,10 @@ cat > "$WORK/bin/nft" <<'SH'
 echo "nft $*" >> "$STUB_LOG/nft.log"
 case "$*" in
   "list tables") for t in "$NFT_STATE/tables"/*; do [ -e "$t" ] && echo "table inet ${t##*/}"; done; exit 0 ;;
+  # The guards a failed lifecycle transition keeps (UC-019): the DPI guard
+  # table and the transition guard chain ("<table>.<chain>" in chains).
+  "list table inet ForkopTableDpiGuard") [ -e "$NFT_STATE/tables/ForkopTableDpiGuard" ]; exit $? ;;
+  "list chain inet "*) [ -e "$NFT_STATE/chains/$4.$5" ]; exit $? ;;
   "list ruleset") echo "table inet ForkopTable {"; echo "}"; exit 0 ;;
   "-j list chain inet ForkopTable mangle_output")
     read -r p < "$STATE/prod.counter"
@@ -683,6 +687,32 @@ confirm; json 'a.equal(r.status, "confirmed", JSON.stringify(r));' "$WORK/confir
 sed -i "s|option nfqws_opt '$MULTISPLIT'|option nfqws_opt '$FAKE'|" "$FORKOP_CONFIG_FILE"
 manager_run; json 'a.equal(r.result, "completed");' "$WORK/run.json"
 ok "20c crash during verification -> blocks while the candidate is active; restore, edit or rollback unblocks the next run"
+
+# 20e. A failed lifecycle transition kept its fail-closed guard (the DPI
+#      guard table, or the transition guard chain): only a restart removes
+#      it, and the snapshot restore refuses before any change. The operator's
+#      rollback says so and leaves the record as it was; runs, probes and
+#      applies wait for the restart with that reason, not as an outdated
+#      recommendation (UC-019).
+mkdir -p "$NFT_STATE/chains"
+for kept in tables/ForkopTableDpiGuard chains/ForkopTable.forkop_transition_guard; do
+  crash_in_verification
+  touch "$NFT_STATE/$kept"
+  candidate_hash="$(chash)"
+  at rollback
+  json 'a.equal(r.status, "failed", JSON.stringify(r)); a.match(r.reason, /runtime_guard_active$/);' "$WORK/out.json"
+  json 'a.equal(r.phase, "verifying"); a.notEqual(r.status, "needs_attention");' "$FORKOP_AUTOTUNE_APPLY_STATE"
+  [ "$(chash)" = "$candidate_hash" ] || fail "$kept: the refused rollback changed the configuration"
+  at status; json 'a.equal(r.runtime_guard, true); a.ok(r.guards.length > 0);' "$WORK/out.json"
+  manager_run; json 'a.equal(r.result, "skipped"); a.equal(r.reason, "runtime_guard_active");' "$WORK/run.json"
+  rm -f "$NFT_STATE/$kept"
+  at rollback; json 'a.equal(r.status, "rolled_back");' "$WORK/out.json"
+  reset_apply; plan_ready; touch "$NFT_STATE/$kept"; at apply "$WORK/plan.json"
+  json 'a.equal(r.status, "stale"); a.equal(r.reason, "runtime_guard_active");' "$WORK/out.json"
+  { [ "$(chash)" = "$PRE_HASH" ] && [ "$(reloads)" = 0 ]; } || fail "$kept: applied over a kept runtime guard"
+  rm -f "$NFT_STATE/$kept"
+done
+ok "20e runtime guard kept by a failed transition -> rollback refused without touching the record, runs and applies wait for a restart"
 
 # 20d. An unreadable or empty apply record is needs_attention, never "no
 #      record" (UC-069): runs and applies wait, the rollback path stays. The

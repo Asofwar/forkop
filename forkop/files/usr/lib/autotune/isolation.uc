@@ -247,6 +247,10 @@ function child_records() {
 function guards_present() {
     let result = [];
     for (let name in GUARD_TABLES) if (table_exists(name)) push(result, name);
+    // The transition guard chain that a sing-box transition whose rollback
+    // failed keeps in the production table (service/lifecycle.uc, UC-019).
+    if (capture([ "nft", "list", "chain", "inet", PROD_TABLE, "forkop_transition_guard" ]).status == 0)
+        push(result, PROD_TABLE + ":forkop_transition_guard");
     return result;
 }
 

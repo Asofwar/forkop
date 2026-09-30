@@ -170,6 +170,10 @@ json 'a.equal(r.status, "completed");' "$WORK/out.json"; ok "TIME_WAIT leftovers
 reset_state; touch "$NFT_STATE/tables/ForkopConfigRestoreDpiGuard"; refused guard_active
 [ -e "$NFT_STATE/tables/ForkopConfigRestoreDpiGuard" ] || fail "guard was removed"
 reset_state; touch "$NFT_STATE/tables/ForkopTableDpiGuard"; refused guard_active
+# The transition guard chain a failed sing-box transition keeps (UC-019).
+reset_state; mkdir -p "$NFT_STATE/chains"; touch "$NFT_STATE/chains/ForkopTable.forkop_transition_guard"
+refused guard_active
+rm -f "$NFT_STATE/chains/ForkopTable.forkop_transition_guard"
 reset_state; mkdir -p "$FORKOP_SNAPSHOT_LOCK_DIR"; refused snapshot_operation_in_progress
 
 # --- stale state -----------------------------------------------------------

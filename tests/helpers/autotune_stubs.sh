@@ -88,6 +88,8 @@ echo "nft $*" >> "$STUB_LOG/nft.log"
 case "$*" in
   "list tables") for t in "$T"/*; do [ -e "$t" ] && echo "table inet ${t##*/}"; done; exit 0 ;;
   "list table inet "*) [ -e "$T/$4" ]; exit ;;
+  # A chain of a table: $S/chains/<table>.<chain>.
+  "list chain inet "*) [ -e "$S/chains/$4.$5" ]; exit ;;
   "-j list table inet "*)
     [ -e "$T/$5" ] || exit 1
     if [ "$5" = ForkopAutotuneProbe ]; then

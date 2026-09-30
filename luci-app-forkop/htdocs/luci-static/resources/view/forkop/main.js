@@ -19160,6 +19160,30 @@ function diffRows(changes) {
     current: diffValue(change.after),
   }));
 }
+function isTruncation(entry) {
+  return entry.truncated === true;
+}
+function snapshotDiff(entries) {
+  const changes = entries.filter((entry) => !isTruncation(entry));
+  const marker = entries.find(isTruncation);
+  return {
+    changes,
+    total: Math.max(Number(marker?.total) || 0, changes.length),
+  };
+}
+function diffTruncatedText(diff) {
+  return _("Only the first %d changes are listed; %d changes in total.")
+    .replace("%d", String(diff.changes.length))
+    .replace("%d", String(diff.total));
+}
+function restorePreview(diff, limit) {
+  const preview = diffRows(diff.changes.slice(0, limit)).map(
+    (row) => `${row.where}: ${row.current} \u2192 ${row.snapshot}`,
+  );
+  const more = diff.total - preview.length;
+  if (more > 0) preview.push(_("and %d more").replace("%d", String(more)));
+  return preview;
+}
 function snapshotBusyText(reason) {
   if (reason === "service_action_in_progress")
     return _(
@@ -19429,12 +19453,14 @@ function renderHistory() {
         ),
   );
 }
-function renderDiffTable(changes) {
-  const rows = diffRows(changes);
-  if (!rows.length) {
+function renderDiffTable(diff) {
+  const rows = diffRows(diff.changes);
+  if (!diff.total) {
     return E("p", {}, _("No saved changes since this snapshot"));
   }
   return E("div", { class: "fkp-history__diff-wrap" }, [
+    // UC-062: a cut list says it is not the whole change.
+    ...(diff.total > rows.length ? [E("p", {}, diffTruncatedText(diff))] : []),
     E("table", { class: "table fkp-history__diff" }, [
       E("tr", { class: "tr table-titles" }, [
         E("th", { class: "th" }, _("Setting")),
@@ -19454,17 +19480,17 @@ function renderDiffTable(changes) {
 async function loadDiff(id) {
   const response = await ForkopShellMethods.snapshotDiff(id);
   return response.success && Array.isArray(response.data)
-    ? response.data
+    ? snapshotDiff(response.data)
     : null;
 }
 async function showChanges(id) {
-  const changes = await loadDiff(id);
-  if (!changes) {
+  const diff = await loadDiff(id);
+  if (!diff) {
     showToast(_("Could not compare configurations"), "error");
     return;
   }
   ui.showModal(_("Changes since this snapshot"), [
-    renderDiffTable(changes),
+    renderDiffTable(diff),
     E("div", { class: "fkp-confirm__actions" }, [
       E(
         "button",
@@ -19500,16 +19526,7 @@ async function restoreSnapshot(id, label) {
     showToast(unsavedChangesText(), "warning", 8e3);
     return;
   }
-  const changes = await loadDiff(id);
-  const rows = changes ? diffRows(changes) : [];
-  const preview = rows
-    .slice(0, MAX_RESTORE_PREVIEW)
-    .map((row) => `${row.where}: ${row.current} \u2192 ${row.snapshot}`);
-  if (rows.length > MAX_RESTORE_PREVIEW) {
-    preview.push(
-      _("and %d more").replace("%d", String(rows.length - MAX_RESTORE_PREVIEW)),
-    );
-  }
+  const diff = await loadDiff(id);
   await refreshRuntimeUiState({ force: true }).catch(() => void 0);
   const services = store.get().servicesInfoWidget.data;
   const staysStopped = Boolean(
@@ -19518,9 +19535,9 @@ async function restoreSnapshot(id, label) {
   const confirmed = await confirmAction({
     title: _("Restore configuration snapshot?"),
     message: `${label}. ${restoreConfirmMessage(staysStopped)}`,
-    consequences: changes
-      ? rows.length
-        ? preview
+    consequences: diff
+      ? diff.total
+        ? restorePreview(diff, MAX_RESTORE_PREVIEW)
         : [_("No saved changes since this snapshot")]
       : [_("Could not compare configurations")],
     confirmLabel: _("Restore"),

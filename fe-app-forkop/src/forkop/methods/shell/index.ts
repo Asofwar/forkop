@@ -460,7 +460,7 @@ export const ForkopShellMethods = {
       Forkop.AvailableMethods.CONFIG_SNAPSHOT_LIST,
     ),
   snapshotDiff: async (id: string) =>
-    callBaseMethod<Forkop.SnapshotChange[]>(
+    callBaseMethod<Forkop.SnapshotDiffEntry[]>(
       Forkop.AvailableMethods.CONFIG_SNAPSHOT_DIFF,
       [id],
     ),

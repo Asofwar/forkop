@@ -316,8 +316,13 @@ function diff_side(option, entry) {
     if (entry == null) return null;
     return entry.kind == "list" ? safe_values(option, entry.values) : safe_value(option, entry.value);
 }
+// At most DIFF_ROWS changes are listed. A longer diff ends with a marker in
+// place of the rest, { truncated: true, total }, total counting every changed
+// option, so no reader takes the list for the whole change (UC-062). The
+// array form stays for its readers; the marker holds a count, no value.
+const DIFF_ROWS = 100;
 function diff(before, after) {
-    let old = options(before), current = options(after), result = [];
+    let old = options(before), current = options(after), result = [], total = 0;
     let all = {};
     for (let key in keys(old)) all[key] = true;
     for (let key in keys(current)) all[key] = true;
@@ -332,11 +337,12 @@ function diff(before, after) {
             row.kind = "list";
         }
         else if (a != null && b != null && a.value == b.value) continue;
+        if (++total > DIFF_ROWS) continue;
         row.before = diff_side(option, a);
         row.after = diff_side(option, b);
         push(result, row);
-        if (length(result) >= 100) break;
     }
+    if (total > DIFF_ROWS) push(result, { truncated: true, total });
     return result;
 }
 // Install uses ensure semantics: after needs_attention the guard from the

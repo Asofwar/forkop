@@ -320,6 +320,13 @@ export namespace Forkop {
     before: string | string[] | null;
     after: string | string[] | null;
   }
+  // The last entry of a diff longer than the backend lists: `total` changed
+  // options, of which only the entries before it are listed (UC-062).
+  export interface SnapshotDiffTruncation {
+    truncated: true;
+    total: number;
+  }
+  export type SnapshotDiffEntry = SnapshotChange | SnapshotDiffTruncation;
   export interface SnapshotResult {
     status:
       | 'created'
@@ -339,7 +346,7 @@ export namespace Forkop {
       // replaced and validated, the runtime is not started (D-15).
       | 'restored_not_started';
     snapshot?: SnapshotMetadata;
-    changes?: SnapshotChange[];
+    changes?: SnapshotDiffEntry[];
     reason?: string;
     // "stopped": an explicit stop held the runtime down; nothing was
     // reloaded or started.

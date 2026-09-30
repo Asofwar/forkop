@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-30 11:59+0000\n"
-"PO-Revision-Date: 2026-09-30 11:59+0000\n"
+"POT-Creation-Date: 2026-09-30 12:09+0000\n"
+"PO-Revision-Date: 2026-09-30 12:09+0000\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -2434,6 +2434,9 @@ msgstr "Только серверы с одним из выбранных тип
 
 msgid "Only servers with one of the selected transports."
 msgstr "Только серверы с одним из выбранных транспортов."
+
+msgid "Only the first %d changes are listed; %d changes in total."
+msgstr "Показаны только первые %d изменений; всего изменений: %d."
 
 msgid "Only the specified servers."
 msgstr "Только указанные серверы."

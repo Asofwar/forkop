@@ -297,6 +297,52 @@ export function diffRows(changes: Forkop.SnapshotChange[]) {
   }));
 }
 
+export interface SnapshotDiff {
+  changes: Forkop.SnapshotChange[];
+  // Every changed option: more than `changes` when the list is cut.
+  total: number;
+}
+
+function isTruncation(
+  entry: Forkop.SnapshotDiffEntry,
+): entry is Forkop.SnapshotDiffTruncation {
+  return (entry as Forkop.SnapshotDiffTruncation).truncated === true;
+}
+
+// UC-062: the backend lists a limited number of changes; a longer diff ends
+// with { truncated, total } in place of the rest.
+export function snapshotDiff(
+  entries: Forkop.SnapshotDiffEntry[],
+): SnapshotDiff {
+  const changes = entries.filter(
+    (entry): entry is Forkop.SnapshotChange => !isTruncation(entry),
+  );
+  const marker = entries.find(isTruncation);
+  return {
+    changes,
+    total: Math.max(Number(marker?.total) || 0, changes.length),
+  };
+}
+
+// Above a cut list in the Changes modal: the list is not the whole change.
+export function diffTruncatedText(diff: SnapshotDiff) {
+  return _('Only the first %d changes are listed; %d changes in total.')
+    .replace('%d', String(diff.changes.length))
+    .replace('%d', String(diff.total));
+}
+
+// The restore confirmation: the first `limit` changes, then how many more
+// the restore changes, counted of all of them, not of the listed ones
+// (UC-062).
+export function restorePreview(diff: SnapshotDiff, limit: number) {
+  const preview = diffRows(diff.changes.slice(0, limit)).map(
+    (row) => `${row.where}: ${row.current} → ${row.snapshot}`,
+  );
+  const more = diff.total - preview.length;
+  if (more > 0) preview.push(_('and %d more').replace('%d', String(more)));
+  return preview;
+}
+
 export interface SnapshotToast {
   text: string;
   type: 'success' | 'warning' | 'error';

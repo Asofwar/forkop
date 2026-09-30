@@ -159,8 +159,15 @@ const EntryPoint = {
             reload.timestamp >= applyStartedAt &&
             reload.timestamp > previousReloadAt &&
             reload.status === "success";
-          const changes =
+          const entries =
             diff.success && Array.isArray(diff.data) ? diff.data : [];
+          // UC-062: a diff longer than the backend lists ends with
+          // { truncated, total } in place of the rest.
+          const changes = entries.filter((entry) => entry.truncated !== true);
+          const marker = entries.find((entry) => entry.truncated === true);
+          const more = marker
+            ? Math.max((Number(marker.total) || 0) - changes.length, 0)
+            : 0;
           // null: the option is not set on that side (D-2).
           const diffValue = (value) =>
             value === null || value === undefined
@@ -175,6 +182,7 @@ const EntryPoint = {
                   (change) =>
                     `${change.section}.${change.option}: ${diffValue(change.before)} → ${diffValue(change.after)}`,
                 ),
+                ...(more ? [_("and %d more").format(more)] : []),
               ].join("\n")
             : _(
                 "Configuration saved. Runtime reload has not been confirmed; check History and recovery.",

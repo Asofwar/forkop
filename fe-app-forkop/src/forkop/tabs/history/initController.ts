@@ -16,16 +16,20 @@ import {
 } from '../../ui/states';
 import {
   diffRows,
+  diffTruncatedText,
   historyFilterLabel,
   historyItems,
   recoveryRows,
   restoreConfirmMessage,
+  restorePreview,
   restoreResultToast,
   snapshotBusyText,
+  snapshotDiff,
   snapshotRows,
   unsavedChangesBlockRestore,
   unsavedChangesText,
   type HistoryFilter,
+  type SnapshotDiff,
 } from './model';
 import { FORKOP_UCI_PACKAGE } from '../../../constants';
 
@@ -171,13 +175,15 @@ function renderHistory() {
   );
 }
 
-function renderDiffTable(changes: Forkop.SnapshotChange[]) {
-  const rows = diffRows(changes);
-  if (!rows.length) {
+function renderDiffTable(diff: SnapshotDiff) {
+  const rows = diffRows(diff.changes);
+  if (!diff.total) {
     return E('p', {}, _('No saved changes since this snapshot'));
   }
 
   return E('div', { class: 'fkp-history__diff-wrap' }, [
+    // UC-062: a cut list says it is not the whole change.
+    ...(diff.total > rows.length ? [E('p', {}, diffTruncatedText(diff))] : []),
     E('table', { class: 'table fkp-history__diff' }, [
       E('tr', { class: 'tr table-titles' }, [
         E('th', { class: 'th' }, _('Setting')),
@@ -198,19 +204,19 @@ function renderDiffTable(changes: Forkop.SnapshotChange[]) {
 async function loadDiff(id: string) {
   const response = await ForkopShellMethods.snapshotDiff(id);
   return response.success && Array.isArray(response.data)
-    ? response.data
+    ? snapshotDiff(response.data)
     : null;
 }
 
 async function showChanges(id: string) {
-  const changes = await loadDiff(id);
-  if (!changes) {
+  const diff = await loadDiff(id);
+  if (!diff) {
     showToast(_('Could not compare configurations'), 'error');
     return;
   }
 
   ui.showModal(_('Changes since this snapshot'), [
-    renderDiffTable(changes),
+    renderDiffTable(diff),
     E('div', { class: 'fkp-confirm__actions' }, [
       E(
         'button',
@@ -251,16 +257,7 @@ async function restoreSnapshot(id: string, label: string) {
     return;
   }
 
-  const changes = await loadDiff(id);
-  const rows = changes ? diffRows(changes) : [];
-  const preview = rows
-    .slice(0, MAX_RESTORE_PREVIEW)
-    .map((row) => `${row.where}: ${row.current} → ${row.snapshot}`);
-  if (rows.length > MAX_RESTORE_PREVIEW) {
-    preview.push(
-      _('and %d more').replace('%d', String(rows.length - MAX_RESTORE_PREVIEW)),
-    );
-  }
+  const diff = await loadDiff(id);
 
   // Whether Forkop X is stopped by the user or not started since boot now
   // decides what the restore does (D-15).
@@ -273,9 +270,9 @@ async function restoreSnapshot(id: string, label: string) {
   const confirmed = await confirmAction({
     title: _('Restore configuration snapshot?'),
     message: `${label}. ${restoreConfirmMessage(staysStopped)}`,
-    consequences: changes
-      ? rows.length
-        ? preview
+    consequences: diff
+      ? diff.total
+        ? restorePreview(diff, MAX_RESTORE_PREVIEW)
         : [_('No saved changes since this snapshot')]
       : [_('Could not compare configurations')],
     confirmLabel: _('Restore'),

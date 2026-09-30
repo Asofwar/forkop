@@ -2,11 +2,14 @@ import { describe, expect, it } from 'vitest';
 
 import {
   diffRows,
+  diffTruncatedText,
   historyItems,
   recoveryRows,
   restoreConfirmMessage,
+  restorePreview,
   restoreResultToast,
   snapshotBusyText,
+  snapshotDiff,
   snapshotReasonLabel,
   snapshotRows,
   unsavedChangesBlockRestore,
@@ -328,6 +331,51 @@ describe('snapshots', () => {
         snapshot: 'not set',
         current: '***',
       },
+    ]);
+  });
+
+  // UC-062: the backend lists at most 100 changes; a longer diff ends with
+  // { truncated, total } in place of the rest.
+  const changes = (count: number): Forkop.SnapshotChange[] =>
+    Array.from({ length: count }, (_, i) => ({
+      section: 'settings',
+      option: `opt${i}`,
+      before: 'a',
+      after: 'b',
+    }));
+
+  it('counts every change of a cut diff, not only the listed ones', () => {
+    const cut = snapshotDiff([
+      ...changes(100),
+      { truncated: true, total: 250 },
+    ]);
+    expect(cut.changes).toHaveLength(100);
+    expect(cut.changes.some((change) => 'truncated' in change)).toBe(false);
+    expect(cut.total).toBe(250);
+    expect(diffTruncatedText(cut)).toBe(
+      'Only the first 100 changes are listed; 250 changes in total.',
+    );
+
+    const whole = snapshotDiff(changes(3));
+    expect(whole).toEqual({ changes: changes(3), total: 3 });
+    expect(snapshotDiff([])).toEqual({ changes: [], total: 0 });
+  });
+
+  it('does not understate the scope of a restore', () => {
+    const preview = restorePreview(
+      snapshotDiff([...changes(100), { truncated: true, total: 250 }]),
+      8,
+    );
+    expect(preview).toHaveLength(9);
+    expect(preview[0]).toBe('settings · opt0: b → a');
+    expect(preview[8]).toBe('and 242 more');
+
+    expect(restorePreview(snapshotDiff(changes(10)), 8)[8]).toBe('and 2 more');
+    expect(restorePreview(snapshotDiff(changes(8)), 8)).toHaveLength(8);
+    expect(restorePreview(snapshotDiff(changes(3)), 8)).toEqual([
+      'settings · opt0: b → a',
+      'settings · opt1: b → a',
+      'settings · opt2: b → a',
     ]);
   });
 });

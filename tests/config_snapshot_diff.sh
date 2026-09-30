@@ -4,6 +4,7 @@
 # UC-018: an anonymous section (`config <type>` without a name) is a section
 # of its own, addressed as libuci does (@type[n], n counting every section of
 # that type in file order), never merged into the named section before it.
+# UC-062: a diff longer than the listed rows says so, with the total.
 set -eu
 ROOT="$(CDPATH="" cd -- "$(dirname -- "$0")/.." && pwd)"
 LIB="$ROOT/forkop/files/usr/lib"
@@ -32,7 +33,8 @@ function diff(before, after) {
   // libuci reads the same option at the reported key.
   if (uci) {
     for (const row of rows) {
-      if (!row.section.startsWith('@') || typeof row.after !== 'string' || row.after === '***') continue;
+      if (typeof row.section !== 'string' || !row.section.startsWith('@') ||
+        typeof row.after !== 'string' || row.after === '***') continue;
       const got = execFileSync(uci, ['-c', dir, 'get', `forkop.${row.section}.${row.option}`]).toString().trim();
       assert.equal(got, row.after, `uci get forkop.${row.section}.${row.option}`);
     }
@@ -146,5 +148,35 @@ const all = JSON.stringify([
   diff(settings("list subscription_urls 'https://SECRET_MARKER_u@example.com'"), settings()),
 ]);
 assert.equal(all.includes('SECRET_MARKER'), false);
+
+// UC-062: at most 100 rows are listed. A longer diff ends with a marker,
+// { truncated: true, total }, total counting every changed option (a list
+// option once); the array form stays for its readers.
+const many = (count, value) => settings(...Array.from({ length: count }, (_, i) => `option opt${i} '${value}'`));
+const hundred = diff(many(100, 'a'), many(100, 'b'));
+assert.equal(hundred.length, 100);
+assert.equal(hundred.some((row) => 'truncated' in row || 'total' in row), false);
+const cut = diff(many(101, 'a'), many(101, 'b'));
+assert.equal(cut.length, 101);
+assert.deepEqual(cut[100], { truncated: true, total: 101 });
+assert.ok(cut.slice(0, 100).every((row) => row.section === 'settings' && /^opt[0-9]+$/.test(row.option)));
+const lists = Array.from({ length: 30 }, (_, i) => `list list${i} 'x'`);
+const wide = diff(many(250, 'a'), settings(...Array.from({ length: 250 }, (_, i) => `option opt${i} 'b'`), ...lists, ...lists));
+assert.equal(wide.length, 101);
+assert.deepEqual(wide[100], { truncated: true, total: 280 });
+// Unchanged options do not count.
+const same = diff(many(150, 'a') + section('section', 'main', "option action 'a'"), many(150, 'a') + section('section', 'main', "option action 'b'"));
+assert.deepEqual(same, [{ section: 'main', option: 'action', before: 'a', after: 'b' }]);
+// The marker carries a count, nothing of a value.
+assert.equal(JSON.stringify(diff(many(120, 'SECRET_MARKER_a'), settings())).includes('SECRET_MARKER'), false);
+// Nor does a cut diff of the S1 secret fixture (config_snapshot_diff is
+// read-only reachable), its sections made anonymous and repeated past 100.
+const fixture = fs.readFileSync(`${lib}/../../../../tests/fixtures/readonly_secrets/forkop`, 'utf8')
+  .replace(/^config[ \t]+(\S+)[ \t]+\S+[ \t]*$/gm, 'config $1');
+const secrets = diff('', fixture + fixture + fixture);
+assert.deepEqual(secrets.at(-1), { truncated: true, total: secrets.at(-1).total });
+assert.ok(secrets.at(-1).total > 100);
+assert.equal(secrets.length, 101);
+assert.equal(JSON.stringify(secrets).includes('SECRET_MARKER'), false);
 JS
 echo 'config_snapshot_diff: PASS'

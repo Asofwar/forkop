@@ -574,6 +574,10 @@ function mark_internal_config_guard() {
         fs.unlink(tmp_path);
 }
 
+// A commit of the whole package: libuci also commits whatever someone staged
+// with `uci set` in /tmp/.uci/forkop. The shutdown_correctly bookkeeping of
+// start and stop still commits this way (UC-160); ensure_clash_api_secret
+// commits its option alone (core/uci.uc commit_option).
 function config_commit() {
     if (!uci_core.commit(CONFIG_NAME))
         return 1;

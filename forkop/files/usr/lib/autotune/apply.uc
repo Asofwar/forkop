@@ -631,11 +631,17 @@ function stale_reason(p, resolver) {
 
 // Restore the pre-apply snapshot through the standard restore transaction
 // and prove the old configuration and runtime are back.
+// A rollback replaces only the candidate this apply wrote: the restore is
+// given the candidate's fingerprint (the lifecycle's shutdown_correctly flag
+// aside) and refuses before any change when the configuration was edited
+// since, during the verification or right before an operator's rollback. The
+// edit stays and is saved as a snapshot; LKG is not moved (UC-017).
 function rollback_to(audit, p, why) {
     let recorded = { phase: audit.phase, status: audit.status, reason: audit.reason };
     audit.phase = "rolling_back";
     state_write(audit);
-    let restored = snapshots([ "restore", audit.pre_snapshot ]);
+    let expected = valid_hash(audit.candidate_fingerprint) ? audit.candidate_fingerprint : as_string(audit.candidate_hash);
+    let restored = snapshots([ "restore", audit.pre_snapshot, expected ]);
     // A lifecycle action that owns the reload lock, or a running list update
     // (which also fails verification's no_service_action), refuses the
     // restore unchanged. An automatic rollback waits for it, bounded, instead of
@@ -643,19 +649,25 @@ function rollback_to(audit, p, why) {
     for (let waited = 0; why != "operator_rollback" && restored.status == "busy" &&
         restored.reason == "service_action_in_progress" && waited < ROLLBACK_WAIT_SECONDS && !interrupted; waited++) {
         system("sleep 1");
-        if (service_action() != "service_action_in_progress") restored = snapshots([ "restore", audit.pre_snapshot ]);
+        if (service_action() != "service_action_in_progress") restored = snapshots([ "restore", audit.pre_snapshot, expected ]);
     }
     audit.rollback = { status: restored.status, reason: restored.reason || null, guard: restored.guard || null };
+    let edited = restored.reason == "config_changed_during_transaction";
+    if (edited) audit.rollback.saved_snapshot = restored.saved_snapshot || null;
     if (restored.status != "success" && why == "operator_rollback" && length(guards_present()) == 0 &&
-        diagnose(audit).diagnosis == "candidate_active") {
+        ((edited && !restored.started) || diagnose(audit).diagnosis == "candidate_active")) {
         // The restore changed nothing: the verified record stays as it was.
         audit.phase = recorded.phase; audit.status = recorded.status; audit.reason = recorded.reason;
         audit.last_attempt = { status: "failed", reason: "rollback_" + as_string(restored.reason || restored.status), finished_at: now() };
         state_write(audit);
         return { status: "failed", reason: "rollback_not_started:" + as_string(restored.reason || restored.status), phase: audit.phase };
     }
+    // Not rolled back. After an edit made while the candidate verified, the
+    // candidate may still be part of the edited configuration, which no
+    // longer belongs to this apply.
     if (restored.status != "success") {
-        audit.phase = "needs_attention"; audit.status = "needs_attention"; audit.reason = why + ":rollback_" + as_string(restored.status);
+        audit.phase = "needs_attention"; audit.status = "needs_attention";
+        audit.reason = why + (edited ? ":config_changed_during_transaction" : ":rollback_" + as_string(restored.status));
         audit.finished_at = now();
         state_write(audit); return audit;
     }

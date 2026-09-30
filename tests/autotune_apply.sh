@@ -44,7 +44,10 @@ case "${3:-}" in
     esac; exit 0 ;;
   */config/validator.uc) [ -z "${VALIDATE_SLEEP:-}" ] || sleep "$VALIDATE_SLEEP"; [ -z "${VALIDATE_FAIL:-}" ]; exit ;;
   */diagnostics/health.uc) echo "health $4 $5 $6" >> "$STUB_LOG/health.log"; exit 0 ;;
-  */config/snapshots.uc) [ "${4:-}" != confirm-working ] || [ -z "${CONFIRM_FAIL:-}" ] || { echo '{"status":"failed","reason":"stub"}'; exit 1; } ;;
+  */config/snapshots.uc)
+    [ "${4:-}" != confirm-working ] || [ -z "${CONFIRM_FAIL:-}" ] || { echo '{"status":"failed","reason":"stub"}'; exit 1; }
+    # EDIT_BEFORE_RESTORE: an edit (LuCI Save & Apply, another tab) lands right before a restore reads the file.
+    [ "${4:-}" != restore ] || [ -z "${EDIT_BEFORE_RESTORE:-}" ] || sed -i "s/option dns_rewrite_ttl '60'/option dns_rewrite_ttl '31'/" "$FORKOP_CONFIG_FILE" ;;
 esac
 exec "$REAL_UCODE" "$@"
 SH
@@ -250,7 +253,7 @@ reloads() { grep -c '^reload' "$STUB_LOG/reload.log" 2>/dev/null || true; }
 dpi_args() { tr '\0' ' ' < "/proc/$(head -n 1 "$ZAPRET_CHILD_PID_DIR/Dpi.pid")/cmdline"; }
 reset_apply() {
   reset_state
-  unset PROD_PLAN PROD_SLEEP PROD_QUEUE_BUMP PROD_REMOTE DIG_SLEEP GUARD_SLEEP VALIDATE_SLEEP VALIDATE_FAIL RELOAD_SLEEP UCI_FAIL UCI_EXTRA_CHANGE BREAK_FIRST_RELOAD CONFIRM_FAIL NFQWS_STUB_REJECT DIG_STUB_ANSWER \
+  unset PROD_PLAN PROD_SLEEP PROD_QUEUE_BUMP PROD_REMOTE DIG_SLEEP GUARD_SLEEP VALIDATE_SLEEP VALIDATE_FAIL RELOAD_SLEEP UCI_FAIL UCI_EXTRA_CHANGE BREAK_FIRST_RELOAD CONFIRM_FAIL EDIT_BEFORE_RESTORE NFQWS_STUB_REJECT DIG_STUB_ANSWER \
     LOCAL_DIG_ANSWER PROD_CHAINS CLASH_DOWN HOLD_SLEEP GUARD_FAIL GUARD_HOLD UCI_SLEEP
   pkill -f "$WORK/bin/nfqws --qnum=40" 2>/dev/null || true
   rm -rf "$FORKOP_SNAPSHOT_DIR" "$FORKOP_SNAPSHOT_HASH_DIR" "$FORKOP_AUTOTUNE_APPLY_STATE" "$STATE"/prod.* "$STATE/reload.plan" "$STATE/zapret-broken" "$STATE/broke-once"\
@@ -915,6 +918,38 @@ wait "$runner" || true; unset PROD_SLEEP
 json 'a.equal(r.status, "needs_attention"); a.equal(r.reason, "config_changed_during_verification"); a.equal(r.lkg, "not_confirmed");' "$WORK/out.json"
 [ "$(lkg)" = "$PRE_LKG" ] || fail "an unverified edit was confirmed"
 ok "config edited during verification -> needs_attention, LKG not confirmed"
+
+# UC-017: the candidate fails its verification, and the configuration was
+# edited meanwhile (here right before the rollback reads it). The automatic
+# rollback only ever replaces the candidate it wrote: the edit stays, saved
+# as a snapshot, nothing is restored, last-known-working stays; the record no
+# longer owns the configuration (superseded) and blocks nothing.
+reset_apply; plan_ready; export PROD_PLAN=reset EDIT_BEFORE_RESTORE=1; : > "$STUB_LOG/health.log"
+at apply "$WORK/plan.json"; unset PROD_PLAN EDIT_BEFORE_RESTORE
+json 'a.equal(r.status, "needs_attention", JSON.stringify(r).slice(0, 500)); a.equal(r.reason, "verification_failed:config_changed_during_transaction");
+  a.equal(r.applied, false); a.ok(!r.verification.ok); a.equal(r.rollback.status, "needs_attention"); a.equal(r.rollback.reason, "config_changed_during_transaction");
+  a.match(r.rollback.saved_snapshot, /^[0-9]+_[0-9]+$/);' "$WORK/out.json"
+grep -q "option dns_rewrite_ttl '31'" "$FORKOP_CONFIG_FILE" || fail "the automatic rollback overwrote an edit made during verification"
+[ "$(reloads)" = 1 ] || fail "a rollback reload ran over the edit"
+[ "$(lkg)" = "$PRE_LKG" ] || fail "last-known-working moved"
+saved="$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).rollback.saved_snapshot)' "$WORK/out.json")"
+node -e 'const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));if(s.reason!=="concurrent-change"||!s.content.includes("dns_rewrite_ttl '"'"'31'"'"'"))process.exit(1)' "$FORKOP_SNAPSHOT_DIR/$saved.json" ||
+  fail "the edit is not saved as a snapshot"
+! grep -q 'restore success' "$STUB_LOG/health.log" || fail "a restore was recorded as a success"
+at status; json 'a.equal(r.diagnosis, "superseded"); a.equal(r.resolved, true);' "$WORK/out.json"
+ok "UC-017 verification failed + configuration edited -> no automatic rollback over the edit, needs_attention, edit saved"
+
+# The same for the operator's rollback: between its check that the
+# configuration is the candidate and the restore, an edit lands. The restore
+# refuses before any change; the record stays as it was.
+reset_apply; plan_ready; at apply "$WORK/plan.json"; json 'a.equal(r.status, "applied");' "$WORK/out.json"
+: > "$STUB_LOG/reload.log"
+EDIT_BEFORE_RESTORE=1 at rollback
+json 'a.equal(r.status, "failed", JSON.stringify(r)); a.equal(r.reason, "rollback_not_started:config_changed_during_transaction");' "$WORK/out.json"
+grep -q "option dns_rewrite_ttl '31'" "$FORKOP_CONFIG_FILE" || fail "the operator rollback overwrote an edit"
+[ "$(reloads)" = 0 ] || fail "the operator rollback reloaded over an edit"
+json 'a.equal(r.phase, "applied"); a.equal(r.last_attempt.reason, "rollback_config_changed_during_transaction");' "$FORKOP_AUTOTUNE_APPLY_STATE"
+ok "UC-017 operator rollback racing an edit -> refused before any change, edit kept, record unchanged"
 
 # Ctrl-C / SSH hangup reach the whole process group: the transaction runs in
 # its own session and completes; only the verdict is missing.

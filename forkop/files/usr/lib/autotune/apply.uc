@@ -806,9 +806,6 @@ function apply(plan_file, resolver) {
     state_write(audit); return audit;
 }
 
-// Explicit rollback of a recorded apply (after an interrupted verification,
-// an unconfirmed LKG or on operator request): only while the configuration is
-// still exactly the applied candidate and no transaction is active.
 // An unreadable record names neither its candidate nor its snapshot. Nothing
 // confirms a candidate as last-known-working while the record is unreadable
 // (config/snapshots.uc confirm-working), so the last-known-working snapshot
@@ -837,6 +834,9 @@ function rollback_unreadable() {
     return result;
 }
 
+// Explicit rollback of a recorded apply (after an interrupted verification,
+// an unconfirmed LKG or on operator request): only while the configuration is
+// still exactly the applied candidate and no transaction is active.
 function rollback() {
     let s = state_read();
     if (type(s) == "object" && s.unreadable) return rollback_unreadable();

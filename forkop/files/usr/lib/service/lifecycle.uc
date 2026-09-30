@@ -673,8 +673,19 @@ function validate_start_config() {
 }
 
 // Taken inside reload.lock, which service/initd.uc holds around `forkop start`
-// and `forkop reload` (global lock order: service/state.uc).
+// and `forkop reload` (global lock order: service/state.uc). The one holder
+// of subscription-update.lock without reload.lock is the deferred
+// subscription bootstrap retry, which downloads under it for as long as its
+// requests take; waiting for it here would hold reload.lock, and a DNS
+// failover switch and every reload with it, for that long (UC-057). This
+// start supersedes the retry: it prepares the subscription caches itself and
+// retries the rules it defers once sing-box runs, with a new retry for those
+// that stay unavailable (run-deferred-bootstrap). So it stops the retry by its
+// identity first, as a stop and a restarting reload do in stop_main; the lock
+// of the stopped retry is stale and taken at once. The bounded wait is left
+// for a holder that is not the retry.
 function acquire_start_subscription_update_lock() {
+    module_success(SUBSCRIPTION_CACHE_UC, [ "stop-deferred-bootstrap-worker" ]);
     if (module_success(STATE_UC, [ "acquire-runtime-dir-lock-wait", SUBSCRIPTION_UPDATE_LOCK_DIR, owner_pid(), "300" ])) {
         start_subscription_update_lock_held = true;
         return true;

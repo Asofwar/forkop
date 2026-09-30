@@ -314,8 +314,9 @@ function run_pending_reload_if_requested(path, init_script) {
 //      (components/updates.uc), dns_failover_apply (service/lifecycle.uc),
 //      the automatic latency test.
 //   3. subscription-update.lock: start_main (service/lifecycle.uc), inside
-//      reload.lock for a start and for a reload that restarts the runtime;
-//      the subscription update, after reload.lock; the deferred subscription
+//      reload.lock for a start and for a reload that restarts the runtime,
+//      after it stopped the deferred bootstrap retry (UC-057); the
+//      subscription update, after reload.lock; the deferred subscription
 //      bootstrap retry (subscription/cache.uc), which holds nothing else and
 //      releases it before it requests a reload. A forced subscription update
 //      does not wait for the retry's download inside reload.lock (UC-057):

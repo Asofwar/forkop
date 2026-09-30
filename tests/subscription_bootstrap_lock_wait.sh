@@ -9,23 +9,33 @@ set -euo pipefail
 # downloads the deferred rules through the sing-box service proxy under it,
 # for as long as those requests take. Global lock order (service/state.uc):
 # reload.lock before subscription-update.lock. A forced subscription update
-# that took reload.lock and then waited (up to 300 s) for the retry held
+# that took reload.lock and then waited (up to 300 s) for the retry, or a
+# start whose start_main waited for it inside the reload.lock of init.d, held
 # reload.lock all that time: a DNS failover switch (it gives reload.lock 2 s)
 # was refused, every reload only queued, a restore and an autotune apply were
 # refused as busy.
 #
-# The retry holds its lock for 20 s when a forced update comes: the update
-# waits for it without reload.lock, a DNS failover switch applies meanwhile,
-# and the update then takes both locks in order and completes.
+# 1. The retry holds its lock for 20 s when a forced update comes: the update
+#    waits for it without reload.lock, a DNS failover switch applies
+#    meanwhile, and the update then takes both locks in order and completes.
+# 2. A start supersedes the retry (it prepares the caches and retries the
+#    deferred rules itself): it stops the retry by its identity instead of
+#    waiting for its download.
+# 3. All three at once: the retry downloads, a forced update waits for it and
+#    a start comes through init.d. Nobody deadlocks, and the update never
+#    waits for one lock while it holds the other.
 #
-# The update is the real components/updates.uc and the switch the real
-# service/lifecycle.uc dns-failover-apply. The modules they call are doubles,
-# but every lock goes to the real service/state.uc (core/runtime_lock.uc).
-# The retry itself is a double that runs under the retry's production command
-# line.
+# The update is the real components/updates.uc, the switch the real
+# service/lifecycle.uc dns-failover-apply, the start the real init.d
+# start_service, service/initd.uc and service/lifecycle.uc start. The
+# modules they call are doubles, but every lock goes to the real
+# service/state.uc (core/runtime_lock.uc), and the retry is stopped by the
+# real subscription/cache.uc (core/process_identity.uc). The retry itself is a
+# double that runs under the retry's production command line.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REAL_LIB="$ROOT_DIR/forkop/files/usr/lib"
+REAL_INITD="$ROOT_DIR/forkop/files/etc/init.d/forkop"
 WORK_DIR="$(mktemp -d)"
 # shellcheck source=tests/helpers/wait.sh
 . "$ROOT_DIR/tests/helpers/wait.sh"
@@ -61,7 +71,7 @@ EOF
 
 export TMPDIR="$WORK_DIR/tmp"
 export PATH="$WORK_DIR/bin:$PATH"
-export TEST_WORK="$WORK_DIR" EVENTS REAL_LIB FAKE_LIB
+export TEST_WORK="$WORK_DIR" EVENTS REAL_LIB REAL_INITD FAKE_LIB
 export RELOAD_LOCK="$WORK_DIR/run/forkop.reload.lock"
 export SUB_LOCK="$WORK_DIR/run/forkop/subscription-update.lock"
 export WORKER_PID_FILE="$WORK_DIR/run/forkop/subscription-bootstrap-retry.pid"
@@ -74,6 +84,7 @@ export FORKOP_PENDING_RELOAD_FILE="$WORK_DIR/run/forkop/reload.pending"
 export FORKOP_SERVICE_INIT="$WORK_DIR/bin/no-init"
 export FORKOP_UCI_STATE_FILE="$WORK_DIR/uci.state"
 export FORKOP_SING_BOX_RELOAD_PID_TIMEOUT=2
+export FORKOP_UI_ACTION_TRACKED=1
 
 # Nothing here may reach the host's syslog, firewall or init scripts.
 printf '#!/bin/sh\nprintf "%%s\\n" "$*" >>"$TEST_WORK/syslog"\n' >"$WORK_DIR/bin/logger"
@@ -81,14 +92,49 @@ printf '#!/bin/sh\nexit 0\n' >"$WORK_DIR/bin/no-init"
 printf '#!/bin/sh\nexit 1\n' >"$WORK_DIR/bin/nft"
 printf '#!/bin/sh\nexit 0\n' >"$WORK_DIR/bin/ip"
 
-chmod +x "$WORK_DIR/bin/"*
+# `forkop start` behind initd.uc, which holds reload.lock around it: the real
+# lifecycle start on the doubles.
+cat >"$WORK_DIR/bin/forkop" <<'SH'
+#!/bin/sh
+ev() { printf '%s\n' "$1" >>"$EVENTS"; }
+case "$1" in
+  start)
+    ev "S start begin"
+    status=0
+    FORKOP_LIB="$FAKE_LIB" ACTOR=S ucode -L "$REAL_LIB" "$REAL_LIB/service/lifecycle.uc" start >"$TEST_WORK/lifecycle.out" 2>&1 || status=$?
+    ev "S start end $status"
+    exit "$status"
+    ;;
+  get_status) printf '{"running":false}\n' ;;
+esac
+exit 0
+SH
 
-# Every module the update and the switch call. Each call is recorded as
-# "<actor> <module> <mode>". Lock calls go to the real service/state.uc and
-# are recorded around it, so the test sees who held which lock when. The
-# retry double takes subscription-update.lock under its own pid, records
-# itself as the retry is recorded, and holds the lock for at least
-# HOLD_SECONDS and until worker.gate exists.
+# rc.common stand-in: sources the real init script and runs its handler (no
+# procd lock on fd 1000: the start runs in this shell).
+cat >"$WORK_DIR/rc" <<'SH'
+#!/bin/sh
+action="$1"
+shift
+initscript="$REAL_INITD"
+# shellcheck disable=SC1090
+. "$REAL_INITD"
+FORKOP_LIB="$REAL_LIB"
+FORKOP_INITD_UC="$REAL_LIB/service/initd.uc"
+case "$action" in
+  start) start_service "$@" ;;
+  *) exit 64 ;;
+esac
+SH
+chmod +x "$WORK_DIR/bin/"* "$WORK_DIR/rc"
+
+# Every module the update, the switch and the start call. Each call is
+# recorded as "<actor> <module> <mode>". Lock calls go to the real
+# service/state.uc and are recorded around it, so the test sees who held
+# which lock when. The retry double takes subscription-update.lock under its
+# own pid, records itself as the retry is recorded, and holds the lock for at
+# least HOLD_SECONDS and until worker.gate exists; it is stopped by the real
+# subscription/cache.uc.
 cat >"$WORK_DIR/fake-module.uc" <<'UC'
 let fs = require("fs");
 function q(value) { return "'" + replace("" + value, /'/g, "'\\''") + "'"; }
@@ -136,6 +182,8 @@ if (name == "subscription/cache.uc" && mode == "deferred-bootstrap-worker") {
 
 ev(actor + " " + name + " " + mode);
 if (name == "subscription/cache.uc") {
+    if (mode == "stop-deferred-bootstrap-worker")
+        exit(real(name, ARGV));
     // No prefetch; the update finds its sources unchanged, so no runtime
     // transition follows.
     if (mode == "prefetch-request")
@@ -197,6 +245,7 @@ launch_worker() {
   start_actor env ACTOR=W HOLD_SECONDS="$1" ucode -L "$FAKE_LIB" "$FAKE_LIB/subscription/cache.uc" deferred-bootstrap-worker alpha
   wait_until 10 has_event '^W sub acquired$' || fail "the retry double did not take subscription-update.lock"
   wait_until 10 file_nonempty "$WORKER_PID_FILE" || fail "the retry double did not record itself"
+  WORKER="$(head -n 1 "$WORKER_PID_FILE")"
 }
 
 launch_update() {
@@ -233,7 +282,9 @@ update_lock_order() {
   ' "$EVENTS" >"$WORK_DIR/order.out" || fail "$(cat "$WORK_DIR/order.out")"
 }
 
-# Nobody takes a lock that another one holds.
+# Nobody takes a lock that another one holds. The start holds reload.lock
+# around its backend (init.d); the retry holds subscription-update.lock until
+# it releases it or the start stops it.
 exclusive() {
   awk -v label="$1" '
     function take(lock, who) {
@@ -241,18 +292,21 @@ exclusive() {
       holder[lock] = who
     }
     function drop(lock, who) { if (holder[lock] == who) holder[lock] = "" }
-    /^[BF] acquire-runtime-dir-lock(-wait)? (reload|sub) rc=0$/ { take($3, $1) }
-    /^[BF] call release-runtime-dir-lock (reload|sub)$/ { drop($4, $1) }
+    /^S start begin$/ { take("reload", "S") }
+    /^S start end/ { drop("reload", "S") }
+    /^[BFS] acquire-runtime-dir-lock(-wait)? (reload|sub) rc=0$/ { take($3, $1) }
+    /^[BFS] call release-runtime-dir-lock (reload|sub)$/ { drop($4, $1) }
     /^W sub acquired$/ { take("sub", "W") }
     /^W sub released$/ { drop("sub", "W") }
+    /^S subscription\/cache.uc stop-deferred-bootstrap-worker$/ { drop("sub", "W") }
     END { if (bad != "") { print label ": " bad; exit 1 } }
   ' "$EVENTS" >"$WORK_DIR/exclusive.out" || fail "$(cat "$WORK_DIR/exclusive.out")"
 }
 
-# The retry downloads under subscription-update.lock for 20 s when a forced
-# update comes. The update waits for it without reload.lock: a DNS failover
-# switch applies meanwhile. Once the retry is done, the update takes
-# reload.lock and then subscription-update.lock and completes.
+# 1. The retry downloads under subscription-update.lock for 20 s when a
+#    forced update comes. The update waits for it without reload.lock: a DNS
+#    failover switch applies meanwhile. Once the retry is done, the update
+#    takes reload.lock and then subscription-update.lock and completes.
 reset_case
 launch_worker 20
 launch_update
@@ -274,5 +328,43 @@ no_event '^B service/state.uc mark-pending-reload$' || fail "the forced update g
 update_lock_order "forced update behind the retry"
 exclusive "forced update behind the retry"
 locks_released "forced update behind the retry"
+
+# 2. A start while the retry downloads: the start prepares the subscription
+#    caches and retries the deferred rules itself, so it stops the retry by
+#    its identity rather than wait for its download inside reload.lock.
+reset_case
+launch_worker 0
+start_actor env ACTOR=S ucode -L "$REAL_LIB" "$REAL_LIB/service/lifecycle.uc" start >"$WORK_DIR/lifecycle.out" 2>&1
+START_PID="$LAST_ACTOR"
+wait_until 20 has_event '^S subscription/cache.uc prepare-caches$' ||
+  fail "the start waited for the retry's download instead of stopping the retry"
+wait_until 10 process_gone "$WORKER" || fail "the start did not stop the retry"
+no_event '^W sub released$' || fail "the retry finished its download before the start went on"
+before "S subscription/cache.uc stop-deferred-bootstrap-worker" "S acquire-runtime-dir-lock-wait sub rc=0" ||
+  fail "the start took subscription-update.lock without stopping the retry first"
+finish "start during the retry" "$START_PID" "$WORK_DIR/lifecycle.out"
+[ ! -e "$WORKER_PID_FILE" ] || fail "the stopped retry is still recorded"
+exclusive "start during the retry"
+locks_released "start during the retry"
+
+# 3. The retry downloads, a forced update waits for it, and a start comes
+#    through init.d. The start takes reload.lock, stops the retry and runs;
+#    the update runs after it. Nobody waits on anybody for good.
+reset_case
+launch_worker 0
+launch_update
+start_actor env FORKOP_BIN="$WORK_DIR/bin/forkop" FORKOP_START_RUNTIME_LOCK_WAIT_SECONDS=20 \
+  FORKOP_START_RETRY_DELAY_SECONDS=300 sh "$WORK_DIR/rc" start manual >"$WORK_DIR/start.out" 2>&1
+START_PID="$LAST_ACTOR"
+finish "start during the update's wait" "$START_PID" "$WORK_DIR/start.out"
+has_event '^S start end 0$' || fail "the start did not run its backend: $(cat "$WORK_DIR/start.out") $(cat "$WORK_DIR/lifecycle.out")"
+finish "forced update during the start" "$UPDATE_PID" "$WORK_DIR/update.out"
+process_gone "$WORKER" || fail "the start did not stop the retry"
+no_event '^W sub released$' || fail "the retry finished its download before the start went on"
+before "S start end 0" "B subscription/cache.uc update-request" || fail "the forced update did not run after the start"
+no_event '^B service/state.uc mark-pending-reload$' || fail "the forced update gave up and queued a reload"
+update_lock_order "start and forced update behind the retry"
+exclusive "start and forced update behind the retry"
+locks_released "start and forced update behind the retry"
 
 printf 'subscription bootstrap lock wait checks passed\n'

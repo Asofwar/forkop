@@ -382,11 +382,119 @@ function user_fingerprint(content) {
         if (match(line, /^[ \t]*option[ \t]+shutdown_correctly([ \t]|$)/) == null) push(lines, line);
     return sha(join("\n", lines));
 }
-// Whether the configuration file still holds `content`. A start or restart
-// inside the reload rewrites shutdown_correctly: that is no edit.
+// Blanks between words: space, \t, \v, \f, \r.
+function uci_space(c) { return c == 32 || c == 9 || c == 11 || c == 12 || c == 13; }
+// The statements of a configuration file as libuci's parser splits them
+// (file.c): words with quotes and escapes resolved, comments dropped; a word
+// is raw when it had neither. null for an open quote or for syntax this
+// reader does not follow (';', a backslash line continuation).
+function uci_statements(text) {
+    let result = [], words = [], word = null;
+    let end_word = () => { if (word != null) push(words, word); word = null; };
+    let lines = split(text, "\n");
+    for (let l = 0; l < length(lines); l++) {
+        let line = lines[l], i = 0, n = length(line);
+        // A backslash at the end of a line (or of the file) continues it.
+        let continuation = () => i >= n || (i == n - 1 && substr(line, i, 1) == "\r");
+        while (i < n) {
+            let c = substr(line, i, 1);
+            if (uci_space(ord(c))) { end_word(); i++; continue; }
+            if (c == "#") break;
+            if (c == ";") return null;
+            if (word == null) word = { text: "", raw: true };
+            if (c == "'" || c == "\"") {
+                // A quoted run may span lines; inside double quotes a
+                // backslash takes the next character.
+                word.raw = false;
+                i++;
+                while (true) {
+                    let rest = substr(line, i), close = index(rest, c);
+                    let escape = c == "\"" ? index(rest, "\\") : -1;
+                    if (escape >= 0 && (close < 0 || escape < close)) {
+                        word.text += substr(rest, 0, escape);
+                        i += escape + 1;
+                        if (continuation()) return null;
+                        word.text += substr(line, i++, 1);
+                    }
+                    else if (close >= 0) { word.text += substr(rest, 0, close); i += close + 1; break; }
+                    else {
+                        word.text += rest + "\n";
+                        if (++l >= length(lines)) return null;
+                        line = lines[l]; i = 0; n = length(line);
+                    }
+                }
+                continue;
+            }
+            if (c == "\\") { word.raw = false; i++; if (continuation()) return null; }
+            let start = i++;
+            while (i < n && !uci_space(ord(line, i)) && index("#;'\"\\", substr(line, i, 1)) < 0) i++;
+            word.text += substr(line, start, i - start);
+        }
+        end_word();
+        if (length(words)) push(result, words);
+        words = [];
+    }
+    return result;
+}
+// The sections of a configuration as libuci loads it: a named section that
+// appears again is merged into the first, an option keeps its last value and
+// an empty one is removed, list values stay in order. null when libuci would
+// not load it the same way (see uci_statements) or not at all.
+function uci_sections(text) {
+    let statements = uci_statements(text);
+    if (statements == null) return null;
+    let sections = [], current = null;
+    let find = (list, name) => { for (let x in list) if (x.name === name) return x; return null; };
+    for (let w in statements) {
+        let keyword = w[0].raw ? w[0].text : "", args = length(w) - 1;
+        if (keyword == "package" || keyword == "p") {
+            if (args != 1) return null;
+        }
+        else if (keyword == "config" || keyword == "c") {
+            if (args < 1 || args > 2 || w[1].text == "") return null;
+            let name = args == 2 ? w[2].text : "";
+            current = name == "" ? null : find(sections, name);
+            if (current != null && current.type != w[1].text) return null;
+            if (current == null) push(sections, current = { name: name == "" ? null : name, type: w[1].text, options: [] });
+        }
+        else if (keyword == "option" || keyword == "o" || keyword == "list" || keyword == "l") {
+            if (current == null || args < 1 || args > 2 || w[1].text == "") return null;
+            let name = w[1].text, value = args == 2 ? w[2].text : "", option = find(current.options, name);
+            if (substr(keyword, 0, 1) == "o") {
+                if (value == "") { if (option != null) current.options = filter(current.options, (x) => x !== option); }
+                else if (option != null) { option.list = false; option.value = value; }
+                else push(current.options, { name, list: false, value });
+            }
+            else if (option == null) push(current.options, { name, list: true, value: [ value ] });
+            else if (!option.list) { option.list = true; option.value = [ option.value, value ]; }
+            else push(option.value, value);
+        }
+        else return null;
+    }
+    return sections;
+}
+// The user configuration as libuci loads it (without shutdown_correctly), or
+// null (see uci_sections).
+function uci_canonical(text) {
+    let sections = uci_sections(text);
+    if (sections == null) return null;
+    for (let s in sections) s.options = filter(s.options, (o) => o.name != "shutdown_correctly");
+    return sprintf("%J", sections);
+}
+// Whether the configuration file still holds `content`: byte for byte, or as
+// libuci loads both. A start or restart inside the reload commits
+// shutdown_correctly through libuci, which rewrites the whole file in its own
+// form (quotes, indentation, blank lines; comments go): that is no edit, nor
+// is a change of comments or formatting alone, which loads the same
+// configuration (and the next uci commit drops it anyway). No hash is
+// involved, so a failing hash tool cannot make two files look equal; a file
+// this reader cannot load holds nothing (fail closed).
 function config_holds(content) {
     let current = read_config();
-    return current != null && (current == content || user_fingerprint(current) == user_fingerprint(content));
+    if (current == null) return false;
+    if (current == content) return true;
+    let loaded = uci_canonical(current);
+    return loaded != null && loaded == uci_canonical(content);
 }
 // A configuration that someone else wrote while a transaction owned the file
 // (a LuCI Save & Apply, an autotune policy change, a URLTest override: UCI

@@ -343,7 +343,9 @@ async function rollbackApply() {
     showToast(view.text, toastType(view.tone), view.attention ? 15000 : 10000);
   } catch (error) {
     logger.error('[AUTOTUNE]', 'rollback failed', error);
-    showToast(_('The rollback failed.'), 'error', 8000);
+    // No answer: the rollback may still run on the router.
+    const view = rollbackResultView(null);
+    showToast(view.text, toastType(view.tone), 10000);
   } finally {
     rollingBack = false;
   }

@@ -836,9 +836,35 @@ function changeName(
     : candidate;
 }
 
+// What happened to a candidate that still waits for a decision
+// (autotune/apply.uc reasons): verified in production but not recorded as
+// last known working, failed its check without a finished rollback, an
+// administrator's rollback that did not finish, or a check that never ended.
+function unresolvedChangeText(
+  apply: Forkop.AutotuneRecordedApply,
+  groupTitle: string | null,
+) {
+  const reason = apply.reason ?? '';
+  const text =
+    reason === 'lkg_confirm_failed'
+      ? _(
+          'The last change (%s) passed its check, but it could not be recorded as the last known working configuration.',
+        )
+      : reason.startsWith('verification_failed')
+        ? _(
+            'The last change (%s) failed its check, and the automatic rollback did not finish.',
+          )
+        : reason.startsWith('operator_rollback')
+          ? _('The rollback of the last change (%s) did not finish.')
+          : _('The last change (%s) was not checked to the end.');
+  return text.replace('%s', changeName(apply, groupTitle));
+}
+
 // What the page says about the last Stage 5 apply (manager.uc status
 // apply): nothing while it is settled and cannot be rolled back, or while
-// it still runs (the apply itself reports its steps).
+// it still runs (the apply itself reports its steps). An unresolved record
+// without a snapshot to return to (rollback: false) points to History: a
+// restored snapshot replaces the candidate and becomes last known working.
 export function recordedApplyView(
   apply: Forkop.AutotuneRecordedApply | null | undefined,
   groupTitle: string | null,
@@ -853,18 +879,26 @@ export function recordedApplyView(
   if (apply.diagnosis === 'state_unreadable')
     return {
       tone: 'error',
-      text: _(
-        'The record of the last autotune change is damaged. Checks and changes wait until an administrator rolls it back: Forkop X then makes sure the last known working configuration is active.',
-      ),
+      text: apply.rollback
+        ? _(
+            'The record of the last autotune change is damaged. Checks and changes wait until an administrator rolls it back: Forkop X then makes sure the last known working configuration is active.',
+          )
+        : _(
+            'The record of the last autotune change is damaged, and the last known working configuration is missing. Restore a snapshot in History and recovery: it becomes the last known working one, and the change can then be rolled back here.',
+          ),
       attention: true,
     };
   if (apply.resolved === false) {
     if (apply.diagnosis === 'candidate_active')
       return {
         tone: 'error',
-        text: _(
-          'The last change (%s) was not checked to the end. Checks and changes wait until it is rolled back.',
-        ).replace('%s', changeName(apply, groupTitle)),
+        text: `${unresolvedChangeText(apply, groupTitle)} ${
+          apply.rollback
+            ? _('Checks and changes wait until it is rolled back.')
+            : _(
+                'The snapshot to return to is missing: restore a snapshot in History and recovery. Checks and changes wait until then.',
+              )
+        }`,
         attention: true,
       };
     if (apply.diagnosis === 'in_transaction')
@@ -905,6 +939,9 @@ export function rollbackConfirmation(
         _(
           'Forkop X restores the last known working configuration if the current one differs from it, and reloads the service.',
         ),
+        _(
+          'Every change made since the last known working configuration is undone, your own edits included. The current configuration is kept as a "Before restore" snapshot in History and recovery.',
+        ),
         _('The damaged record is kept aside for inspection.'),
       ],
       notes: [] as string[],
@@ -930,29 +967,50 @@ export function rollbackConfirmation(
   };
 }
 
-// What the finished rollback means for the user.
+// What the finished rollback means for the user. No result: the router
+// did not answer (the request timed out); the rollback may still run.
 export function rollbackResultView(
   result: Forkop.AutotuneRollbackResult | null,
 ): ApplyResultView {
-  if (result?.status === 'ok')
+  if (!result)
+    return {
+      tone: 'warning',
+      text: _(
+        'The router did not report the outcome of the rollback; it may still be running. This page shows it once the rollback ends.',
+      ),
+      attention: false,
+    };
+  if (result.status === 'ok' && result.reason === 'apply_state_unreadable')
+    return {
+      tone: 'success',
+      text: result.restored
+        ? _(
+            'The last known working configuration is restored; the damaged record is set aside.',
+          )
+        : _(
+            'The damaged record is set aside; the configuration already was the last known working one.',
+          ),
+      attention: false,
+    };
+  if (result.status === 'ok')
     return {
       tone: 'success',
       text: _('The configuration before the change is restored.'),
       attention: false,
     };
-  if (result?.status === 'busy')
+  if (result.status === 'busy')
     return {
       tone: 'warning',
       text: refusalText('autotune_worker_running'),
       attention: false,
     };
-  if (result?.result === 'needs_attention')
+  if (result.result === 'needs_attention')
     return {
       tone: 'error',
       text: _('The rollback did not finish. Open History and recovery.'),
       attention: true,
     };
-  switch (result?.reason) {
+  switch (result.reason) {
     case 'rollback_needs_candidate_config':
       return {
         tone: 'warning',
@@ -962,11 +1020,18 @@ export function rollbackResultView(
         attention: false,
       };
     case 'pre_apply_snapshot_missing':
-    case 'last_known_working_missing':
       return {
         tone: 'error',
         text: _(
           'The snapshot to return to is missing; nothing was rolled back.',
+        ),
+        attention: false,
+      };
+    case 'last_known_working_missing':
+      return {
+        tone: 'error',
+        text: _(
+          'The last known working configuration is missing; nothing was rolled back. Restore a snapshot in History and recovery first.',
         ),
         attention: false,
       };
@@ -998,7 +1063,7 @@ export function rollbackResultView(
       };
   }
   // The restore refused before it changed anything.
-  if (result?.reason?.startsWith('rollback_not_started'))
+  if (result.reason?.startsWith('rollback_not_started'))
     return {
       tone: 'warning',
       text: `${_('Nothing was rolled back')}.`,

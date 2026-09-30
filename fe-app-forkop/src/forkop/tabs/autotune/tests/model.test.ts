@@ -675,6 +675,75 @@ describe('recorded apply and its rollback', () => {
     expect(view?.text).toContain('rolled back');
   });
 
+  it('says what happened to a candidate that still waits for a decision', () => {
+    const view = (reason: string | null, phase = 'needs_attention') =>
+      recordedApplyView(
+        recorded({
+          phase,
+          reason,
+          resolved: false,
+          diagnosis: 'candidate_active',
+          rollback: true,
+        }),
+        'YouTube',
+      )?.text ?? '';
+    // Verified in production; only its record as last known working failed.
+    expect(view('lkg_confirm_failed')).toContain('passed its check');
+    expect(view('lkg_confirm_failed')).not.toContain('not checked');
+    // The check ran and failed; the automatic rollback did not finish.
+    for (const reason of [
+      'verification_failed:rollback_recovered',
+      'verification_failed:rollback_busy',
+    ]) {
+      expect(view(reason)).toContain('failed its check');
+      expect(view(reason)).not.toContain('not checked');
+    }
+    expect(view('operator_rollback:rollback_needs_attention')).toContain(
+      'rollback of the last change',
+    );
+    // A verification that never ended.
+    expect(view(null, 'verifying')).toContain('not checked to the end');
+    expect(view('interrupted_after_apply', 'failed')).toContain(
+      'not checked to the end',
+    );
+    for (const reason of [
+      'lkg_confirm_failed',
+      'verification_failed:rollback_recovered',
+      null,
+    ])
+      expect(view(reason)).toContain('wait until it is rolled back');
+  });
+
+  it('points to History when there is no snapshot to roll back to', () => {
+    const missing = recordedApplyView(
+      recorded({
+        phase: 'verifying',
+        resolved: false,
+        diagnosis: 'candidate_active',
+        rollback: false,
+      }),
+      'YouTube',
+    );
+    expect(missing?.attention).toBe(true);
+    expect(missing?.text).toContain('History and recovery');
+    expect(missing?.text).not.toContain('wait until it is rolled back');
+    const damaged = recordedApplyView(
+      recorded({
+        phase: 'needs_attention',
+        reason: 'apply_state_unreadable',
+        group: null,
+        candidate: null,
+        resolved: false,
+        diagnosis: 'state_unreadable',
+        rollback: false,
+      }),
+      null,
+    );
+    expect(damaged?.attention).toBe(true);
+    expect(damaged?.text).toContain('History and recovery');
+    expect(damaged?.text).toContain('last known working');
+  });
+
   it('names a damaged record and an unknown state', () => {
     const damaged = recordedApplyView(
       recorded({
@@ -737,6 +806,9 @@ describe('recorded apply and its rollback', () => {
       null,
     );
     expect(damaged.consequences?.join(' ')).toContain('last known working');
+    // Edits made since then are undone too, and where to find them.
+    expect(damaged.consequences?.join(' ')).toContain('undone');
+    expect(damaged.consequences?.join(' ')).toContain('Before restore');
     expect(JSON.stringify(damaged)).not.toContain('null');
   });
 
@@ -772,7 +844,48 @@ describe('recorded apply and its rollback', () => {
         reason: 'operator_rollback:rollback_needs_attention',
       }),
     ).toMatchObject({ tone: 'error', attention: true });
-    expect(rollbackResultView(null)).toMatchObject({ tone: 'error' });
+    // No answer (the request timed out): the rollback may still run.
+    expect(rollbackResultView(null)).toMatchObject({
+      tone: 'warning',
+      attention: false,
+    });
+    expect(rollbackResultView(null).text).toContain('may still be running');
+    expect(
+      rollbackResultView({
+        status: 'failed',
+        result: 'failed',
+        reason: 'last_known_working_missing',
+      }).text,
+    ).toContain('History and recovery');
+  });
+
+  it('tells whether a damaged record needed a restore', () => {
+    const setAside = rollbackResultView({
+      status: 'ok',
+      result: 'rolled_back',
+      reason: 'apply_state_unreadable',
+      restored: false,
+    });
+    expect(setAside.tone).toBe('success');
+    expect(setAside.text).toContain('set aside');
+    expect(setAside.text).not.toContain('is restored');
+    const restored = rollbackResultView({
+      status: 'ok',
+      result: 'rolled_back',
+      reason: 'apply_state_unreadable',
+      restored: true,
+    });
+    expect(restored.text).toContain(
+      'last known working configuration is restored',
+    );
+    expect(
+      rollbackResultView({
+        status: 'ok',
+        result: 'rolled_back',
+        reason: 'operator_rollback',
+        restored: true,
+      }).text,
+    ).toBe('The configuration before the change is restored.');
   });
 
   it('labels a rollback by the administrator as such on the group', () => {

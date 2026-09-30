@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-30 05:35+0000\n"
-"PO-Revision-Date: 2026-09-30 05:35+0000\n"
+"POT-Creation-Date: 2026-09-30 06:07+0000\n"
+"PO-Revision-Date: 2026-09-30 06:07+0000\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -662,6 +662,9 @@ msgstr "Проверяем, пожалуйста подождите"
 msgid "Checking…"
 msgstr "Проверяется…"
 
+msgid "Checks and changes wait until it is rolled back."
+msgstr "Проверки и изменения ждут, пока его не откатят."
+
 msgid "Checks failed"
 msgstr "Проверки не выполнены"
 
@@ -1300,6 +1303,9 @@ msgstr "Ошибки: %d"
 
 msgid "every %s"
 msgstr "каждые %s"
+
+msgid "Every change made since the last known working configuration is undone, your own edits included. The current configuration is kept as a \"Before restore\" snapshot in History and recovery."
+msgstr "Все изменения, сделанные после последней рабочей конфигурации, будут отменены, включая ваши собственные правки. Текущая конфигурация сохранится как снимок «Перед восстановлением» в разделе «История и восстановление»."
 
 msgid "Except: %d"
 msgstr "Кроме: %d"
@@ -3323,6 +3329,9 @@ msgstr "Исчерпан суточный лимит автоматически�
 msgid "The damaged record is kept aside for inspection."
 msgstr "Повреждённая запись будет сохранена отдельно для разбора."
 
+msgid "The damaged record is set aside; the configuration already was the last known working one."
+msgstr "Повреждённая запись отложена в сторону; конфигурация уже была последней рабочей."
+
 msgid "The desync fwmark is managed by Forkop for loop prevention and must not be overridden here."
 msgstr "Desync fwmark управляется Forkop для защиты от циклов и не должен переопределяться здесь."
 
@@ -3344,8 +3353,14 @@ msgstr "Последнее изменение автоподбора не зав
 msgid "The last change (%s) can be rolled back to the configuration before it."
 msgstr "Последнее изменение (%s) можно откатить к конфигурации до него."
 
-msgid "The last change (%s) was not checked to the end. Checks and changes wait until it is rolled back."
-msgstr "Последнее изменение (%s) не было проверено до конца. Проверки и изменения ждут, пока его не откатят."
+msgid "The last change (%s) failed its check, and the automatic rollback did not finish."
+msgstr "Последнее изменение (%s) не прошло проверку, а автоматический откат не завершился."
+
+msgid "The last change (%s) passed its check, but it could not be recorded as the last known working configuration."
+msgstr "Последнее изменение (%s) прошло проверку, но его не удалось записать как последнюю рабочую конфигурацию."
+
+msgid "The last change (%s) was not checked to the end."
+msgstr "Последнее изменение (%s) не было проверено до конца."
 
 msgid "The last change was rolled back automatically."
 msgstr "Последнее изменение было автоматически откачено."
@@ -3364,6 +3379,12 @@ msgstr "Последнее изменение конфигурации не уд
 
 msgid "The last known good snapshot cannot be deleted"
 msgstr "Последнюю рабочую конфигурацию удалить нельзя"
+
+msgid "The last known working configuration is missing; nothing was rolled back. Restore a snapshot in History and recovery first."
+msgstr "Последней рабочей конфигурации нет; ничего не откачено. Сначала восстановите снимок в разделе «История и восстановление»."
+
+msgid "The last known working configuration is restored; the damaged record is set aside."
+msgstr "Последняя рабочая конфигурация восстановлена; повреждённая запись отложена в сторону."
 
 msgid "The legacy conditions cannot be converted without changing what the rule matches:"
 msgstr "Устаревшие условия нельзя конвертировать, не изменив того, что сопоставляет правило:"
@@ -3398,6 +3419,9 @@ msgstr "Рекомендация ещё не подтверждена."
 msgid "The recommendation is outdated: the configuration changed after the check. Run the check again."
 msgstr "Рекомендация устарела: конфигурация изменилась после проверки. Запустите проверку ещё раз."
 
+msgid "The record of the last autotune change is damaged, and the last known working configuration is missing. Restore a snapshot in History and recovery: it becomes the last known working one, and the change can then be rolled back here."
+msgstr "Запись о последнем изменении автоподбора повреждена, а последней рабочей конфигурации нет. Восстановите снимок в разделе «История и восстановление»: он станет последней рабочей конфигурацией, и тогда изменение можно будет откатить здесь."
+
 msgid "The record of the last autotune change is damaged."
 msgstr "Запись о последнем изменении автоподбора повреждена."
 
@@ -3410,6 +3434,9 @@ msgstr "Откат не завершился. Откройте «История 
 msgid "The rollback failed."
 msgstr "Откат не удался."
 
+msgid "The rollback of the last change (%s) did not finish."
+msgstr "Откат последнего изменения (%s) не завершился."
+
 msgid "The route check did not complete. Try again."
 msgstr "Проверка маршрута не завершилась. Повторите попытку."
 
@@ -3418,6 +3445,9 @@ msgstr "Маршрут рассчитывается по конфигураци�
 
 msgid "The router could not resolve the address."
 msgstr "Роутер не смог определить адрес."
+
+msgid "The router did not report the outcome of the rollback; it may still be running. This page shows it once the rollback ends."
+msgstr "Роутер не сообщил, чем закончился откат; возможно, он ещё выполняется. Эта страница покажет исход, когда откат закончится."
 
 msgid "The router did not respond"
 msgstr "Роутер не ответил"
@@ -3487,6 +3517,9 @@ msgstr "С роутера сайт открывается. Если на уст�
 
 msgid "The snapshot to return to is missing; nothing was rolled back."
 msgstr "Снимка, к которому нужно вернуться, нет; ничего не откачено."
+
+msgid "The snapshot to return to is missing: restore a snapshot in History and recovery. Checks and changes wait until then."
+msgstr "Снимка, к которому нужно вернуться, нет: восстановите снимок в разделе «История и восстановление». До этого проверки и изменения ждут."
 
 msgid "The state of the last autotune change could not be read."
 msgstr "Не удалось прочитать состояние последнего изменения автоподбора."

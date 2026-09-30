@@ -245,6 +245,10 @@ export namespace Forkop {
     reason?: string | null;
     group?: string | null;
     candidate?: string | null;
+    // The configuration was replaced; false when a damaged record was only
+    // set aside because the configuration already was the last known
+    // working one.
+    restored?: boolean;
   }
 
   // Membership calculated from the routing now (DNS lookups on the router).

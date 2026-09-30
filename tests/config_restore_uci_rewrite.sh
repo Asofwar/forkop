@@ -53,7 +53,10 @@ export FORKOP_RELOAD_LOCK_DIR="$WORK/run/reload.lock"
 export FORKOP_HISTORY_FILE="$WORK/history.jsonl"
 export FORKOP_RUNTIME_STATE_DIR="$WORK/run"
 export FORKOP_UCI_SAVEDIR="$WORK/uci-save"
-export STATE="$WORK/state" PKG UCI_CLI WORK
+# The reload stub runs with the stubs first on PATH; the uci CLI keeps the
+# original one (the test shim runs on the real ucode, not the stub).
+ORIG_PATH="$PATH"
+export STATE="$WORK/state" PKG UCI_CLI WORK ORIG_PATH
 
 # Guard model (absent | valid) with the contracts of the state query, ensure
 # and remove; the validator accepts; health events are logged.
@@ -83,20 +86,22 @@ STUB
 # <commit>:<exit code>: "flag" commits only the lifecycle's shutdown_correctly
 # flag through uci (what start_impl and mark_runtime_stopped_clean do), "edit"
 # commits that flag and a changed marker (another writer), "edit+sha" does the
-# same and breaks sha256sum first, "none" writes nothing.
+# same and breaks sha256sum first, "none" writes nothing. The file as the
+# first reload left it is copied to $STATE/reloaded.
 cat >"$WORK/reload" <<'STUB'
 #!/bin/sh
 set -- $(cat "$STATE/plan")
 step="${1:-none:0}"; [ $# -eq 0 ] || shift
 echo "$*" > "$STATE/plan"
 echo "reload:$step" >> "$STATE/events"
-uci() { "$UCI_CLI" -c "$WORK/etc" -t "$WORK/lc-save" "$@" >/dev/null; }
+uci() { PATH="$ORIG_PATH" "$UCI_CLI" -c "$WORK/etc" -t "$WORK/lc-save" "$@" >/dev/null; }
 case "${step%%:*}" in
   flag) uci set "$PKG.settings.shutdown_correctly=1"; uci commit "$PKG" ;;
   edit|edit+sha)
     [ "${step%%:*}" = edit ] || touch "$STATE/sha-broken"
     uci set "$PKG.settings.shutdown_correctly=1"; uci set "$PKG.settings.marker=edit"; uci commit "$PKG" ;;
 esac
+[ -e "$STATE/reloaded" ] || cp "$FORKOP_CONFIG_FILE" "$STATE/reloaded"
 exit "${step##*:}"
 STUB
 chmod +x "$WORK/bin/ucode" "$WORK/bin/sha256sum" "$WORK/reload"
@@ -125,9 +130,14 @@ field() { node -e 'const r=JSON.parse(require("fs").readFileSync(process.argv[1]
 marker() { "$UCI_CLI" -c "$WORK/etc" -t "$WORK/lc-save" get "$PKG.settings.marker"; }
 lkg() { cat "$FORKOP_SNAPSHOT_DIR/last-known-working" 2>/dev/null || true; }
 reloads() { grep -c '^reload:' "$STATE/events" || true; }
+# The first reload's commit really rewrote the hand-written target in uci's
+# form (a CLI that did nothing would make scenarios 1 and 2 prove nothing).
+rewritten() {
+  grep -q "^	option shutdown_correctly '1'$" "$STATE/reloaded" && ! grep -q '^#' "$STATE/reloaded"
+}
 concurrent_snapshots() { grep -l '"reason": *"concurrent-change"' "$FORKOP_SNAPSHOT_DIR"/*.json 2>/dev/null | wc -l; }
 restore() { # restore <reload plan>
-  echo absent >"$STATE/guard"; echo "$1" >"$STATE/plan"; : >"$STATE/events"; rm -f "$STATE/sha-broken"
+  echo absent >"$STATE/guard"; echo "$1" >"$STATE/plan"; : >"$STATE/events"; rm -f "$STATE/sha-broken" "$STATE/reloaded"
   PATH="$WORK/bin:$PATH" "$REAL_UCODE" -L "$LIB" "$SCRIPT" restore "$good_id" >"$WORK/result.json" || true
   rm -f "$STATE/sha-broken"
 }
@@ -140,6 +150,7 @@ good_id="$("$REAL_UCODE" -L "$LIB" "$SCRIPT" create manual | node -e 'let s="";p
 #    hand-written file) and then fails: no edit, an ordinary recovery.
 current bad; cp "$FORKOP_CONFIG_FILE" "$WORK/before"; echo stale >"$FORKOP_SNAPSHOT_DIR/last-known-working"
 restore "flag:1 none:0"
+rewritten || fail "the lifecycle's commit did not rewrite the target: $(cat "$STATE/reloaded" 2>/dev/null)"
 [ "$(field status)" = recovered ] && [ "$(field reason)" = target_reload_failed ] ||
   fail "uci's rewrite of the restored file taken for an edit: $(cat "$WORK/result.json")"
 cmp -s "$FORKOP_CONFIG_FILE" "$WORK/before" || fail "the previous configuration was not put back: $(cat "$FORKOP_CONFIG_FILE")"
@@ -151,6 +162,7 @@ ok "hand-written snapshot rewritten by the lifecycle's uci commit, reload failed
 # 2. The same rewrite and a reload that ran: the restore succeeds.
 current bad
 restore "flag:0"
+rewritten || fail "the lifecycle's commit did not rewrite the target: $(cat "$STATE/reloaded" 2>/dev/null)"
 [ "$(field status)" = success ] && [ "$(lkg)" = "$good_id" ] || fail "rewritten target that reloaded: $(cat "$WORK/result.json"), lkg $(lkg)"
 [ "$(cat "$STATE/guard")" = absent ] && [ "$(concurrent_snapshots)" = 0 ] || fail "rewritten target that reloaded: guard or bogus snapshot"
 ok "hand-written snapshot rewritten by uci, reload ran -> success"

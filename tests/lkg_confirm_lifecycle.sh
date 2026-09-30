@@ -152,16 +152,28 @@ reload_ok "clean reload"
 confirmed || fail "a clean reload did not confirm the working configuration"
 
 # 2. A DPI transition guard is installed: the start or reload proves nothing
-#    for last-known-working.
+#    for last-known-working. The guard of a restore or autotune apply
+#    (ForkopConfigRestoreDpiGuard) is how every such transaction reloads, and
+#    the transaction moves last-known-working itself: that is routine and not
+#    logged. A leftover guard of a failed lifecycle transition
+#    (ForkopTableDpiGuard) is worth a line in the log.
+not_confirmed_logged() { grep -q 'not confirmed as last known working' "$WORK_DIR/syslog" 2>/dev/null; }
 for guard in ForkopTableDpiGuard ForkopConfigRestoreDpiGuard; do
-  reset_case
-  : >"$WORK_DIR/tables/$guard"
-  [ "$(lifecycle start)" = 0 ] || fail "$guard: the start failed"
-  ! confirmed || fail "$guard: the start confirmed the working configuration under the guard"
-  reset_case
-  : >"$WORK_DIR/tables/$guard"
-  reload_ok "$guard"
-  ! confirmed || fail "$guard: the reload confirmed the working configuration under the guard"
+  for action in start reload; do
+    reset_case
+    : >"$WORK_DIR/tables/$guard"
+    if [ "$action" = start ]; then
+      [ "$(lifecycle start)" = 0 ] || fail "$guard: the start failed"
+    else
+      reload_ok "$guard"
+    fi
+    ! confirmed || fail "$guard: the $action confirmed the working configuration under the guard"
+    if [ "$guard" = ForkopTableDpiGuard ]; then
+      not_confirmed_logged || fail "$guard: the $action did not log why it did not confirm"
+    else
+      ! not_confirmed_logged || fail "$guard: the $action logged the routine transaction guard as a refusal"
+    fi
+  done
 done
 
 # 3. The configuration was edited while the start ran: the start ran the

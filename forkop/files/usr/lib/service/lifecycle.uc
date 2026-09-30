@@ -424,14 +424,17 @@ function mark_pending_reload_if_config_changed(initial_fingerprint, reason) {
 // transition, protects a runtime that no reload has proved yet.
 // config/snapshots.uc also refuses while an autotune apply is unfinished or
 // has not settled on the candidate that is now the configuration.
+// Every restore and autotune apply reloads under its own guard and moves
+// last-known-working itself: that refusal is routine and not logged.
 function confirm_working_config(initial_fingerprint) {
     if (external_config_fingerprint() != as_string(initial_fingerprint))
         return false;
-    for (let table in [ "ForkopConfigRestoreDpiGuard", NFT_TABLE_NAME + "DpiGuard" ])
-        if (command_success_from_args([ "nft", "list", "table", "inet", table ])) {
-            log_message("Working configuration not confirmed as last known working: " + table + " is still installed", "info");
-            return false;
-        }
+    if (command_success_from_args([ "nft", "list", "table", "inet", "ForkopConfigRestoreDpiGuard" ]))
+        return false;
+    if (command_success_from_args([ "nft", "list", "table", "inet", NFT_TABLE_NAME + "DpiGuard" ])) {
+        log_message("Working configuration not confirmed as last known working: " + NFT_TABLE_NAME + "DpiGuard is still installed", "info");
+        return false;
+    }
     let result = module_capture(LIB_DIR + "/config/snapshots.uc", [ "confirm-working" ]);
     let answer = null;
     try { answer = json(result.output); } catch (e) { answer = null; }

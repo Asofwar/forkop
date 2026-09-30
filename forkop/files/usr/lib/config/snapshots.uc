@@ -29,6 +29,7 @@ const AUTOTUNE_TERMINAL_PHASES = [ "applied", "rolled_back", "failed", "stale", 
 // override FORKOP_AUTOTUNE_UCI_SAVEDIR). Tests that restore set it.
 const UCI_SAVEDIR = getenv("FORKOP_UCI_SAVEDIR") || "/tmp/.uci";
 const RETENTION = 10;
+const GUARD_SETTLE_SECONDS = int(getenv("FORKOP_RUNTIME_GUARD_SETTLE_SECONDS") || "30");
 
 function value(v) { return v == null ? "" : "" + v; }
 function quote(v) { return "'" + replace(value(v), /'/g, "'\\''") + "'"; }
@@ -351,6 +352,19 @@ function runtime_guard_kept() {
     return success([ "nft", "list", "table", "inet", table + "DpiGuard" ]) ||
         success([ "nft", "list", "chain", "inet", table, "forkop_transition_guard" ]);
 }
+// The same, read after init.d released reload.lock. A lifecycle action that
+// holds the lock by then (a WAN-up or hotplug reload that took it next, the
+// holder a queued reload waited for) installs the same guards for its own
+// transition and removes them when it ends: a guard seen while one runs is
+// kept only if it outlasts that action. Wait for it, bounded; a guard still
+// there under a busy lock after the bound counts as kept (fail closed).
+function runtime_guard_settled() {
+    for (let waited = 0; runtime_guard_kept(); waited++) {
+        if (service_action() == null || waited >= GUARD_SETTLE_SECONDS) return true;
+        success([ "sleep", "1" ]);
+    }
+    return false;
+}
 // Changes to forkop staged with uci but not committed. The validator, the
 // generator and the lifecycle read the configuration through them, so a
 // restore would validate and load the snapshot plus these changes while LKG
@@ -562,7 +576,7 @@ function save_concurrent_edit(keep) {
 // and LKG does not move (on_success does not run). An apply's caller checks
 // the file itself before it confirms anything (autotune/apply.uc).
 // A reload proves nothing while a failed lifecycle transition keeps its
-// fail-closed guard (runtime_guard_kept): the transaction ends
+// fail-closed guard (runtime_guard_settled): the transaction ends
 // needs_attention runtime_guard_active with the guard active and LKG where
 // it was; after a failed target `before` is put back without a rollback
 // reload, which the lifecycle would refuse until a restart (UC-019).
@@ -588,7 +602,7 @@ function guarded_replace(before, content, pre, on_success, reason, apply_mode, o
     // reload, leaves no coherent runtime whatever the reload's exit status,
     // and the lifecycle refuses every reload over it: the guard stays, LKG
     // does not move, and the result names the restart it needs (UC-019).
-    let guarded = target != "stopped" && runtime_guard_kept();
+    let guarded = target != "stopped" && runtime_guard_settled();
     let holds = config_holds(content);
     if (target == "ran" && !guarded && (holds || apply_mode)) {
         if (!restore_guard(true)) result = { status: "needs_attention", reason: "guard_release_failed", guard: "active" };
@@ -619,7 +633,7 @@ function guarded_replace(before, content, pre, on_success, reason, apply_mode, o
         // No rollback reload over a kept guard: the lifecycle would refuse
         // it. The previous configuration waits in the file for the restart.
         let rollback = guarded ? "guarded" : reload(reason);
-        if (rollback != "guarded" && rollback != "stopped" && runtime_guard_kept()) rollback = "guarded";
+        if (rollback != "guarded" && rollback != "stopped" && runtime_guard_settled()) rollback = "guarded";
         if (rollback == "guarded")
             result = { status: "needs_attention", reason: "runtime_guard_active", guard: "active" };
         else if (rollback == "stopped") {
@@ -709,7 +723,10 @@ function do_restore(id, expected) {
     if (staged_changes()) return { status: "failed", reason: "uncommitted_uci_changes" };
     let action = service_action();
     if (action != null) return { status: "busy", reason: action };
-    if (runtime_guard_kept()) return { status: "failed", reason: "runtime_guard_active" };
+    // A guard seen as a lifecycle action takes the lock may be its own.
+    if (runtime_guard_kept())
+        return service_action() != null ? { status: "busy", reason: "service_action_in_progress" } :
+            { status: "failed", reason: "runtime_guard_active" };
     let pre = create("automatic", "pre-restore", false, [ id ]);
     if (pre.status != "created") return { status: "failed", reason: "pre_restore_snapshot_failed" };
     if (sha(before) != sha(read_config())) return { status: "failed", reason: "concurrent_change" };
@@ -744,7 +761,8 @@ function do_apply(candidate_file, expected_hash, keep_id) {
     // the transaction's own reload drains it while the guard stands.
     let action = service_action();
     if (action != null) return { status: "stale", reason: action };
-    if (runtime_guard_kept()) return { status: "stale", reason: "runtime_guard_active" };
+    if (runtime_guard_kept())
+        return { status: "stale", reason: service_action() ?? "runtime_guard_active" };
     // Room for the before-autotune snapshot and for the pre-restore snapshot
     // of a later rollback, which may not remove the before-autotune one. A
     // manual LKG stays protected after the candidate is confirmed, so it

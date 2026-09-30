@@ -14,7 +14,11 @@ set -eu
 #     the restore guard stays, last-known-working does not move, and no
 #     success is recorded. After a failed target the previous configuration
 #     is put back for the restart, without a rollback reload that would be
-#     refused anyway.
+#     refused anyway; a rollback reload that leaves one behind ends the same.
+# The guard is looked for after init.d released reload.lock. A lifecycle
+# action that holds the lock by then (a WAN-up or hotplug reload, the holder
+# a queued reload waited for) installs guards of its own for its transition:
+# one seen while such an action runs counts as kept only once it ended.
 ROOT="$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)"
 LIB="$ROOT/forkop/files/usr/lib"
 SCRIPT="$LIB/config/snapshots.uc"
@@ -76,20 +80,45 @@ case "$1 $2 $3" in
 esac
 STUB
 # The lifecycle reload. $STATE/leave: the guard table or chain a failed
-# transition keeps during this reload; $STATE/reload-status: its exit status.
+# transition keeps during this reload; $STATE/reload-status: its exit status;
+# $STATE/<name>.<n> the same for the n-th reload of a case only.
 # It is refused, as service/lifecycle.uc refuses it, while a kept guard is
-# already there.
+# already there. $STATE/inflight: once it returns, another lifecycle action
+# holds reload.lock with the DPI guard of its own transition installed; after
+# 2 s it ends, removing the guard unless the file says "kept".
 cat > "$WORK/reload" <<'STUB'
 #!/bin/sh
 echo "reload:$*" >> "$STATE/events"
+n=$(($(cat "$STATE/reload-count" 2>/dev/null || echo 0) + 1))
+echo "$n" > "$STATE/reload-count"
 if [ -n "$(ls "$STATE/tables")" ]; then
   echo "reload-refused" >> "$STATE/events"
   exit 1
 fi
-if [ -e "$STATE/leave" ]; then
-  : > "$STATE/tables/$(cat "$STATE/leave")"
-  rm -f "$STATE/leave"
+for leave in "$STATE/leave" "$STATE/leave.$n"; do
+  if [ -e "$leave" ]; then
+    : > "$STATE/tables/$(cat "$leave")"
+    rm -f "$leave"
+  fi
+done
+if [ -e "$STATE/inflight" ]; then
+  kept="$(cat "$STATE/inflight")"
+  rm -f "$STATE/inflight"
+  mkdir "$FORKOP_RELOAD_LOCK_DIR"
+  sleep 300 >/dev/null 2>&1 &
+  holder=$!
+  echo "$holder" > "$FORKOP_RELOAD_LOCK_DIR/pid"
+  : > "$STATE/tables/ForkopTableDpiGuard"
+  (
+    sleep 2
+    [ "$kept" = kept ] || rm -f "$STATE/tables/ForkopTableDpiGuard"
+    rm -f "$FORKOP_RELOAD_LOCK_DIR/pid"
+    rmdir "$FORKOP_RELOAD_LOCK_DIR"
+    kill "$holder"
+    echo "inflight-ended" >> "$STATE/events"
+  ) >/dev/null 2>&1 &
 fi
+if [ -e "$STATE/reload-status.$n" ]; then exit "$(cat "$STATE/reload-status.$n")"; fi
 exit "$(cat "$STATE/reload-status" 2>/dev/null || echo 0)"
 STUB
 chmod +x "$WORK/bin/ucode" "$WORK/bin/nft" "$WORK/reload"
@@ -108,7 +137,8 @@ reset_case() {
   config current
   echo stale > "$FORKOP_SNAPSHOT_DIR/last-known-working"
   echo absent > "$STATE/guard"
-  rm -f "$STATE/leave" "$STATE/reload-status" "$TABLES"/*
+  rm -f "$STATE/leave" "$STATE"/leave.* "$STATE/reload-status" "$STATE"/reload-status.* "$STATE/reload-count" \
+    "$STATE/inflight" "$TABLES"/*
   : > "$STATE/events"
 }
 restore() { snap restore "$good_id" > "$WORK/result.json" || true; }
@@ -165,6 +195,41 @@ restore
 grep -q "marker 'current'" "$FORKOP_CONFIG_FILE" || fail "failed target with a kept guard: the previous configuration was not put back"
 [ "$(grep -c '^reload:' "$STATE/events")" = 1 ] || fail "failed target with a kept guard: a rollback reload was attempted over the guard"
 [ "$(cat "$FORKOP_SNAPSHOT_DIR/last-known-working")" = stale ] || fail "failed target with a kept guard: last-known-working moved"
+
+# 4b. The target reload fails without a kept guard, and the rollback reload
+#     leaves one: the previous configuration is back but no reload proved it,
+#     so needs_attention as well; the restore guard stays, LKG does not move.
+for kept in ForkopTableDpiGuard ForkopTable.forkop_transition_guard; do
+  reset_case
+  echo 1 > "$STATE/reload-status.1"
+  echo "$kept" > "$STATE/leave.2"
+  restore
+  [ "$(grep -c '^reload:' "$STATE/events")" = 2 ] || fail "$kept left by the rollback: no rollback reload ran"
+  [ "$(field status)" = needs_attention ] || fail "$kept left by the rollback: $(cat "$WORK/result.json")"
+  [ "$(field reason)" = runtime_guard_active ] || fail "$kept left by the rollback: $(cat "$WORK/result.json")"
+  [ "$(cat "$STATE/guard")" = valid ] || fail "$kept left by the rollback: the restore guard was released"
+  [ "$(cat "$FORKOP_SNAPSHOT_DIR/last-known-working")" = stale ] || fail "$kept left by the rollback: last-known-working moved"
+  grep -q "marker 'current'" "$FORKOP_CONFIG_FILE" || fail "$kept left by the rollback: the previous configuration was not put back"
+done
+
+# 4c. After the target reload, another lifecycle action holds reload.lock
+#     with the DPI guard of its own transition: that guard is not kept by a
+#     failed transition. The restore waits for the action and succeeds once
+#     it removed its guard; had the action kept it, needs_attention.
+reset_case
+echo removed > "$STATE/inflight"
+restore
+[ "$(field status)" = success ] || fail "guard of an action in flight: $(cat "$WORK/result.json")"
+has inflight-ended || fail "guard of an action in flight: the restore did not wait for the action"
+[ "$(cat "$STATE/guard")" = absent ] || fail "guard of an action in flight: the restore guard was left behind"
+[ "$(cat "$FORKOP_SNAPSHOT_DIR/last-known-working")" = "$good_id" ] || fail "guard of an action in flight: last-known-working did not move"
+reset_case
+echo kept > "$STATE/inflight"
+restore
+has inflight-ended || fail "guard kept by an action in flight: the restore did not wait for the action"
+[ "$(field status)" = needs_attention ] || fail "guard kept by an action in flight: $(cat "$WORK/result.json")"
+[ "$(field reason)" = runtime_guard_active ] || fail "guard kept by an action in flight: $(cat "$WORK/result.json")"
+[ "$(cat "$STATE/guard")" = valid ] || fail "guard kept by an action in flight: the restore guard was released"
 
 # 5. The autotune apply transaction: a kept guard refuses it before anything
 #    changes; one a reload leaves behind ends needs_attention.

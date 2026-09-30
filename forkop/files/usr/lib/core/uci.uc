@@ -671,6 +671,107 @@ function section_objects(package_name, type_name) {
     return result;
 }
 
+// ---- one option, committed alone ---------------------------------------------
+
+function shell_arg(value) {
+    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
+}
+
+function shell_command(args) {
+    let parts = [];
+    for (let arg in args)
+        push(parts, shell_arg(arg));
+    return join(" ", parts);
+}
+
+function command_ok(args) {
+    return system(shell_command(args) + " >/dev/null 2>&1") == 0;
+}
+
+function command_text(args) {
+    let pipe = fs.popen(shell_command(args) + " 2>/dev/null", "r");
+    if (!pipe)
+        return "";
+    let data = pipe.read("all");
+    return pipe.close() == 0 && data != null ? as_string(data) : "";
+}
+
+// The package name of the private copy commit_option() writes through;
+// nothing is ever staged under it.
+const OWN_OPTION_PACKAGE = "forkop_own_option";
+
+// Sets one option of a package and commits exactly that change. commit()
+// would also commit every change someone staged with `uci set` in
+// /tmp/.uci/<package>, and a cursor with a save directory of its own does not
+// help: libuci merges that directory anyway (and then leaves the changes
+// staged a second time). So the option is set on a private copy of
+// config_file under a package name of its own, staged there in uci's delta
+// format (the value never appears on a command line) and committed by the
+// uci CLI (cli); the copy then replaces config_file while the file is locked
+// (uci commit takes the same lock) and unchanged. Changes staged in /tmp/.uci
+// or in a LuCI session stay staged. keep_existing: a value the committed file
+// already has stays. "written", "kept", or "" when nothing was written. The
+// fixture sets its state and logs "commit-option <path>", never a commit of
+// the package.
+function commit_option(config_file, path, value, keep_existing, cli) {
+    path = as_string(path);
+    let parts = path_parts(path);
+    if (parts == null || match(parts.section, /^[A-Za-z0-9_]+$/) == null || match(parts.option, /^[A-Za-z0-9_]+$/) == null)
+        return "";
+    if (fixture_enabled()) {
+        if (keep_existing && trim(state_get(path)) != "")
+            return "kept";
+        if (!state_set(path, value))
+            return "";
+        if (UCI_LOG_FILE != "")
+            fs.writefile(UCI_LOG_FILE, as_string(fs.readfile(UCI_LOG_FILE)) + "commit-option " + path + "\n");
+        return "written";
+    }
+
+    let dir = trim(command_text([ "mktemp", "-d" ]));
+    if (dir == "" || fs.stat(dir) == null)
+        return "";
+    let copy = dir + "/" + OWN_OPTION_PACKAGE;
+    let own = OWN_OPTION_PACKAGE + "." + parts.section + "." + parts.option;
+    let base = [ as_string(cli) || "uci", "-q", "-c", dir, "-t", dir + "/save" ];
+    let result = "";
+    let handle = fs.open(as_string(config_file), "r");
+    let locked = handle != null && handle.lock("x");
+    // The lock must be on the file that is replaced, not on one that another
+    // commit renamed away since it was opened.
+    let current = locked ? fs.stat(config_file) : null;
+    let held = locked ? fs.stat("/proc/self/fd/" + handle.fileno()) : null;
+    let before = current != null && held != null && current.inode == held.inode ? fs.readfile(config_file) : null;
+    if (before != null && fs.mkdir(dir + "/save", 0700) && fs.writefile(copy, before) != null) {
+        if (keep_existing && trim(command_text([ ...base, "get", own ])) != "")
+            result = "kept";
+        else if (fs.writefile(dir + "/save/" + OWN_OPTION_PACKAGE, own + "=" + shell_arg(value) + "\n") != null &&
+                 command_ok([ ...base, "commit", OWN_OPTION_PACKAGE ])) {
+            let after = fs.readfile(copy);
+            let tmp = fs.dirname(config_file) + "/." + fs.basename(config_file) + ".forkop-" + as_string(fs.readlink("/proc/self"));
+            let out = after != null ? fs.open(tmp, "w", 0600) : null;
+            let written = out != null && out.write(after) != null;
+            if (out != null)
+                out.close();
+            if (written && fs.chmod(tmp, current.mode) && fs.rename(tmp, config_file))
+                result = "written";
+            else
+                fs.unlink(tmp);
+        }
+    }
+    if (locked)
+        handle.lock("u");
+    if (handle != null)
+        handle.close();
+    command_ok([ "rm", "-rf", dir ]);
+    // Later reads of this process see the file as it is now.
+    if (result == "written" && runtime_cursor) {
+        try { runtime_cursor.unload(parts.package); } catch (e) {}
+        delete loaded_packages[parts.package];
+    }
+    return result;
+}
+
 return {
     available,
     load,
@@ -685,6 +786,7 @@ return {
     add_list,
     del_list,
     commit,
+    commit_option,
     sections,
     all_sections,
     section_objects

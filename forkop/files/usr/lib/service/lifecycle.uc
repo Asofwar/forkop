@@ -63,6 +63,8 @@ const DNS_FAILOVER_PID_FILE = getenv("FORKOP_DNS_FAILOVER_PID_FILE") || RUNTIME_
 const SUBSCRIPTION_UPDATE_LOCK_DIR = getenv("FORKOP_SUBSCRIPTION_UPDATE_LOCK_DIR") || RUNTIME_STATE_DIR + "/subscription-update.lock";
 const RELOAD_LOCK_DIR = getenv("FORKOP_RELOAD_LOCK_DIR") || "/var/run/forkop.reload.lock";
 const INTERNAL_CONFIG_TRIGGER_GUARD = getenv("FORKOP_INTERNAL_CONFIG_TRIGGER_GUARD") || "/var/run/forkop.internal-config-change";
+// The uci CLI that core/uci.uc commit_option() commits one option with.
+const UCI_CLI = getenv("FORKOP_UCI_CLI") || "uci";
 const LIST_UPDATE_CRON_MARKER = getenv("FORKOP_LIST_UPDATE_CRON_MARKER") || "# forkop-list-update";
 const SUBSCRIPTION_UPDATE_CRON_MARKER = getenv("FORKOP_SUBSCRIPTION_UPDATE_CRON_MARKER") || "# forkop-subscription-update";
 const COMPONENT_UPDATE_CHECK_CRON_MARKER = getenv("FORKOP_COMPONENT_UPDATE_CHECK_CRON_MARKER") || "# forkop-component-update-check";
@@ -670,16 +672,22 @@ function discard_dnsmasq_reload_config() {
 // postinst (Forkop built into a firmware image, a keep-settings sysupgrade, a
 // restored backup of an older config) would otherwise be refused by the
 // validator. Only an absent or blank secret is filled in; an existing one is
-// never replaced, and the value is never logged.
+// never replaced, and the value is never logged. Only the secret is
+// committed: changes someone staged with uci stay staged.
 function ensure_clash_api_secret() {
     if (config_get(CONFIG_NAME + ".settings.yacd_secret_key", "") != "")
         return true;
     let secret = common.random_hex_secret();
-    if (secret == null || !config_set(CONFIG_NAME + ".settings.yacd_secret_key", secret) || config_commit() != 0) {
+    let written = secret == null ? "" :
+        uci_core.commit_option(CONFIG_FILE, CONFIG_NAME + ".settings.yacd_secret_key", secret, true, UCI_CLI);
+    if (written == "") {
         log_message("Could not generate the mandatory Clash API secret", "warn");
         return false;
     }
-    log_message("Generated the mandatory Clash API secret", "info");
+    if (written == "written") {
+        mark_internal_config_guard();
+        log_message("Generated the mandatory Clash API secret", "info");
+    }
     return true;
 }
 

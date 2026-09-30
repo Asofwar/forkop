@@ -255,16 +255,34 @@ function uci_value(text) {
     }
     return quote == null ? result : null;
 }
+// Options by "<section>.<option>". Every `config <type> ['<name>']` line
+// starts a section. One without a name (libuci writes anonymous sections so)
+// is keyed as libuci addresses it, @<type>[<n>], n counting every section of
+// that type in file order (a named section that appears again is the same
+// section): its options never merge into the named section before it
+// (UC-018). A header this reader cannot parse ends the section before it, so
+// what follows is attributed to no other section.
 function options(content) {
     let result = {};
-    let section = "";
+    let section = null, count = {}, named = {};
     let lines = split(content, "\n");
     for (let i = 0; i < length(lines); i++) {
         let line = lines[i];
-        let start = match(line, /^[ \t]*config[ \t]+[A-Za-z0-9_-]+[ \t]+['"]?([A-Za-z0-9_-]+)['"]?/);
-        if (start != null) { section = start[1]; continue; }
+        if (match(line, /^[ \t]*config([ \t]|$)/) != null) {
+            let start = match(line, /^[ \t]*config[ \t]+['"]?([^ \t'"#;\\]+)['"]?([ \t]+['"]?([A-Za-z0-9_-]*)['"]?)?[ \t]*(#.*)?$/);
+            section = null;
+            if (start != null) {
+                let type = start[1], name = start[3], n = count[type] ?? 0;
+                if (name == null || name == "") { section = sprintf("@%s[%d]", type, n); count[type] = n + 1; }
+                else {
+                    section = name;
+                    if (!named[name]) { named[name] = true; count[type] = n + 1; }
+                }
+            }
+            continue;
+        }
         let opt = match(line, /^[ \t]*(option|list)[ \t]+([A-Za-z0-9_-]+)[ \t]+(.+)$/);
-        if (section == "" || opt == null) continue;
+        if (section == null || opt == null) continue;
         // Continuation lines of a quoted multi-line value belong to this option.
         let text = trim(opt[3]), raw = uci_value(text);
         while (raw == null && i + 1 < length(lines)) {
@@ -295,7 +313,8 @@ function diff(before, after) {
     for (let key in keys(current)) all[key] = true;
     for (let key in keys(all)) {
         let a = old[key], b = current[key];
-        let dot = index(key, "."), option = substr(key, dot + 1);
+        // An option name has no dot; an anonymous section's type may.
+        let dot = rindex(key, "."), option = substr(key, dot + 1);
         if ((a != null && a.kind == "list") || (b != null && b.kind == "list")) {
             let before_values = a == null ? [] : a.kind == "list" ? a.values : [ a.value ];
             let after_values = b == null ? [] : b.kind == "list" ? b.values : [ b.value ];

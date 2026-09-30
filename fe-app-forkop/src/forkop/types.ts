@@ -29,6 +29,8 @@ export namespace Forkop {
     | 'recovered'
     // Forkop stopped by the user (diagnostics/health.uc; D-15).
     | 'stopped'
+    // Forkop not started since boot (diagnostics/health.uc; D-15).
+    | 'not_started'
     | 'unknown';
 
   export interface HealthStatus {
@@ -716,6 +718,9 @@ export namespace Forkop {
     dns_configured?: number;
     // 1 while an explicit stop holds Forkop down (D-15): not a failure.
     stopped_by_user?: number;
+    // 1 while Forkop is down and nobody started it since boot (D-15): not a
+    // failure either. Down with both 0: it failed after an explicit start.
+    not_started?: number;
   }
 
   export interface GetOutboundMetadata {

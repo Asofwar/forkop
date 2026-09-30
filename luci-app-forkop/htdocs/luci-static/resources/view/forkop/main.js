@@ -5078,6 +5078,7 @@ var initialStore = {
       forkopEnabled: 0,
       forkopStatus: "",
       forkopStoppedByUser: 0,
+      forkopNotStarted: null,
     },
   },
   sectionsWidget: {
@@ -5501,6 +5502,7 @@ function applyServiceState(uiState) {
         forkopEnabled: uiState.service.forkop.enabled,
         forkopStatus: uiState.service.forkop.status,
         forkopStoppedByUser: uiState.service.forkop.stopped_by_user ?? 0,
+        forkopNotStarted: uiState.service.forkop.not_started ?? null,
       },
     },
     diagnosticsSystemInfo: normalizeSingBoxVariantFields(nextSystemInfo),
@@ -6130,6 +6132,9 @@ async function fetchServicesInfo() {
         forkopStoppedByUser: forkop.success
           ? (forkop.data.stopped_by_user ?? 0)
           : previousData.forkopStoppedByUser,
+        forkopNotStarted: forkop.success
+          ? (forkop.data.not_started ?? null)
+          : previousData.forkopNotStarted,
       },
     },
   });
@@ -6392,10 +6397,22 @@ function overviewState(input) {
     lines.push({
       text: _("Traffic goes through the router without Forkop X."),
     });
+  } else if (availability === "stopped" && input.forkopNotStarted === true) {
+    status2 = "off";
+    title = _("Not started");
+    lines.push({
+      text: _(
+        "Forkop X was not started since the router booted: reloads, restores and updates do not start it.",
+      ),
+    });
+    lines.push({
+      text: _("Traffic goes through the router without Forkop X."),
+    });
   } else if (availability === "stopped") {
-    status2 = input.forkopEnabled ? "error" : "off";
+    const failed2 = input.forkopNotStarted === false || input.forkopEnabled;
+    status2 = failed2 ? "error" : "off";
     title = _("Not running");
-    if (input.forkopEnabled) {
+    if (failed2) {
       lines.push({
         text: _(
           "Forkop X was not stopped by the user: its start failed or it stopped unexpectedly.",
@@ -7512,6 +7529,10 @@ function overviewInput() {
     availability: getDashboardServiceAvailability(),
     forkopEnabled: Boolean(services.data.forkopEnabled),
     forkopStoppedByUser: Boolean(services.data.forkopStoppedByUser),
+    forkopNotStarted:
+      services.data.forkopNotStarted === null
+        ? null
+        : Boolean(services.data.forkopNotStarted),
     forkopStatus: services.data.forkopStatus || "",
     singBoxRunning: Boolean(services.data.singbox),
     groups: state.sectionsWidget.data,
@@ -18894,8 +18915,8 @@ function snapshotBusyText(reason) {
     "Another snapshot operation is already in progress. Try again in a moment.",
   );
 }
-function restoreConfirmMessage(stoppedByUser) {
-  return stoppedByUser
+function restoreConfirmMessage(staysStopped) {
+  return staysStopped
     ? _(
         "Forkop X is stopped: the configuration is replaced and checked, but Forkop X is not started. It takes effect when you start Forkop X.",
       )
@@ -19176,12 +19197,13 @@ async function restoreSnapshot(id, label) {
     );
   }
   await refreshRuntimeUiState({ force: true }).catch(() => void 0);
-  const stoppedByUser = Boolean(
-    store.get().servicesInfoWidget.data.forkopStoppedByUser,
+  const services = store.get().servicesInfoWidget.data;
+  const staysStopped = Boolean(
+    services.forkopStoppedByUser || services.forkopNotStarted,
   );
   const confirmed = await confirmAction({
     title: _("Restore configuration snapshot?"),
-    message: `${label}. ${restoreConfirmMessage(stoppedByUser)}`,
+    message: `${label}. ${restoreConfirmMessage(staysStopped)}`,
     consequences: changes
       ? rows.length
         ? preview

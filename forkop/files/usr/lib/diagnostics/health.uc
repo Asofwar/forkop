@@ -155,11 +155,12 @@ function health(ui, guard, package_pending, events) {
     let sing_box = type(service.sing_box) == "object" ? service.sing_box : {};
     let transition = match(as_string(forkop.status), /^(starting|stopping|restarting|reloading)$/) != null;
     // Down because the user stopped it (an explicit stop holds it down until
-    // an explicit start; D-15, UC-056) is no failure, unlike a runtime that
-    // is down without a stop.
+    // an explicit start; D-15, UC-056), or because nobody started it since
+    // boot (D-15(a)), is no failure, unlike a runtime that is down after an
+    // explicit start.
     let service_status = transition ? "transitioning" :
         forkop.running == null ? "unknown" : forkop.running == 1 ? "ok" :
-        forkop.stopped_by_user == 1 ? "stopped" : "error";
+        forkop.stopped_by_user == 1 ? "stopped" : forkop.not_started == 1 ? "not_started" : "error";
     let last = length(events) ? events[length(events) - 1] : null;
     let last_reload = null;
     for (let i = length(events) - 1; i >= 0; i--)

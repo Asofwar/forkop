@@ -70,6 +70,28 @@ describe('applyUiStateToStore', () => {
     expect(store.get().servicesInfoWidget.data.forkopStoppedByUser).toBe(0);
   });
 
+  it('keeps a Forkop not started since boot apart from a failed one (D-15)', () => {
+    const idle = createUiState();
+    idle.service.forkop = {
+      running: 0,
+      enabled: 0,
+      status: 'stopped & disabled',
+      stopped_by_user: 0,
+      not_started: 1,
+    };
+    applyUiStateToStore(idle);
+    expect(store.get().servicesInfoWidget.data.forkopNotStarted).toBe(1);
+
+    const failed = createUiState();
+    failed.service.forkop = { ...idle.service.forkop, not_started: 0 };
+    applyUiStateToStore(failed);
+    expect(store.get().servicesInfoWidget.data.forkopNotStarted).toBe(0);
+
+    // An older backend does not report it: unknown, not "failed".
+    applyUiStateToStore(createUiState());
+    expect(store.get().servicesInfoWidget.data.forkopNotStarted).toBeNull();
+  });
+
   it('applies service, capability, and running action state before first render', () => {
     applyUiStateToStore(
       createUiState({

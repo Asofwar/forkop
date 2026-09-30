@@ -50,6 +50,7 @@ const DOMAIN_MAP: Record<StatusDomain, Record<string, SemanticStatus>> = {
     transitioning: 'busy',
     recovered: 'warning',
     stopped: 'off',
+    not_started: 'off',
     unknown: 'unknown',
   },
   check: {
@@ -133,6 +134,7 @@ const CONTEXT_LABELS: Partial<
   health: {
     recovered: () => _('Recovered'),
     stopped: () => _('Stopped by user'),
+    not_started: () => _('Not started'),
   },
   check: {
     loading: () => _('Checking…'),

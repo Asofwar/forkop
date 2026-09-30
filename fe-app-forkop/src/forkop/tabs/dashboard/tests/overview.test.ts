@@ -93,6 +93,7 @@ function input(patch: Partial<OverviewInput> = {}): OverviewInput {
     availability: 'running',
     forkopEnabled: true,
     forkopStoppedByUser: false,
+    forkopNotStarted: null,
     forkopStatus: 'running',
     singBoxRunning: true,
     groups: [
@@ -188,6 +189,58 @@ describe('overview state', () => {
     );
     expect(idle.title).toBe('Not running');
     expect(idle.lines.some((line) => line.tone === 'error')).toBe(false);
+  });
+
+  it('tells Forkop not started since boot from a failed one (D-15)', () => {
+    // After a reboot with autostart off nobody started it: no failure, and
+    // reloads, restores and updates leave it down.
+    const idle = overviewState(
+      input({
+        availability: 'stopped',
+        forkopEnabled: false,
+        forkopNotStarted: true,
+      }),
+    );
+    expect(idle.status).toBe('off');
+    expect(idle.title).toBe('Not started');
+    expect(idle.stopped).toBe(true);
+    expect(idle.lines.map((line) => line.text)).toContain(
+      'Forkop X was not started since the router booted: reloads, restores and updates do not start it.',
+    );
+    expect(idle.lines.some((line) => line.tone === 'error')).toBe(false);
+    // Autostart on and not started yet (enabled after the boot): the same.
+    expect(
+      overviewState(input({ availability: 'stopped', forkopNotStarted: true }))
+        .title,
+    ).toBe('Not started');
+
+    // Started since boot and down now: a failure, autostart on or off.
+    for (const forkopEnabled of [true, false]) {
+      const failed = overviewState(
+        input({
+          availability: 'stopped',
+          forkopEnabled,
+          forkopNotStarted: false,
+        }),
+      );
+      expect(failed.status).toBe('error');
+      expect(failed.title).toBe('Not running');
+      expect(failed.lines).toContainEqual({
+        text: 'Forkop X was not stopped by the user: its start failed or it stopped unexpectedly.',
+        tone: 'error',
+      });
+    }
+
+    // Stopped by the user stays that, whatever else is reported.
+    expect(
+      overviewState(
+        input({
+          availability: 'stopped',
+          forkopStoppedByUser: true,
+          forkopNotStarted: false,
+        }),
+      ).title,
+    ).toBe('Stopped by user');
   });
 
   it('does not call a start in progress a failed one', () => {

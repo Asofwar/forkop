@@ -243,10 +243,11 @@ export function snapshotBusyText(reason?: string) {
 }
 
 // What the restore will do, said before the user confirms it. Forkop X
-// stopped by the user is not started by a restore (D-15): the configuration
-// is replaced and checked, and takes effect at the next start.
-export function restoreConfirmMessage(stoppedByUser: boolean): string {
-  return stoppedByUser
+// stopped by the user, or not started since boot, is not started by a
+// restore (D-15): the configuration is replaced and checked, and takes
+// effect at the next start.
+export function restoreConfirmMessage(staysStopped: boolean): string {
+  return staysStopped
     ? _(
         'Forkop X is stopped: the configuration is replaced and checked, but Forkop X is not started. It takes effect when you start Forkop X.',
       )

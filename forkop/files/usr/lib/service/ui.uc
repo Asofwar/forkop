@@ -1101,6 +1101,14 @@ function stopped_by_user(running) {
     return by == null || by[2] == "user";
 }
 
+// Down, and nobody started Forkop since boot: no explicit start is recorded
+// and the user did not stop it (D-15(a)). Not a failure either; a runtime
+// that is down after an explicit start is one (its start failed, it went
+// down, or the start that Forkop's own stop was for never came).
+function not_started(running) {
+    return !running && fs.stat(EXPLICIT_START_FILE) == null && !stopped_by_user(running);
+}
+
 function current_ui_state_json() {
     refresh_action_dirs();
 
@@ -1132,7 +1140,8 @@ function current_ui_state_json() {
                 enabled: forkop_is_enabled,
                 status: forkop_status,
                 dns_configured: dns_configured() ? 1 : 0,
-                stopped_by_user: stopped_by_user(forkop_is_running) ? 1 : 0
+                stopped_by_user: stopped_by_user(forkop_is_running) ? 1 : 0,
+                not_started: not_started(forkop_is_running) ? 1 : 0
             },
             sing_box: {
                 running: sing_box_is_running,

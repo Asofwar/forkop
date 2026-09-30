@@ -159,6 +159,12 @@ describe('labels and tones', () => {
       label: 'Stopped by user',
       tone: 'muted',
     });
+    // Nor is Forkop not started since boot (D-15).
+    expect(describeStatus('health', 'not_started')).toEqual({
+      status: 'off',
+      label: 'Not started',
+      tone: 'muted',
+    });
   });
 });
 

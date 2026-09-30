@@ -169,6 +169,9 @@ export interface StoreType {
       forkopStatus: string;
       // Stopped by the user, as opposed to down after a failure (D-15).
       forkopStoppedByUser: number;
+      // Not started since boot, as opposed to down after a failure (D-15);
+      // null when the backend does not report it.
+      forkopNotStarted: number | null;
     };
   };
   sectionsWidget: {
@@ -291,6 +294,7 @@ const initialStore: StoreType = {
       forkopEnabled: 0,
       forkopStatus: '',
       forkopStoppedByUser: 0,
+      forkopNotStarted: null,
     },
   },
   sectionsWidget: {

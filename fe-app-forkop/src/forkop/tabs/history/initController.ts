@@ -249,16 +249,17 @@ async function restoreSnapshot(id: string, label: string) {
     );
   }
 
-  // Whether Forkop X is stopped by the user now decides what the restore
-  // does (D-15).
+  // Whether Forkop X is stopped by the user or not started since boot now
+  // decides what the restore does (D-15).
   await refreshRuntimeUiState({ force: true }).catch(() => undefined);
-  const stoppedByUser = Boolean(
-    store.get().servicesInfoWidget.data.forkopStoppedByUser,
+  const services = store.get().servicesInfoWidget.data;
+  const staysStopped = Boolean(
+    services.forkopStoppedByUser || services.forkopNotStarted,
   );
 
   const confirmed = await confirmAction({
     title: _('Restore configuration snapshot?'),
-    message: `${label}. ${restoreConfirmMessage(stoppedByUser)}`,
+    message: `${label}. ${restoreConfirmMessage(staysStopped)}`,
     consequences: changes
       ? rows.length
         ? preview

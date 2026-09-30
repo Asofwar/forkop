@@ -16,6 +16,11 @@ set -euo pipefail
 # failure either. A stop that Forkop made itself for a package or component
 # change (its source is recorded with the stop) is not the user's.
 #
+# Forkop that nobody started since boot (no explicit start is recorded, no
+# stop by the user) is reported as not_started and health calls it
+# "not_started", not "error"; a runtime that is down after an explicit start
+# is neither: it failed (D-15(a)).
+#
 # ui.uc, runtime.uc, state.uc and health.uc are real; nothing here runs a
 # runtime, so it is down.
 
@@ -58,6 +63,7 @@ export ZAPRET2_PROVIDER_NFQWS2_BIN="$WORK_DIR/missing-nfqws2"
 export BYEDPI_BIN="$WORK_DIR/missing-ciadpi"
 unset FORKOP_UI_ACTION_TRACKED
 STOP_MARKER="$WORK_DIR/run/stop.requested"
+START_RECORD="$WORK_DIR/run/start.explicit"
 
 # Nothing here may reach the host's syslog, nftables, procd or services.
 for tool in logger nft ubus ip init forkop; do
@@ -91,30 +97,67 @@ get_status
 [ "$(forkop_field "$WORK_DIR/status.json" stopped_by_user)" = 1 ] ||
   fail "get_status does not say Forkop was stopped by the user: $(cat "$WORK_DIR/status.json")"
 
-# 2. Down without a stop (a failed start, a crash): not stopped by the user.
+[ "$(forkop_field "$WORK_DIR/ui.json" not_started)" = 0 ] ||
+  fail "the UI state calls Forkop stopped by the user not started: $(cat "$WORK_DIR/ui.json")"
+[ "$(forkop_field "$WORK_DIR/status.json" not_started)" = 0 ] ||
+  fail "get_status calls Forkop stopped by the user not started: $(cat "$WORK_DIR/status.json")"
+
+# 2. Down without a stop after an explicit start (a failed start, a crash):
+#    neither stopped by the user nor not started.
 rm -f "$STOP_MARKER"
+: >"$START_RECORD"
 ui_state
 [ "$(forkop_field "$WORK_DIR/ui.json" stopped_by_user)" = 0 ] ||
   fail "the UI state calls a runtime down without a stop stopped by the user: $(cat "$WORK_DIR/ui.json")"
+[ "$(forkop_field "$WORK_DIR/ui.json" not_started)" = 0 ] ||
+  fail "the UI state calls a runtime down after an explicit start not started: $(cat "$WORK_DIR/ui.json")"
 get_status
 [ "$(forkop_field "$WORK_DIR/status.json" stopped_by_user)" = 0 ] ||
   fail "get_status calls a runtime down without a stop stopped by the user: $(cat "$WORK_DIR/status.json")"
+[ "$(forkop_field "$WORK_DIR/status.json" not_started)" = 0 ] ||
+  fail "get_status calls a runtime down after an explicit start not started: $(cat "$WORK_DIR/status.json")"
+
+# 2a. Nobody started it since boot (no start record, no stop): not started,
+#     not stopped by the user.
+rm -f "$START_RECORD"
+ui_state
+[ "$(forkop_field "$WORK_DIR/ui.json" not_started)" = 1 ] ||
+  fail "the UI state does not say Forkop was not started since boot: $(cat "$WORK_DIR/ui.json")"
+[ "$(forkop_field "$WORK_DIR/ui.json" stopped_by_user)" = 0 ] ||
+  fail "the UI state calls Forkop not started since boot stopped by the user: $(cat "$WORK_DIR/ui.json")"
+get_status
+[ "$(forkop_field "$WORK_DIR/status.json" not_started)" = 1 ] ||
+  fail "get_status does not say Forkop was not started since boot: $(cat "$WORK_DIR/status.json")"
+[ "$(forkop_field "$WORK_DIR/status.json" stopped_by_user)" = 0 ] ||
+  fail "get_status calls Forkop not started since boot stopped by the user: $(cat "$WORK_DIR/status.json")"
 
 # 2b. A stop that Forkop made itself for a package or component change, whose
 #     start never came (a failed upgrade restart), is no stop by the user:
 #     the start failed. The user's stop, recorded as such, still is one.
+#     Forkop's own stop of a Forkop that nobody started since boot leaves it
+#     not started.
 for source in package component user; do
-  printf '1.000000001.42\nby=%s\n' "$source" >"$STOP_MARKER"
-  want=0
-  [ "$source" != user ] || want=1
-  ui_state
-  [ "$(forkop_field "$WORK_DIR/ui.json" stopped_by_user)" = "$want" ] ||
-    fail "the UI state after a stop by '$source': $(cat "$WORK_DIR/ui.json")"
-  get_status
-  [ "$(forkop_field "$WORK_DIR/status.json" stopped_by_user)" = "$want" ] ||
-    fail "get_status after a stop by '$source': $(cat "$WORK_DIR/status.json")"
+  for started in 1 0; do
+    printf '1.000000001.42\nby=%s\n' "$source" >"$STOP_MARKER"
+    rm -f "$START_RECORD"
+    [ "$started" = 0 ] || [ "$source" = user ] || : >"$START_RECORD"
+    want=0
+    [ "$source" != user ] || want=1
+    want_not_started=0
+    [ "$source" = user ] || [ "$started" = 1 ] || want_not_started=1
+    ui_state
+    [ "$(forkop_field "$WORK_DIR/ui.json" stopped_by_user)" = "$want" ] ||
+      fail "the UI state after a stop by '$source': $(cat "$WORK_DIR/ui.json")"
+    [ "$(forkop_field "$WORK_DIR/ui.json" not_started)" = "$want_not_started" ] ||
+      fail "the UI state after a stop by '$source' (started: $started): $(cat "$WORK_DIR/ui.json")"
+    get_status
+    [ "$(forkop_field "$WORK_DIR/status.json" stopped_by_user)" = "$want" ] ||
+      fail "get_status after a stop by '$source': $(cat "$WORK_DIR/status.json")"
+    [ "$(forkop_field "$WORK_DIR/status.json" not_started)" = "$want_not_started" ] ||
+      fail "get_status after a stop by '$source' (started: $started): $(cat "$WORK_DIR/status.json")"
+  done
 done
-rm -f "$STOP_MARKER"
+rm -f "$STOP_MARKER" "$START_RECORD"
 
 # 3. Health: stopped by the user is "stopped", not a failure; down without a
 #    stop stays an error; a failed change still is one.
@@ -125,6 +168,13 @@ health '{"running":0,"stopped_by_user":1}'
 health '{"running":0,"stopped_by_user":0}'
 [ "$(health_field service.forkop)" = error ] || fail "health of a runtime down without a stop: $(cat "$WORK_DIR/health.json")"
 [ "$(health_field overall)" = error ] || fail "health overall of a runtime down without a stop"
+health '{"running":0,"stopped_by_user":0,"not_started":0}'
+[ "$(health_field service.forkop)" = error ] || fail "health of a runtime down after an explicit start: $(cat "$WORK_DIR/health.json")"
+# Not started since boot is no failure either.
+health '{"running":0,"stopped_by_user":0,"not_started":1}'
+[ "$(health_field service.forkop)" = not_started ] || fail "health of Forkop not started: $(cat "$WORK_DIR/health.json")"
+[ "$(health_field overall)" = not_started ] || fail "health overall of Forkop not started: $(cat "$WORK_DIR/health.json")"
+[ "$(health_field recovery.pending)" = false ] || fail "health: not started is no pending recovery"
 health '{"running":0,"stopped_by_user":1}' '[{"kind":"reload","status":"failure","timestamp":42}]'
 [ "$(health_field overall)" = error ] || fail "a failed change while stopped by the user is not an error"
 # A restore that left the runtime stopped is recorded and is no failure.

@@ -81,6 +81,7 @@ describe('fetchServicesInfo', () => {
           forkopEnabled: 1,
           forkopStatus: 'running & enabled',
           forkopStoppedByUser: 0,
+          forkopNotStarted: 0,
         },
       },
     });
@@ -117,6 +118,7 @@ describe('fetchServicesInfo', () => {
       forkopEnabled: 1,
       forkopStatus: 'running & enabled',
       forkopStoppedByUser: 0,
+      forkopNotStarted: 0,
     });
   });
 });

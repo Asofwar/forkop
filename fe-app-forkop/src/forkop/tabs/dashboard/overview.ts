@@ -25,6 +25,9 @@ export interface OverviewInput {
   // Stopped by the user, as opposed to down after a failed start or a
   // crash (D-15).
   forkopStoppedByUser: boolean;
+  // Not started since boot, as opposed to down after an explicit start
+  // (D-15); null when the backend does not report it.
+  forkopNotStarted: boolean | null;
   // The service status of the UI state: a start, restart or reload in
   // progress is reported here before the runtime is up.
   forkopStatus: string;
@@ -153,11 +156,25 @@ export function overviewState(input: OverviewInput): OverviewState {
     lines.push({
       text: _('Traffic goes through the router without Forkop X.'),
     });
+  } else if (availability === 'stopped' && input.forkopNotStarted === true) {
+    status = 'off';
+    title = _('Not started');
+    lines.push({
+      text: _(
+        'Forkop X was not started since the router booted: reloads, restores and updates do not start it.',
+      ),
+    });
+    lines.push({
+      text: _('Traffic goes through the router without Forkop X.'),
+    });
   } else if (availability === 'stopped') {
-    // Nobody stopped it: a start failed or the runtime went down.
-    status = input.forkopEnabled ? 'error' : 'off';
+    // Nobody stopped it: a start failed or the runtime went down after an
+    // explicit start. A backend that does not report whether Forkop was
+    // started since boot says so only with autostart on.
+    const failed = input.forkopNotStarted === false || input.forkopEnabled;
+    status = failed ? 'error' : 'off';
     title = _('Not running');
-    if (input.forkopEnabled) {
+    if (failed) {
       lines.push({
         text: _(
           'Forkop X was not stopped by the user: its start failed or it stopped unexpectedly.',

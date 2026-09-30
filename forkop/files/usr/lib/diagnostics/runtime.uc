@@ -21,6 +21,9 @@ const SYSTEM_INFO_CACHE_FILE = getenv("FORKOP_SYSTEM_INFO_CACHE_FILE") || RUNTIM
 // An explicit stop (service/initd.uc, service/lifecycle.uc): until an
 // explicit start the runtime stays down (D-15, UC-056).
 const STOP_REQUESTED_FILE = getenv("FORKOP_STOP_REQUESTED_FILE") || RUNTIME_STATE_DIR + "/stop.requested";
+// An explicit start since boot (service/initd.uc): without it a runtime that
+// is down was not started since boot, or the user stopped it (D-15(a)).
+const EXPLICIT_START_FILE = getenv("FORKOP_EXPLICIT_START_FILE") || RUNTIME_STATE_DIR + "/start.explicit";
 const SYSTEM_INFO_CACHE_TTL = int(getenv("FORKOP_SYSTEM_INFO_CACHE_TTL") || "3600");
 const TMP_SING_BOX_FOLDER = getenv("TMP_SING_BOX_FOLDER") || constants.TMP_SING_BOX_FOLDER || "/tmp/sing-box";
 const TMP_RULESET_FOLDER = getenv("TMP_RULESET_FOLDER") || constants.TMP_RULESET_FOLDER || TMP_SING_BOX_FOLDER + "/rulesets";
@@ -1216,11 +1219,14 @@ function get_status() {
     // Down because the user's explicit stop holds it down, not a failed start
     // or a crash, nor Forkop's own stop for a package or component change
     // whose start never came (D-15, UC-056; service/initd.uc
-    // stop_request_source).
+    // stop_request_source). Or down because nobody started it since boot:
+    // no explicit start is recorded and the user did not stop it (D-15(a)).
     let request = running == 0 ? fs.readfile(STOP_REQUESTED_FILE) : null;
     let by = request == null ? null : match(request, /(^|\n)by=([a-z]*)/);
+    let stopped_by_user = request != null && (by == null || by[2] == "user");
     write_service_status(running, enabled, dns_configured, {
-        stopped_by_user: request != null && (by == null || by[2] == "user") ? 1 : 0
+        stopped_by_user: stopped_by_user ? 1 : 0,
+        not_started: running == 0 && !stopped_by_user && fs.stat(EXPLICIT_START_FILE) == null ? 1 : 0
     });
     return 0;
 }

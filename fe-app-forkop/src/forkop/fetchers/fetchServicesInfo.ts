@@ -65,6 +65,9 @@ export async function fetchServicesInfo() {
         forkopStoppedByUser: forkop.success
           ? (forkop.data.stopped_by_user ?? 0)
           : previousData.forkopStoppedByUser,
+        forkopNotStarted: forkop.success
+          ? (forkop.data.not_started ?? null)
+          : previousData.forkopNotStarted,
       },
     },
   });

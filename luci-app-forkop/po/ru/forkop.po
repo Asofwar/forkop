@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-29 22:56+0000\n"
-"PO-Revision-Date: 2026-09-29 22:56+0000\n"
+"POT-Creation-Date: 2026-09-30 02:10+0000\n"
+"PO-Revision-Date: 2026-09-30 02:10+0000\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -1484,6 +1484,9 @@ msgstr "Forkop X останется остановленным, пока вы е
 msgid "Forkop X stops handling traffic until it is started again."
 msgstr "Forkop X перестанет обрабатывать трафик, пока его снова не запустят."
 
+msgid "Forkop X was not started since the router booted: reloads, restores and updates do not start it."
+msgstr "Forkop X не запускали после загрузки роутера: перезагрузка конфигурации, восстановление и обновления его не запускают."
+
 msgid "Forkop X was not stopped by the user: its start failed or it stopped unexpectedly."
 msgstr "Forkop X не останавливали вручную: его запуск не удался или он неожиданно остановился."
 
@@ -2302,6 +2305,9 @@ msgstr "Не отвечает"
 
 msgid "Not running"
 msgstr "Не запущено"
+
+msgid "Not started"
+msgstr "Не запускался"
 
 msgid "Not supported"
 msgstr "Не поддерживается"

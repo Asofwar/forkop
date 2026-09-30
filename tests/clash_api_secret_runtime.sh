@@ -194,6 +194,18 @@ grep -Fq 'result=failed guard=0' "$WORK/broken.out" || fail "a failing uci must 
 cmp -s "$WORK/etc/broken" "$WORK/broken.before" || fail "a failing uci changed the configuration"
 [ -z "$(find "$WORK/etc" -name '.*')" ] || fail "a failing uci left a temporary file next to the configuration"
 
+# No settings section: uci skips the staged option and the commit succeeds
+# without it. Nothing counts as written; the validator then reports the
+# missing secret.
+printf "config section 'main'\n\toption action 'connection'\n" >"$WORK/etc/nosettings"
+chmod 0640 "$WORK/etc/nosettings"
+cp "$WORK/etc/nosettings" "$WORK/nosettings.before"
+run_ensure nosettings
+grep -Fq 'result=failed guard=0' "$WORK/nosettings.out" || fail "a secret uci did not write was reported as written: $(cat "$WORK/nosettings.out")"
+grep -Fq 'Generated' "$WORK/nosettings.out" && fail "a secret uci did not write must not be reported as generated"
+cmp -s "$WORK/etc/nosettings" "$WORK/nosettings.before" || fail "the configuration changed although no secret was written"
+[ -z "$(find "$WORK/etc" -name '.*')" ] || fail "a temporary file was left next to the configuration"
+
 # The test fixture of core/uci.uc (the lifecycle tests' view of UCI) sets the
 # option in its state and never logs a commit of the whole package.
 printf '%s\n' 'forkop.settings=settings' 'forkop.settings.enable_yacd=0' >"$WORK/fixture.state"

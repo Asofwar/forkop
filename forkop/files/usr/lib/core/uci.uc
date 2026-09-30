@@ -710,7 +710,8 @@ const OWN_OPTION_PACKAGE = "forkop_own_option";
 // uci CLI (cli); the copy then replaces config_file while the file is locked
 // (uci commit takes the same lock) and unchanged. Changes staged in /tmp/.uci
 // or in a LuCI session stay staged. keep_existing: a value the committed file
-// already has stays. "written", "kept", or "" when nothing was written. The
+// already has stays. "written" (the committed copy holds the value), "kept",
+// or "" when nothing was written (e.g. the section does not exist). The
 // fixture sets its state and logs "commit-option <path>", never a commit of
 // the package.
 function commit_option(config_file, path, value, keep_existing, cli) {
@@ -745,8 +746,11 @@ function commit_option(config_file, path, value, keep_existing, cli) {
     if (before != null && fs.mkdir(dir + "/save", 0700) && fs.writefile(copy, before) != null) {
         if (keep_existing && trim(command_text([ ...base, "get", own ])) != "")
             result = "kept";
+        // uci skips a staged option whose section does not exist, and the
+        // commit still succeeds: only a copy that now holds the value counts.
         else if (fs.writefile(dir + "/save/" + OWN_OPTION_PACKAGE, own + "=" + shell_arg(value) + "\n") != null &&
-                 command_ok([ ...base, "commit", OWN_OPTION_PACKAGE ])) {
+                 command_ok([ ...base, "commit", OWN_OPTION_PACKAGE ]) &&
+                 replace(command_text([ ...base, "get", own ]), /\n$/, "") == as_string(value)) {
             let after = fs.readfile(copy);
             let tmp = fs.dirname(config_file) + "/." + fs.basename(config_file) + ".forkop-" + as_string(fs.readlink("/proc/self"));
             let out = after != null ? fs.open(tmp, "w", 0600) : null;

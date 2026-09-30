@@ -682,8 +682,9 @@ function retry_start_on_wan_up(owner_pid) {
     if (action != "start")
         return 0;
 
+    // Not logged: a holder may keep reload.lock for long, and the log says
+    // when the deferred start runs (start_service).
     if (deferred) {
-        command_success_from_args([ "logger", "-t", SERVICE_NAME, "[info] Retrying the deferred Forkop start" ]);
         let status = command_status_from_args([ SERVICE_INIT, "start", "deferred" ]);
         if (status != 0) {
             command_success_from_args([ "logger", "-t", SERVICE_NAME, "[error] Deferred Forkop start request failed with status " + status ]);
@@ -827,9 +828,8 @@ function defer_start(reason, stop_request_before) {
         report_start_result(reason, 1);
         return 1;
     }
-    if (as_string(reason) == "deferred")
-        command_success_from_args([ "logger", "-t", SERVICE_NAME, "[info] Deferred Forkop start still waits for the runtime lock" ]);
-    else
+    // Logged once: the retries of the deferred start are not.
+    if (as_string(reason) != "deferred")
         command_success_from_args([ "logger", "-t", SERVICE_NAME, "[warn] Forkop start deferred: another operation held the runtime lock for " +
             START_RUNTIME_LOCK_WAIT_SECONDS + " s; the start runs once the lock is released" ]);
     return 1;
@@ -870,9 +870,12 @@ function start_service(reason, owner_pid) {
         report_start_result(reason, 1, true);
         return 1;
     }
-    if (reason == "deferred" && deferred_start_stop_request() == null) {
-        release_runtime_dir_lock(RELOAD_LOCK_DIR, owner_pid);
-        return 0;
+    if (reason == "deferred") {
+        if (deferred_start_stop_request() == null) {
+            release_runtime_dir_lock(RELOAD_LOCK_DIR, owner_pid);
+            return 0;
+        }
+        command_success_from_args([ "logger", "-t", SERVICE_NAME, "[info] Running the deferred Forkop start: the runtime lock was released" ]);
     }
     // An explicit start ends an explicit stop; a stop request seen after
     // this point was made during this start.

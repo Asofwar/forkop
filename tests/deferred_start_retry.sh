@@ -138,6 +138,7 @@ cat >"$WORK_DIR/rc" <<'SH'
 #!/usr/bin/env bash
 action="$1"
 shift
+printf '%s\n' "$action${*:+ $*}" >>"$TEST_WORK/rc.calls"
 if ! flock -n 1000 2>/dev/null; then
   exec 1000>"$RC_PROCD_LOCK"
   flock 1000
@@ -217,7 +218,13 @@ launch_start() {
 # The start gave up waiting for reload.lock ...
 start_deferred() { logged 'start deferred'; }
 # ... and its retry has run at least once while the lock was still held.
-deferred_start_retried() { logged 'Retrying the deferred Forkop start'; }
+deferred_start_retried() { deferred_retries_at_least 1; }
+# How many times the retry worker has started the deferred start again.
+deferred_retries_at_least() {
+  local count
+  count="$(grep -cx 'start deferred' "$WORK_DIR/rc.calls" 2>/dev/null || true)"
+  [ "${count:-0}" -ge "$1" ]
+}
 
 retry_worker_running() {
   local pid
@@ -247,7 +254,7 @@ reset_case() {
     kill -KILL "$pid" 2>/dev/null || true
   fi
   rm -f "$WORK_DIR"/runtime.up "$WORK_DIR"/hold.gate "$WORK_DIR"/hold.acquired \
-    "$WORK_DIR"/start.hold "$WORK_DIR"/logger.hold "$WORK_DIR"/logger.held \
+    "$WORK_DIR"/start.hold "$WORK_DIR"/logger.hold "$WORK_DIR"/logger.held "$WORK_DIR"/rc.calls \
     "$STATE_DIR"/start.retry "$STATE_DIR"/start-retry.pid "$STOP_MARKER" "$STATE_DIR"/start-result.*
   : >"$EVENTS"
   : >"$WORK_DIR/syslog"
@@ -282,12 +289,14 @@ no_event '^forkop start' || fail "the start ran while another process held reloa
 grep -qx 'reason=start_deferred' "$STATE_DIR/start.retry" 2>/dev/null ||
   fail "the deferred start left no retry: $(cat "$STATE_DIR/start.retry" 2>/dev/null || printf 'no start.retry')"
 # The holder keeps the lock beyond the retry's own wait: the retry defers
-# again instead of giving up.
-wait_until 15 deferred_start_retried || fail "the deferred start was not retried"
-wait_until 15 logged 'still waits for the runtime lock' || fail "the retried start did not wait for the lock again"
+# again instead of giving up. The log says once that the start is deferred,
+# not on every retry: a holder may keep the lock for long.
+wait_until 20 deferred_retries_at_least 2 || fail "the retried start did not wait for the lock again"
 no_event '^forkop start' || fail "the retried start ran while another process held reload.lock"
+[ "$(grep -c . "$WORK_DIR/syslog")" = 1 ] || fail "the deferred start logged more than its deferral while it waited"
 release_reload_lock
 started_once "automatic start"
+logged 'Running the deferred Forkop start' || fail "the deferred start did not log that it runs"
 
 # 1b. Switching autostart off (init.d disable cancels the scheduled retry of a
 #     failed start) during the deferral is no stop: the explicit start still

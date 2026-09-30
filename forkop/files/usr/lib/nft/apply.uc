@@ -13,6 +13,13 @@ const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || "forkop";
 const DNS_SOURCE_SET = "forkop_dns_sources";
 const DNS_SOURCE6_SET = "forkop_dns_sources6";
 const NFT_BATCH_FILE = getenv("FORKOP_NFT_BATCH_FILE") || "";
+// Prepared elements of rule-set subnet imports (tmpfs), by the rule set's
+// content and the rule's port filter: a reload, and the final apply of a list
+// update, import the same rule sets again, and preparing thousands of subnets
+// is most of an import on the router. The version changes with the format.
+const SUBNET_CACHE_DIR = getenv("FORKOP_NFT_SUBNET_CACHE_DIR") || "/var/run/forkop/nft-subnet-cache";
+const SUBNET_CACHE_VERSION = "1";
+const SUBNET_CACHE_MAX = 32;
 // Test-only candidate failure injection. Empty in production.
 const NFT_CANDIDATE_FAIL_PHASE = getenv("FORKOP_NFT_CANDIDATE_FAIL_PHASE") || "";
 // Route table registry; the same override service/package.uc honours. Tests
@@ -1267,17 +1274,28 @@ function nft_values_by_family(values, kind) {
     return result;
 }
 
-// Both family sets from one list. The builder still validates each value
-// for nft; "other" goes through the IPv4 pass only, so an invalid value is
-// reported once and a value of no family is skipped as before.
-function nft_add_values_to_family_sets_once(values, table, ipv4_set, ipv6_set, kind, ports_csv, chunk_size_text) {
+// The elements of both family sets from one list: { v4, v6 }, each
+// { chunks, invalid }. The builder still validates each value for nft;
+// "other" goes through the IPv4 pass only, so an invalid value is reported
+// once and a value of no family is skipped as before.
+function nft_prepare_family_chunks(values, kind, ports_csv, chunk_size_text) {
     let split_values = nft_values_by_family(values, kind);
     let v4 = nft_build_chunks_from_values(split_values.v4, kind, ports_csv, chunk_size_text, 0);
     let other = nft_build_chunks_from_values(split_values.other, kind, ports_csv, chunk_size_text, 4);
-    if (!nft_add_chunks_to_set(table, ipv4_set, [ ...v4.chunks, ...other.chunks ], [ ...v4.invalid, ...other.invalid ]))
-        return false;
     let v6 = nft_build_chunks_from_values(split_values.v6, kind, ports_csv, chunk_size_text, 0);
-    return nft_add_chunks_to_set(table, ipv6_set, v6.chunks, v6.invalid);
+    return {
+        v4: { chunks: [ ...v4.chunks, ...other.chunks ], invalid: [ ...v4.invalid, ...other.invalid ] },
+        v6: { chunks: v6.chunks, invalid: v6.invalid }
+    };
+}
+
+function nft_apply_family_chunks(table, ipv4_set, ipv6_set, prepared) {
+    return nft_add_chunks_to_set(table, ipv4_set, prepared.v4.chunks, prepared.v4.invalid) &&
+        nft_add_chunks_to_set(table, ipv6_set, prepared.v6.chunks, prepared.v6.invalid);
+}
+
+function nft_add_values_to_family_sets_once(values, table, ipv4_set, ipv6_set, kind, ports_csv, chunk_size_text) {
+    return nft_apply_family_chunks(table, ipv4_set, ipv6_set, nft_prepare_family_chunks(values, kind, ports_csv, chunk_size_text));
 }
 
 function nft_add_file_chunks_to_family_sets(path, table, ipv4_set, ipv6_set, kind, ports_csv, chunk_size_text) {
@@ -1983,24 +2001,66 @@ function file_nonempty(path) {
     return stat != null && int(stat.size) > 0;
 }
 
-function nft_add_extracted_ruleset_subnets(unscoped_path, scoped_path, label, table, common_set, ip_port_set, chunk_size_text, common6_set, ip_port6_set) {
-    let has_entries = false;
+// The cache file name of a prepared import, or null when it cannot be
+// named safely (no checksum, or an unusual port filter).
+function nft_subnet_cache_key(json_path, ports, chunk_size_text) {
+    let line = trim(command_output_from_args([ "md5sum", json_path ]));
+    let sum = length(line) >= 32 ? substr(line, 0, 32) : "";
+    let filter = replace(as_string(ports), /[^0-9,-]/g, "_");
+    if (match(sum, /^[0-9a-f]{32}$/) == null || length(filter) > 64)
+        return null;
+    return "v" + SUBNET_CACHE_VERSION + "-" + sum + "-" + nft_chunk_size(chunk_size_text) + "-" + (filter == "" ? "all" : filter);
+}
 
-    if (file_nonempty(unscoped_path)) {
-        if (!nft_add_file_chunks_to_family_sets(unscoped_path, table, common_set, default_arg(common6_set, "forkop_subnets6"), "ips", "", chunk_size_text))
-            return false;
-        has_entries = true;
+function nft_prepared_family_valid(p) {
+    return type(p) == "object" && type(p.v4) == "object" && type(p.v6) == "object" &&
+        type(p.v4.chunks) == "array" && type(p.v4.invalid) == "array" &&
+        type(p.v6.chunks) == "array" && type(p.v6.invalid) == "array";
+}
+
+function nft_subnet_cache_read(key) {
+    let data = null;
+    try { data = json(fs.readfile(SUBNET_CACHE_DIR + "/" + key + ".json") || ""); } catch (e) { data = null; }
+    if (type(data) != "object" || !("unscoped" in data) || !("scoped" in data))
+        return null;
+    for (let part in [ data.unscoped, data.scoped ])
+        if (part != null && !nft_prepared_family_valid(part))
+            return null;
+    return data;
+}
+
+// Best effort: a failed write only means the next import prepares again.
+// The oldest entries go when the cache grows beyond SUBNET_CACHE_MAX.
+function nft_subnet_cache_write(key, prepared) {
+    if (!fs.stat(SUBNET_CACHE_DIR) && !run_args_quiet([ "mkdir", "-p", SUBNET_CACHE_DIR ]))
+        return;
+    let path = SUBNET_CACHE_DIR + "/" + key + ".json";
+    if (fs.writefile(path + ".tmp", sprintf("%J", prepared)) == null || !fs.rename(path + ".tmp", path)) {
+        fs.unlink(path + ".tmp");
+        return;
     }
-
-    if (file_nonempty(scoped_path)) {
-        if (!nft_add_file_chunks_to_family_sets(scoped_path, table, ip_port_set, default_arg(ip_port6_set, "forkop_ip6_ports"), "ip-ports", "", chunk_size_text))
-            return false;
-        has_entries = true;
+    let entries = [];
+    for (let name in fs.lsdir(SUBNET_CACHE_DIR) || []) {
+        let st = match(name, /\.json$/) != null ? fs.stat(SUBNET_CACHE_DIR + "/" + name) : null;
+        if (st != null)
+            push(entries, { name, mtime: st.mtime });
     }
+    if (length(entries) <= SUBNET_CACHE_MAX)
+        return;
+    entries = sort(entries, (a, b) => a.mtime - b.mtime);
+    for (let i = 0; i < length(entries) - SUBNET_CACHE_MAX; i++)
+        fs.unlink(SUBNET_CACHE_DIR + "/" + entries[i].name);
+}
 
-    if (!has_entries)
+function nft_apply_prepared_ruleset_subnets(prepared, label, table, common_set, ip_port_set, common6_set, ip_port6_set) {
+    if (prepared.unscoped != null &&
+        !nft_apply_family_chunks(table, common_set, default_arg(common6_set, "forkop_subnets6"), prepared.unscoped))
+        return false;
+    if (prepared.scoped != null &&
+        !nft_apply_family_chunks(table, ip_port_set, default_arg(ip_port6_set, "forkop_ip6_ports"), prepared.scoped))
+        return false;
+    if (prepared.unscoped == null && prepared.scoped == null)
         run_args([ "logger", "-t", "forkop", "[warn] " + as_string(label) + " has no ip_cidr entries for nftables" ]);
-
     return true;
 }
 
@@ -2011,15 +2071,25 @@ function nft_add_json_ruleset_subnets_for_section(section, json_path, label, tab
     if (!section_needs_priority_sets(section))
         return true;
 
-    routing_rulesets.extract_ip_cidr_nft_elements(
-        json_path,
-        unscoped_path,
-        scoped_path,
-        sprintf("%J", rule_port_values(ports)),
-        sprintf("%J", rule_port_ranges(ports))
-    );
+    let key = nft_subnet_cache_key(json_path, ports, chunk_size_text);
+    let prepared = key != null ? nft_subnet_cache_read(key) : null;
+    if (prepared == null) {
+        routing_rulesets.extract_ip_cidr_nft_elements(
+            json_path,
+            unscoped_path,
+            scoped_path,
+            sprintf("%J", rule_port_values(ports)),
+            sprintf("%J", rule_port_ranges(ports))
+        );
+        prepared = {
+            unscoped: file_nonempty(unscoped_path) ? nft_prepare_family_chunks(nft_trimmed_lines(unscoped_path), "ips", "", chunk_size_text) : null,
+            scoped: file_nonempty(scoped_path) ? nft_prepare_family_chunks(nft_trimmed_lines(scoped_path), "ip-ports", "", chunk_size_text) : null
+        };
+        if (key != null)
+            nft_subnet_cache_write(key, prepared);
+    }
 
-    return nft_add_extracted_ruleset_subnets(unscoped_path, scoped_path, label, table, sets.subnets, sets.ip_ports, chunk_size_text, sets.subnets6, sets.ip6_ports);
+    return nft_apply_prepared_ruleset_subnets(prepared, label, table, sets.subnets, sets.ip_ports, sets.subnets6, sets.ip6_ports);
 }
 
 function nft_community_subnet_lines(path, service, keep_shared_cloudflare) {

@@ -770,7 +770,10 @@ function manual_apply(name, job) {
 // last-known-working (autotune/apply.uc rollback). Never next to a run or an
 // apply of the worker. A rolled back candidate pauses in its group like one
 // that failed its verification, and the group shows the rollback as its last
-// change; it is no apply of the daily budget.
+// change, also one that did not finish (needs_attention): the card never
+// keeps the outcome of the apply before it. It is no apply of the daily
+// budget. restored: the configuration was replaced (an unreadable record
+// whose configuration already was last-known-working is only set aside).
 function operator_rollback() {
     if (!ensure_state_dir()) return { status: "failed", reason: "state_dir_unavailable" };
     let lock = flock(WORKER_LOCK, false);
@@ -778,12 +781,12 @@ function operator_rollback() {
     let r = run_tool("apply", [ "rollback" ]) || { status: "failed", reason: "rollback_output_invalid" };
     let group = type(r.mutation) == "object" && state_module.valid_id(r.mutation.section) ? r.mutation.section : null;
     let candidate = match(as_string(r.selected), /^[a-z0-9_]{1,32}$/) != null ? r.selected : null;
-    if (r.status == "rolled_back" && group != null && candidate != null) {
+    if ((r.status == "rolled_back" || r.status == "needs_attention") && group != null && candidate != null) {
         let sections = config_sections();
         let policy = policy_module.read(sections || []).policy;
         with_state((state) => {
             let g = type(state.groups[group]) == "object" ? state.groups[group] : hysteresis.empty_group();
-            g.last_apply = { at: now(), group, candidate, representative: null, status: "rolled_back",
+            g.last_apply = { at: now(), group, candidate, representative: null, status: r.status,
                 reason: "operator_rollback", counted: false, attempted: true, trigger: "manual" };
             g = hysteresis.start_cooldown(g, candidate, policy.cooldown_seconds, now());
             g.pending = null;
@@ -793,7 +796,8 @@ function operator_rollback() {
     }
     unlock(lock);
     return { status: r.status == "rolled_back" ? "ok" : r.status == "busy" ? "busy" : "failed",
-        result: as_string(r.status) || "failed", reason: r.reason || null, group, candidate, finished_at: now() };
+        result: as_string(r.status) || "failed", reason: r.reason || null, group, candidate,
+        restored: r.status == "rolled_back" && type(r.rollback) == "object" && r.rollback.status == "success", finished_at: now() };
 }
 
 // ---- background jobs ---------------------------------------------------------

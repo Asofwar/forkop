@@ -706,7 +706,7 @@ json 'a.equal(r.apply.resolved, false); a.equal(r.apply.diagnosis, "candidate_ac
   a.equal(r.apply.group, "Dpi"); a.equal(r.apply.candidate, "multisplit"); a.equal(r.apply.phase, "verifying");' "$WORK/mstatus.json"
 ! grep -q "$SECRET" "$WORK/mstatus.json" || fail "the autotune status leaks the configuration"
 manager_env ucode "$ROOT/forkop/files/usr/bin/forkop" autotune_rollback > "$WORK/rb.json" || true
-json 'a.equal(r.status, "ok"); a.equal(r.result, "rolled_back"); a.equal(r.group, "Dpi"); a.equal(r.candidate, "multisplit");' "$WORK/rb.json"
+json 'a.equal(r.status, "ok"); a.equal(r.result, "rolled_back"); a.equal(r.group, "Dpi"); a.equal(r.candidate, "multisplit"); a.equal(r.restored, true);' "$WORK/rb.json"
 [ "$(chash)" = "$PRE_HASH" ] || fail "the operator rollback did not restore the pre-apply configuration"
 [ "$(dpi_args)" = "$ZAPRET_NFQWS_BIN --qnum=4000 --dpi-desync-fwmark=0x40000000 $FAKE " ] || fail "the operator rollback left the candidate runtime"
 manager_status

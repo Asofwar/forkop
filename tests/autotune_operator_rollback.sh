@@ -94,7 +94,8 @@ manager rollback >"$WORK/rollback.json" || true
 node -e '
 const a = require("node:assert/strict");
 const r = require(process.argv[1]);
-a.equal(r.status, "ok"); a.equal(r.result, "rolled_back"); a.equal(r.group, "youtube"); a.equal(r.candidate, "fake");' \
+a.equal(r.status, "ok"); a.equal(r.result, "rolled_back"); a.equal(r.group, "youtube"); a.equal(r.candidate, "fake");
+a.equal(r.restored, true);' \
   "$WORK/rollback.json" || fail "rollback result: $(cat "$WORK/rollback.json")"
 [ "$(rollbacks)" = 1 ] || fail "the Stage 5 rollback did not run exactly once"
 [ "$(json_get "$FORKOP_AUTOTUNE_STATE_FILE" groups.youtube.last_apply.status)" = '"rolled_back"' ] ||
@@ -104,6 +105,34 @@ a.equal(r.status, "ok"); a.equal(r.result, "rolled_back"); a.equal(r.group, "you
 [ "$(json_get "$FORKOP_AUTOTUNE_STATE_FILE" groups.youtube.cooldowns.fake)" -gt "$(date +%s)" ] ||
   fail "the rolled back candidate does not pause"
 [ "$(json_get "$FORKOP_AUTOTUNE_STATE_FILE" applies)" = '[]' ] || fail "an operator rollback counts as an apply"
+
+# 3b. A rollback that did not finish (its restore reload was only queued,
+#     the guard stays): the group card shows that, not the outcome of the
+#     apply before it; the candidate pauses all the same.
+printf '%s\n' '{"status":"needs_attention","phase":"needs_attention","reason":"operator_rollback:rollback_needs_attention","selected":"fake","mutation":{"section":"youtube","option":"nfqws_opt"},"rollback":{"status":"needs_attention"},"applied":false}' >"$WORK/tune/rollback.json"
+if manager rollback >"$WORK/rollback.json"; then fail "an unfinished rollback exited 0"; fi
+node -e '
+const a = require("node:assert/strict");
+const r = require(process.argv[1]);
+a.equal(r.status, "failed"); a.equal(r.result, "needs_attention"); a.equal(r.group, "youtube"); a.equal(r.restored, false);' \
+  "$WORK/rollback.json" || fail "unfinished rollback result: $(cat "$WORK/rollback.json")"
+[ "$(json_get "$FORKOP_AUTOTUNE_STATE_FILE" groups.youtube.last_apply.status)" = '"needs_attention"' ] ||
+  fail "the group does not show the unfinished rollback: $(cat "$FORKOP_AUTOTUNE_STATE_FILE")"
+[ "$(json_get "$FORKOP_AUTOTUNE_STATE_FILE" groups.youtube.last_apply.reason)" = '"operator_rollback"' ] || fail "unfinished rollback reason"
+[ "$(json_get "$FORKOP_AUTOTUNE_STATE_FILE" applies)" = '[]' ] || fail "an unfinished operator rollback counts as an apply"
+
+# 3c. An unreadable record set aside while the configuration already was the
+#     last-known-working one: done, but nothing was restored; no group changes.
+before="$(cat "$FORKOP_AUTOTUNE_STATE_FILE")"
+printf '%s\n' '{"status":"rolled_back","phase":"rolled_back","reason":"apply_state_unreadable","mutation":null,"rollback":{"status":"not_needed","lkg":"1_1"}}' >"$WORK/tune/rollback.json"
+manager rollback >"$WORK/rollback.json" || fail "setting an unreadable record aside exited non-zero"
+node -e '
+const a = require("node:assert/strict");
+const r = require(process.argv[1]);
+a.equal(r.status, "ok"); a.equal(r.reason, "apply_state_unreadable"); a.equal(r.restored, false); a.equal(r.group, null);' \
+  "$WORK/rollback.json" || fail "unreadable record result: $(cat "$WORK/rollback.json")"
+[ "$(cat "$FORKOP_AUTOTUNE_STATE_FILE")" = "$before" ] || fail "setting an unreadable record aside changed a group"
+rm -f "$WORK/tune/rollback.json"
 
 # 4. A refused rollback changes nothing in the state.
 before="$(cat "$FORKOP_AUTOTUNE_STATE_FILE")"

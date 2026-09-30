@@ -35,6 +35,6 @@ else if (mode == "rollback") {
     log("rollback");
     let data = fs.readfile(dir + "/rollback.json");
     print(data != null ? data : sprintf("%J\n", { status: "rolled_back", phase: "rolled_back", reason: "operator_rollback",
-        selected: "fake", mutation: { section: "youtube", option: "nfqws_opt" }, applied: false }));
+        selected: "fake", mutation: { section: "youtube", option: "nfqws_opt" }, rollback: { status: "success" }, applied: false }));
 }
 else exit(1);

@@ -1233,12 +1233,12 @@ function service_state_success(args) {
     return module_success(command_args);
 }
 
-function acquire_runtime_lock(lock_dir, wait) {
+function acquire_runtime_lock(lock_dir, wait, timeout) {
     return service_state_success([
         wait ? "acquire-runtime-dir-lock-wait" : "acquire-runtime-dir-lock",
         lock_dir,
         owner_pid(),
-        "300"
+        timeout == null ? "300" : as_string(timeout)
     ]);
 }
 
@@ -4482,6 +4482,53 @@ function subscription_update_common_locked(force, target_section, target_source_
     return true;
 }
 
+const SUBSCRIPTION_LOCK_WAIT_SECONDS = 300;
+
+// Takes reload.lock and then subscription-update.lock: the global lock order
+// (service/state.uc). A start holds reload.lock around start_main, which then
+// waits for subscription-update.lock; an update holding that lock while it
+// waits for reload.lock would wait on the start in turn.
+//
+// Who holds subscription-update.lock while this update holds reload.lock
+// holds it without reload.lock: the deferred subscription bootstrap retry
+// (subscription/cache.uc), which downloads under it for as long as its
+// requests take. A forced update does not wait for it inside reload.lock,
+// which would hold back a DNS failover switch, every reload, a restore and
+// an autotune apply meanwhile (UC-057). It releases reload.lock, waits until
+// subscription-update.lock is free while it holds nothing else (it takes the
+// lock and lets go of it at once), and takes both in order again. What the
+// update decides from the cache and the runtime it decides under both locks,
+// after the wait. The waits after the first reload.lock share one bound.
+//
+// Returns "" with both locks held, or the reason for a forced update's
+// queued reload when it did not get them.
+function acquire_subscription_update_locks(force) {
+    if (!acquire_runtime_lock(RELOAD_LOCK_DIR, force))
+        return "reload_busy";
+
+    let deadline = null;
+    while (!acquire_runtime_lock(SUBSCRIPTION_UPDATE_LOCK_DIR, false)) {
+        release_runtime_lock(RELOAD_LOCK_DIR);
+        // Reloads that arrived while this update held reload.lock were only
+        // queued; apply them now, before this update waits or gives up.
+        run_pending_reload_if_requested();
+        if (!force)
+            return "subscription_update_busy";
+        if (deadline == null) {
+            deadline = now_seconds() + SUBSCRIPTION_LOCK_WAIT_SECONDS;
+            log_message("Another subscription download holds the subscription update lock; waiting for it without the reload lock", "info");
+        }
+        let remaining = deadline - now_seconds();
+        if (remaining <= 0 || !acquire_runtime_lock(SUBSCRIPTION_UPDATE_LOCK_DIR, true, remaining))
+            return "subscription_update_busy";
+        release_runtime_lock(SUBSCRIPTION_UPDATE_LOCK_DIR);
+        remaining = deadline - now_seconds();
+        if (remaining <= 0 || !acquire_runtime_lock(RELOAD_LOCK_DIR, true, remaining))
+            return "reload_busy";
+    }
+    return "";
+}
+
 function subscription_update_common(force, target_section, target_source_index) {
     if (!subscription_cache_success([ "ensure-runtime-dirs" ]))
         exit(1);
@@ -4493,28 +4540,13 @@ function subscription_update_common(force, target_section, target_source_index) 
     // directory; the cache is committed from it under both locks below.
     subscription_prefetch_dir = subscription_prefetch(force, target_section, target_source_index);
 
-    // Global lock order (service/state.uc): reload.lock before
-    // subscription-update.lock. A start holds reload.lock around start_main,
-    // which then waits for subscription-update.lock; an update holding that
-    // lock while it waits for reload.lock would wait on the start in turn.
-    if (!acquire_runtime_lock(RELOAD_LOCK_DIR, force)) {
+    let busy = acquire_subscription_update_locks(force);
+    if (busy != "") {
         subscription_prefetch_discard();
-        log_message("Forkop reload is already running; skipping subscription update", "info");
+        log_message(busy == "reload_busy" ? "Forkop reload is already running; skipping subscription update" :
+            "Subscription update is already running", "info");
         if (force)
-            mark_pending_reload("reload_busy");
-        return force ? 1 : 0;
-    }
-
-    if (!acquire_runtime_lock(SUBSCRIPTION_UPDATE_LOCK_DIR, force)) {
-        subscription_prefetch_discard();
-        release_runtime_lock(RELOAD_LOCK_DIR);
-        // Reloads that arrived while this update held reload.lock were only
-        // queued; apply them now, before leaving this update's own request
-        // for the subscription-update.lock holder.
-        run_pending_reload_if_requested();
-        log_message("Subscription update is already running", "info");
-        if (force)
-            mark_pending_reload("subscription_update_busy");
+            mark_pending_reload(busy);
         return force ? 1 : 0;
     }
 

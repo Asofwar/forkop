@@ -317,7 +317,10 @@ function run_pending_reload_if_requested(path, init_script) {
 //      reload.lock for a start and for a reload that restarts the runtime;
 //      the subscription update, after reload.lock; the deferred subscription
 //      bootstrap retry (subscription/cache.uc), which holds nothing else and
-//      releases it before it requests a reload.
+//      releases it before it requests a reload. A forced subscription update
+//      does not wait for the retry's download inside reload.lock (UC-057):
+//      it releases reload.lock, waits holding nothing else (taking the lock
+//      and letting go of it at once), and takes both again in order.
 // The lock protocol and the owner record: core/runtime_lock.uc.
 function release_runtime_dir_lock(lock_dir, owner_pid) {
     return runtime_lock.release(lock_dir, owner_pid);

@@ -261,11 +261,14 @@ function uci_value(text) {
 // that type in file order (a named section that appears again is the same
 // section): its options never merge into the named section before it
 // (UC-018). A header this reader cannot parse ends the section before it, so
-// what follows is attributed to no other section.
+// what follows is attributed to no other section. The \r of a CRLF line end is
+// a blank to libuci, so it is no part of a line here. An option followed by a
+// list of the same name is one list, the option's value first, as libuci
+// loads it.
 function options(content) {
     let result = {};
     let section = null, count = {}, named = {};
-    let lines = split(content, "\n");
+    let lines = map(split(content, "\n"), (line) => replace(line, /\r$/, ""));
     for (let i = 0; i < length(lines); i++) {
         let line = lines[i];
         if (match(line, /^[ \t]*config([ \t]|$)/) != null) {
@@ -292,8 +295,10 @@ function options(content) {
         if (raw == null) raw = text;
         let key = section + "." + opt[2];
         if (opt[1] == "list") {
-            if (result[key] == null || result[key].kind != "list")
+            if (result[key] == null)
                 result[key] = { kind: "list", values: [] };
+            else if (result[key].kind != "list")
+                result[key] = { kind: "list", values: [ result[key].value ] };
             push(result[key].values, raw);
         }
         // An option statement without a value sets nothing, as libuci loads

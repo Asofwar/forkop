@@ -5,6 +5,7 @@
 # of its own, addressed as libuci does (@type[n], n counting every section of
 # that type in file order), never merged into the named section before it.
 # UC-062: a diff longer than the listed rows says so, with the total.
+# The reading follows libuci: CRLF line ends, an option followed by a list.
 set -eu
 ROOT="$(CDPATH="" cd -- "$(dirname -- "$0")/.." && pwd)"
 LIB="$ROOT/forkop/files/usr/lib"
@@ -110,6 +111,55 @@ assert.deepEqual(diff(quoted('udp'), quoted('doh')), [
   { section: 'main', option: 'dns_type', before: 'udp', after: 'doh' },
   { section: '@urltest[0]', option: 'dns_type', before: 'udp', after: 'doh' },
 ]);
+// The file as uci itself rewrites it after `uci set` (the autotune candidate
+// is proven against such a rewrite); null without the uci CLI.
+function rewritten(text, assignment) {
+  if (!uci) return null;
+  const dir = `${work}/case${run++}`;
+  fs.mkdirSync(`${dir}/save`, { recursive: true });
+  fs.writeFileSync(`${dir}/forkop`, text);
+  execFileSync(uci, ['-c', dir, '-t', `${dir}/save`, 'set', `forkop.${assignment}`]);
+  execFileSync(uci, ['-c', dir, '-t', `${dir}/save`, 'commit', 'forkop']);
+  return fs.readFileSync(`${dir}/forkop`, 'utf8');
+}
+// CRLF line ends, which libuci loads (a \r is a blank to it): named and
+// anonymous headers keep their sections, no key or value takes the \r.
+const crlf = (text) => text.replace(/\n/g, '\r\n');
+const hand = (action, dns) => section('section', 'main', `option action '${action}'`, "option note 'two\nlines'") +
+  section('section_interface', null, `option dns_type '${dns}'`, "list dns_server '1.1.1.1'");
+assert.deepEqual(diff(crlf(hand('proxy', 'udp')), crlf(hand('direct', 'doh'))), [
+  { section: 'main', option: 'action', before: 'proxy', after: 'direct' },
+  { section: '@section_interface[0]', option: 'dns_type', before: 'udp', after: 'doh' },
+]);
+// A CRLF file against its LF form differs in nothing but the change.
+assert.deepEqual(diff(crlf(hand('proxy', 'udp')), hand('direct', 'udp')), [
+  { section: 'main', option: 'action', before: 'proxy', after: 'direct' },
+]);
+const lf = rewritten(crlf(hand('proxy', 'udp')), 'main.action=direct');
+if (lf != null) {
+  // uci ends lines with LF; only the quoted value keeps its \r.
+  assert.equal(lf.replace("'two\r\nlines'", '').includes('\r'), false);
+  assert.deepEqual(diff(crlf(hand('proxy', 'udp')), lf), [
+    { section: 'main', option: 'action', before: 'proxy', after: 'direct' },
+  ]);
+}
+// An option followed by a list of the same name is one list, the option's
+// value first, as libuci loads it (uci rewrites it as list lines); a later
+// option replaces a list.
+const dns = (action, ...lines) => section('settings', 'settings', `option action '${action}'`, ...lines);
+const mixedList = dns('proxy', "option dns_server '1.1.1.1'", "list dns_server '8.8.8.8'");
+assert.deepEqual(diff(mixedList, dns('proxy', "list dns_server '1.1.1.1'", "list dns_server '8.8.8.8'")), []);
+assert.deepEqual(diff(mixedList, dns('proxy', "list dns_server '8.8.8.8'")), [
+  { section: 'settings', option: 'dns_server', kind: 'list', before: ['1.1.1.1', '8.8.8.8'], after: ['8.8.8.8'] },
+]);
+assert.deepEqual(diff(dns('proxy', "list dns_server '1.1.1.1'", "option dns_server '8.8.8.8'"),
+  dns('proxy', "option dns_server '8.8.8.8'")), []);
+const relisted = rewritten(mixedList, 'settings.action=direct');
+if (relisted != null) {
+  assert.deepEqual(diff(mixedList, relisted), [
+    { section: 'settings', option: 'action', before: 'proxy', after: 'direct' },
+  ]);
+}
 
 // D-2(a), UC-063: a side without the option is null ("not set"); '***'
 // stands only for a value that exists and is hidden.

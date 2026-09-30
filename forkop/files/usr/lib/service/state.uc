@@ -293,7 +293,11 @@ function run_pending_reload_if_requested(path, init_script) {
     // Do not acknowledge the durable request before its replacement owns the
     // reload handoff. A detached init.d invocation leaves a window in which a
     // latency worker can take reload.lock again while the marker is gone.
-    if (system(shell_quote(init_script) + " reload pending </dev/null >/dev/null 2>&1 1000>&-") != 0) {
+    // The nested init.d is waited for, so it keeps the procd service lock of
+    // this process (fd 1000): rc.common then takes it from the inherited
+    // descriptor. Closing fd 1000, as detached workers must, makes the child
+    // open the lock anew and wait for its own waiting ancestor.
+    if (system(shell_quote(init_script) + " reload pending </dev/null >/dev/null 2>&1") != 0) {
         mark_pending_reload(path, "pending_handoff_failed");
         command_success_from_args([ "logger", "-t", "forkop", "[warn] Pending Forkop reload handoff failed; request was retained" ]);
         return false;

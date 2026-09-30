@@ -439,6 +439,11 @@ $ uci -c c -t s show anon
   out| anon.@b[1].k='v'$
   out| anon.@c[0]=c$
   out| anon.@b[2]=b$
+$ uci -c c -t s show empty
+[rc=0]
+  out| empty.x=a$
+  out| empty.x.o='1'$
+  out| empty.x.l=''$
 $ uci -c c -t s show p1
 [rc=1]
   err| uci: Parse error (section of different type overwrites prior section with same name)$

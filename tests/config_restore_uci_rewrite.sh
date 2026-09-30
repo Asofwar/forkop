@@ -107,12 +107,16 @@ STUB
 chmod +x "$WORK/bin/ucode" "$WORK/bin/sha256sum" "$WORK/reload"
 
 # A hand-written configuration that ran well: comments, double quotes,
-# spaces, no blank lines. uci writes none of this back as it was.
+# spaces, no blank lines, an option statement without a value (libuci keeps
+# the earlier value and writes no such line back). uci writes none of this
+# back as it was.
 handwritten() {
   cat >"$FORKOP_CONFIG_FILE" <<'CONF'
 # Written by hand on the router.
 config settings 'settings'
     option dns_server "1.1.1.1"   # upstream resolver
+    option dns_server ''
+    option unset ''
     option shutdown_correctly 0
     option marker "good"
     list domains 'a.example'

@@ -440,9 +440,11 @@ function uci_statements(text) {
     return result;
 }
 // The sections of a configuration as libuci loads it: a named section that
-// appears again is merged into the first, an option keeps its last value and
-// an empty one is removed, list values stay in order. null when libuci would
-// not load it the same way (see uci_statements) or not at all.
+// appears again is merged into the first, an option keeps its last value,
+// list values stay in order. An option statement without a value changes
+// nothing (libuci's uci_set of an empty value on load): an earlier value
+// stays, and alone it creates no option. null when libuci would not load it
+// the same way (see uci_statements) or not at all.
 function uci_sections(text) {
     let statements = uci_statements(text);
     if (statements == null) return null;
@@ -464,8 +466,8 @@ function uci_sections(text) {
             if (current == null || args < 1 || args > 2 || w[1].text == "") return null;
             let name = w[1].text, value = args == 2 ? w[2].text : "", option = find(current.options, name);
             if (substr(keyword, 0, 1) == "o") {
-                if (value == "") { if (option != null) current.options = filter(current.options, (x) => x !== option); }
-                else if (option != null) { option.list = false; option.value = value; }
+                if (value == "") continue;
+                if (option != null) { option.list = false; option.value = value; }
                 else push(current.options, { name, list: false, value });
             }
             else if (option == null) push(current.options, { name, list: true, value: [ value ] });

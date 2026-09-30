@@ -188,6 +188,11 @@ DELTA
   printf "config b 'n'\nconfig b\n\toption k 'v'\nconfig c\nconfig b\n" >c/anon
   u show anon
 
+  # An option statement without a value changes nothing on load: an earlier
+  # value stays, and alone it creates no option (a list keeps its empty entry).
+  printf "config a 'x'\n\toption o '1'\n\toption o ''\n\toption bare\n\toption lone ''\n\tlist l ''\n" >c/empty
+  u show empty
+
   # Parse errors.
   printf "config a 'x'\nconfig b 'x'\n" >c/p1
   printf "option o 1\n" >c/p2

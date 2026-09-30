@@ -230,8 +230,10 @@ function parse_package(text) {
             let value = length(w) == 3 ? w[2].text : "";
             let option = find_option(current, w[1].text);
             if (substr(keyword, 0, 1) == "o") {
-                if (value == "") { if (option) remove_item(current.options, option); }
-                else if (option) { option.list = false; option.value = value; }
+                // Without a value it changes nothing: an earlier value stays
+                // (libuci's uci_set of an empty value on load).
+                if (value == "") continue;
+                if (option) { option.list = false; option.value = value; }
                 else push(current.options, { name: w[1].text, list: false, value });
             }
             else if (!option) push(current.options, { name: w[1].text, list: true, value: [ value ] });

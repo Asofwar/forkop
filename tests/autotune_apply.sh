@@ -939,7 +939,16 @@ node -e 'const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));
   fail "the edit is not saved as a snapshot"
 ! grep -q 'restore success' "$STUB_LOG/health.log" || fail "a restore was recorded as a success"
 at status; json 'a.equal(r.diagnosis, "superseded"); a.equal(r.resolved, true);' "$WORK/out.json"
-ok "UC-017 verification failed + configuration edited -> no automatic rollback over the edit, needs_attention, edit saved"
+# The edit was made on top of the candidate, so the rule still runs the
+# strategy that has just failed its production check: the next start or
+# reload does not make that configuration last-known-working. Once the rule's
+# strategy is changed, nothing objects any more.
+grep -qF "option nfqws_opt '$MULTISPLIT'" "$FORKOP_CONFIG_FILE" || fail "fixture: the failed strategy is not in the edited configuration"
+confirm; json 'a.equal(r.status, "not_confirmed"); a.equal(r.reason, "autotune_apply_unresolved");' "$WORK/confirm.json"
+[ "$(lkg)" = "$PRE_LKG" ] || fail "a start or reload confirmed a configuration that still runs the strategy that failed verification"
+sed -i "s|option nfqws_opt '$MULTISPLIT'|option nfqws_opt '$FAKE'|" "$FORKOP_CONFIG_FILE"
+confirm; json 'a.equal(r.status, "confirmed", JSON.stringify(r));' "$WORK/confirm.json"
+ok "UC-017 verification failed + configuration edited -> no automatic rollback over the edit, needs_attention, edit saved, the failed strategy never confirmed"
 
 # The same for the operator's rollback: between its check that the
 # configuration is the candidate and the restore, an edit lands. The restore

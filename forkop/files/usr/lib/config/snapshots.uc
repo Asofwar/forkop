@@ -598,6 +598,21 @@ function guarded_replace(before, content, pre, on_success, reason, apply_mode, o
     result.started = true;
     return result;
 }
+// Whether the rule an autotune apply changed (mutation: { section, option
+// "nfqws_opt", to }) still has the candidate's strategy in `content`
+// (whitespace as autotune/apply.uc normalizes it). A configuration this
+// reader cannot load might have it (fail closed).
+function runs_strategy(content, mutation) {
+    if (type(mutation) != "object" || type(mutation.section) != "string" || type(mutation.to) != "string") return false;
+    let sections = uci_sections(content);
+    if (sections == null) return true;
+    let words = (v) => join(" ", filter(split(v, /[ \t\r\n]+/), (w) => w != ""));
+    for (let s in sections)
+        if (s.name === mutation.section)
+            for (let o in s.options)
+                if (o.name == "nfqws_opt" && !o.list && words(o.value) == words(mutation.to)) return true;
+    return false;
+}
 // Why the configuration may not become last-known-working because of an
 // autotune apply, or null. A start or a reload proves that a configuration
 // runs, not that an autotune candidate works: a candidate is confirmed only
@@ -606,7 +621,11 @@ function guarded_replace(before, content, pre, on_success, reason, apply_mode, o
 // be read (it may hide an unresolved apply), or while a record that still
 // waits for a decision names the configuration as its candidate: an
 // interrupted or crashed verification, a failed one whose rollback did not
-// finish (UC-020, UC-069).
+// finish (UC-020, UC-069). A configuration edited on top of a candidate
+// that never passed its verification (one kept by the automatic rollback
+// because it was edited during the check, UC-017) is no candidate any more,
+// but while the rule still runs the candidate's strategy it carries what
+// has not been, or has just failed to be, verified.
 function autotune_objection(content) {
     if (fs.stat(AUTOTUNE_APPLY_STATE) == null) return null;
     let record = null;
@@ -618,6 +637,7 @@ function autotune_objection(content) {
     let hash = sha(content);
     let candidate = hash != "" && (hash == record.candidate_hash ||
         (record.candidate_fingerprint != null && user_fingerprint(content) == record.candidate_fingerprint));
+    if (!candidate && record.applied !== true) candidate = runs_strategy(content, record.mutation);
     let undecided = !finished || record.phase == "needs_attention" || (record.phase == "failed" && record.rollback_available === true);
     return candidate && undecided ? "autotune_apply_unresolved" : null;
 }

@@ -108,5 +108,43 @@ assert.deepEqual(diff(quoted('udp'), quoted('doh')), [
   { section: 'main', option: 'dns_type', before: 'udp', after: 'doh' },
   { section: '@urltest[0]', option: 'dns_type', before: 'udp', after: 'doh' },
 ]);
+
+// D-2(a), UC-063: a side without the option is null ("not set"); '***'
+// stands only for a value that exists and is hidden.
+const settings = (...options) => section('settings', 'settings', ...options);
+const secret = "option password 'SECRET_MARKER_s3cr3t'";
+assert.deepEqual(diff(settings(), settings(secret)), [
+  { section: 'settings', option: 'password', before: null, after: '***' },
+]);
+assert.deepEqual(diff(settings(secret), settings()), [
+  { section: 'settings', option: 'password', before: '***', after: null },
+]);
+assert.deepEqual(diff(settings(secret), settings("option password 'other'")), [
+  { section: 'settings', option: 'password', before: '***', after: '***' },
+]);
+assert.deepEqual(diff(settings(), settings("option dns_server '1.1.1.1'")), [
+  { section: 'settings', option: 'dns_server', before: null, after: '1.1.1.1' },
+]);
+assert.deepEqual(diff(settings("list subscription_urls 'https://SECRET_MARKER_u@example.com'"), settings()), [
+  { section: 'settings', option: 'subscription_urls', kind: 'list', before: ['***'], after: null },
+]);
+// A whole anonymous section that is gone: every option of it is not set.
+assert.deepEqual(diff(main + section('section_interface', null, secret, "option dns_type 'udp'"), main), [
+  { section: '@section_interface[0]', option: 'password', before: '***', after: null },
+  { section: '@section_interface[0]', option: 'dns_type', before: 'udp', after: null },
+]);
+// An option statement without a value sets nothing, as libuci loads it:
+// alone it is not set, after a value the value stays.
+assert.deepEqual(diff(settings(), settings("option password ''")), []);
+assert.deepEqual(diff(settings("option dns_type 'udp'"), settings("option dns_type 'udp'", "option dns_type ''")), []);
+assert.deepEqual(diff(settings("option dns_type ''"), settings("option dns_type 'doh'")), [
+  { section: 'settings', option: 'dns_type', before: null, after: 'doh' },
+]);
+// Absence reveals no value: nothing of a secret reaches the output.
+const all = JSON.stringify([
+  diff(settings(), settings(secret)), diff(settings(secret), settings()),
+  diff(settings("list subscription_urls 'https://SECRET_MARKER_u@example.com'"), settings()),
+]);
+assert.equal(all.includes('SECRET_MARKER'), false);
 JS
 echo 'config_snapshot_diff: PASS'

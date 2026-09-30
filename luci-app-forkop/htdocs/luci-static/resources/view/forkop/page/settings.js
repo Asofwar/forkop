@@ -161,12 +161,19 @@ const EntryPoint = {
             reload.status === "success";
           const changes =
             diff.success && Array.isArray(diff.data) ? diff.data : [];
+          // null: the option is not set on that side (D-2).
+          const diffValue = (value) =>
+            value === null || value === undefined
+              ? _("not set")
+              : Array.isArray(value)
+                ? JSON.stringify(value)
+                : value;
           const message = confirmed
             ? [
                 _("Configuration applied successfully"),
                 ...changes.map(
                   (change) =>
-                    `${change.section}.${change.option}: ${Array.isArray(change.before) ? JSON.stringify(change.before) : change.before} → ${Array.isArray(change.after) ? JSON.stringify(change.after) : change.after}`,
+                    `${change.section}.${change.option}: ${diffValue(change.before)} → ${diffValue(change.after)}`,
                 ),
               ].join("\n")
             : _(

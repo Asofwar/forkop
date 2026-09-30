@@ -65,7 +65,7 @@
     "key": "%d ms",
     "places": [
       "src/forkop/tabs/autotune/model.ts:499",
-      "src/forkop/tabs/dashboard/initController.ts:1076",
+      "src/forkop/tabs/dashboard/initController.ts:1075",
       "src/forkop/tabs/dashboard/partials/renderSections.ts:318",
       "src/forkop/tabs/dashboard/partials/renderSections.ts:487"
     ]
@@ -436,7 +436,7 @@
     "call": "Add a rule",
     "key": "Add a rule",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:196"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:203"
     ]
   },
   {
@@ -788,7 +788,7 @@
     "call": "Another snapshot operation is already in progress. Try again in a moment.",
     "key": "Another snapshot operation is already in progress. Try again in a moment.",
     "places": [
-      "src/forkop/tabs/history/model.ts:312"
+      "src/forkop/tabs/history/model.ts:314"
     ]
   },
   {
@@ -867,7 +867,7 @@
     "call": "Applying Forkop configuration…",
     "key": "Applying Forkop configuration…",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1349"
+      "src/forkop/tabs/dashboard/initController.ts:1348"
     ]
   },
   {
@@ -881,7 +881,7 @@
     "call": "Applying…",
     "key": "Applying…",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1337"
+      "src/forkop/tabs/dashboard/initController.ts:1336"
     ]
   },
   {
@@ -980,7 +980,7 @@
     "key": "Automatically select the fastest node in the current level",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3301",
-      "src/forkop/tabs/dashboard/initController.ts:1567"
+      "src/forkop/tabs/dashboard/initController.ts:1566"
     ]
   },
   {
@@ -1397,7 +1397,7 @@
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:4978",
       "src/forkop/ui/confirmAction.ts:30",
       "src/forkop/tabs/autotune/initController.ts:424",
-      "src/forkop/tabs/dashboard/initController.ts:1427",
+      "src/forkop/tabs/dashboard/initController.ts:1426",
       "src/forkop/tabs/updates/fullUninstall.ts:11",
       "src/forkop/tabs/updates/releaseSelector.ts:50",
       "src/forkop/tabs/updates/releaseSelector.ts:111"
@@ -1566,7 +1566,7 @@
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2789",
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3252",
-      "src/forkop/tabs/dashboard/initController.ts:1554"
+      "src/forkop/tabs/dashboard/initController.ts:1553"
     ]
   },
   {
@@ -1617,7 +1617,7 @@
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2815",
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3239",
-      "src/forkop/tabs/dashboard/initController.ts:1552"
+      "src/forkop/tabs/dashboard/initController.ts:1551"
     ]
   },
   {
@@ -1787,8 +1787,8 @@
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3581",
       "src/partials/modal/renderModal.ts:263",
       "src/forkop/tabs/autotune/initController.ts:648",
-      "src/forkop/tabs/dashboard/initController.ts:1301",
-      "src/forkop/tabs/dashboard/initController.ts:1686",
+      "src/forkop/tabs/dashboard/initController.ts:1300",
+      "src/forkop/tabs/dashboard/initController.ts:1685",
       "src/forkop/tabs/history/initController.ts:222",
       "src/forkop/tabs/updates/releaseSelector.ts:121"
     ]
@@ -1865,7 +1865,7 @@
     "call": "Components",
     "key": "Components",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:227"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:234"
     ]
   },
   {
@@ -1921,7 +1921,7 @@
     "call": "Configuration applied successfully",
     "key": "Configuration applied successfully",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:166"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:173"
     ]
   },
   {
@@ -1935,21 +1935,21 @@
     "call": "Configuration restored and reloaded",
     "key": "Configuration restored and reloaded",
     "places": [
-      "src/forkop/tabs/history/model.ts:363"
+      "src/forkop/tabs/history/model.ts:365"
     ]
   },
   {
     "call": "Configuration restored, but Forkop X is stopped: it was not started or checked. The restored configuration takes effect when Forkop X is started.",
     "key": "Configuration restored, but Forkop X is stopped: it was not started or checked. The restored configuration takes effect when Forkop X is started.",
     "places": [
-      "src/forkop/tabs/history/model.ts:370"
+      "src/forkop/tabs/history/model.ts:372"
     ]
   },
   {
     "call": "Configuration saved. Runtime reload has not been confirmed; check History and recovery.",
     "key": "Configuration saved. Runtime reload has not been confirmed; check History and recovery.",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:172"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:179"
     ]
   },
   {
@@ -2120,8 +2120,8 @@
     "call": "Could not change autostart",
     "key": "Could not change autostart",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:184",
-      "src/forkop/tabs/dashboard/initController.ts:187"
+      "src/forkop/tabs/dashboard/initController.ts:183",
+      "src/forkop/tabs/dashboard/initController.ts:186"
     ]
   },
   {
@@ -2570,7 +2570,7 @@
     "call": "DNS",
     "key": "DNS",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:216",
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:223",
       "src/forkop/tabs/diagnostic/siteCheck.ts:111",
       "src/forkop/tabs/diagnostic/siteCheck.ts:118"
     ]
@@ -3040,7 +3040,7 @@
     "call": "Edit",
     "key": "Edit",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1289"
+      "src/forkop/tabs/dashboard/initController.ts:1288"
     ]
   },
   {
@@ -3061,7 +3061,7 @@
     "call": "Edit URLTest",
     "key": "Edit URLTest",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1432"
+      "src/forkop/tabs/dashboard/initController.ts:1431"
     ]
   },
   {
@@ -3442,26 +3442,26 @@
     "call": "Failed to save URLTest settings",
     "key": "Failed to save URLTest settings",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1402"
+      "src/forkop/tabs/dashboard/initController.ts:1401"
     ]
   },
   {
     "call": "Failed to switch the node",
     "key": "Failed to switch the node",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:949",
-      "src/forkop/tabs/dashboard/initController.ts:954"
+      "src/forkop/tabs/dashboard/initController.ts:948",
+      "src/forkop/tabs/dashboard/initController.ts:953"
     ]
   },
   {
     "call": "Failed to update subscriptions",
     "key": "Failed to update subscriptions",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:386",
+      "src/forkop/tabs/dashboard/initController.ts:385",
+      "src/forkop/tabs/dashboard/initController.ts:475",
       "src/forkop/tabs/dashboard/initController.ts:476",
-      "src/forkop/tabs/dashboard/initController.ts:477",
-      "src/forkop/tabs/dashboard/initController.ts:542",
-      "src/forkop/tabs/dashboard/initController.ts:1741"
+      "src/forkop/tabs/dashboard/initController.ts:541",
+      "src/forkop/tabs/dashboard/initController.ts:1740"
     ]
   },
   {
@@ -3505,7 +3505,7 @@
     "key": "Faster server search interval",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3312",
-      "src/forkop/tabs/dashboard/initController.ts:1573"
+      "src/forkop/tabs/dashboard/initController.ts:1572"
     ]
   },
   {
@@ -3688,7 +3688,7 @@
     "call": "Forkop X is stopped: the configuration is replaced and checked, but Forkop X is not started. It takes effect when you start Forkop X.",
     "key": "Forkop X is stopped: the configuration is replaced and checked, but Forkop X is not started. It takes effect when you start Forkop X.",
     "places": [
-      "src/forkop/tabs/history/model.ts:341"
+      "src/forkop/tabs/history/model.ts:343"
     ]
   },
   {
@@ -3746,7 +3746,7 @@
     "call": "Forkop X reloads the configuration. If the reload fails, the previous configuration is restored automatically.",
     "key": "Forkop X reloads the configuration. If the reload fails, the previous configuration is restored automatically.",
     "places": [
-      "src/forkop/tabs/history/model.ts:344"
+      "src/forkop/tabs/history/model.ts:346"
     ]
   },
   {
@@ -3974,7 +3974,7 @@
     "key": "Higher-level check interval",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3276",
-      "src/forkop/tabs/dashboard/initController.ts:1559"
+      "src/forkop/tabs/dashboard/initController.ts:1558"
     ]
   },
   {
@@ -4067,8 +4067,8 @@
     "key": "Idle timeout",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2828",
-      "src/forkop/tabs/dashboard/initController.ts:1186",
-      "src/forkop/tabs/dashboard/initController.ts:1438"
+      "src/forkop/tabs/dashboard/initController.ts:1185",
+      "src/forkop/tabs/dashboard/initController.ts:1437"
     ]
   },
   {
@@ -4290,9 +4290,9 @@
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2842",
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3328",
-      "src/forkop/tabs/dashboard/initController.ts:1188",
-      "src/forkop/tabs/dashboard/initController.ts:1439",
-      "src/forkop/tabs/dashboard/initController.ts:1579"
+      "src/forkop/tabs/dashboard/initController.ts:1187",
+      "src/forkop/tabs/dashboard/initController.ts:1438",
+      "src/forkop/tabs/dashboard/initController.ts:1578"
     ]
   },
   {
@@ -4313,8 +4313,8 @@
     "call": "Interval",
     "key": "Interval",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1184",
-      "src/forkop/tabs/dashboard/initController.ts:1436"
+      "src/forkop/tabs/dashboard/initController.ts:1183",
+      "src/forkop/tabs/dashboard/initController.ts:1435"
     ]
   },
   {
@@ -4969,8 +4969,8 @@
     "places": [
       "src/forkop/methods/shell/index.ts:624",
       "src/forkop/methods/shell/index.ts:645",
-      "src/forkop/tabs/dashboard/initController.ts:1029",
-      "src/forkop/tabs/dashboard/initController.ts:1037"
+      "src/forkop/tabs/dashboard/initController.ts:1028",
+      "src/forkop/tabs/dashboard/initController.ts:1036"
     ]
   },
   {
@@ -5006,7 +5006,7 @@
     "call": "Level",
     "key": "Level",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1515"
+      "src/forkop/tabs/dashboard/initController.ts:1514"
     ]
   },
   {
@@ -5034,7 +5034,7 @@
     "call": "Lists and updates",
     "key": "Lists and updates",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:218"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:225"
     ]
   },
   {
@@ -5331,7 +5331,7 @@
     "call": "Network",
     "key": "Network",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:217"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:224"
     ]
   },
   {
@@ -5433,10 +5433,10 @@
     "call": "No",
     "key": "No",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1052",
-      "src/forkop/tabs/dashboard/initController.ts:1056",
-      "src/forkop/tabs/dashboard/initController.ts:1132",
-      "src/forkop/tabs/dashboard/initController.ts:1470"
+      "src/forkop/tabs/dashboard/initController.ts:1051",
+      "src/forkop/tabs/dashboard/initController.ts:1055",
+      "src/forkop/tabs/dashboard/initController.ts:1131",
+      "src/forkop/tabs/dashboard/initController.ts:1469"
     ]
   },
   {
@@ -5690,16 +5690,16 @@
     "call": "Node list is empty",
     "key": "Node list is empty",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1273",
-      "src/forkop/tabs/dashboard/initController.ts:1671"
+      "src/forkop/tabs/dashboard/initController.ts:1272",
+      "src/forkop/tabs/dashboard/initController.ts:1670"
     ]
   },
   {
     "call": "Nodes",
     "key": "Nodes",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1212",
-      "src/forkop/tabs/dashboard/initController.ts:1603",
+      "src/forkop/tabs/dashboard/initController.ts:1211",
+      "src/forkop/tabs/dashboard/initController.ts:1602",
       "src/forkop/tabs/dashboard/partials/renderSections.ts:335"
     ]
   },
@@ -5818,6 +5818,14 @@
       "src/forkop/tabs/diagnostic/initController.ts:330",
       "src/forkop/tabs/diagnostic/initController.ts:385",
       "src/forkop/tabs/diagnostic/initController.ts:458"
+    ]
+  },
+  {
+    "call": "not set",
+    "key": "not set",
+    "places": [
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:167",
+      "src/forkop/tabs/history/model.ts:286"
     ]
   },
   {
@@ -6369,7 +6377,7 @@
     "call": "Priority details",
     "key": "Priority details",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1698",
+      "src/forkop/tabs/dashboard/initController.ts:1697",
       "src/forkop/tabs/dashboard/partials/renderSections.ts:465",
       "src/forkop/tabs/dashboard/partials/renderSections.ts:466"
     ]
@@ -6378,7 +6386,7 @@
     "call": "Priority details are unavailable",
     "key": "Priority details are unavailable",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1540"
+      "src/forkop/tabs/dashboard/initController.ts:1539"
     ]
   },
   {
@@ -6542,7 +6550,7 @@
     "call": "Refreshing Dashboard…",
     "key": "Refreshing Dashboard…",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1357"
+      "src/forkop/tabs/dashboard/initController.ts:1356"
     ]
   },
   {
@@ -6668,7 +6676,7 @@
     "call": "Removing user settings…",
     "key": "Removing user settings…",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1383"
+      "src/forkop/tabs/dashboard/initController.ts:1382"
     ]
   },
   {
@@ -6783,42 +6791,42 @@
     "call": "Restore did not finish: a failed change left the DPI guard in place, and the DPI guard stays active. Restart Forkop X, then restore the snapshot again.",
     "key": "Restore did not finish: a failed change left the DPI guard in place, and the DPI guard stays active. Restart Forkop X, then restore the snapshot again.",
     "places": [
-      "src/forkop/tabs/history/model.ts:451"
+      "src/forkop/tabs/history/model.ts:453"
     ]
   },
   {
     "call": "Restore did not finish: the configuration was changed while the snapshot was being applied.",
     "key": "Restore did not finish: the configuration was changed while the snapshot was being applied.",
     "places": [
-      "src/forkop/tabs/history/model.ts:442"
+      "src/forkop/tabs/history/model.ts:444"
     ]
   },
   {
     "call": "Restore did not finish: the configuration was changed while the snapshot was being applied. Forkop X was reloaded, but it is not known whether with the snapshot or with the change.",
     "key": "Restore did not finish: the configuration was changed while the snapshot was being applied. Forkop X was reloaded, but it is not known whether with the snapshot or with the change.",
     "places": [
-      "src/forkop/tabs/history/model.ts:441"
+      "src/forkop/tabs/history/model.ts:443"
     ]
   },
   {
     "call": "Restore did not finish: the service was busy and only queued the reload. The DPI guard stays active; restore again when the service is idle.",
     "key": "Restore did not finish: the service was busy and only queued the reload. The DPI guard stays active; restore again when the service is idle.",
     "places": [
-      "src/forkop/tabs/history/model.ts:459"
+      "src/forkop/tabs/history/model.ts:461"
     ]
   },
   {
     "call": "Restore failed; check the recovery state before retrying",
     "key": "Restore failed; check the recovery state before retrying",
     "places": [
-      "src/forkop/tabs/history/model.ts:468"
+      "src/forkop/tabs/history/model.ts:470"
     ]
   },
   {
     "call": "Restore failed; previous configuration and runtime recovered",
     "key": "Restore failed; previous configuration and runtime recovered",
     "places": [
-      "src/forkop/tabs/history/model.ts:383"
+      "src/forkop/tabs/history/model.ts:385"
     ]
   },
   {
@@ -6846,49 +6854,49 @@
     "call": "Restore the snapshot you need to finish.",
     "key": "Restore the snapshot you need to finish.",
     "places": [
-      "src/forkop/tabs/history/model.ts:441"
+      "src/forkop/tabs/history/model.ts:443"
     ]
   },
   {
     "call": "Restore was not applied: Forkop X was stopped during the restore. The previous configuration is kept.",
     "key": "Restore was not applied: Forkop X was stopped during the restore. The previous configuration is kept.",
     "places": [
-      "src/forkop/tabs/history/model.ts:415"
+      "src/forkop/tabs/history/model.ts:417"
     ]
   },
   {
     "call": "Restore was not applied: Forkop X was stopped, and the configuration was changed during the restore.",
     "key": "Restore was not applied: Forkop X was stopped, and the configuration was changed during the restore.",
     "places": [
-      "src/forkop/tabs/history/model.ts:438"
+      "src/forkop/tabs/history/model.ts:440"
     ]
   },
   {
     "call": "Restore was not applied: the service was busy and only queued the reload. The previous configuration is kept.",
     "key": "Restore was not applied: the service was busy and only queued the reload. The previous configuration is kept.",
     "places": [
-      "src/forkop/tabs/history/model.ts:380"
+      "src/forkop/tabs/history/model.ts:382"
     ]
   },
   {
     "call": "Restore was not applied: the snapshot configuration did not pass validation. The previous configuration is kept; Forkop X stays stopped.",
     "key": "Restore was not applied: the snapshot configuration did not pass validation. The previous configuration is kept; Forkop X stays stopped.",
     "places": [
-      "src/forkop/tabs/history/model.ts:412"
+      "src/forkop/tabs/history/model.ts:414"
     ]
   },
   {
     "call": "Restore was not started: a failed change left the DPI guard in place, and nothing can be reloaded until Forkop X is restarted. Restart Forkop X, then restore the snapshot if it is still needed.",
     "key": "Restore was not started: a failed change left the DPI guard in place, and nothing can be reloaded until Forkop X is restarted. Restart Forkop X, then restore the snapshot if it is still needed.",
     "places": [
-      "src/forkop/tabs/history/model.ts:392"
+      "src/forkop/tabs/history/model.ts:394"
     ]
   },
   {
     "call": "Restore was not started: the router has uncommitted uci changes of Forkop X (made with \"uci set\" without a commit). Commit or revert them, then restore again.",
     "key": "Restore was not started: the router has uncommitted uci changes of Forkop X (made with \"uci set\" without a commit). Commit or revert them, then restore again.",
     "places": [
-      "src/forkop/tabs/history/model.ts:402"
+      "src/forkop/tabs/history/model.ts:404"
     ]
   },
   {
@@ -7089,7 +7097,7 @@
     "call": "Rule",
     "key": "Rule",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:196",
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:203",
       "src/forkop/tabs/monitoring/initController.ts:675",
       "src/forkop/tabs/monitoring/initController.ts:1008"
     ]
@@ -7134,7 +7142,7 @@
     "call": "Rules",
     "key": "Rules",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:193",
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:200",
       "src/forkop/tabs/dashboard/overviewCards.ts:218"
     ]
   },
@@ -7142,7 +7150,7 @@
     "call": "Rules are checked from top to bottom. Drag rows to change priority.",
     "key": "Rules are checked from top to bottom. Drag rows to change priority.",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:194"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:201"
     ]
   },
   {
@@ -7222,7 +7230,7 @@
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3590",
       "src/forkop/tabs/autotune/initController.ts:523",
       "src/forkop/tabs/autotune/initController.ts:588",
-      "src/forkop/tabs/dashboard/initController.ts:1422"
+      "src/forkop/tabs/dashboard/initController.ts:1421"
     ]
   },
   {
@@ -7236,7 +7244,7 @@
     "call": "Saving URLTest settings…",
     "key": "Saving URLTest settings…",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1366"
+      "src/forkop/tabs/dashboard/initController.ts:1365"
     ]
   },
   {
@@ -7378,7 +7386,7 @@
     "key": "Select the fastest node",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3290",
-      "src/forkop/tabs/dashboard/initController.ts:1563"
+      "src/forkop/tabs/dashboard/initController.ts:1562"
     ]
   },
   {
@@ -7413,8 +7421,8 @@
     "call": "Selected",
     "key": "Selected",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1180",
-      "src/forkop/tabs/dashboard/initController.ts:1549"
+      "src/forkop/tabs/dashboard/initController.ts:1179",
+      "src/forkop/tabs/dashboard/initController.ts:1548"
     ]
   },
   {
@@ -7510,7 +7518,7 @@
     "call": "Service settings",
     "key": "Service settings",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:219"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js:226"
     ]
   },
   {
@@ -8002,7 +8010,7 @@
     "call": "Subscriptions updated",
     "key": "Subscriptions updated",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:502"
+      "src/forkop/tabs/dashboard/initController.ts:501"
     ]
   },
   {
@@ -8197,8 +8205,8 @@
     "call": "Testing URL",
     "key": "Testing URL",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1183",
-      "src/forkop/tabs/dashboard/initController.ts:1435"
+      "src/forkop/tabs/dashboard/initController.ts:1182",
+      "src/forkop/tabs/dashboard/initController.ts:1434"
     ]
   },
   {
@@ -8254,14 +8262,14 @@
     "call": "The change is kept and saved as a snapshot (\"Concurrent edit\").",
     "key": "The change is kept and saved as a snapshot (\"Concurrent edit\").",
     "places": [
-      "src/forkop/tabs/history/model.ts:429"
+      "src/forkop/tabs/history/model.ts:431"
     ]
   },
   {
     "call": "The change is kept in the configuration, but no snapshot of it could be saved.",
     "key": "The change is kept in the configuration, but no snapshot of it could be saved.",
     "places": [
-      "src/forkop/tabs/history/model.ts:430"
+      "src/forkop/tabs/history/model.ts:432"
     ]
   },
   {
@@ -8374,7 +8382,7 @@
     "call": "The DPI guard stays active. Restore the snapshot you need to finish.",
     "key": "The DPI guard stays active. Restore the snapshot you need to finish.",
     "places": [
-      "src/forkop/tabs/history/model.ts:442"
+      "src/forkop/tabs/history/model.ts:444"
     ]
   },
   {
@@ -8804,7 +8812,7 @@
     "call": "The service is busy with another operation (list or subscription update, reload or start). Nothing was changed; try again when it finishes.",
     "key": "The service is busy with another operation (list or subscription update, reload or start). Nothing was changed; try again when it finishes.",
     "places": [
-      "src/forkop/tabs/history/model.ts:309"
+      "src/forkop/tabs/history/model.ts:311"
     ]
   },
   {
@@ -9016,7 +9024,7 @@
     "call": "There are unsaved changes of Forkop X in this session. Save & Apply or revert them, then restore the snapshot.",
     "key": "There are unsaved changes of Forkop X in this session. Save & Apply or revert them, then restore the snapshot.",
     "places": [
-      "src/forkop/tabs/history/model.ts:330"
+      "src/forkop/tabs/history/model.ts:332"
     ]
   },
   {
@@ -9223,8 +9231,8 @@
     "key": "Tolerance",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2801",
-      "src/forkop/tabs/dashboard/initController.ts:1185",
-      "src/forkop/tabs/dashboard/initController.ts:1437"
+      "src/forkop/tabs/dashboard/initController.ts:1184",
+      "src/forkop/tabs/dashboard/initController.ts:1436"
     ]
   },
   {
@@ -9402,7 +9410,7 @@
     "key": "Unavailability timeout",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3264",
-      "src/forkop/tabs/dashboard/initController.ts:1557"
+      "src/forkop/tabs/dashboard/initController.ts:1556"
     ]
   },
   {
@@ -9632,7 +9640,7 @@
     "call": "URLTest details",
     "key": "URLTest details",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1457",
+      "src/forkop/tabs/dashboard/initController.ts:1456",
       "src/forkop/tabs/dashboard/partials/renderSections.ts:446",
       "src/forkop/tabs/dashboard/partials/renderSections.ts:447"
     ]
@@ -9641,7 +9649,7 @@
     "call": "URLTest details are unavailable",
     "key": "URLTest details are unavailable",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1171"
+      "src/forkop/tabs/dashboard/initController.ts:1170"
     ]
   },
   {
@@ -9701,7 +9709,7 @@
     "call": "Use source values",
     "key": "Use source values",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1413"
+      "src/forkop/tabs/dashboard/initController.ts:1412"
     ]
   },
   {
@@ -9939,7 +9947,7 @@
     "call": "Yes",
     "key": "Yes",
     "places": [
-      "src/forkop/tabs/dashboard/initController.ts:1052"
+      "src/forkop/tabs/dashboard/initController.ts:1051"
     ]
   },
   {

@@ -310,12 +310,15 @@ export namespace Forkop {
     job?: AutotuneJob;
   }
 
+  // `section` is a section name or, for an anonymous section, libuci's
+  // @type[n]. null: the option is not set on that side; '***' is a value
+  // that exists but is hidden (D-2).
   export interface SnapshotChange {
     section: string;
     option: string;
     kind?: 'list';
-    before: string | string[];
-    after: string | string[];
+    before: string | string[] | null;
+    after: string | string[] | null;
   }
   export interface SnapshotResult {
     status:

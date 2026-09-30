@@ -19149,8 +19149,9 @@ function snapshotRows(snapshots2) {
     }));
 }
 function diffValue(value) {
+  if (value === null || value === void 0) return _("not set");
   if (Array.isArray(value)) return value.length ? value.join(", ") : "\u2014";
-  return value === void 0 || value === "" ? "\u2014" : value;
+  return value === "" ? "\u2014" : value;
 }
 function diffRows(changes) {
   return changes.map((change) => ({

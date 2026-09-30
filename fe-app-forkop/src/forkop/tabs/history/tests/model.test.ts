@@ -295,6 +295,41 @@ describe('snapshots', () => {
       { where: 'youtube · nfqws_opt', snapshot: 'a', current: '—' },
     ]);
   });
+
+  // D-2(a), UC-063: null is an option absent on that side; '***' is a
+  // value that exists and is hidden.
+  it('shows an absent side as not set and keeps hidden values masked', () => {
+    expect(
+      diffRows([
+        { section: 'settings', option: 'password', before: null, after: '***' },
+        {
+          section: '@section_interface[0]',
+          option: 'dns_type',
+          before: 'udp',
+          after: null,
+        },
+        {
+          section: 'settings',
+          option: 'subscription_urls',
+          kind: 'list',
+          before: null,
+          after: ['***'],
+        },
+      ]),
+    ).toEqual([
+      { where: 'settings · password', snapshot: 'not set', current: '***' },
+      {
+        where: '@section_interface[0] · dns_type',
+        snapshot: 'udp',
+        current: 'not set',
+      },
+      {
+        where: 'settings · subscription_urls',
+        snapshot: 'not set',
+        current: '***',
+      },
+    ]);
+  });
 });
 
 describe('restore result', () => {

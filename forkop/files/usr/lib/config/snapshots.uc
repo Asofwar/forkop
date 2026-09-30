@@ -296,7 +296,9 @@ function options(content) {
                 result[key] = { kind: "list", values: [] };
             push(result[key].values, raw);
         }
-        else
+        // An option statement without a value sets nothing, as libuci loads
+        // it (see uci_sections): an earlier value stays, alone it is not set.
+        else if (raw != "")
             result[key] = { kind: "option", value: raw };
     }
     return result;
@@ -305,6 +307,14 @@ function safe_values(option, values) {
     let result = [];
     for (let raw in values) push(result, safe_value(option, raw));
     return result;
+}
+// A side without the option is null, "not set"; '***' stands only for a
+// value that exists and is hidden (D-2, UC-063). Absence tells nothing of a
+// value: the option name is shown anyway. An option side stays scalar so
+// option <-> list changes remain visible.
+function diff_side(option, entry) {
+    if (entry == null) return null;
+    return entry.kind == "list" ? safe_values(option, entry.values) : safe_value(option, entry.value);
 }
 function diff(before, after) {
     let old = options(before), current = options(after), result = [];
@@ -315,23 +325,16 @@ function diff(before, after) {
         let a = old[key], b = current[key];
         // An option name has no dot; an anonymous section's type may.
         let dot = rindex(key, "."), option = substr(key, dot + 1);
+        let row = { section: substr(key, 0, dot), option };
         if ((a != null && a.kind == "list") || (b != null && b.kind == "list")) {
-            let before_values = a == null ? [] : a.kind == "list" ? a.values : [ a.value ];
-            let after_values = b == null ? [] : b.kind == "list" ? b.values : [ b.value ];
             if (a != null && b != null && a.kind == b.kind &&
-                sprintf("%J", before_values) == sprintf("%J", after_values)) continue;
-            // An option side stays scalar so option <-> list changes remain visible.
-            push(result, { section: substr(key, 0, dot), option, kind: "list",
-                before: a != null && a.kind == "option" ? safe_value(option, a.value) : safe_values(option, before_values),
-                after: b != null && b.kind == "option" ? safe_value(option, b.value) : safe_values(option, after_values) });
+                sprintf("%J", a.values) == sprintf("%J", b.values)) continue;
+            row.kind = "list";
         }
-        else {
-            let before_value = a == null ? "" : a.value;
-            let after_value = b == null ? "" : b.value;
-            if (before_value == after_value) continue;
-            push(result, { section: substr(key, 0, dot), option,
-                before: safe_value(option, before_value), after: safe_value(option, after_value) });
-        }
+        else if (a != null && b != null && a.value == b.value) continue;
+        row.before = diff_side(option, a);
+        row.after = diff_side(option, b);
+        push(result, row);
         if (length(result) >= 100) break;
     }
     return result;

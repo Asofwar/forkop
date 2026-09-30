@@ -194,17 +194,18 @@ assert.deepEqual(diff(lines("option action 'a'"), lines("list action 'a'")), [
 assert.deepEqual(diff(lines("list action 'a'"), lines("option action 'a'")), [
   { section: 'settings', option: 'action', kind: 'list', before: ['a'], after: 'a' }
 ]);
+// An absent side is null ("not set"), not a hidden value (D-2, UC-063).
 assert.deepEqual(diff('', list(a)), [
-  { section: 'settings', option: 'dns_server', kind: 'list', before: [], after: a }
+  { section: 'settings', option: 'dns_server', kind: 'list', before: null, after: a }
 ]);
 assert.deepEqual(diff(list(a), ''), [
-  { section: 'settings', option: 'dns_server', kind: 'list', before: a, after: [] }
+  { section: 'settings', option: 'dns_server', kind: 'list', before: a, after: null }
 ]);
 assert.deepEqual(diff('', lines("option action 'x'")), [
-  { section: 'settings', option: 'action', before: '***', after: 'x' }
+  { section: 'settings', option: 'action', before: null, after: 'x' }
 ]);
 assert.deepEqual(diff(lines("option action 'x'"), ''), [
-  { section: 'settings', option: 'action', before: 'x', after: '***' }
+  { section: 'settings', option: 'action', before: 'x', after: null }
 ]);
 let before = '', after = '';
 for (const option of ['password', 'passwd', 'secret', 'token', 'authorization', 'auth', 'uuid',

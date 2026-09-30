@@ -281,9 +281,11 @@ export function snapshotRows(snapshots: Forkop.SnapshotMetadata[]) {
     }));
 }
 
-function diffValue(value: string | string[] | undefined) {
+// null: the option is not set on that side, not a hidden value (D-2).
+function diffValue(value: string | string[] | null | undefined) {
+  if (value === null || value === undefined) return _('not set');
   if (Array.isArray(value)) return value.length ? value.join(', ') : '—';
-  return value === undefined || value === '' ? '—' : value;
+  return value === '' ? '—' : value;
 }
 
 // `before` is the snapshot value, `after` the saved configuration now.

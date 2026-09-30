@@ -134,6 +134,20 @@ function path_basename(path) {
     return length(parts) > 0 ? as_string(parts[length(parts) - 1]) : "";
 }
 
+function file_bytes(path) {
+    let stat = fs.stat(as_string(path));
+    return stat == null ? 0 : int(stat.size || 0);
+}
+
+function available_kib(path) {
+    let fields = split(trim(command_output_from_args([ "df", "-k", as_string(path) ])), "\n");
+    if (length(fields) < 2)
+        return -1;
+    let columns = split(trim(fields[length(fields) - 1]), /[ \t]+/);
+    return length(columns) >= 4 && match(as_string(columns[3]), /^[0-9]+$/) != null ?
+        int(columns[3]) : -1;
+}
+
 function now_seconds() {
     return int(clock()[0]);
 }
@@ -2050,23 +2064,41 @@ function opkg_forkop_set_versions_match(version, with_i18n) {
         (!with_i18n || forkop_release_matches("luci-i18n-forkop-ru", version));
 }
 
-function opkg_forkop_set_command(files, noaction, reinstall) {
-    let args = [ "opkg" ];
-    if (noaction)
-        push(args, "--noaction");
-    push(args, "install", "--force-overwrite", "--force-downgrade");
-    if (reinstall)
-        push(args, "--force-reinstall");
+function pkg_set_extension() {
+    return is_apk() ? "apk" : "ipk";
+}
+
+// The staged rollback set is installed the same way on both package managers:
+// from local files, over whatever is installed, without consulting a feed.
+function pkg_forkop_set_command(files, noaction, reinstall) {
+    let args;
+    if (is_apk()) {
+        args = [ "apk", "add" ];
+        if (noaction)
+            push(args, "--simulate");
+        push(args, "--allow-untrusted", "--force-overwrite");
+        if (reinstall)
+            push(args, "--force-reinstall");
+    }
+    else {
+        args = [ "opkg" ];
+        if (noaction)
+            push(args, "--noaction");
+        push(args, "install", "--force-overwrite", "--force-downgrade");
+        if (reinstall)
+            push(args, "--force-reinstall");
+    }
     for (let file in files)
         push(args, file);
     return command_from_args(args) + " </dev/null";
 }
 
-function opkg_forkop_recovery_files(with_i18n) {
-    let files = [ FORKOP_OPKG_RECOVERY_DIR + "/backend.ipk",
-        FORKOP_OPKG_RECOVERY_DIR + "/app.ipk" ];
+function forkop_recovery_files(with_i18n) {
+    let extension = pkg_set_extension();
+    let files = [ FORKOP_OPKG_RECOVERY_DIR + "/backend." + extension,
+        FORKOP_OPKG_RECOVERY_DIR + "/app." + extension ];
     if (with_i18n)
-        push(files, FORKOP_OPKG_RECOVERY_DIR + "/i18n.ipk");
+        push(files, FORKOP_OPKG_RECOVERY_DIR + "/i18n." + extension);
     return files;
 }
 
@@ -2111,7 +2143,7 @@ function recover_forkop_opkg_set() {
     let with_i18n = marker[2] == "1";
     if (!opkg_forkop_set_versions_match(marker[1], with_i18n) &&
         !opkg_forkop_set_versions_match(marker[0], with_i18n)) {
-        let files = opkg_forkop_recovery_files(with_i18n);
+        let files = forkop_recovery_files(with_i18n);
         for (let file in files)
             if (!file_nonempty(file))
                 return "Forkop package-set recovery archive is missing; manual recovery required";
@@ -2120,7 +2152,7 @@ function recover_forkop_opkg_set() {
         let restored = true;
         for (let i = length(files) - 1; i >= 0; i--)
             if (!run_logged("Restoring Forkop release package " + path_basename(files[i]),
-                opkg_forkop_set_command([ files[i] ], false, true))) {
+                pkg_forkop_set_command([ files[i] ], false, true))) {
                 restored = false;
                 updates_log("Restoring " + path_basename(files[i]) + " failed", "error");
             }
@@ -2130,7 +2162,38 @@ function recover_forkop_opkg_set() {
     return finish_forkop_opkg_recovery(length(marker) == 4 ? marker[3] : "");
 }
 
-function install_forkop_opkg_set(latest_version, backend_file, app_file, i18n_file) {
+// Unpacking a package set needs room for the new files while the old ones are
+// still in place, and the staged rollback set has to survive alongside them.
+// Running out of space mid-install is exactly the failure this staging exists
+// to recover from, so refuse before touching anything.
+function forkop_package_set_space_error(new_files, staged_files) {
+    let overlay_kib = available_kib("/usr");
+    let tmp_kib = available_kib("/tmp");
+    if (overlay_kib < 0 || tmp_kib < 0)
+        return "";
+
+    let new_bytes = 0;
+    for (let file in new_files)
+        new_bytes += file_bytes(file);
+    let staged_bytes = 0;
+    for (let file in staged_files)
+        staged_bytes += file_bytes(file);
+
+    // Installed files run well past their compressed size, and both package
+    // managers keep working copies while they unpack.
+    let required_overlay_kib = int((new_bytes * 3 + staged_bytes) / 1024) + 2048;
+    if (overlay_kib < required_overlay_kib)
+        return "Not enough free space to upgrade Forkop: " + as_string(overlay_kib) +
+            " KiB available where " + as_string(required_overlay_kib) + " KiB is needed";
+
+    let required_tmp_kib = int((new_bytes + staged_bytes) / 1024) + 1024;
+    if (tmp_kib < required_tmp_kib)
+        return "Not enough free space in /tmp to upgrade Forkop: " + as_string(tmp_kib) +
+            " KiB available where " + as_string(required_tmp_kib) + " KiB is needed";
+    return "";
+}
+
+function install_forkop_package_set(latest_version, backend_file, app_file, i18n_file) {
     let with_i18n = i18n_file != "";
     if (file_exists(FORKOP_OPKG_RECOVERY_DIR + "/pending"))
         return "Forkop package-set recovery is pending; a fresh component action is required";
@@ -2167,10 +2230,16 @@ function install_forkop_opkg_set(latest_version, backend_file, app_file, i18n_fi
         push(old_files, old_i18n);
         push(new_files, i18n_file);
     }
-    if (!run_logged("Checking new Forkop package set", opkg_forkop_set_command(new_files, true)) ||
-        !run_logged("Checking previous Forkop package set", opkg_forkop_set_command(old_files, true, true))) {
+    if (!run_logged("Checking new Forkop package set", pkg_forkop_set_command(new_files, true)) ||
+        !run_logged("Checking previous Forkop package set", pkg_forkop_set_command(old_files, true, true))) {
         command_success_from_args([ "rm", "-rf", FORKOP_OPKG_RECOVERY_DIR ]);
         return "Forkop package-set preflight failed; automatic upgrade refused";
+    }
+
+    let space_error = forkop_package_set_space_error(new_files, old_files);
+    if (space_error != "") {
+        command_success_from_args([ "rm", "-rf", FORKOP_OPKG_RECOVERY_DIR ]);
+        return space_error;
     }
     let marker_tmp = FORKOP_OPKG_RECOVERY_DIR + "/pending.new";
     if (!write_file(marker_tmp, FORKOP_VERSION + "\t" + latest_version + "\t" + (with_i18n ? "1" : "0") + "\t" + (forkop_was_running ? "1" : "0") + "\n") ||
@@ -2181,13 +2250,21 @@ function install_forkop_opkg_set(latest_version, backend_file, app_file, i18n_fi
     if (!command_success_from_args([ "sync" ]))
         return "Failed to persist Forkop package-set recovery state";
 
-    // Install the backend first so the old UI cannot invoke a newer API before
-    // the matching backend exists. OPKG is not atomic, even with several files.
+    // apk resolves one transaction for all three files and refreshes its index
+    // once, so keep that. opkg installs sequentially either way: the backend
+    // goes first so an old UI cannot call a newer API than the backend behind
+    // it. Neither is atomic, which is what the staged set above is for.
     let failed = false;
-    for (let file in new_files) {
-        if (!run_logged("Installing Forkop release package " + path_basename(file), opkg_forkop_set_command([ file ], false))) {
-            failed = true;
-            break;
+    if (is_apk()) {
+        failed = !run_logged("Installing Forkop release packages",
+            pkg_forkop_set_command(new_files, false));
+    }
+    else {
+        for (let file in new_files) {
+            if (!run_logged("Installing Forkop release package " + path_basename(file), pkg_forkop_set_command([ file ], false))) {
+                failed = true;
+                break;
+            }
         }
     }
     if (!failed && opkg_forkop_set_versions_match(latest_version, with_i18n)) {
@@ -2395,22 +2472,9 @@ function install_forkop(requested_version) {
     if (!stop_old_sing_box_before_forkop_upgrade())
         action_fail("forkop", "install", "Old sing-box processes have ambiguous ownership or did not stop", FORKOP_VERSION, latest_version);
 
-    // apk refreshes repository indexes for every `add` invocation. Install the
-    // release files in one transaction on APK systems to retain dependency
-    // resolution while avoiding two redundant index refreshes.
-    if (is_apk()) {
-        let files = [ app_file ];
-        if (i18n_file != "")
-            push(files, i18n_file);
-        push(files, backend_file);
-        if (!run_logged("Installing Forkop release packages", pkg_install_files_command(files)))
-            action_fail("forkop", "install", "Failed to install Forkop release packages", FORKOP_VERSION, latest_version);
-    }
-    else {
-        let error = install_forkop_opkg_set(latest_version, backend_file, app_file, i18n_file);
-        if (error != "")
-            action_fail("forkop", "install", error, FORKOP_VERSION, latest_version);
-    }
+    let error = install_forkop_package_set(latest_version, backend_file, app_file, i18n_file);
+    if (error != "")
+        action_fail("forkop", "install", error, FORKOP_VERSION, latest_version);
 
     remove_file("/var/luci-indexcache");
     command_success("rm -f /var/luci-indexcache* /tmp/luci-indexcache* 2>/dev/null");
@@ -2585,7 +2649,7 @@ function component_action(component, action, version) {
         action_fail(component != "" ? component : "unknown", action != "" ? action : "unknown", "Another component action is already running");
     if (!init_tmp_dir())
         action_fail(component != "" ? component : "unknown", action != "" ? action : "unknown", "Failed to create temporary directory");
-    if (component == "forkop" && action == "install" && !is_apk() &&
+    if (component == "forkop" && action == "install" &&
         file_exists(FORKOP_OPKG_RECOVERY_DIR + "/pending")) {
         let recovery_error = recover_forkop_opkg_set();
         if (recovery_error != "")
@@ -2636,6 +2700,26 @@ if (mode == "component-action")
     component_action(ARGV[1], ARGV[2], ARGV[3]);
 else if (mode == "forkop-releases")
     forkop_releases();
+else if (mode == "available-kib-fixture")
+    print(available_kib(ARGV[1]), "\n");
+else if (mode == "forkop-package-set-space-error-fixture") {
+    // Arguments are the new files, then "--", then the staged rollback files.
+    let new_files = [];
+    let staged_files = [];
+    let staged = false;
+    for (let i = 1; i < length(ARGV); i++) {
+        if (as_string(ARGV[i]) == "--") {
+            staged = true;
+            continue;
+        }
+        push(staged ? staged_files : new_files, ARGV[i]);
+    }
+    print(forkop_package_set_space_error(new_files, staged_files), "\n");
+}
+else if (mode == "pkg-forkop-set-command-fixture")
+    print(pkg_forkop_set_command([ ARGV[1] ], ARGV[2] == "1", ARGV[3] == "1"), "\n");
+else if (mode == "pkg-set-extension-fixture")
+    print(pkg_set_extension(), "\n");
 else if (mode == "forkop-release-catalog-fixture")
     print(sprintf("%J", parse_forkop_release_catalog(read_file(ARGV[1]), ARGV[2])), "
 ");

@@ -534,7 +534,11 @@ function save_concurrent_edit(keep) {
 // is instead of putting `before` back, saves it as a snapshot (keep: the ids
 // that snapshot may not push out) and ends needs_attention with the guard
 // active, since no reload proved a coherent runtime; when a stop skipped the
-// reload, the guard goes as described above (UC-023).
+// reload, the guard goes as described above (UC-023). After a reload that
+// ran, a restore does not know whether it loaded the snapshot or the edit:
+// the edit is saved the same way, the guard goes (the runtime is coherent)
+// and LKG does not move (on_success does not run). An apply's caller checks
+// the file itself before it confirms anything (autotune/apply.uc).
 function guarded_replace(before, content, pre, on_success, reason, apply_mode, on_stopped, keep) {
     // A guard left by an earlier needs_attention protects a runtime no reload
     // has proved yet: only this call's own guard may go without a reload.
@@ -553,18 +557,23 @@ function guarded_replace(before, content, pre, on_success, reason, apply_mode, o
     let result = null;
     let valid = success([ "ucode", "-L", LIB_DIR, LIB_DIR + "/config/validator.uc", "validate-runtime" ]);
     let target = valid ? reload(reason) : "invalid";
-    if (target == "ran") {
+    let holds = config_holds(content);
+    if (target == "ran" && (holds || apply_mode)) {
         if (!restore_guard(true)) result = { status: "needs_attention", reason: "guard_release_failed", guard: "active" };
         else result = on_success();
     }
-    else if (!config_holds(content)) {
+    else if (!holds) {
         let saved = save_concurrent_edit([ pre.snapshot.id, ...(keep || []) ]);
-        // A stopped runtime has nothing a guard could protect (see above).
-        if (target != "stopped")
+        // A reload that ran proved a coherent runtime, and a stopped runtime
+        // has nothing a guard could protect (see above).
+        if (target != "ran" && target != "stopped")
             result = { status: "needs_attention", reason: "config_changed_during_transaction", guard: "active", saved_snapshot: saved };
-        else if (!restore_guard(true)) result = { status: "needs_attention", reason: "guard_release_failed", guard: "active" };
-        else result = { status: "needs_attention", reason: "config_changed_during_transaction", guard: "inactive",
-            runtime: "stopped", saved_snapshot: saved };
+        else if (!restore_guard(true))
+            result = { status: "needs_attention", reason: "guard_release_failed", guard: "active", saved_snapshot: saved };
+        else {
+            result = { status: "needs_attention", reason: "config_changed_during_transaction", guard: "inactive", saved_snapshot: saved };
+            if (target == "stopped") result.runtime = "stopped";
+        }
     }
     else if (target == "stopped" && on_stopped != null) {
         if (!restore_guard(true)) result = { status: "needs_attention", reason: "guard_release_failed", guard: "active" };

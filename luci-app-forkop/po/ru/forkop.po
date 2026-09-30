@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-30 07:02+0000\n"
-"PO-Revision-Date: 2026-09-30 07:02+0000\n"
+"POT-Creation-Date: 2026-09-30 07:35+0000\n"
+"PO-Revision-Date: 2026-09-30 07:35+0000\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -740,6 +740,9 @@ msgstr "Компоненты"
 msgid "compressed"
 msgstr "сжатая"
 
+msgid "Concurrent edit"
+msgstr "Параллельная правка"
+
 msgid "Conditions"
 msgstr "Условия"
 
@@ -1228,9 +1231,6 @@ msgstr "Изменить URLTest"
 
 msgid "Edit…"
 msgstr "Изменить…"
-
-msgid "Edited during a rollback"
-msgstr "Правка во время отката"
 
 msgid "Enable"
 msgstr "Включить"
@@ -2717,8 +2717,11 @@ msgstr "Восстановить"
 msgid "Restore configuration snapshot?"
 msgstr "Восстановить снимок конфигурации?"
 
-msgid "Restore did not finish: the configuration was changed while the snapshot was being applied. The change is kept and saved as a snapshot (\"Edited during a rollback\"); the DPI guard stays active. Restore the snapshot you need to finish."
-msgstr "Восстановление не завершено: конфигурацию изменили, пока применялся снимок. Изменение сохранено и записано снимком («Правка во время отката»); защита DPI остаётся активной. Чтобы завершить, восстановите нужный снимок."
+msgid "Restore did not finish: the configuration was changed while the snapshot was being applied. Forkop X was reloaded, but it is not known whether with the snapshot or with the change. The change is kept and saved as a snapshot (\"Concurrent edit\"). Restore the snapshot you need to finish."
+msgstr "Восстановление не завершено: конфигурацию изменили, пока применялся снимок. Forkop X перезагружен, но неизвестно, со снимком или с изменением. Изменение сохранено и записано снимком («Параллельная правка»). Чтобы завершить, восстановите нужный снимок."
+
+msgid "Restore did not finish: the configuration was changed while the snapshot was being applied. The change is kept and saved as a snapshot (\"Concurrent edit\"); the DPI guard stays active. Restore the snapshot you need to finish."
+msgstr "Восстановление не завершено: конфигурацию изменили, пока применялся снимок. Изменение сохранено и записано снимком («Параллельная правка»); защита DPI остаётся активной. Чтобы завершить, восстановите нужный снимок."
 
 msgid "Restore did not finish: the service was busy and only queued the reload. The DPI guard stays active; restore again when the service is idle."
 msgstr "Восстановление не завершено: служба была занята и лишь поставила перезагрузку в очередь. Защита DPI остаётся активной; повторите восстановление, когда служба освободится."
@@ -2735,8 +2738,8 @@ msgstr "Вернуть обычный режим"
 msgid "Restore was not applied: Forkop X was stopped during the restore. The previous configuration is kept."
 msgstr "Восстановление не применено: Forkop X был остановлен во время восстановления. Прежняя конфигурация сохранена."
 
-msgid "Restore was not applied: Forkop X was stopped, and the configuration was changed during the restore. The change is kept and saved as a snapshot (\"Edited during a rollback\")."
-msgstr "Восстановление не применено: Forkop X был остановлен, а конфигурацию изменили во время восстановления. Изменение сохранено и записано снимком («Правка во время отката»)."
+msgid "Restore was not applied: Forkop X was stopped, and the configuration was changed during the restore. The change is kept and saved as a snapshot (\"Concurrent edit\")."
+msgstr "Восстановление не применено: Forkop X был остановлен, а конфигурацию изменили во время восстановления. Изменение сохранено и записано снимком («Параллельная правка»)."
 
 msgid "Restore was not applied: the service was busy and only queued the reload. The previous configuration is kept."
 msgstr "Восстановление не применено: служба была занята и лишь поставила перезагрузку в очередь. Прежняя конфигурация сохранена."

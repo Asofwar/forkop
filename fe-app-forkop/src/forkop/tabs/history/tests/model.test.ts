@@ -191,9 +191,7 @@ describe('history list', () => {
 describe('snapshots', () => {
   it('labels every reason and marks the last known good one', () => {
     expect(snapshotReasonLabel('before-autotune')).toBe('Before autotune');
-    expect(snapshotReasonLabel('concurrent-change')).toBe(
-      'Edited during a rollback',
-    );
+    expect(snapshotReasonLabel('concurrent-change')).toBe('Concurrent edit');
     expect(snapshotReasonLabel('unexpected')).toBe('Other');
 
     const rows = snapshotRows([
@@ -355,8 +353,20 @@ describe('restore result', () => {
     expect(edited.type).toBe('error');
     expect(edited.text).toContain('did not finish');
     expect(edited.text).toContain('The change is kept');
-    expect(edited.text).toContain('Edited during a rollback');
+    expect(edited.text).toContain('Concurrent edit');
     expect(edited.text).toContain('DPI guard stays active');
+    // UC-023: the reload ran, but it may have read the change: no success,
+    // and no guard is left.
+    const reloaded = restoreResultToast({
+      status: 'needs_attention',
+      reason: 'config_changed_during_transaction',
+      guard: 'inactive',
+    });
+    expect(reloaded.type).toBe('error');
+    expect(reloaded.text).toContain('did not finish');
+    expect(reloaded.text).toContain('not known whether with the snapshot');
+    expect(reloaded.text).toContain('The change is kept');
+    expect(reloaded.text).not.toContain('DPI guard');
     // Forkop X stopped during the restore: nothing reloaded, no guard left.
     const stopped = restoreResultToast({
       status: 'needs_attention',

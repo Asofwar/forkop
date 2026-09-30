@@ -18886,9 +18886,10 @@ function snapshotReasonLabel(reason) {
     case "before-autotune":
       return _("Before autotune");
     // A configuration edited while a restore or an autotune change owned it:
-    // kept instead of rolled back (config/snapshots.uc).
+    // kept, never rolled back or taken for the restored one
+    // (config/snapshots.uc).
     case "concurrent-change":
-      return _("Edited during a rollback");
+      return _("Concurrent edit");
     default:
       return _("Other");
   }
@@ -19012,11 +19013,16 @@ function restoreResultToast(result) {
             // guard is left.
             result.runtime === "stopped"
               ? _(
-                  'Restore was not applied: Forkop X was stopped, and the configuration was changed during the restore. The change is kept and saved as a snapshot ("Edited during a rollback").',
+                  'Restore was not applied: Forkop X was stopped, and the configuration was changed during the restore. The change is kept and saved as a snapshot ("Concurrent edit").',
                 )
-              : _(
-                  'Restore did not finish: the configuration was changed while the snapshot was being applied. The change is kept and saved as a snapshot ("Edited during a rollback"); the DPI guard stays active. Restore the snapshot you need to finish.',
-                ),
+              : // The reload ran, but it may have read the change.
+                result.guard === "inactive"
+                ? _(
+                    'Restore did not finish: the configuration was changed while the snapshot was being applied. Forkop X was reloaded, but it is not known whether with the snapshot or with the change. The change is kept and saved as a snapshot ("Concurrent edit"). Restore the snapshot you need to finish.',
+                  )
+                : _(
+                    'Restore did not finish: the configuration was changed while the snapshot was being applied. The change is kept and saved as a snapshot ("Concurrent edit"); the DPI guard stays active. Restore the snapshot you need to finish.',
+                  ),
           type: "error",
           duration: 12e3,
         };

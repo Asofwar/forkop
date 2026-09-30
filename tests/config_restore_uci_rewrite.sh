@@ -10,7 +10,9 @@ set -euo pipefail
 # no longer byte-equal after its reload, but it is still the same
 # configuration: that rewrite is no edit, and a failed reload of it must end
 # in an ordinary recovery. A real edit committed the same way is still one,
-# also when hashing fails (the check never compares two empty hashes).
+# also when the reload ran (the restore then reports it instead of moving
+# last-known-working to a configuration that may never have run), and also
+# when hashing fails (the check never compares two empty hashes).
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB="$ROOT_DIR/forkop/files/usr/lib"
@@ -164,7 +166,25 @@ restore "edit:1"
 [ "$(concurrent_snapshots)" = 1 ] && [ -n "$(field saved_snapshot)" ] || fail "the edit is not saved as a snapshot"
 ok "edit committed through uci during a failed reload -> kept, saved, guard kept"
 
-# 4. Hashing breaks during the reload, and an edit was committed: the check
+# 4. An edit committed while the target reload ran, and the reload succeeded:
+#    the reload may have read the edit rather than the snapshot. The restore
+#    is no success and last-known-working does not move to a configuration
+#    that may never have run; the edit is kept and saved. A reload ran, so the
+#    guard goes.
+current bad; echo stale >"$FORKOP_SNAPSHOT_DIR/last-known-working"
+restore "edit:0"
+[ "$(field status)" = needs_attention ] && [ "$(field reason)" = config_changed_during_transaction ] ||
+  fail "edit committed while the target reload ran: $(cat "$WORK/result.json")"
+[ "$(field guard)" = inactive ] && [ "$(cat "$STATE/guard")" = absent ] || fail "a reload ran: the guard must go: $(cat "$WORK/result.json")"
+[ "$(marker)" = edit ] && [ "$(reloads)" = 1 ] || fail "edit during a reload that ran: marker $(marker), $(reloads) reloads"
+[ "$(lkg)" = stale ] || fail "last-known-working moved to a snapshot the reload may not have run"
+saved="$(field saved_snapshot)"
+[ -n "$saved" ] && grep -q '"reason": *"concurrent-change"' "$FORKOP_SNAPSHOT_DIR/$saved.json" &&
+  grep -q "option marker 'edit'" "$FORKOP_SNAPSHOT_DIR/$saved.json" || fail "the edit is not saved as a snapshot: $(cat "$WORK/result.json")"
+grep -q '^health:restore:failure$' "$STATE/events" || fail "the restore is recorded as a success"
+ok "edit committed while the target reload ran -> needs_attention, edit kept and saved, LKG not moved, guard released"
+
+# 5. Hashing breaks during the reload, and an edit was committed: the check
 #    must not compare two empty hashes and roll back over the edit.
 current bad
 restore "edit+sha:1 none:0"

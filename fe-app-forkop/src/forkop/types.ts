@@ -331,6 +331,8 @@ export namespace Forkop {
     // "stopped": an explicit stop held the runtime down; nothing was
     // reloaded or started.
     runtime?: 'stopped';
+    // The DPI guard of the restore after an unfinished one.
+    guard?: 'active' | 'inactive';
   }
   export interface ConnectivityResult {
     host: string;

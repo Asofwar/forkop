@@ -345,27 +345,28 @@ export function restoreResultToast(
     case 'needs_attention':
       // Someone saved the configuration while the snapshot was being
       // reloaded: the change was kept instead of rolled back, and never
-      // taken for the restored snapshot (UC-023).
-      if (result.reason === 'config_changed_during_transaction')
+      // taken for the restored snapshot (UC-023). A snapshot of it is named
+      // only when one was saved (not with the snapshot list full).
+      if (result.reason === 'config_changed_during_transaction') {
+        const kept = result.saved_snapshot
+          ? _('The change is kept and saved as a snapshot ("Concurrent edit").')
+          : _(
+              'The change is kept in the configuration, but no snapshot of it could be saved.',
+            );
         return {
           text:
             // Forkop X was stopped: the snapshot was not reloaded, no
             // guard is left.
             result.runtime === 'stopped'
-              ? _(
-                  'Restore was not applied: Forkop X was stopped, and the configuration was changed during the restore. The change is kept and saved as a snapshot ("Concurrent edit").',
-                )
+              ? `${_('Restore was not applied: Forkop X was stopped, and the configuration was changed during the restore.')} ${kept}`
               : // The reload ran, but it may have read the change.
                 result.guard === 'inactive'
-                ? _(
-                    'Restore did not finish: the configuration was changed while the snapshot was being applied. Forkop X was reloaded, but it is not known whether with the snapshot or with the change. The change is kept and saved as a snapshot ("Concurrent edit"). Restore the snapshot you need to finish.',
-                  )
-                : _(
-                    'Restore did not finish: the configuration was changed while the snapshot was being applied. The change is kept and saved as a snapshot ("Concurrent edit"); the DPI guard stays active. Restore the snapshot you need to finish.',
-                  ),
+                ? `${_('Restore did not finish: the configuration was changed while the snapshot was being applied. Forkop X was reloaded, but it is not known whether with the snapshot or with the change.')} ${kept} ${_('Restore the snapshot you need to finish.')}`
+                : `${_('Restore did not finish: the configuration was changed while the snapshot was being applied.')} ${kept} ${_('The DPI guard stays active. Restore the snapshot you need to finish.')}`,
           type: 'error',
           duration: 12000,
         };
+      }
       if (result.reason === 'rollback_reload_queued')
         return {
           text: _(

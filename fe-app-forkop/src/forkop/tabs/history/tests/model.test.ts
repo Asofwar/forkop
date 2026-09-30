@@ -349,6 +349,7 @@ describe('restore result', () => {
     const edited = restoreResultToast({
       status: 'needs_attention',
       reason: 'config_changed_during_transaction',
+      saved_snapshot: '1790000000_1',
     });
     expect(edited.type).toBe('error');
     expect(edited.text).toContain('did not finish');
@@ -361,21 +362,44 @@ describe('restore result', () => {
       status: 'needs_attention',
       reason: 'config_changed_during_transaction',
       guard: 'inactive',
+      saved_snapshot: '1790000000_1',
     });
     expect(reloaded.type).toBe('error');
     expect(reloaded.text).toContain('did not finish');
     expect(reloaded.text).toContain('not known whether with the snapshot');
     expect(reloaded.text).toContain('The change is kept');
+    expect(reloaded.text).toContain('Concurrent edit');
     expect(reloaded.text).not.toContain('DPI guard');
     // Forkop X stopped during the restore: nothing reloaded, no guard left.
     const stopped = restoreResultToast({
       status: 'needs_attention',
       reason: 'config_changed_during_transaction',
       runtime: 'stopped',
+      saved_snapshot: '1790000000_1',
     });
     expect(stopped.text).toContain('was not applied');
     expect(stopped.text).toContain('The change is kept');
+    expect(stopped.text).toContain('Concurrent edit');
     expect(stopped.text).not.toContain('DPI guard');
+  });
+
+  it('names a snapshot of the kept edit only when one was saved', () => {
+    for (const extra of [
+      {},
+      { guard: 'inactive' as const },
+      { runtime: 'stopped' as const },
+    ]) {
+      const unsaved = restoreResultToast({
+        status: 'needs_attention',
+        reason: 'config_changed_during_transaction',
+        saved_snapshot: null,
+        ...extra,
+      });
+      expect(unsaved.type).toBe('error');
+      expect(unsaved.text).toContain('The change is kept in the configuration');
+      expect(unsaved.text).toContain('no snapshot of it could be saved');
+      expect(unsaved.text).not.toContain('Concurrent edit');
+    }
   });
 
   it('asks for unsaved changes of this session to be applied first', () => {

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-30 07:48+0000\n"
-"PO-Revision-Date: 2026-09-30 07:48+0000\n"
+"POT-Creation-Date: 2026-09-30 08:53+0000\n"
+"PO-Revision-Date: 2026-09-30 08:53+0000\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -350,8 +350,8 @@ msgstr "Применяются изменения…"
 msgid "Applying Forkop configuration…"
 msgstr "Применение конфигурации Forkop…"
 
-msgid "Applying the new strategy did not finish: its reload did not succeed, and the configuration was changed meanwhile. Forkop X kept that change instead of rolling back and saved it as a snapshot (\"Concurrent edit\"). Check the rule, or restore the snapshot you need in History and recovery."
-msgstr "Применение новой стратегии не завершено: её перезагрузка не удалась, а конфигурацию тем временем изменили. Forkop X сохранил это изменение вместо отката и записал его снимком («Параллельная правка»). Проверьте правило или восстановите нужный снимок в разделе «История и восстановление»."
+msgid "Applying the new strategy did not finish: its reload did not succeed, and the configuration was changed meanwhile. Forkop X kept that change instead of rolling back. Check the rule, or restore the snapshot you need in History and recovery."
+msgstr "Применение новой стратегии не завершено: её перезагрузка не удалась, а конфигурацию тем временем изменили. Forkop X сохранил это изменение вместо отката. Проверьте правило или восстановите нужный снимок в разделе «История и восстановление»."
 
 msgid "Applying…"
 msgstr "Применение…"
@@ -622,6 +622,9 @@ msgstr "Проверка не удалась"
 
 msgid "Check failed, not rolled back: configuration edited"
 msgstr "Проверка не пройдена, откат не выполнен: конфигурацию изменили"
+
+msgid "Check failed, rollback did not finish: configuration edited"
+msgstr "Проверка не пройдена, откат не завершён: конфигурацию изменили"
 
 msgid "Check failed, rolled back automatically"
 msgstr "Проверка не пройдена, выполнен автоматический откат"
@@ -2723,11 +2726,11 @@ msgstr "Восстановить"
 msgid "Restore configuration snapshot?"
 msgstr "Восстановить снимок конфигурации?"
 
-msgid "Restore did not finish: the configuration was changed while the snapshot was being applied. Forkop X was reloaded, but it is not known whether with the snapshot or with the change. The change is kept and saved as a snapshot (\"Concurrent edit\"). Restore the snapshot you need to finish."
-msgstr "Восстановление не завершено: конфигурацию изменили, пока применялся снимок. Forkop X перезагружен, но неизвестно, со снимком или с изменением. Изменение сохранено и записано снимком («Параллельная правка»). Чтобы завершить, восстановите нужный снимок."
+msgid "Restore did not finish: the configuration was changed while the snapshot was being applied."
+msgstr "Восстановление не завершено: конфигурацию изменили, пока применялся снимок."
 
-msgid "Restore did not finish: the configuration was changed while the snapshot was being applied. The change is kept and saved as a snapshot (\"Concurrent edit\"); the DPI guard stays active. Restore the snapshot you need to finish."
-msgstr "Восстановление не завершено: конфигурацию изменили, пока применялся снимок. Изменение сохранено и записано снимком («Параллельная правка»); защита DPI остаётся активной. Чтобы завершить, восстановите нужный снимок."
+msgid "Restore did not finish: the configuration was changed while the snapshot was being applied. Forkop X was reloaded, but it is not known whether with the snapshot or with the change."
+msgstr "Восстановление не завершено: конфигурацию изменили, пока применялся снимок. Forkop X перезагружен, но неизвестно, со снимком или с изменением."
 
 msgid "Restore did not finish: the service was busy and only queued the reload. The DPI guard stays active; restore again when the service is idle."
 msgstr "Восстановление не завершено: служба была занята и лишь поставила перезагрузку в очередь. Защита DPI остаётся активной; повторите восстановление, когда служба освободится."
@@ -2741,11 +2744,14 @@ msgstr "Восстановление не удалось; прежняя кон�
 msgid "Restore normal mode"
 msgstr "Вернуть обычный режим"
 
+msgid "Restore the snapshot you need to finish."
+msgstr "Чтобы завершить, восстановите нужный снимок."
+
 msgid "Restore was not applied: Forkop X was stopped during the restore. The previous configuration is kept."
 msgstr "Восстановление не применено: Forkop X был остановлен во время восстановления. Прежняя конфигурация сохранена."
 
-msgid "Restore was not applied: Forkop X was stopped, and the configuration was changed during the restore. The change is kept and saved as a snapshot (\"Concurrent edit\")."
-msgstr "Восстановление не применено: Forkop X был остановлен, а конфигурацию изменили во время восстановления. Изменение сохранено и записано снимком («Параллельная правка»)."
+msgid "Restore was not applied: Forkop X was stopped, and the configuration was changed during the restore."
+msgstr "Восстановление не применено: Forkop X был остановлен, а конфигурацию изменили во время восстановления."
 
 msgid "Restore was not applied: the service was busy and only queued the reload. The previous configuration is kept."
 msgstr "Восстановление не применено: служба была занята и лишь поставила перезагрузку в очередь. Прежняя конфигурация сохранена."
@@ -3320,6 +3326,12 @@ msgstr "Настройка каскада очищена. Сохраните п�
 msgid "The change affects the whole group:"
 msgstr "Изменение затронет всю группу:"
 
+msgid "The change is kept and saved as a snapshot (\"Concurrent edit\")."
+msgstr "Изменение сохранено и записано снимком («Параллельная правка»)."
+
+msgid "The change is kept in the configuration, but no snapshot of it could be saved."
+msgstr "Изменение осталось в конфигурации, но записать его снимком не удалось."
+
 msgid "The change was not saved."
 msgstr "Изменение не сохранено."
 
@@ -3365,6 +3377,9 @@ msgstr "Desync fwmark управляется Forkop для защиты от ц�
 msgid "The DNS server must be an IPv4 address."
 msgstr "DNS-сервер должен быть IPv4-адресом."
 
+msgid "The DPI guard stays active. Restore the snapshot you need to finish."
+msgstr "Защита DPI остаётся активной. Чтобы завершить, восстановите нужный снимок."
+
 msgid "The DPI provider of the selected section is not installed. Install it in Components or choose another section."
 msgstr "DPI-провайдер выбранной секции не установлен. Установите его в разделе «Компоненты» или выберите другую секцию."
 
@@ -3388,6 +3403,9 @@ msgstr "Последнее изменение (%s) прошло проверку
 
 msgid "The last change (%s) was not checked to the end."
 msgstr "Последнее изменение (%s) не было проверено до конца."
+
+msgid "The last change (%s) was not confirmed by its check, and the configuration was changed since; the rule still uses that strategy. Until you choose another strategy for the rule, turn the rule off or restore a snapshot in History and recovery, Forkop X does not record this configuration as the last known working one, and autotune applies nothing."
+msgstr "Последнее изменение (%s) не подтверждено проверкой, а конфигурацию с тех пор изменили; правило по-прежнему использует эту стратегию. Пока вы не выберете для правила другую стратегию, не отключите правило или не восстановите снимок в разделе «История и восстановление», Forkop X не записывает эту конфигурацию как последнюю рабочую, а автоподбор ничего не применяет."
 
 msgid "The last change was rolled back automatically."
 msgstr "Последнее изменение было автоматически откачено."
@@ -3428,6 +3446,9 @@ msgstr "Имя не разрешается на роутере, поэтому �
 msgid "The new strategy did not pass the check, but the configuration was changed during the check, so Forkop X kept that change and did not roll back. The rule may still use the new strategy: check it, or restore the \"Before autotune\" snapshot in History and recovery."
 msgstr "Новая стратегия не прошла проверку, но во время проверки конфигурацию изменили, поэтому Forkop X сохранил это изменение и не выполнил откат. Правило может по-прежнему использовать новую стратегию: проверьте его или восстановите снимок «Перед автоподбором» в разделе «История и восстановление»."
 
+msgid "The new strategy did not pass the check. Forkop X began to restore the \"Before autotune\" snapshot, but the configuration was changed meanwhile, and Forkop X kept that change. It is not known whether Forkop X now runs the snapshot or the change: check the rule, or restore the snapshot you need in History and recovery."
+msgstr "Новая стратегия не прошла проверку. Forkop X начал восстанавливать снимок «Перед автоподбором», но конфигурацию тем временем изменили, и Forkop X сохранил это изменение. Неизвестно, работает ли Forkop X сейчас со снимком или с изменением: проверьте правило или восстановите нужный снимок в разделе «История и восстановление»."
+
 msgid "The new strategy did not pass the check. Forkop X restored the previous configuration automatically."
 msgstr "Новая стратегия не прошла проверку. Forkop X автоматически восстановил предыдущую конфигурацию."
 
@@ -3457,6 +3478,9 @@ msgstr "Запись о последнем изменении автоподбо
 
 msgid "The record of the last autotune change is damaged. Checks and changes wait until an administrator rolls it back: Forkop X then makes sure the last known working configuration is active."
 msgstr "Запись о последнем изменении автоподбора повреждена. Проверки и изменения ждут, пока администратор не выполнит откат: Forkop X убедится, что активна последняя рабочая конфигурация."
+
+msgid "The rollback did not finish: the configuration was changed while the \"Before autotune\" snapshot was being restored, and Forkop X kept that change. It is not known whether Forkop X now runs the snapshot or the change: check the rule, or restore the snapshot you need in History and recovery."
+msgstr "Откат не завершился: конфигурацию изменили, пока восстанавливался снимок «Перед автоподбором», и Forkop X сохранил это изменение. Неизвестно, работает ли Forkop X сейчас со снимком или с изменением: проверьте правило или восстановите нужный снимок в разделе «История и восстановление»."
 
 msgid "The rollback did not finish. Open History and recovery."
 msgstr "Откат не завершился. Откройте «История и восстановление»."
@@ -3580,6 +3604,9 @@ msgstr "Стратегия вернётся к той, что была до ав
 
 msgid "The strategy was not applied"
 msgstr "Стратегия не применена"
+
+msgid "The strategy was not applied: the current configuration is not yet the last known working one. Forkop X records it once it starts or reloads with it; while a rule still uses a strategy that did not pass its check, it is not recorded."
+msgstr "Стратегия не применена: текущая конфигурация ещё не записана как последняя рабочая. Forkop X записывает её, когда успешно запускается или перезагружается с ней; пока правило использует стратегию, не прошедшую проверку, она не записывается."
 
 msgid "The target address could not be determined reliably during the check."
 msgstr "Во время проверки не удалось надёжно определить адрес цели."

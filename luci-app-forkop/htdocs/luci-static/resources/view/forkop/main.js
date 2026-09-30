@@ -19006,26 +19006,26 @@ function restoreResultToast(result) {
         };
       break;
     case "needs_attention":
-      if (result.reason === "config_changed_during_transaction")
+      if (result.reason === "config_changed_during_transaction") {
+        const kept = result.saved_snapshot
+          ? _('The change is kept and saved as a snapshot ("Concurrent edit").')
+          : _(
+              "The change is kept in the configuration, but no snapshot of it could be saved.",
+            );
         return {
           text:
             // Forkop X was stopped: the snapshot was not reloaded, no
             // guard is left.
             result.runtime === "stopped"
-              ? _(
-                  'Restore was not applied: Forkop X was stopped, and the configuration was changed during the restore. The change is kept and saved as a snapshot ("Concurrent edit").',
-                )
+              ? `${_("Restore was not applied: Forkop X was stopped, and the configuration was changed during the restore.")} ${kept}`
               : // The reload ran, but it may have read the change.
                 result.guard === "inactive"
-                ? _(
-                    'Restore did not finish: the configuration was changed while the snapshot was being applied. Forkop X was reloaded, but it is not known whether with the snapshot or with the change. The change is kept and saved as a snapshot ("Concurrent edit"). Restore the snapshot you need to finish.',
-                  )
-                : _(
-                    'Restore did not finish: the configuration was changed while the snapshot was being applied. The change is kept and saved as a snapshot ("Concurrent edit"); the DPI guard stays active. Restore the snapshot you need to finish.',
-                  ),
+                ? `${_("Restore did not finish: the configuration was changed while the snapshot was being applied. Forkop X was reloaded, but it is not known whether with the snapshot or with the change.")} ${kept} ${_("Restore the snapshot you need to finish.")}`
+                : `${_("Restore did not finish: the configuration was changed while the snapshot was being applied.")} ${kept} ${_("The DPI guard stays active. Restore the snapshot you need to finish.")}`,
           type: "error",
           duration: 12e3,
         };
+      }
       if (result.reason === "rollback_reload_queued")
         return {
           text: _(
@@ -19743,6 +19743,8 @@ function decisionText(reason) {
 }
 var CONFIG_EDITED_DURING_CHECK =
   "verification_failed:config_changed_during_transaction";
+var CONFIG_EDITED_DURING_ROLLBACK =
+  "verification_failed:config_changed_during_rollback";
 var CONFIG_EDITED_DURING_APPLY = "apply_config_changed_during_transaction";
 function applyOutcomeView(status2, reason) {
   switch (status2) {
@@ -19765,6 +19767,13 @@ function applyOutcomeView(status2, reason) {
       if (reason === CONFIG_EDITED_DURING_CHECK)
         return {
           label: _("Check failed, not rolled back: configuration edited"),
+          tone: "error",
+        };
+      if (reason === CONFIG_EDITED_DURING_ROLLBACK)
+        return {
+          label: _(
+            "Check failed, rollback did not finish: configuration edited",
+          ),
           tone: "error",
         };
       if (reason === CONFIG_EDITED_DURING_APPLY)
@@ -20185,6 +20194,14 @@ function applyResultView(result, candidate) {
     case "stale":
       if (BUSY_REASONS.includes(reason ?? "") || reason === "service_stopped")
         return { tone: "warning", text: refusalText(reason), attention: false };
+      if (reason === "config_not_last_known_good")
+        return {
+          tone: "warning",
+          text: _(
+            "The strategy was not applied: the current configuration is not yet the last known working one. Forkop X records it once it starts or reloads with it; while a rule still uses a strategy that did not pass its check, it is not recorded.",
+          ),
+          attention: false,
+        };
       return stale;
     case "failed":
       if (reason === "reload_queued_recovered")
@@ -20225,11 +20242,19 @@ function applyResultView(result, candidate) {
           ),
           attention: true,
         };
+      if (reason === CONFIG_EDITED_DURING_ROLLBACK)
+        return {
+          tone: "error",
+          text: _(
+            'The new strategy did not pass the check. Forkop X began to restore the "Before autotune" snapshot, but the configuration was changed meanwhile, and Forkop X kept that change. It is not known whether Forkop X now runs the snapshot or the change: check the rule, or restore the snapshot you need in History and recovery.',
+          ),
+          attention: true,
+        };
       if (reason === CONFIG_EDITED_DURING_APPLY)
         return {
           tone: "error",
           text: _(
-            'Applying the new strategy did not finish: its reload did not succeed, and the configuration was changed meanwhile. Forkop X kept that change instead of rolling back and saved it as a snapshot ("Concurrent edit"). Check the rule, or restore the snapshot you need in History and recovery.',
+            "Applying the new strategy did not finish: its reload did not succeed, and the configuration was changed meanwhile. Forkop X kept that change instead of rolling back. Check the rule, or restore the snapshot you need in History and recovery.",
           ),
           attention: true,
         };
@@ -20323,6 +20348,14 @@ function recordedApplyView(apply, groupTitle) {
       attention: true,
     };
   }
+  if (apply.unverified_strategy)
+    return {
+      tone: "warning",
+      text: _(
+        "The last change (%s) was not confirmed by its check, and the configuration was changed since; the rule still uses that strategy. Until you choose another strategy for the rule, turn the rule off or restore a snapshot in History and recovery, Forkop X does not record this configuration as the last known working one, and autotune applies nothing.",
+      ).replace("%s", changeName(apply, groupTitle)),
+      attention: true,
+    };
   if (apply.rollback)
     return {
       tone: "neutral",
@@ -20401,6 +20434,17 @@ function rollbackResultView(result) {
       tone: "warning",
       text: refusalText("autotune_worker_running"),
       attention: false,
+    };
+  if (
+    result.result === "needs_attention" &&
+    result.reason === "operator_rollback:config_changed_during_rollback"
+  )
+    return {
+      tone: "error",
+      text: _(
+        'The rollback did not finish: the configuration was changed while the "Before autotune" snapshot was being restored, and Forkop X kept that change. It is not known whether Forkop X now runs the snapshot or the change: check the rule, or restore the snapshot you need in History and recovery.',
+      ),
+      attention: true,
     };
   if (result.result === "needs_attention")
     return {

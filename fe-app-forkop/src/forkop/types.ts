@@ -237,6 +237,10 @@ export namespace Forkop {
     diagnosis: string | null;
     in_progress: boolean;
     rollback: boolean;
+    // The configuration was edited since, and the rule still runs the
+    // candidate's strategy, which never passed its check: nothing confirms
+    // the configuration as last known working, so applies wait.
+    unverified_strategy?: boolean;
   }
 
   export interface AutotuneRollbackResult {
@@ -333,6 +337,10 @@ export namespace Forkop {
     runtime?: 'stopped';
     // The DPI guard of the restore after an unfinished one.
     guard?: 'active' | 'inactive';
+    // An edit committed during the transaction was kept: the id of the
+    // "Concurrent edit" snapshot that holds it, null when none could be
+    // saved (the edit then lives in the configuration only).
+    saved_snapshot?: string | null;
   }
   export interface ConnectivityResult {
     host: string;

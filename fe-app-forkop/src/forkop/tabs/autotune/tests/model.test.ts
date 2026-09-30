@@ -622,7 +622,37 @@ describe('manual apply', () => {
     );
     expect(editedDuringApply).toMatchObject({ tone: 'error', attention: true });
     expect(editedDuringApply.text).toContain('did not finish');
-    expect(editedDuringApply.text).toContain('Concurrent edit');
+    expect(editedDuringApply.text).toContain('kept that change');
+    // Whether a snapshot of it could be saved is not known here.
+    expect(editedDuringApply.text).not.toContain('Concurrent edit');
+    // The edit landed while the rollback itself ran: the rollback started,
+    // and the runtime may run either configuration.
+    const editedDuringRollback = view(
+      'needs_attention',
+      'verification_failed:config_changed_during_rollback',
+    );
+    expect(editedDuringRollback).toMatchObject({
+      tone: 'error',
+      attention: true,
+    });
+    expect(editedDuringRollback.text).toContain('Before autotune');
+    expect(editedDuringRollback.text).toContain('not known whether');
+    expect(editedDuringRollback.text).not.toContain('did not roll back');
+    expect(
+      applyOutcomeView(
+        'needs_attention',
+        'verification_failed:config_changed_during_rollback',
+      ),
+    ).toEqual({
+      label: 'Check failed, rollback did not finish: configuration edited',
+      tone: 'error',
+    });
+    // The configuration is not last known working yet: re-running the
+    // check alone does not help.
+    const notConfirmed = view('stale', 'config_not_last_known_good');
+    expect(notConfirmed).toMatchObject({ tone: 'warning', attention: false });
+    expect(notConfirmed.text).toContain('last known working');
+    expect(notConfirmed.text).not.toContain('Run the check again');
     expect(
       applyOutcomeView(
         'needs_attention',
@@ -687,6 +717,29 @@ describe('recorded apply and its rollback', () => {
     in_progress: false,
     rollback: false,
     ...overrides,
+  });
+
+  it('says why nothing is confirmed while the rule runs an unverified strategy', () => {
+    const view = recordedApplyView(
+      recorded({
+        phase: 'needs_attention',
+        reason: 'verification_failed:config_changed_during_transaction',
+        resolved: true,
+        diagnosis: 'superseded',
+        unverified_strategy: true,
+      }),
+      'YouTube',
+    );
+    expect(view).toMatchObject({ tone: 'warning', attention: true });
+    expect(view?.text).toContain('multisplit in the rule "YouTube"');
+    expect(view?.text).toContain('last known working');
+    expect(view?.text).toContain('History and recovery');
+    expect(
+      recordedApplyView(
+        recorded({ diagnosis: 'superseded', unverified_strategy: false }),
+        'YouTube',
+      ),
+    ).toBeNull();
   });
 
   it('says nothing about a settled apply that cannot be rolled back', () => {
@@ -909,6 +962,19 @@ describe('recorded apply and its rollback', () => {
         reason: 'operator_rollback:rollback_needs_attention',
       }),
     ).toMatchObject({ tone: 'error', attention: true });
+    // An edit committed while the rollback's own reload ran: kept, and the
+    // runtime may run either configuration.
+    const editedDuringRollback = rollbackResultView({
+      status: 'failed',
+      result: 'needs_attention',
+      reason: 'operator_rollback:config_changed_during_rollback',
+    });
+    expect(editedDuringRollback).toMatchObject({
+      tone: 'error',
+      attention: true,
+    });
+    expect(editedDuringRollback.text).toContain('kept that change');
+    expect(editedDuringRollback.text).toContain('not known whether');
     // No answer (the request timed out): the rollback may still run.
     expect(rollbackResultView(null)).toMatchObject({
       tone: 'warning',

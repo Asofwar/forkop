@@ -1865,8 +1865,15 @@ function reload_actions_summary(plan) {
     return actions;
 }
 
+// init.d queues every reload that finds reload.lock held (service/initd.uc):
+// the DNS-failover apply, the last holder those reloads saw, applies them
+// once it lets the lock go, as the list worker does (components/updates.uc).
+// Otherwise a reload queued behind the apply, a UI reload job's among them,
+// waits for an unrelated later reload or start (UC-061).
 function release_reload_lock() {
     module_success(STATE_UC, [ "release-runtime-dir-lock", RELOAD_LOCK_DIR, owner_pid() ]);
+    if (fs.stat(PENDING_RELOAD_FILE) != null)
+        module_success(STATE_UC, [ "run-pending-reload-if-requested", PENDING_RELOAD_FILE, SERVICE_INIT ]);
 }
 
 function sing_box_runtime_pid() {

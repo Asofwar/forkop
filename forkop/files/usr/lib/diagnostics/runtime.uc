@@ -2037,6 +2037,18 @@ function clash_api(action, arg1, arg2, arg3) {
     return status;
 }
 
+// init.d queues every reload that finds reload.lock held (service/initd.uc).
+// Once the automatic latency test has let the lock go for good and settled
+// its own marker, it is the last holder those reloads saw, as the list
+// worker is at its end (components/updates.uc): it applies them, or a reload
+// queued behind the test, a UI reload job's among them, waits for an
+// unrelated later reload or start (UC-061). Between batches the test hands
+// the lock over the same way.
+function apply_reload_queued_behind_latency_test() {
+    if (fs.stat(PENDING_RELOAD_FILE) != null)
+        module_success(SERVICE_STATE_UC, [ "run-pending-reload-if-requested", PENDING_RELOAD_FILE, SERVICE_INIT ]);
+}
+
 function automatic_latency_test(start_kind) {
     let marker = automatic_latency_pending_marker();
     if (marker == null) {
@@ -2092,6 +2104,7 @@ function automatic_latency_test(start_kind) {
         module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", AUTOMATIC_LATENCY_TEST_LOCK_DIR, owner_pid ]);
         module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", RELOAD_LOCK_DIR, owner_pid ]);
         log_message("Automatic latency test deferred because sing-box is not ready or multiple processes are running; the pending marker was retained", "info");
+        apply_reload_queued_behind_latency_test();
         return 0;
     }
 
@@ -2116,6 +2129,7 @@ function automatic_latency_test(start_kind) {
         module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", RELOAD_LOCK_DIR, owner_pid ]);
         automatic_latency_record_failure(pending_signature);
         log_message("Automatic latency test deferred because the Clash API is not ready; the pending marker was retained with a retry pause", "warn");
+        apply_reload_queued_behind_latency_test();
         return 1;
     }
 
@@ -2129,6 +2143,7 @@ function automatic_latency_test(start_kind) {
         module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", RELOAD_LOCK_DIR, owner_pid ]);
         automatic_latency_record_failure(pending_signature);
         log_message("Automatic latency test could not find the pending proxy set in the Clash API; the pending marker was retained with a retry pause", "warn");
+        apply_reload_queued_behind_latency_test();
         return 1;
     }
 
@@ -2164,6 +2179,8 @@ function automatic_latency_test(start_kind) {
                     module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", RELOAD_LOCK_DIR, owner_pid ]);
                 module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", AUTOMATIC_LATENCY_TEST_LOCK_DIR, owner_pid ]);
                 log_message("Automatic latency test was interrupted by reload; the pending marker was retained for the next start", "info");
+                if (reacquired)
+                    apply_reload_queued_behind_latency_test();
                 return 0;
             }
         }
@@ -2173,11 +2190,10 @@ function automatic_latency_test(start_kind) {
     // A reload is normally detected between batches through its PID/lock. A
     // non-restarting config change can still replace the proxy set, so never
     // acknowledge the old marker after its semantic generation changed.
-    if (proxy_outbounds_signature_value(config_path) != pending_signature) {
+    let stale = proxy_outbounds_signature_value(config_path) != pending_signature;
+    if (stale)
         log_message("Automatic latency test finished against a stale proxy generation; the pending marker was retained", "info");
-        return 0;
-    }
-    if (status == 0) {
+    else if (status == 0) {
         automatic_latency_remove_marker(pending_signature);
         log_message("Automatic latency test completed successfully; the pending marker was removed", "info");
     }
@@ -2185,7 +2201,8 @@ function automatic_latency_test(start_kind) {
         automatic_latency_record_failure(pending_signature);
         log_message("Automatic latency test completed with errors; the pending marker was retained with a retry pause", "warn");
     }
-    return status;
+    apply_reload_queued_behind_latency_test();
+    return stale ? 0 : status;
 }
 
 function print_global(message) {

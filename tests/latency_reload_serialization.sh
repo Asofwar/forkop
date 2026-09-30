@@ -115,6 +115,8 @@ case "$*" in
     ;;
   */delay*)
     printf 'request\n' >>"$TEST_EVENTS"
+    # A reload that arrives now finds reload.lock held: init.d queues it.
+    [ ! -e "$TEST_QUEUE_RELOAD_FLAG" ] || printf 'reason=on_config_change\n' >"$FORKOP_PENDING_RELOAD_FILE"
     printf '%s\n' '{"delay":25}'
     ;;
   *) printf '%s\n' '{}' ;;
@@ -127,6 +129,7 @@ export TEST_LOG="$WORK_DIR/test.log"
 export TEST_EVENTS="$WORK_DIR/events"
 export TEST_NOT_READY_FLAG="$WORK_DIR/not-ready"
 export TEST_KEEP_PENDING_FLAG="$WORK_DIR/keep-pending"
+export TEST_QUEUE_RELOAD_FLAG="$WORK_DIR/queue-reload"
 export FORKOP_LIB FORKOP_UCI_STATE_FILE="$WORK_DIR/uci.state"
 export FORKOP_SERVICE_STATE_UC="$WORK_DIR/state-stub.uc"
 export FORKOP_AUTOMATIC_LATENCY_PENDING_FILE="$WORK_DIR/automatic-latency.pending"
@@ -216,6 +219,26 @@ rm -f "$TEST_NOT_READY_FLAG"
 check_events "sing-box not ready" 0 0
 grep -Fxq 'ready no' "$TEST_EVENTS" || fail "the worker did not check for one ready sing-box process"
 [ -s "$FORKOP_AUTOMATIC_LATENCY_PENDING_FILE" ] || fail "a deferred test dropped its pending marker"
+
+# A reload queued behind the test while it held reload.lock is applied when
+# the test lets the lock go for good, after its last batch or when it gives
+# up early: no other holder is left to apply it, and a UI reload job that
+# init.d queued behind the test has ended by then (UC-061). One batch, so
+# there is no handoff between batches.
+: >"$TEST_QUEUE_RELOAD_FLAG"
+run_worker 4 || fail "a latency test with a queued reload failed"
+rm -f "$TEST_QUEUE_RELOAD_FLAG"
+check_events "reload queued during the last batch" 3 1
+[ "$(tail -n 1 "$TEST_EVENTS")" = handoff ] || {
+  sed 's/^/  event: /' "$TEST_EVENTS" >&2
+  fail "the reload queued during the last batch was not applied after the test"
+}
+rm -f "$FORKOP_PENDING_RELOAD_FILE"
+printf 'reason=on_config_change\n' >"$FORKOP_PENDING_RELOAD_FILE"
+: >"$TEST_NOT_READY_FLAG"
+run_worker 4 || fail "a deferred latency test is not a failure"
+rm -f "$TEST_NOT_READY_FLAG" "$FORKOP_PENDING_RELOAD_FILE"
+check_events "reload queued, sing-box not ready" 0 1
 
 # A duplicate request while a test runs is coalesced at once, not queued: one
 # attempt on the latency lock and nothing else.

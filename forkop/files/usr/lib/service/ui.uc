@@ -4,6 +4,7 @@ let fs = require("fs");
 let uci_core = require("core.uci");
 let runtime_lock = require("core.runtime_lock");
 let process_identity = require("core.process_identity");
+let list_worker = require("core.list_worker");
 
 const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || "forkop";
 const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
@@ -14,6 +15,7 @@ const STATE_UC = LIB_DIR + "/service/state.uc";
 const UI_UC = LIB_DIR + "/service/ui.uc";
 const STATE_DIR = getenv("FORKOP_UI_STATE_DIR") || "/var/run/forkop/ui-state";
 const PENDING_RELOAD_FILE = getenv("FORKOP_PENDING_RELOAD_FILE") || "/var/run/forkop/reload.pending";
+const RELOAD_LOCK_DIR = getenv("FORKOP_RELOAD_LOCK_DIR") || "/var/run/forkop.reload.lock";
 const START_IN_PROGRESS_FILE = getenv("FORKOP_START_IN_PROGRESS_FILE") || "/var/run/forkop/start.in-progress";
 // An explicit stop (service/initd.uc, service/lifecycle.uc; UC-012): until an
 // explicit start the runtime stays down (D-15, UC-056).
@@ -1395,10 +1397,15 @@ function finish_service_action_after_command(action, job_id_value, status, spawn
 
     // init.d only queued the reload behind the operation that holds
     // reload.lock (a list or subscription update, a start, another
-    // reload): not completed, and no queued reload is applied on its
-    // behalf; the lock holder drains the request (UC-061).
+    // reload): not completed (UC-061). While the lock is held, or the list
+    // worker runs, no queued reload is applied on its behalf: the holder
+    // drains the queue when it ends, and this job no longer runs by then.
+    // A holder that ended before this job did drained nothing (init.d
+    // leaves the queue to a running UI job): the queue is applied here.
     if (action == "reload" && reload_token == "queued") {
-        write_skipped_reload_state(path, "queued");
+        if (write_skipped_reload_state(path, "queued") &&
+            !runtime_lock.busy(RELOAD_LOCK_DIR) && !list_worker.running(LIB_DIR))
+            run_pending_reload_after_service_action("reload", true);
         return 0;
     }
 

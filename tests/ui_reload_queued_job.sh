@@ -12,9 +12,14 @@
 # "completed" as well.
 #
 # init.d now tells the UI-tracked caller "queued" or "stopped", as it tells
-# a snapshot restore: the job ends as queued (not a success, and it applies
-# nothing on its behalf: the lock holder drains the request) or as skipped
-# because Forkop is stopped. A reload that ran completes as before.
+# a snapshot restore: the job ends as queued (not a success; while the lock
+# is still held it applies nothing on its behalf: the lock holder drains the
+# request) or as skipped because Forkop is stopped. A reload that ran
+# completes as before. A holder that released reload.lock before the queued
+# job ended may have drained the queue while the job still ran (init.d then
+# leaves the request queued for that job) or not at all: the job applies the
+# request itself once the lock is free, or it would wait for an unrelated
+# later reload.
 #
 # service/ui.uc, service/initd.uc, service/state.uc and the init.d script
 # are real; init.d runs behind an rc.common stand-in that holds fd 1000 like
@@ -22,6 +27,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=tests/helpers/wait.sh
+. "$ROOT_DIR/tests/helpers/wait.sh"
 LIB="$ROOT_DIR/forkop/files/usr/lib"
 REAL_INITD="$ROOT_DIR/forkop/files/etc/init.d/forkop"
 WORK_DIR="$(mktemp -d)"
@@ -111,10 +118,23 @@ exit 0
 SH
 
 # /etc/init.d/forkop as procd runs it: rc.common with fd 1000 open and
-# flocked (procd.sh procd_lock); bash stands in for busybox ash.
+# flocked (procd.sh procd_lock); bash stands in for busybox ash. While
+# init.hold exists, the next UI-tracked call is held after init.d returned
+# (the procd lock is free again) and before its job records the outcome,
+# until init.go appears.
 cat >"$WORK_DIR/bin/init" <<'SH'
 #!/bin/sh
-exec bash "$TEST_WORK/rc" "$@"
+status=0
+bash "$TEST_WORK/rc" "$@" || status=$?
+if [ "${FORKOP_UI_ACTION_TRACKED:-}" = 1 ] && rm "$TEST_WORK/init.hold" 2>/dev/null; then
+  : >"$TEST_WORK/init.held"
+  n=0
+  while [ ! -e "$TEST_WORK/init.go" ] && [ "$n" -lt 1200 ]; do
+    sleep 0.05
+    n=$((n + 1))
+  done
+fi
+exit "$status"
 SH
 cat >"$WORK_DIR/rc" <<'SH'
 #!/usr/bin/env bash
@@ -158,7 +178,8 @@ release_lock() {
 reset_case() {
   pkill -KILL -f "$FORKOP_UI_SERVICE_ACTION_DIR/" 2>/dev/null || true
   [ ! -e "$WORK_DIR/holder" ] || release_lock
-  rm -rf "$FORKOP_UI_STATE_DIR" "$STATE_DIR/health-events.json" "$FORKOP_PENDING_RELOAD_FILE" "$STOP_MARKER"
+  rm -rf "$FORKOP_UI_STATE_DIR" "$STATE_DIR/health-events.json" "$FORKOP_PENDING_RELOAD_FILE" "$STOP_MARKER" \
+    "$WORK_DIR/init.hold" "$WORK_DIR/init.held" "$WORK_DIR/init.go"
   : >"$START_RECORD"
   : >"$WORK_DIR/runtime.up"
   : >"$EVENTS"
@@ -225,5 +246,39 @@ case "$state" in
   "running=false success=true outcome=stopped message=Service reload skipped"*) ;;
   *) fail "stopped: the UI job did not report the skipped reload: $state" ;;
 esac
+
+# 5. The holder releases reload.lock after init.d queued the UI reload and
+#    before its job ended: it drained the queue while the job still ran
+#    ("drain": init.d leaves the request queued for the running job) or it
+#    drains nothing on release ("release"). The job, queued, then applies the
+#    request itself: nobody else is left to (UC-061).
+reload_ran_pending() { grep -q '^reload ran pending$' "$EVENTS"; }
+for variant in drain release; do
+  reset_case
+  hold_lock
+  : >"$WORK_DIR/init.hold"
+  job="$(ui service-action-begin-if-idle reload ui)" || fail "$variant: the reload job was not opened"
+  timeout -s KILL 60 ucode -L "$LIB" "$LIB/service/ui.uc" service-action-worker \
+    "$FORKOP_UI_SERVICE_ACTION_DIR/$job.json" reload "$job" "" >/dev/null 2>&1 &
+  worker=$!
+  wait_until 20 test -e "$WORK_DIR/init.held" || fail "$variant: init.d of the UI reload did not return"
+  [ -e "$FORKOP_PENDING_RELOAD_FILE" ] || fail "$variant: init.d did not queue the UI reload"
+  release_lock
+  if [ "$variant" = drain ]; then
+    ucode -L "$LIB" "$LIB/service/state.uc" run-pending-reload-if-requested \
+      "$FORKOP_PENDING_RELOAD_FILE" "$FORKOP_SERVICE_INIT" || fail "drain: the holder's drain failed"
+    [ -e "$FORKOP_PENDING_RELOAD_FILE" ] ||
+      fail "drain: the holder's drain did not leave the request to the running UI job"
+  fi
+  : >"$WORK_DIR/init.go"
+  wait "$worker" || fail "$variant: the reload job worker failed"
+  state="$(job_state "$job")"
+  case "$state" in
+    "running=false success=false outcome=queued message=Service reload queued"*) ;;
+    *) fail "$variant: the UI job did not report the queued reload: $state" ;;
+  esac
+  wait_until 20 reload_ran_pending || fail "$variant: the queued UI reload never ran"
+  wait_until 20 test ! -e "$FORKOP_PENDING_RELOAD_FILE" || fail "$variant: the queued request was left behind"
+done
 
 printf 'ui reload queued job checks passed\n'

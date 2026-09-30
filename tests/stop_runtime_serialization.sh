@@ -223,6 +223,11 @@ if (mode == "sing-box-service-running") {
     ev("state " + mode);
     exit(trim(fs.readfile(getenv("SING_BOX_STATE")) ?? "") == "running" ? 0 : 1);
 }
+// A queued reload is handed over only by a holder that let reload.lock go.
+if (mode == "run-pending-reload-if-requested") {
+    ev("state " + mode + (fs.stat(getenv("RELOAD_LOCK")) == null ? "" : " (reload.lock held)"));
+    exit(0);
+}
 ev("state " + mode);
 exit(0);
 UC
@@ -541,6 +546,22 @@ env FORKOP_LIB="$WORK_DIR/fake-lib" \
 has_event '^singbox patch-dns-config failed$' || fail "the modelled patch did not fail"
 no_event '^start-managed$' || fail "a failed DNS failover patch started sing-box after the stop request"
 [ ! -e "$RELOAD_LOCK" ] || fail "a failed DNS failover patch left reload.lock behind"
+
+# 5d. A reload queued behind the apply (init.d found reload.lock held) is
+#     applied once the apply lets the lock go: no other holder is left to
+#     apply it, and a UI reload job that init.d queued behind the apply has
+#     ended by then (UC-061).
+reset_case
+runtime_up
+printf 'reason=on_config_change\n' >"$FORKOP_PENDING_RELOAD_FILE"
+status=0
+env FORKOP_LIB="$WORK_DIR/fake-lib" \
+  ucode -L "$REAL_LIB" "$REAL_LIB/service/lifecycle.uc" dns-failover-apply "$WORK_DIR/candidate.json" >"$WORK_DIR/apply.out" 2>&1 || status=$?
+rm -f "$FORKOP_PENDING_RELOAD_FILE"
+[ "$status" = 0 ] || fail "a DNS failover switch with a queued reload failed: $(cat "$WORK_DIR/apply.out")"
+has_event '^state run-pending-reload-if-requested$' ||
+  fail "the reload queued behind the DNS failover apply was not applied after it"
+[ ! -e "$RELOAD_LOCK" ] || fail "a DNS failover apply left reload.lock behind"
 
 # 6. A reload after an explicit stop does not bring the runtime back, whoever
 #    requests it: background work (the list worker's final apply, the

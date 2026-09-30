@@ -193,9 +193,24 @@ ok "15 isolation unavailable -> no probes and no selection"
 reset_state; tune 2 192.0.2.53 multisplit; json 'a.equal(r.status, "refused"); a.equal(r.reason, "invalid_probe_count");' "$WORK/out.json"
 tune 8 192.0.2.53 multisplit; json 'a.equal(r.status, "refused"); a.equal(r.reason, "invalid_probe_count");' "$WORK/out.json"
 tune 5 192.0.2.53; json 'a.equal(r.status, "refused"); a.equal(r.reason, "too_many_probes");' "$WORK/out.json"
+tune max:2 192.0.2.53 multisplit; json 'a.equal(r.status, "refused"); a.equal(r.reason, "invalid_probe_count");' "$WORK/out.json"
 tune 3 192.0.2.53 udp_fake; json 'a.equal(r.status, "refused"); a.equal(r.reason, "no_supported_dpi_candidate");' "$WORK/out.json"
 [ ! -e "$NFT_STATE/last.nft" ] || fail "refused run created nft state"
 ok "probe count 3..7, bounded probe total, at least one DPI candidate"
+
+# "max:<n>" (the manager's policy value): the whole catalog with the default
+# policy does not fit the source ports of one run; the count per candidate is
+# lowered instead of refusing the run.
+reset_state; tune max:5 192.0.2.53
+json 'a.notEqual(r.reason, "too_many_probes", r.reason); a.equal(r.probes_requested, 5);
+const n = r.candidates.length; a.ok(n * 5 > 32, "the fixture catalog exceeds the ports with 5 probes");
+a.equal(r.probes_per_candidate, Math.floor(32 / n)); a.ok(r.probes_per_candidate >= 3);
+a.equal(r.probes.length, n * r.probes_per_candidate);
+for (const c of r.candidates) a.equal(c.attempted, r.probes_per_candidate, c.id);' "$WORK/out.json"
+assert_clean "max probes"
+reset_state; tune max:5 192.0.2.53 multisplit,fake
+json 'a.equal(r.probes_per_candidate, 5, "nothing is lowered when the run fits"); a.equal(r.probes.length, 15);' "$WORK/out.json"
+ok "max:<n> lowers the probes per candidate to fit the run, never below 3"
 
 # 14. interruption -> cleanup, no selection
 reset_state; export CURL_STUB_SLEEP=1

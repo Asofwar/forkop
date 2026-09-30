@@ -886,13 +886,18 @@ function tune_candidates(list) {
 // path and select one deterministically (autotune/select.uc). The target is
 // resolved once and pinned for every probe; candidates are probed in
 // interleaved, rotated rounds. The result is a recommendation only.
+// probes: probes per candidate, 3..7. "max:<n>" asks for at most n: the
+// count is lowered until every candidate fits the source ports of one run
+// (the manager's policy does not know how many candidates are supported).
 function tune(host, probes, resolver, list, ip) {
     let result = { status: "failed", reason: null, target: null, selected: null, confidence: null,
         isolation: { table: TABLE, chains: [ MARK_CHAIN + "@" + MARK_PRIORITY, CHAIN + "@" + PRIORITY ],
             queues: null, port_range: PORT_RANGE, probe_mark: PROBE_MARK, desync_mark: DESYNC_MARK },
         contract: null, timeline, schedule: null, candidates: [], excluded: [], probes: [],
         teardown: null, production: null, cleanup: null, applied: false };
-    probes = int(probes || select_module.MIN_PROBES);
+    let at_most = substr(as_string(probes), 0, 4) == "max:";
+    probes = int((at_most ? substr(as_string(probes), 4) : probes) || select_module.MIN_PROBES);
+    result.probes_requested = probes;
     if (probes < select_module.MIN_PROBES || probes > select_module.MAX_PROBES) {
         result.status = "refused"; result.reason = "invalid_probe_count"; return result;
     }
@@ -902,7 +907,11 @@ function tune(host, probes, resolver, list, ip) {
     let dpi = filter(supported, (c) => c.nfqws_opt != "");
     if (length(dpi) == 0) { result.status = "refused"; result.reason = "no_supported_dpi_candidate"; return result; }
     if (length(dpi) > MAX_QUEUES) { result.status = "refused"; result.reason = "too_many_candidates"; return result; }
-    if (length(supported) * probes > MAX_TUNE_PROBES_TOTAL) { result.status = "refused"; result.reason = "too_many_probes"; return result; }
+    if (at_most && length(supported) * probes > MAX_TUNE_PROBES_TOTAL) probes = int(MAX_TUNE_PROBES_TOTAL / length(supported));
+    if (probes < select_module.MIN_PROBES || length(supported) * probes > MAX_TUNE_PROBES_TOTAL) {
+        result.status = "refused"; result.reason = "too_many_probes"; return result;
+    }
+    result.probes_per_candidate = probes;
 
     // One queue per DPI candidate, assigned in the deterministic base order.
     let order = select_module.base_order(supported);

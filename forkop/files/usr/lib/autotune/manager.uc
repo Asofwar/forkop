@@ -414,7 +414,9 @@ function resolver_for(t, sections) {
 }
 
 function tune_target(t, probes, dns_resolver) {
-    return run_tool("isolation", [ "tune", t.host, as_string(probes), dns_resolver ]) ||
+    // The policy value is an upper bound: a run has a fixed number of source
+    // ports, shared by every supported candidate (isolation.uc tune).
+    return run_tool("isolation", [ "tune", t.host, "max:" + as_string(probes), dns_resolver ]) ||
         { status: "failed", reason: "tune_output_invalid" };
 }
 

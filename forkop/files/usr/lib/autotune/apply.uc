@@ -806,6 +806,20 @@ function apply(plan_file, resolver) {
     state_write(audit); return audit;
 }
 
+// The snapshot a rollback of the record returns to, or null: the recorded
+// before-autotune snapshot; else the last-known-working one while it still
+// holds the pre-apply user configuration (checked before any mutation, and
+// only a verified apply moves it). An unreadable record returns to the
+// last-known-working one (rollback_unreadable).
+function rollback_source(s, pre) {
+    let id = trim(as_string(fs.readfile(SNAPSHOT_DIR + "/last-known-working")));
+    let item = match(id, /^[0-9]+_[0-9]+$/) != null ? read_json(SNAPSHOT_DIR + "/" + id + ".json") : null;
+    let working = type(item) == "object" && type(item.content) == "string";
+    if (s.unreadable) return working ? id : null;
+    if (pre != null && read_json(SNAPSHOT_DIR + "/" + pre + ".json") != null) return pre;
+    return working && valid_hash(s.plan_config_fingerprint) && fingerprint(item.content) == s.plan_config_fingerprint ? id : null;
+}
+
 // An unreadable record names neither its candidate nor its snapshot. Nothing
 // confirms a candidate as last-known-working while the record is unreadable
 // (config/snapshots.uc confirm-working), so the last-known-working snapshot
@@ -849,15 +863,7 @@ function rollback() {
     if (service_stopped()) return { status: "failed", reason: "service_stopped" };
     let action = service_action();
     if (action != null) return { status: "failed", reason: action };
-    let pre = d.pre_snapshot;
-    if (pre == null || read_json(SNAPSHOT_DIR + "/" + pre + ".json") == null) {
-        // The last-known-working snapshot held the same user configuration
-        // when the apply started (checked before any mutation), and only a
-        // verified apply moves it: while it still matches, it is the source.
-        let id = trim(as_string(fs.readfile(SNAPSHOT_DIR + "/last-known-working")));
-        let item = match(id, /^[0-9]+_[0-9]+$/) != null ? read_json(SNAPSHOT_DIR + "/" + id + ".json") : null;
-        pre = type(item) == "object" && valid_hash(s.plan_config_fingerprint) && fingerprint(item.content) == s.plan_config_fingerprint ? id : null;
-    }
+    let pre = rollback_source(s, d.pre_snapshot);
     // Nothing is attempted without a source; the record stays as it is.
     if (pre == null) return { status: "failed", reason: "pre_apply_snapshot_missing", phase: s.phase };
     s.pre_snapshot = pre;
@@ -882,6 +888,8 @@ function status() {
         result.config_is = d.config_is;
         result.pre_snapshot = d.pre_snapshot;
         result.pre_snapshot_present = d.pre_snapshot != null && fs.stat(SNAPSHOT_DIR + "/" + d.pre_snapshot + ".json") != null;
+        // Whether a rollback would find a snapshot to return to.
+        result.rollback_source_present = rollback_source(s, d.pre_snapshot) != null;
         // A record left unfinished by a process that died (SIGKILL, power
         // loss) is judged by what it left behind, as a finished one: while
         // its candidate is active or a transaction is open it blocks; once

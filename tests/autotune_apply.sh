@@ -733,6 +733,39 @@ json 'a.equal(r.status, "needs_attention"); a.equal(r.reason, "config_changed_du
 confirm; json 'a.equal(r.status, "confirmed");' "$WORK/confirm.json"
 ok "20f edit while an apply verifies -> not confirmed until the apply settles, then the edit is confirmed"
 
+# 20g. A rollback is offered only while there is a snapshot to return to: the
+#      recorded before-autotune snapshot, else the last-known-working one
+#      while it still holds the pre-apply configuration; for an unreadable
+#      record the last-known-working one. Without it the page offers no
+#      rollback that can only fail. An unreadable record whose
+#      last-known-working snapshot is gone too is no dead end: a snapshot
+#      restored in History becomes last-known-working, and the rollback then
+#      sets the record aside.
+crash_in_verification
+pre_id="$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).pre_snapshot)' "$FORKOP_AUTOTUNE_APPLY_STATE")"
+at status; json 'a.equal(r.rollback_source_present, true);' "$WORK/out.json"
+rm -f "$FORKOP_SNAPSHOT_DIR/$pre_id.json"
+at status; json 'a.equal(r.pre_snapshot_present, false); a.equal(r.rollback_source_present, true);' "$WORK/out.json"
+manager_status; json 'a.equal(r.apply.rollback, true);' "$WORK/mstatus.json"
+rm -f "$FORKOP_SNAPSHOT_DIR/$PRE_LKG.json"
+at status; json 'a.equal(r.resolved, false); a.equal(r.diagnosis, "candidate_active"); a.equal(r.rollback_source_present, false);' "$WORK/out.json"
+manager_status; json 'a.equal(r.apply.resolved, false); a.equal(r.apply.rollback, false);' "$WORK/mstatus.json"
+at rollback; json 'a.equal(r.status, "failed"); a.equal(r.reason, "pre_apply_snapshot_missing");' "$WORK/out.json"
+reset_apply; rm -f "$FORKOP_AUTOTUNE_APPLY_STATE.corrupt"
+printf 'garbage{' > "$FORKOP_AUTOTUNE_APPLY_STATE"; rm -f "$FORKOP_SNAPSHOT_DIR/last-known-working"
+at status; json 'a.equal(r.diagnosis, "state_unreadable"); a.equal(r.rollback_source_present, false);' "$WORK/out.json"
+manager_status; json 'a.equal(r.apply.resolved, false); a.equal(r.apply.rollback, false);' "$WORK/mstatus.json"
+at rollback; json 'a.equal(r.status, "failed"); a.equal(r.reason, "last_known_working_missing");' "$WORK/out.json"
+[ ! -e "$FORKOP_AUTOTUNE_APPLY_STATE.corrupt" ] || fail "a refused rollback set the unreadable record aside"
+ucode -L "$LIB" "$LIB/config/snapshots.uc" restore "$PRE_LKG" > "$WORK/restore.json" || true
+json 'a.equal(r.status, "success");' "$WORK/restore.json"
+[ "$(lkg)" = "$PRE_LKG" ] || fail "the restored snapshot did not become last-known-working"
+at status; json 'a.equal(r.rollback_source_present, true);' "$WORK/out.json"
+manager_status; json 'a.equal(r.apply.rollback, true);' "$WORK/mstatus.json"
+at rollback; json 'a.equal(r.status, "rolled_back"); a.equal(r.rollback.status, "not_needed");' "$WORK/out.json"
+at status; json 'a.equal(r.resolved, true);' "$WORK/out.json"
+ok "20g rollback offered only with a snapshot to return to; an unreadable record without last-known-working is settled after a restore in History"
+
 # Review hardening -------------------------------------------------------------
 
 # Sing-box semantics: disable_quic reject rule (fixture) is skipped for TCP;

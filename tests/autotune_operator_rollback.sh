@@ -36,7 +36,7 @@ manager status >"$WORK/status.json"
 # A crash during verification: unresolved, the candidate is active -> can
 # be rolled back; nothing of the configuration leaves the summary.
 : >"$FORKOP_AUTOTUNE_APPLY_STATE"
-status_with '{"state":{"phase":"verifying","reason":null,"selected":"fake","mutation":{"section":"youtube","option":"nfqws_opt","from":"SECRET-FROM","to":"SECRET-TO"},"target":{"host":"secret.example","ip":"192.0.2.77"},"plan_config_hash":"'"$(printf 'a%.0s' $(seq 64))"'","started_at":5},"config_hash":"'"$(printf 'b%.0s' $(seq 64))"'","resolved":false,"diagnosis":"candidate_active","guards":[],"snapshot_operation":false,"service_action":null,"autotune_lock_held":false}'
+status_with '{"state":{"phase":"verifying","reason":null,"selected":"fake","mutation":{"section":"youtube","option":"nfqws_opt","from":"SECRET-FROM","to":"SECRET-TO"},"target":{"host":"secret.example","ip":"192.0.2.77"},"plan_config_hash":"'"$(printf 'a%.0s' $(seq 64))"'","started_at":5},"config_hash":"'"$(printf 'b%.0s' $(seq 64))"'","resolved":false,"diagnosis":"candidate_active","guards":[],"snapshot_operation":false,"service_action":null,"autotune_lock_held":false,"rollback_source_present":true}'
 node -e '
 const a = require("node:assert/strict");
 const r = require(process.argv[1]).apply;
@@ -46,13 +46,13 @@ a.deepEqual(r, { phase: "verifying", reason: null, group: "youtube", candidate: 
 ! grep -Eq 'SECRET|secret\.example|192\.0\.2\.77|aaaa|bbbb' "$WORK/status.json" || fail "the summary leaks the configuration"
 
 # The same phase while the apply still runs: no rollback offered.
-status_with '{"state":{"phase":"verifying","selected":"fake","mutation":{"section":"youtube"}},"resolved":false,"diagnosis":"candidate_active","autotune_lock_held":true}'
+status_with '{"state":{"phase":"verifying","selected":"fake","mutation":{"section":"youtube"}},"resolved":false,"diagnosis":"candidate_active","autotune_lock_held":true,"rollback_source_present":true}'
 [ "$(json_get "$WORK/status.json" apply.in_progress)" = true ] || fail "a running apply is not in progress: $(cat "$WORK/status.json")"
 [ "$(json_get "$WORK/status.json" apply.rollback)" = false ] || fail "a running apply offered a rollback"
 
 # A verified apply whose candidate is still the configuration: resolved,
 # and the operator may still roll it back.
-status_with '{"state":{"phase":"applied","status":"applied","selected":"fake","mutation":{"section":"youtube"},"finished_at":9},"resolved":true,"diagnosis":"candidate_active","autotune_lock_held":false}'
+status_with '{"state":{"phase":"applied","status":"applied","selected":"fake","mutation":{"section":"youtube"},"finished_at":9},"resolved":true,"diagnosis":"candidate_active","autotune_lock_held":false,"rollback_source_present":true}'
 node -e '
 const a = require("node:assert/strict");
 const r = require(process.argv[1]).apply;
@@ -60,17 +60,26 @@ a.equal(r.resolved, true); a.equal(r.rollback, true); a.equal(r.finished_at, 9);
   fail "summary of a verified apply: $(cat "$WORK/status.json")"
 
 # The configuration changed since: nothing to roll back.
-status_with '{"state":{"phase":"applied","selected":"fake","mutation":{"section":"youtube"}},"resolved":true,"diagnosis":"superseded","autotune_lock_held":false}'
+status_with '{"state":{"phase":"applied","selected":"fake","mutation":{"section":"youtube"}},"resolved":true,"diagnosis":"superseded","autotune_lock_held":false,"rollback_source_present":true}'
 [ "$(json_get "$WORK/status.json" apply.rollback)" = false ] || fail "a superseded apply offered a rollback"
 
 # An unreadable record: needs attention, the rollback settles it.
-status_with '{"state":{"phase":"needs_attention","status":"needs_attention","reason":"apply_state_unreadable","unreadable":true},"resolved":false,"diagnosis":"state_unreadable","autotune_lock_held":false}'
+status_with '{"state":{"phase":"needs_attention","status":"needs_attention","reason":"apply_state_unreadable","unreadable":true},"resolved":false,"diagnosis":"state_unreadable","autotune_lock_held":false,"rollback_source_present":true}'
 node -e '
 const a = require("node:assert/strict");
 const r = require(process.argv[1]).apply;
 a.equal(r.resolved, false); a.equal(r.diagnosis, "state_unreadable"); a.equal(r.rollback, true);
 a.equal(r.group, null); a.equal(r.reason, "apply_state_unreadable");' "$WORK/status.json" ||
   fail "summary of an unreadable record: $(cat "$WORK/status.json")"
+
+# Nothing to return to (the before-autotune snapshot is gone and
+# last-known-working no longer holds the pre-apply configuration, or it is
+# gone for an unreadable record): no rollback that could only fail.
+status_with '{"state":{"phase":"verifying","selected":"fake","mutation":{"section":"youtube"}},"resolved":false,"diagnosis":"candidate_active","autotune_lock_held":false,"rollback_source_present":false}'
+[ "$(json_get "$WORK/status.json" apply.resolved)" = false ] || fail "a record without a rollback source was shown as settled"
+[ "$(json_get "$WORK/status.json" apply.rollback)" = false ] || fail "a rollback without a snapshot to return to was offered"
+status_with '{"state":{"phase":"needs_attention","reason":"apply_state_unreadable","unreadable":true},"resolved":false,"diagnosis":"state_unreadable","autotune_lock_held":false,"rollback_source_present":false}'
+[ "$(json_get "$WORK/status.json" apply.rollback)" = false ] || fail "the rollback of an unreadable record without last-known-working was offered"
 
 # The apply tool does not answer: shown as unknown, never as resolved.
 status_with 'not json'

@@ -109,7 +109,8 @@ function run_tool(name, args) {
 // it changed, how it ended, whether it still waits for a decision
 // (resolved: false; null when the apply tool gave no answer) and whether the
 // operator can roll it back now: its candidate is still the configuration
-// and no apply runs (an unreadable record is always settled by a rollback).
+// (an unreadable record is settled by a rollback), no apply runs and there
+// is a snapshot to return to (a rollback without one can only fail).
 // Nothing of the configuration itself (hashes, options, targets) is shown.
 function apply_summary() {
     if (fs.stat(APPLY_STATE_FILE) == null) return null;
@@ -131,7 +132,7 @@ function apply_summary() {
         resolved: st.resolved === true,
         diagnosis: type(st.diagnosis) == "string" ? st.diagnosis : null,
         in_progress,
-        rollback: !in_progress && (s.unreadable === true || candidate_active)
+        rollback: !in_progress && st.rollback_source_present === true && (s.unreadable === true || candidate_active)
     };
 }
 

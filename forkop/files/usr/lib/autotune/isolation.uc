@@ -978,8 +978,14 @@ function tune(host, probes, resolver, list, ip) {
                     if (switch_probe_rule(target.ip, probe_rule_spec(slot.queue, comment)) != "switched") return "switch_failed";
                     current = id;
                 }
-                let counters_before = probe_counters();
+                // The queue is read before the rule counter here and after it
+                // below, so the queue window contains the rule window: a late
+                // packet of an earlier probe (a blocked probe leaves an orphan
+                // that keeps retransmitting) between two readings can only
+                // add to "queued", never look like a packet that bypassed
+                // the candidate.
                 let queue_before = slot.queue != null ? queue_entry(slot.queue) : null;
+                let counters_before = probe_counters();
                 if (counters_before == null || counters_before[comment] == null) return "counters_unavailable";
                 let record = probe_module.probe({ host, ip: target.ip, port_range: PORT_RANGE });
                 let counters_after = probe_counters();
@@ -1117,8 +1123,9 @@ function run(candidate_id, host, count, resolver, ip) {
             if (interrupted) return "interrupted";
             push(result.probes, probe_module.probe({ host, ip: target.ip, port_range: PORT_RANGE }));
         }
-        let queue_after = queue_entry(QUEUE);
+        // The rule counter first, the queue after it: see tune().
         result.counters = probe_counters();
+        let queue_after = queue_entry(QUEUE);
         if (result.counters == null) return "counters_unavailable";
         if (queue_candidate) {
             result.counters.queue = {

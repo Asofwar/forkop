@@ -29,7 +29,9 @@ printf 'start\n' >>"$START_TEST_LOG"
 exit "${START_TEST_STATUS:-0}"
 SH
 chmod +x "$WORK_DIR/forkop"
-# The init script that a scheduled start retry would run.
+# The init script that a scheduled start retry runs. The retry is due after
+# 1 s: a start that cancels it signals only its shell (service/initd.uc), and
+# the shell's `sleep` lives on, reparented, until the delay ends.
 printf '#!/bin/sh\nexit 0\n' >"$WORK_DIR/init"
 chmod +x "$WORK_DIR/init"
 
@@ -38,7 +40,7 @@ start() {
     FORKOP_UI_ACTION_TRACKED=1 FORKOP_RUNTIME_STATE_DIR="$WORK_DIR/run" \
     FORKOP_RELOAD_LOCK_DIR="$WORK_DIR/run/reload.lock" \
     FORKOP_START_RUNTIME_LOCK_WAIT_SECONDS="${START_TEST_WAIT:-0}" \
-    FORKOP_SERVICE_INIT="$WORK_DIR/init" FORKOP_START_DEFERRED_RETRY_DELAY_SECONDS=300 \
+    FORKOP_SERVICE_INIT="$WORK_DIR/init" FORKOP_START_DEFERRED_RETRY_DELAY_SECONDS=1 \
     FORKOP_BIN="${START_TEST_BIN:-$WORK_DIR/forkop}" \
     START_TEST_LOG="$WORK_DIR/start.log" START_TEST_STATUS="${START_TEST_STATUS:-0}" \
     ucode -L "$FORKOP_LIB" "$FORKOP_LIB/service/initd.uc" start-service manual "$$"

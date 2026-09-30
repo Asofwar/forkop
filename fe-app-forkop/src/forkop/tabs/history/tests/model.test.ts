@@ -9,6 +9,7 @@ import {
   snapshotBusyText,
   snapshotReasonLabel,
   snapshotRows,
+  unsavedChangesBlockRestore,
 } from '../model';
 import type { Forkop } from '../../../types';
 
@@ -190,6 +191,9 @@ describe('history list', () => {
 describe('snapshots', () => {
   it('labels every reason and marks the last known good one', () => {
     expect(snapshotReasonLabel('before-autotune')).toBe('Before autotune');
+    expect(snapshotReasonLabel('concurrent-change')).toBe(
+      'Edited during a rollback',
+    );
     expect(snapshotReasonLabel('unexpected')).toBe('Other');
 
     const rows = snapshotRows([
@@ -333,5 +337,41 @@ describe('restore result', () => {
     expect(snapshotBusyText('snapshot_operation_in_progress')).toBe(
       'Another snapshot operation is already in progress. Try again in a moment.',
     );
+    // UC-068: uci changes staged on the router would ride along.
+    const staged = restoreResultToast({
+      status: 'failed',
+      reason: 'uncommitted_uci_changes',
+    });
+    expect(staged.type).toBe('warning');
+    expect(staged.text).toContain('was not started');
+    expect(staged.text).toContain('Commit or revert');
+  });
+
+  it('keeps an edit made during the restore instead of calling it restored', () => {
+    const edited = restoreResultToast({
+      status: 'needs_attention',
+      reason: 'config_changed_during_transaction',
+    });
+    expect(edited.type).toBe('error');
+    expect(edited.text).toContain('did not finish');
+    expect(edited.text).toContain('The change is kept');
+    expect(edited.text).toContain('Edited during a rollback');
+    expect(edited.text).toContain('DPI guard stays active');
+  });
+
+  it('asks for unsaved changes of this session to be applied first', () => {
+    expect(
+      unsavedChangesBlockRestore(
+        { forkop: [['set', 'settings', 'dns_server', '9.9.9.9']] },
+        'forkop',
+      ),
+    ).toBe(true);
+    expect(unsavedChangesBlockRestore({ forkop: [] }, 'forkop')).toBe(false);
+    expect(
+      unsavedChangesBlockRestore({ network: [['set', 'lan']] }, 'forkop'),
+    ).toBe(false);
+    // Unknown (the call failed or LuCI lacks it): nothing is blocked.
+    expect(unsavedChangesBlockRestore(null, 'forkop')).toBe(false);
+    expect(unsavedChangesBlockRestore(undefined, 'forkop')).toBe(false);
   });
 });

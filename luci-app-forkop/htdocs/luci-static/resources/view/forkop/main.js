@@ -18885,6 +18885,10 @@ function snapshotReasonLabel(reason) {
       return _("Last known good");
     case "before-autotune":
       return _("Before autotune");
+    // A configuration edited while a restore or an autotune change owned it:
+    // kept instead of rolled back (config/snapshots.uc).
+    case "concurrent-change":
+      return _("Edited during a rollback");
     default:
       return _("Other");
   }
@@ -18923,6 +18927,15 @@ function snapshotBusyText(reason) {
     );
   return _(
     "Another snapshot operation is already in progress. Try again in a moment.",
+  );
+}
+function unsavedChangesBlockRestore(changes, uciPackage) {
+  const pending = changes?.[uciPackage];
+  return Array.isArray(pending) && pending.length > 0;
+}
+function unsavedChangesText() {
+  return _(
+    "There are unsaved changes of Forkop X in this session. Save & Apply or revert them, then restore the snapshot.",
   );
 }
 function restoreConfirmMessage(staysStopped) {
@@ -18969,6 +18982,14 @@ function restoreResultToast(result) {
         duration: 8e3,
       };
     case "failed":
+      if (result.reason === "uncommitted_uci_changes")
+        return {
+          text: _(
+            'Restore was not started: the router has uncommitted uci changes of Forkop X (made with "uci set" without a commit). Commit or revert them, then restore again.',
+          ),
+          type: "warning",
+          duration: 1e4,
+        };
       if (result.runtime === "stopped")
         return {
           text:
@@ -18984,6 +19005,14 @@ function restoreResultToast(result) {
         };
       break;
     case "needs_attention":
+      if (result.reason === "config_changed_during_transaction")
+        return {
+          text: _(
+            'Restore did not finish: the configuration was changed while the snapshot was being applied. The change is kept and saved as a snapshot ("Edited during a rollback"); the DPI guard stays active. Restore the snapshot you need to finish.',
+          ),
+          type: "error",
+          duration: 12e3,
+        };
       if (result.reason === "rollback_reload_queued")
         return {
           text: _(
@@ -19196,6 +19225,13 @@ async function runSnapshotAction(action) {
   }
 }
 async function restoreSnapshot(id, label) {
+  const sessionChanges = await Promise.resolve(uci.changes?.()).catch(
+    () => null,
+  );
+  if (unsavedChangesBlockRestore(sessionChanges, FORKOP_UCI_PACKAGE)) {
+    showToast(unsavedChangesText(), "warning", 8e3);
+    return;
+  }
   const changes = await loadDiff(id);
   const rows = changes ? diffRows(changes) : [];
   const preview = rows
@@ -19692,6 +19728,8 @@ function decisionText(reason) {
       return "";
   }
 }
+var CONFIG_EDITED_DURING_CHECK =
+  "verification_failed:config_changed_during_transaction";
 function applyOutcomeView(status2, reason) {
   switch (status2) {
     case "applied":
@@ -19710,6 +19748,11 @@ function applyOutcomeView(status2, reason) {
     case "busy":
       return { label: _("Not applied"), tone: "neutral" };
     case "needs_attention":
+      if (reason === CONFIG_EDITED_DURING_CHECK)
+        return {
+          label: _("Check failed, not rolled back: configuration edited"),
+          tone: "error",
+        };
       return { label: _("Rollback did not finish"), tone: "error" };
     default:
       return { label: _("Outcome unknown"), tone: "error" };
@@ -20155,6 +20198,15 @@ function applyResultView(result, candidate) {
       if (STALE_REASONS.includes(reason ?? "")) return stale;
       return { tone: "warning", text: refusalText(reason), attention: false };
     case "needs_attention":
+      if (reason === CONFIG_EDITED_DURING_CHECK)
+        return {
+          tone: "error",
+          text: _(
+            'The new strategy did not pass the check, but the configuration was changed during the check, so Forkop X kept that change and did not roll back. The rule may still use the new strategy: check it, or restore the "Before autotune" snapshot in History and recovery.',
+          ),
+          attention: true,
+        };
+      break;
     case "unknown":
       break;
     default:
@@ -20330,7 +20382,10 @@ function rollbackResultView(result) {
       attention: true,
     };
   switch (result.reason) {
+    // Also when the configuration was edited right before the restore
+    // (UC-017): the restore refused before any change.
     case "rollback_needs_candidate_config":
+    case "rollback_not_started:config_changed_during_transaction":
       return {
         tone: "warning",
         text: _(
@@ -20351,6 +20406,15 @@ function rollbackResultView(result) {
         tone: "error",
         text: _(
           "The last known working configuration is missing; nothing was rolled back. Restore a snapshot in History and recovery first.",
+        ),
+        attention: false,
+      };
+    // Changes staged on the router with uci would ride along (UC-068).
+    case "rollback_not_started:uncommitted_uci_changes":
+      return {
+        tone: "warning",
+        text: _(
+          'Nothing was rolled back: the router has uncommitted uci changes of Forkop X (made with "uci set" without a commit). Commit or revert them, then roll back again.',
         ),
         attention: false,
       };

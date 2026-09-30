@@ -214,6 +214,12 @@ export function decisionText(reason: string | null | undefined) {
   }
 }
 
+// The candidate failed its check, but the configuration was edited while it
+// was checked: the automatic rollback kept the edit instead of restoring the
+// "Before autotune" snapshot (autotune/apply.uc, UC-017).
+const CONFIG_EDITED_DURING_CHECK =
+  'verification_failed:config_changed_during_transaction';
+
 export function applyOutcomeView(
   status: string,
   reason?: string | null,
@@ -238,6 +244,11 @@ export function applyOutcomeView(
     case 'busy':
       return { label: _('Not applied'), tone: 'neutral' };
     case 'needs_attention':
+      if (reason === CONFIG_EDITED_DURING_CHECK)
+        return {
+          label: _('Check failed, not rolled back: configuration edited'),
+          tone: 'error',
+        };
       return { label: _('Rollback did not finish'), tone: 'error' };
     default:
       return { label: _('Outcome unknown'), tone: 'error' };
@@ -795,6 +806,15 @@ export function applyResultView(
       if (STALE_REASONS.includes(reason ?? '')) return stale;
       return { tone: 'warning', text: refusalText(reason), attention: false };
     case 'needs_attention':
+      if (reason === CONFIG_EDITED_DURING_CHECK)
+        return {
+          tone: 'error',
+          text: _(
+            'The new strategy did not pass the check, but the configuration was changed during the check, so Forkop X kept that change and did not roll back. The rule may still use the new strategy: check it, or restore the "Before autotune" snapshot in History and recovery.',
+          ),
+          attention: true,
+        };
+      break;
     case 'unknown':
       break;
     default:
@@ -1011,7 +1031,10 @@ export function rollbackResultView(
       attention: true,
     };
   switch (result.reason) {
+    // Also when the configuration was edited right before the restore
+    // (UC-017): the restore refused before any change.
     case 'rollback_needs_candidate_config':
+    case 'rollback_not_started:config_changed_during_transaction':
       return {
         tone: 'warning',
         text: _(
@@ -1032,6 +1055,15 @@ export function rollbackResultView(
         tone: 'error',
         text: _(
           'The last known working configuration is missing; nothing was rolled back. Restore a snapshot in History and recovery first.',
+        ),
+        attention: false,
+      };
+    // Changes staged on the router with uci would ride along (UC-068).
+    case 'rollback_not_started:uncommitted_uci_changes':
+      return {
+        tone: 'warning',
+        text: _(
+          'Nothing was rolled back: the router has uncommitted uci changes of Forkop X (made with "uci set" without a commit). Commit or revert them, then roll back again.',
         ),
         attention: false,
       };

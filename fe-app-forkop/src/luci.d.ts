@@ -42,6 +42,8 @@ declare global {
   const uci: {
     load: (packages: string | string[]) => Promise<string>;
     unload?: (packages: string | string[]) => void;
+    // Saved but not applied changes of this session, by package.
+    changes?: () => Promise<Record<string, unknown>>;
     sections: (conf: string, type?: string, cb?: () => void) => Promise<T>;
   };
 

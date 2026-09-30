@@ -23,8 +23,11 @@ import {
   restoreResultToast,
   snapshotBusyText,
   snapshotRows,
+  unsavedChangesBlockRestore,
+  unsavedChangesText,
   type HistoryFilter,
 } from './model';
+import { FORKOP_UCI_PACKAGE } from '../../../constants';
 
 const REFRESH_INTERVAL_MS = 15000;
 const FILTERS: HistoryFilter[] = ['all', 'config', 'service', 'autotune'];
@@ -238,6 +241,16 @@ async function runSnapshotAction(action: () => Promise<void>) {
 }
 
 async function restoreSnapshot(id: string, label: string) {
+  // UC-068: unsaved changes of this session would be merged into the
+  // restored configuration by a later Save & Apply.
+  const sessionChanges = await Promise.resolve(uci.changes?.()).catch(
+    () => null,
+  );
+  if (unsavedChangesBlockRestore(sessionChanges, FORKOP_UCI_PACKAGE)) {
+    showToast(unsavedChangesText(), 'warning', 8000);
+    return;
+  }
+
   const changes = await loadDiff(id);
   const rows = changes ? diffRows(changes) : [];
   const preview = rows

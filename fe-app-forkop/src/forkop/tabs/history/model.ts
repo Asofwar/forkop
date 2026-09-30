@@ -186,6 +186,10 @@ export function snapshotReasonLabel(reason: string) {
       return _('Last known good');
     case 'before-autotune':
       return _('Before autotune');
+    // A configuration edited while a restore or an autotune change owned it:
+    // kept instead of rolled back (config/snapshots.uc).
+    case 'concurrent-change':
+      return _('Edited during a rollback');
     default:
       return _('Other');
   }
@@ -242,6 +246,24 @@ export function snapshotBusyText(reason?: string) {
   );
 }
 
+// Changes of this LuCI session that are saved but not applied (rpcd keeps
+// them per session). The restore's reload does not read them, but a later
+// Save & Apply would merge them into the restored configuration: they are
+// applied or reverted first. Unknown changes (the call failed) block nothing.
+export function unsavedChangesBlockRestore(
+  changes: Record<string, unknown> | null | undefined,
+  uciPackage: string,
+): boolean {
+  const pending = changes?.[uciPackage];
+  return Array.isArray(pending) && pending.length > 0;
+}
+
+export function unsavedChangesText() {
+  return _(
+    'There are unsaved changes of Forkop X in this session. Save & Apply or revert them, then restore the snapshot.',
+  );
+}
+
 // What the restore will do, said before the user confirms it. Forkop X
 // stopped by the user, or not started since boot, is not started by a
 // restore (D-15): the configuration is replaced and checked, and takes
@@ -295,6 +317,16 @@ export function restoreResultToast(
         duration: 8000,
       };
     case 'failed':
+      // Changes staged on the router with uci but not committed would ride
+      // along the reload (UC-068): nothing was changed.
+      if (result.reason === 'uncommitted_uci_changes')
+        return {
+          text: _(
+            'Restore was not started: the router has uncommitted uci changes of Forkop X (made with "uci set" without a commit). Commit or revert them, then restore again.',
+          ),
+          type: 'warning',
+          duration: 10000,
+        };
       if (result.runtime === 'stopped')
         return {
           text:
@@ -310,6 +342,16 @@ export function restoreResultToast(
         };
       break;
     case 'needs_attention':
+      // Someone saved the configuration while the snapshot was being
+      // reloaded: the change was kept instead of rolled back (UC-023).
+      if (result.reason === 'config_changed_during_transaction')
+        return {
+          text: _(
+            'Restore did not finish: the configuration was changed while the snapshot was being applied. The change is kept and saved as a snapshot ("Edited during a rollback"); the DPI guard stays active. Restore the snapshot you need to finish.',
+          ),
+          type: 'error',
+          duration: 12000,
+        };
       if (result.reason === 'rollback_reload_queued')
         return {
           text: _(

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-30 06:07+0000\n"
-"PO-Revision-Date: 2026-09-30 06:07+0000\n"
+"POT-Creation-Date: 2026-09-30 06:48+0000\n"
+"PO-Revision-Date: 2026-09-30 06:48+0000\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -613,6 +613,9 @@ msgstr "Проверять каждые"
 
 msgid "Check failed"
 msgstr "Проверка не удалась"
+
+msgid "Check failed, not rolled back: configuration edited"
+msgstr "Проверка не пройдена, откат не выполнен: конфигурацию изменили"
 
 msgid "Check failed, rolled back automatically"
 msgstr "Проверка не пройдена, выполнен автоматический откат"
@@ -1225,6 +1228,9 @@ msgstr "Изменить URLTest"
 
 msgid "Edit…"
 msgstr "Изменить…"
+
+msgid "Edited during a rollback"
+msgstr "Правка во время отката"
 
 msgid "Enable"
 msgstr "Включить"
@@ -2339,6 +2345,9 @@ msgstr "не используется"
 msgid "Nothing was rolled back"
 msgstr "Ничего не откачено"
 
+msgid "Nothing was rolled back: the router has uncommitted uci changes of Forkop X (made with \"uci set\" without a commit). Commit or revert them, then roll back again."
+msgstr "Ничего не откачено: на роутере есть незафиксированные изменения Forkop X в uci (внесённые «uci set» без commit). Зафиксируйте или отмените их и повторите откат."
+
 msgid "Now"
 msgstr "Сейчас"
 
@@ -2708,6 +2717,9 @@ msgstr "Восстановить"
 msgid "Restore configuration snapshot?"
 msgstr "Восстановить снимок конфигурации?"
 
+msgid "Restore did not finish: the configuration was changed while the snapshot was being applied. The change is kept and saved as a snapshot (\"Edited during a rollback\"); the DPI guard stays active. Restore the snapshot you need to finish."
+msgstr "Восстановление не завершено: конфигурацию изменили, пока применялся снимок. Изменение сохранено и записано снимком («Правка во время отката»); защита DPI остаётся активной. Чтобы завершить, восстановите нужный снимок."
+
 msgid "Restore did not finish: the service was busy and only queued the reload. The DPI guard stays active; restore again when the service is idle."
 msgstr "Восстановление не завершено: служба была занята и лишь поставила перезагрузку в очередь. Защита DPI остаётся активной; повторите восстановление, когда служба освободится."
 
@@ -2728,6 +2740,9 @@ msgstr "Восстановление не применено: служба бы�
 
 msgid "Restore was not applied: the snapshot configuration did not pass validation. The previous configuration is kept; Forkop X stays stopped."
 msgstr "Восстановление не применено: конфигурация снимка не прошла проверку. Прежняя конфигурация сохранена; Forkop X остаётся остановленным."
+
+msgid "Restore was not started: the router has uncommitted uci changes of Forkop X (made with \"uci set\" without a commit). Commit or revert them, then restore again."
+msgstr "Восстановление не запущено: на роутере есть незафиксированные изменения Forkop X в uci (внесённые «uci set» без commit). Зафиксируйте или отмените их и повторите восстановление."
 
 msgid "Restore…"
 msgstr "Восстановить…"
@@ -3398,6 +3413,9 @@ msgstr "Достигнуто максимальное число целей."
 msgid "The name does not resolve on the router, so no rule can open it. Check the DNS results above."
 msgstr "Имя не разрешается на роутере, поэтому ни одно правило его не откроет. Посмотрите результат DNS выше."
 
+msgid "The new strategy did not pass the check, but the configuration was changed during the check, so Forkop X kept that change and did not roll back. The rule may still use the new strategy: check it, or restore the \"Before autotune\" snapshot in History and recovery."
+msgstr "Новая стратегия не прошла проверку, но во время проверки конфигурацию изменили, поэтому Forkop X сохранил это изменение и не выполнил откат. Правило может по-прежнему использовать новую стратегию: проверьте его или восстановите снимок «Перед автоподбором» в разделе «История и восстановление»."
+
 msgid "The new strategy did not pass the check. Forkop X restored the previous configuration automatically."
 msgstr "Новая стратегия не прошла проверку. Forkop X автоматически восстановил предыдущую конфигурацию."
 
@@ -3589,6 +3607,9 @@ msgstr "Есть правила использующие Zapret"
 
 msgid "There are rules using Zapret2"
 msgstr "Есть правила, использующие Zapret2"
+
+msgid "There are unsaved changes of Forkop X in this session. Save & Apply or revert them, then restore the snapshot."
+msgstr "В этом сеансе есть несохранённые изменения Forkop X. Сохраните и примените их или отмените, затем восстановите снимок."
 
 msgid "There are unsaved configuration changes. Save or reset them in Settings first."
 msgstr "Есть несохранённые изменения конфигурации. Сначала сохраните или сбросьте их в «Настройках»."

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   applyConfirmation,
   applyPhaseLabel,
+  applyOutcomeView,
   applyResultView,
   candidateRows,
   currentStrategyLabel,
@@ -591,6 +592,28 @@ describe('manual apply', () => {
       text: 'Automatic recovery did not finish.',
       attention: true,
     });
+    // UC-017: the candidate failed, but the configuration was edited during
+    // the check: kept, not rolled back; the rule may still use the candidate.
+    const edited = view(
+      'needs_attention',
+      'verification_failed:config_changed_during_transaction',
+    );
+    expect(edited).toMatchObject({ tone: 'error', attention: true });
+    expect(edited.text).toContain('did not roll back');
+    expect(edited.text).toContain('Before autotune');
+    expect(
+      applyOutcomeView(
+        'needs_attention',
+        'verification_failed:config_changed_during_transaction',
+      ),
+    ).toEqual({
+      label: 'Check failed, not rolled back: configuration edited',
+      tone: 'error',
+    });
+    expect(
+      applyOutcomeView('needs_attention', 'verification_failed:rollback_busy')
+        .label,
+    ).toBe('Rollback did not finish');
     expect(view('failed', 'interrupted_after_apply').attention).toBe(true);
     expect(applyResultView(null, 'multisplit').attention).toBe(true);
     expect(
@@ -830,6 +853,22 @@ describe('recorded apply and its rollback', () => {
         reason: 'rollback_needs_candidate_config',
       }).text,
     ).toContain('changed after the apply');
+    // UC-017: an edit landed right before the restore; nothing changed.
+    expect(
+      rollbackResultView({
+        status: 'failed',
+        result: 'failed',
+        reason: 'rollback_not_started:config_changed_during_transaction',
+      }).text,
+    ).toContain('changed after the apply');
+    // UC-068: uci changes staged on the router.
+    const staged = rollbackResultView({
+      status: 'failed',
+      result: 'failed',
+      reason: 'rollback_not_started:uncommitted_uci_changes',
+    });
+    expect(staged).toMatchObject({ tone: 'warning', attention: false });
+    expect(staged.text).toContain('Commit or revert');
     expect(
       rollbackResultView({
         status: 'failed',

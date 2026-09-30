@@ -272,6 +272,21 @@ reset_apply() {
 no_secret() { ! grep -rq "$SECRET" "$WORK/out.json" "$FORKOP_AUTOTUNE_APPLY_STATE" "$STUB_LOG" 2>/dev/null || fail "$1: secret leaked"; }
 # What a start or reload of the lifecycle asks for once it succeeded.
 confirm() { ucode -L "$LIB" "$LIB/config/snapshots.uc" confirm-working > "$WORK/confirm.json" || true; }
+# A measuring run of the autotune manager (no targets): it only asks the real
+# apply.uc whether anything blocks it.
+manager_run() {
+  FORKOP_AUTOTUNE_STATE_FILE="$WORK/etc/autotune-state.json" FORKOP_AUTOTUNE_LAST_DIR="$WORK/run/autotune-last" \
+    ucode -L "$LIB" "$LIB/autotune/manager.uc" run all > "$WORK/run.json" || true
+}
+# SIGKILL of the apply (power loss, OOM) while it verifies the candidate.
+crash_in_verification() {
+  reset_apply; plan_ready; export PROD_SLEEP=1
+  ucode -L "$LIB" "$LIB/autotune/apply.uc" apply "$WORK/plan.json" > "$WORK/out.json" &
+  local runner=$!
+  for _ in $(seq 1 200); do grep -q 'curl production' "$STUB_LOG/curl.log" 2>/dev/null && break; sleep 0.05; done
+  kill -9 "$runner"; pkill -9 -f "$WORK/bin/curl" || true; wait "$runner" 2>/dev/null || true; unset PROD_SLEEP
+  json 'a.equal(r.phase, "verifying");' "$FORKOP_AUTOTUNE_APPLY_STATE"
+}
 plan_ready() { selection multisplit; at plan "$WORK/selection.json"; cp "$WORK/out.json" "$WORK/plan.json"; }
 
 # 1. plan is read-only
@@ -561,11 +576,11 @@ kill -9 "$(cat "$STATE/guard.pid")" 2>/dev/null || true
 wait "$runner" 2>/dev/null || true; unset GUARD_SLEEP; sleep 0.5
 { [ "$(chash)" = "$PRE_HASH" ] && [ "$(reloads)" = 0 ]; } || fail "crash after snapshot changed production"
 at status
-json 'a.equal(r.resolved, false); a.equal(r.diagnosis, "not_applied"); a.equal(r.config_is, "pre_apply"); a.equal(r.pre_snapshot_present, true); a.equal(r.state.phase, "applying");' "$WORK/out.json"
+json 'a.equal(r.resolved, true); a.equal(r.diagnosis, "not_applied"); a.equal(r.config_is, "pre_apply"); a.equal(r.pre_snapshot_present, true); a.equal(r.state.phase, "applying");' "$WORK/out.json"
 rm -rf "$FORKOP_SNAPSHOT_LOCK_DIR"
 at apply "$WORK/plan.json"
 json 'a.equal(r.status, "applied");' "$WORK/out.json"
-ok "19 crash after snapshot -> production unchanged, diagnosed not_applied, a new apply may supersede it"
+ok "19 crash after snapshot -> production unchanged, diagnosed not_applied (resolved), a new apply may supersede it"
 
 # 3 (crash list). crash after the config write, before the reload -> diagnosable, never guessed
 reset_apply; plan_ready; export VALIDATE_SLEEP=3
@@ -632,6 +647,55 @@ for content in '' 'garbage{' '[]' '"x"'; do
   [ "$(lkg)" = "$PRE_LKG" ] || fail "'$content': confirmed although the apply record is unreadable"
 done
 ok "20b unreadable or empty apply record -> last-known-working is not confirmed"
+
+# 20c. A crash during verification leaves the record in phase verifying for
+#      good. While the candidate is active it blocks autotune (the operator
+#      rolls back); once the configuration is no longer the candidate (a
+#      snapshot was restored, or the configuration edited) it no longer does,
+#      and the next run and apply go ahead (UC-020).
+crash_in_verification
+at status; json 'a.equal(r.resolved, false); a.equal(r.diagnosis, "candidate_active");' "$WORK/out.json"
+manager_run; json 'a.equal(r.result, "skipped"); a.equal(r.reason, "apply_unresolved");' "$WORK/run.json"
+pre_id="$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).pre_snapshot)' "$FORKOP_AUTOTUNE_APPLY_STATE")"
+ucode -L "$LIB" "$LIB/config/snapshots.uc" restore "$pre_id" > "$WORK/restore.json" || true
+json 'a.equal(r.status, "success");' "$WORK/restore.json"
+at status; json 'a.equal(r.resolved, true); a.equal(r.diagnosis, "not_applied");' "$WORK/out.json"
+manager_run; json 'a.equal(r.result, "completed", JSON.stringify(r));' "$WORK/run.json"
+at apply "$WORK/plan.json"; json 'a.equal(r.status, "applied");' "$WORK/out.json"
+crash_in_verification
+sed -i "s/option dns_rewrite_ttl '60'/option dns_rewrite_ttl '40'/" "$FORKOP_CONFIG_FILE"
+at status; json 'a.equal(r.resolved, true); a.equal(r.diagnosis, "superseded");' "$WORK/out.json"
+crash_in_verification
+at rollback; json 'a.equal(r.status, "rolled_back"); a.equal(r.reason, "operator_rollback");' "$WORK/out.json"
+at status; json 'a.equal(r.resolved, true);' "$WORK/out.json"
+manager_run; json 'a.equal(r.result, "completed");' "$WORK/run.json"
+ok "20c crash during verification -> blocks while the candidate is active; restore, edit or rollback unblocks the next run"
+
+# 20d. An unreadable or empty apply record is needs_attention, never "no
+#      record" (UC-069): runs and applies wait, the rollback path stays. The
+#      operator's rollback brings back the last-known-working configuration
+#      (nothing confirmed the candidate it may hide) and sets the record aside.
+for content in '' 'garbage{'; do
+  reset_apply; plan_ready; printf '%s' "$content" > "$FORKOP_AUTOTUNE_APPLY_STATE"
+  at status
+  json 'a.equal(r.resolved, false); a.equal(r.diagnosis, "state_unreadable"); a.equal(r.state.phase, "needs_attention"); a.equal(r.state.reason, "apply_state_unreadable");' "$WORK/out.json"
+  manager_run; json 'a.equal(r.result, "skipped"); a.equal(r.reason, "apply_unresolved");' "$WORK/run.json"
+  at apply "$WORK/plan.json"
+  json 'a.equal(r.status, "failed"); a.equal(r.reason, "previous_apply_unresolved"); a.equal(r.diagnosis, "state_unreadable");' "$WORK/out.json"
+  { [ "$(chash)" = "$PRE_HASH" ] && [ "$(reloads)" = 0 ]; } || fail "'$content': applied over an unreadable record"
+  at rollback
+  json 'a.equal(r.status, "rolled_back"); a.equal(r.reason, "apply_state_unreadable"); a.equal(r.rollback.status, "not_needed");' "$WORK/out.json"
+  [ "$(reloads)" = 0 ] || fail "'$content': the last-known-working configuration was reloaded although active"
+  [ "$(cat "$FORKOP_AUTOTUNE_APPLY_STATE.corrupt")" = "$content" ] || fail "'$content': the unreadable record was not kept aside"
+  at status; json 'a.equal(r.resolved, true);' "$WORK/out.json"
+  at apply "$WORK/plan.json"; json 'a.equal(r.status, "applied");' "$WORK/out.json"
+done
+reset_apply; printf 'garbage{' > "$FORKOP_AUTOTUNE_APPLY_STATE"
+sed -i "s|option nfqws_opt '$FAKE'|option nfqws_opt '$MULTISPLIT'|" "$FORKOP_CONFIG_FILE"
+at rollback
+json 'a.equal(r.status, "rolled_back"); a.equal(r.rollback.status, "success");' "$WORK/out.json"
+{ [ "$(chash)" = "$PRE_HASH" ] && [ "$(reloads)" = 1 ] && [ "$(lkg)" = "$PRE_LKG" ]; } || fail "the rollback of an unreadable record did not restore the last-known-working configuration"
+ok "20d unreadable apply record -> needs_attention: runs and applies wait; the rollback restores last-known-working and sets it aside"
 
 # Review hardening -------------------------------------------------------------
 

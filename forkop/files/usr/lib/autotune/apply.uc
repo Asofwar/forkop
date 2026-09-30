@@ -220,7 +220,15 @@ function build_candidate(text, section, opt) {
 
 // ---- state (durable, atomic) -----------------------------------------------
 
-function state_read() { return read_json(STATE_FILE); }
+// A record file that exists but holds no record (empty after a power cut,
+// truncated, garbage) may hide an unresolved apply: it is needs_attention,
+// never "no recorded apply" (UC-069). Only the operator's rollback settles it.
+function state_read() {
+    if (fs.stat(STATE_FILE) == null) return null;
+    let s = read_json(STATE_FILE);
+    return type(s) == "object" && type(s.phase) == "string" ? s :
+        { phase: "needs_attention", status: "needs_attention", reason: "apply_state_unreadable", unreadable: true };
+}
 function state_write(state) {
     let dir = fs.dirname(STATE_FILE);
     if (fs.stat(dir) == null) fs.mkdir(dir, 0700);
@@ -555,6 +563,7 @@ function find_pre_snapshot(s) {
 //   in_transaction     a restore guard or snapshot operation is active
 //   superseded         no transaction active and the config is neither: it was
 //                      changed outside this apply, which no longer owns it
+//   state_unreadable   the record itself cannot be read
 function diagnose(s) {
     let text = fs.readfile(CONFIG_FILE);
     let hash = text != null ? sha_text(text) : "";
@@ -563,7 +572,7 @@ function diagnose(s) {
     let is_candidate = valid_hash(hash) && (hash == s.candidate_hash || (valid_hash(s.candidate_fingerprint) && fp == s.candidate_fingerprint));
     let config_is = !valid_hash(hash) ? "unreadable" : is_pre ? "pre_apply" : is_candidate ? "candidate" : "other";
     let guards = guards_present();
-    let diagnosis = length(guards) > 0 || snapshot_operation_active() ? "in_transaction" :
+    let diagnosis = s.unreadable ? "state_unreadable" : length(guards) > 0 || snapshot_operation_active() ? "in_transaction" :
         config_is == "pre_apply" ? "not_applied" : config_is == "candidate" ? "candidate_active" :
         config_is == "other" ? "superseded" : "in_transaction";
     return { diagnosis, config_is, config_hash: hash, guards, pre_snapshot: find_pre_snapshot(s) };
@@ -574,6 +583,7 @@ function diagnose(s) {
 // the candidate is still active, or needs_attention while production is not
 // provably back on the pre-apply configuration.
 function unresolved(s, d) {
+    if (type(s) == "object" && s.unreadable) return true;
     if (type(s) != "object" || s.mutation == null || d.diagnosis == "superseded") return false;
     if (index(TERMINAL_PHASES, s.phase) < 0) return d.diagnosis != "not_applied";
     if (s.phase == "failed" && s.rollback_available) return d.diagnosis != "not_applied";
@@ -797,8 +807,37 @@ function apply(plan_file, resolver) {
 // Explicit rollback of a recorded apply (after an interrupted verification,
 // an unconfirmed LKG or on operator request): only while the configuration is
 // still exactly the applied candidate and no transaction is active.
+// An unreadable record names neither its candidate nor its snapshot. Nothing
+// confirms a candidate as last-known-working while the record is unreadable
+// (config/snapshots.uc confirm-working), so the last-known-working snapshot
+// is the configuration to return to: restored when the configuration differs
+// from it, then the record is set aside (.corrupt) for inspection.
+function rollback_unreadable() {
+    if (length(guards_present()) > 0) return { status: "failed", reason: "restore_guard_active" };
+    if (snapshot_operation_active()) return { status: "failed", reason: "snapshot_operation_in_progress" };
+    if (service_stopped()) return { status: "failed", reason: "service_stopped" };
+    let action = service_action();
+    if (action != null) return { status: "failed", reason: action };
+    let id = trim(as_string(fs.readfile(SNAPSHOT_DIR + "/last-known-working")));
+    let item = match(id, /^[0-9]+_[0-9]+$/) != null ? read_json(SNAPSHOT_DIR + "/" + id + ".json") : null;
+    if (type(item) != "object" || type(item.content) != "string") return { status: "failed", reason: "last_known_working_missing" };
+    let result = { phase: "rolled_back", status: "rolled_back", reason: "apply_state_unreadable", mutation: null,
+        rollback: { status: "not_needed", reason: null, guard: null, lkg: id }, started_at: now(), finished_at: null };
+    if (fingerprint(fs.readfile(CONFIG_FILE)) != fingerprint(item.content)) {
+        let restored = snapshots([ "restore", id ]);
+        result.rollback = { status: restored.status, reason: restored.reason || null, guard: restored.guard || null, lkg: id };
+        if (restored.status != "success")
+            return { status: "failed", reason: "rollback_" + as_string(restored.reason || restored.status), rollback: result.rollback };
+    }
+    result.finished_at = now();
+    if (!fs.rename(STATE_FILE, STATE_FILE + ".corrupt") || !state_write(result))
+        return { status: "failed", reason: "state_write_failed", rollback: result.rollback };
+    return result;
+}
+
 function rollback() {
     let s = state_read();
+    if (type(s) == "object" && s.unreadable) return rollback_unreadable();
     if (type(s) != "object" || s.mutation == null) return { status: "failed", reason: "no_recorded_apply" };
     let d = diagnose(s);
     let unfinished = index(TERMINAL_PHASES, s.phase) < 0;
@@ -841,8 +880,13 @@ function status() {
         result.config_is = d.config_is;
         result.pre_snapshot = d.pre_snapshot;
         result.pre_snapshot_present = d.pre_snapshot != null && fs.stat(SNAPSHOT_DIR + "/" + d.pre_snapshot + ".json") != null;
-        result.resolved = index(TERMINAL_PHASES, s.phase) >= 0 && !unresolved(s, d);
-        if (!result.resolved) result.diagnosis = d.diagnosis;
+        // A record left unfinished by a process that died (SIGKILL, power
+        // loss) is judged by what it left behind, as a finished one: while
+        // its candidate is active or a transaction is open it blocks; once
+        // the configuration is no longer the candidate it does not (UC-020).
+        let finished = index(TERMINAL_PHASES, s.phase) >= 0 || !autotune_lock.held();
+        result.resolved = finished && !unresolved(s, d);
+        result.diagnosis = d.diagnosis;
     }
     return result;
 }

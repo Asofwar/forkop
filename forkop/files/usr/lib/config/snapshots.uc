@@ -41,6 +41,7 @@ function capture(args) {
 }
 function success(args) { return system(cmd(args) + " >/dev/null 2>&1") == 0; }
 function valid_id(id) { return match(value(id), /^[a-z0-9_-]{1,64}$/) != null; }
+function valid_hash(v) { return match(value(v), /^[0-9a-f]{64}$/) != null; }
 function snapshot_path(id) { return ROOT + "/" + id + ".json"; }
 function read_config() {
     let data = fs.readfile(CONFIG);
@@ -153,7 +154,7 @@ function read_snapshot(id, verify) {
 function metadata(snapshot) {
     return { id: snapshot.id, created_at: snapshot.created_at,
         kind: index([ "manual", "automatic" ], snapshot.kind) >= 0 ? snapshot.kind : "unknown",
-        reason: index([ "manual", "before-reload", "pre-restore", "last-known-working", "before-autotune" ], snapshot.reason) >= 0 ? snapshot.reason : "unknown",
+        reason: index([ "manual", "before-reload", "pre-restore", "last-known-working", "before-autotune", "concurrent-change" ], snapshot.reason) >= 0 ? snapshot.reason : "unknown",
         config_hash: snapshot.config_hash,
         forkop_version: match(value(snapshot.forkop_version), /^[A-Za-z0-9._-]{1,64}$/) != null ? snapshot.forkop_version : "unknown" };
 }
@@ -360,6 +361,30 @@ function reload(reason) {
     let after = pending_stamp();
     return after != null && after != before ? "queued" : "ran";
 }
+// The user configuration, without the lifecycle's own shutdown_correctly
+// bookkeeping, hashed as autotune/apply.uc fingerprints it.
+function user_fingerprint(content) {
+    let lines = [];
+    for (let line in split(content, "\n"))
+        if (match(line, /^[ \t]*option[ \t]+shutdown_correctly([ \t]|$)/) == null) push(lines, line);
+    return sha(join("\n", lines));
+}
+// Whether the configuration file still holds `content`. A start or restart
+// inside the reload rewrites shutdown_correctly: that is no edit.
+function config_holds(content) {
+    let current = read_config();
+    return current != null && (current == content || user_fingerprint(current) == user_fingerprint(content));
+}
+// A configuration that someone else wrote while a transaction owned the file
+// (a LuCI Save & Apply, an autotune policy change, a URLTest override: UCI
+// commits never take the snapshot lock). It stays in place and is saved as an
+// automatic snapshot (dedupe: once), so a later restore cannot discard it
+// either (UC-023, UC-017). The id, or null when no snapshot could be written
+// (retention full of manual snapshots): the edit then lives in the file only.
+function save_concurrent_edit(keep) {
+    let saved = create("automatic", "concurrent-change", true, keep);
+    return saved.snapshot != null ? saved.snapshot.id : null;
+}
 // Replace the configuration with `content` under the restore guard, validate
 // and reload; on failure put `before` back and reload again. The guard also
 // keeps the reload from confirming a last-known-working snapshot, so LKG is
@@ -368,8 +393,7 @@ function reload(reason) {
 // back, and when the rollback reload is queued too nothing proves a coherent
 // runtime, so the guard stays and LKG is not touched.
 // apply_mode (autotune apply): the caller proved no guard was active and the
-// snapshot lock keeps restores out, so the guard is this call's own; an edit
-// made while the guard was installed is never overwritten.
+// snapshot lock keeps restores out, so the guard is this call's own.
 // A configuration that is put back after the target failed reloaded
 // coherently, but that proves no more than it did before: last-known-working
 // moves to it (pre) only when it already was the last-known-working one. It
@@ -383,12 +407,19 @@ function reload(reason) {
 // runs that it could protect (the stop took down the one it protected), and
 // only a start, which builds the runtime from the configuration, brings one
 // up; kept, it would outlive that start with no reload left to remove it.
-function guarded_replace(before, content, pre, on_success, reason, apply_mode, on_stopped) {
+// An edit committed by someone else while the transaction owns the file is
+// never overwritten: one that lands before the write refuses the transaction;
+// one that lands during the target reload (or validation) keeps the file as it
+// is instead of putting `before` back, saves it as a snapshot (keep: the ids
+// that snapshot may not push out) and ends needs_attention with the guard
+// active, since no reload proved a coherent runtime (UC-023).
+function guarded_replace(before, content, pre, on_success, reason, apply_mode, on_stopped, keep) {
     // A guard left by an earlier needs_attention protects a runtime no reload
     // has proved yet: only this call's own guard may go without a reload.
     let inherited = !apply_mode && restore_guard_state() != "absent";
     if (!restore_guard(false)) return { status: "failed", reason: "guard_unavailable" };
-    if (apply_mode && sha(read_config()) != sha(before)) {
+    if (read_config() != before) {
+        if (inherited) return { status: "failed", reason: "concurrent_change", guard: "active" };
         if (!restore_guard(true)) return { status: "needs_attention", reason: "guard_release_failed", guard: "active" };
         return { status: "failed", reason: "concurrent_change" };
     }
@@ -408,6 +439,9 @@ function guarded_replace(before, content, pre, on_success, reason, apply_mode, o
         if (!restore_guard(true)) result = { status: "needs_attention", reason: "guard_release_failed", guard: "active" };
         else result = on_stopped();
     }
+    else if (!config_holds(content))
+        result = { status: "needs_attention", reason: "config_changed_during_transaction", guard: "active",
+            saved_snapshot: save_concurrent_edit([ pre.snapshot.id, ...(keep || []) ]) };
     else if (!atomic(CONFIG, before))
         result = { status: "needs_attention", reason: "config_rollback_failed", guard: "active" };
     else {
@@ -426,14 +460,6 @@ function guarded_replace(before, content, pre, on_success, reason, apply_mode, o
     }
     result.started = true;
     return result;
-}
-// The user configuration, without the lifecycle's own shutdown_correctly
-// bookkeeping, hashed as autotune/apply.uc fingerprints it.
-function user_fingerprint(content) {
-    let lines = [];
-    for (let line in split(content, "\n"))
-        if (match(line, /^[ \t]*option[ \t]+shutdown_correctly([ \t]|$)/) == null) push(lines, line);
-    return sha(join("\n", lines));
 }
 // Why the configuration may not become last-known-working because of an
 // autotune apply, or null. A start or a reload proves that a configuration
@@ -458,11 +484,20 @@ function autotune_objection(content) {
     let undecided = !finished || record.phase == "needs_attention" || (record.phase == "failed" && record.rollback_available === true);
     return candidate && undecided ? "autotune_apply_unresolved" : null;
 }
-function do_restore(id) {
+// expected (optional): the hash, or the user fingerprint, of the
+// configuration the caller means to replace. The automatic rollback of
+// autotune passes its candidate's: a configuration edited since (during the
+// verification) is not the caller's to replace. It is kept, saved as a
+// snapshot, and the answer is needs_attention before anything changes
+// (UC-017).
+function do_restore(id, expected) {
+    if (expected != "" && !valid_hash(expected)) return { status: "failed", reason: "invalid_expected_hash" };
     let target = read_snapshot(id, true);
     if (target == null) return { status: "failed", reason: "invalid_snapshot" };
     let before = read_config();
     if (before == null) return { status: "failed", reason: "config_unavailable" };
+    if (expected != "" && sha(before) != expected && user_fingerprint(before) != expected)
+        return { status: "needs_attention", reason: "config_changed_during_transaction", saved_snapshot: save_concurrent_edit([ id ]) };
     // Refused before anything changes while the reload would only be queued
     // behind a live lifecycle action.
     let action = service_action();
@@ -477,7 +512,7 @@ function do_restore(id) {
         // Replaced and validated; no runtime proved it, so LKG stays.
         status: "restored_not_started", reason: "service_stopped", guard: "inactive",
         snapshot: metadata(target), changes: diff(before, target.content)
-    }));
+    }), [ id ]);
 }
 // Apply a candidate configuration prepared elsewhere (DPI autotune stage 5)
 // through the same transaction as a restore. The current configuration must
@@ -510,7 +545,7 @@ function do_apply(candidate_file, expected_hash, keep_id) {
     let pre = create("automatic", "before-autotune", false, keep);
     if (pre.status != "created") return { status: "failed", reason: "pre_apply_snapshot_failed" };
     if (sha(before) != sha(read_config())) return { status: "failed", reason: "concurrent_change", pre_snapshot: pre.snapshot.id };
-    let result = guarded_replace(before, content, pre, () => ({ status: "success", changes: diff(before, content) }), "autotune", true);
+    let result = guarded_replace(before, content, pre, () => ({ status: "success", changes: diff(before, content) }), "autotune", true, null, keep);
     result.pre_snapshot = pre.snapshot.id;
     return result;
 }
@@ -558,7 +593,7 @@ else if (mode == "delete") {
     }
 }
 else if (mode == "restore") {
-    answer = do_restore(value(ARGV[1]));
+    answer = do_restore(value(ARGV[1]), value(ARGV[2]));
     // A busy refusal changed nothing and is not a restore attempt.
     // A restore that an explicit stop kept from starting the runtime is no
     // success: nothing verified it.

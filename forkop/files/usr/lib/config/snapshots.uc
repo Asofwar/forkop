@@ -493,13 +493,16 @@ function uci_canonical(text) {
 // is a change of comments or formatting alone, which loads the same
 // configuration (and the next uci commit drops it anyway). No hash is
 // involved, so a failing hash tool cannot make two files look equal; a file
-// this reader cannot load holds nothing (fail closed).
+// this reader cannot load holds nothing (fail closed). Comparing the loaded
+// forms takes a while for a big file (seconds on a router): the file is read
+// again afterwards, and an edit committed meanwhile is one as well, so the
+// caller writes over nothing it has not compared.
 function config_holds(content) {
     let current = read_config();
     if (current == null) return false;
     if (current == content) return true;
     let loaded = uci_canonical(current);
-    return loaded != null && loaded == uci_canonical(content);
+    return loaded != null && loaded == uci_canonical(content) && read_config() === current;
 }
 // A configuration that someone else wrote while a transaction owned the file
 // (a LuCI Save & Apply, an autotune policy change, a URLTest override: UCI

@@ -3,8 +3,10 @@
 //   plan <sel> <r>  $STUB_TUNE_DIR/plan.json or a ready plan for the
 //                   selection, owned by $STUB_PLAN_OWNER (default youtube);
 //   apply <plan> <r> $STUB_TUNE_DIR/apply.json or "applied" (after
-//                   $STUB_APPLY_SLEEP seconds, when set).
-// plan and apply calls are logged to $STUB_TUNE_DIR/apply.log.
+//                   $STUB_APPLY_SLEEP seconds, when set);
+//   rollback        $STUB_TUNE_DIR/rollback.json or a rolled back apply of
+//                   candidate fake in group youtube.
+// plan, apply and rollback calls are logged to $STUB_TUNE_DIR/apply.log.
 let fs = require("fs");
 let dir = getenv("STUB_TUNE_DIR");
 let read_json = (path) => { let d = fs.readfile(path); try { return d == null ? null : json(d); } catch (e) { return null; } };
@@ -28,5 +30,11 @@ else if (mode == "apply") {
     if (getenv("STUB_APPLY_SLEEP")) system("sleep " + getenv("STUB_APPLY_SLEEP"));
     let data = fs.readfile(dir + "/apply.json");
     print(data != null ? data : sprintf("%J\n", { status: "applied", reason: null, applied: true }));
+}
+else if (mode == "rollback") {
+    log("rollback");
+    let data = fs.readfile(dir + "/rollback.json");
+    print(data != null ? data : sprintf("%J\n", { status: "rolled_back", phase: "rolled_back", reason: "operator_rollback",
+        selected: "fake", mutation: { section: "youtube", option: "nfqws_opt" }, applied: false }));
 }
 else exit(1);

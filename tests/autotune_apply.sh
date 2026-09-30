@@ -274,10 +274,9 @@ no_secret() { ! grep -rq "$SECRET" "$WORK/out.json" "$FORKOP_AUTOTUNE_APPLY_STAT
 confirm() { ucode -L "$LIB" "$LIB/config/snapshots.uc" confirm-working > "$WORK/confirm.json" || true; }
 # A measuring run of the autotune manager (no targets): it only asks the real
 # apply.uc whether anything blocks it.
-manager_run() {
-  FORKOP_AUTOTUNE_STATE_FILE="$WORK/etc/autotune-state.json" FORKOP_AUTOTUNE_LAST_DIR="$WORK/run/autotune-last" \
-    ucode -L "$LIB" "$LIB/autotune/manager.uc" run all > "$WORK/run.json" || true
-}
+manager_env() { FORKOP_AUTOTUNE_STATE_FILE="$WORK/etc/autotune-state.json" FORKOP_AUTOTUNE_LAST_DIR="$WORK/run/autotune-last" "$@"; }
+manager_run() { manager_env ucode -L "$LIB" "$LIB/autotune/manager.uc" run all > "$WORK/run.json" || true; }
+manager_status() { manager_env ucode -L "$LIB" "$LIB/autotune/manager.uc" status > "$WORK/mstatus.json" || true; }
 # SIGKILL of the apply (power loss, OOM) while it verifies the candidate.
 crash_in_verification() {
   reset_apply; plan_ready; export PROD_SLEEP=1
@@ -696,6 +695,24 @@ at rollback
 json 'a.equal(r.status, "rolled_back"); a.equal(r.rollback.status, "success");' "$WORK/out.json"
 { [ "$(chash)" = "$PRE_HASH" ] && [ "$(reloads)" = 1 ] && [ "$(lkg)" = "$PRE_LKG" ]; } || fail "the rollback of an unreadable record did not restore the last-known-working configuration"
 ok "20d unreadable apply record -> needs_attention: runs and applies wait; the rollback restores last-known-working and sets it aside"
+
+# 20e. The operator's rollback from the page (forkop autotune_rollback, the
+#      admin CLI) after a crash during verification: the page names the
+#      unresolved apply and offers the rollback; afterwards the pre-apply
+#      configuration runs, the record is settled and nothing is offered.
+crash_in_verification
+manager_status
+json 'a.equal(r.apply.resolved, false); a.equal(r.apply.diagnosis, "candidate_active"); a.equal(r.apply.rollback, true);
+  a.equal(r.apply.group, "Dpi"); a.equal(r.apply.candidate, "multisplit"); a.equal(r.apply.phase, "verifying");' "$WORK/mstatus.json"
+! grep -q "$SECRET" "$WORK/mstatus.json" || fail "the autotune status leaks the configuration"
+manager_env ucode "$ROOT/forkop/files/usr/bin/forkop" autotune_rollback > "$WORK/rb.json" || true
+json 'a.equal(r.status, "ok"); a.equal(r.result, "rolled_back"); a.equal(r.group, "Dpi"); a.equal(r.candidate, "multisplit");' "$WORK/rb.json"
+[ "$(chash)" = "$PRE_HASH" ] || fail "the operator rollback did not restore the pre-apply configuration"
+[ "$(dpi_args)" = "$ZAPRET_NFQWS_BIN --qnum=4000 --dpi-desync-fwmark=0x40000000 $FAKE " ] || fail "the operator rollback left the candidate runtime"
+manager_status
+json 'a.equal(r.apply.resolved, true); a.equal(r.apply.rollback, false); a.equal(r.apply.phase, "rolled_back");
+  a.equal(r.groups.Dpi.last_apply.status, "rolled_back"); a.ok(r.groups.Dpi.cooldowns.multisplit > Date.now() / 1000);' "$WORK/mstatus.json"
+ok "20e operator rollback through forkop autotune_rollback -> pre-apply configuration, record settled, candidate paused"
 
 # Review hardening -------------------------------------------------------------
 

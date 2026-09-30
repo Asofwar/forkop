@@ -119,6 +119,7 @@ function show_help() {
     print("    autotune_run_status     Get the state and result of an autotune job\n");
     print("    autotune_apply          Apply the confirmed recommendation of a group now\n");
     print("    autotune_apply_async    Start a manual apply of a group as a background job\n");
+    print("    autotune_rollback       Roll back the last autotune apply to the configuration before it\n");
     print("    autotune_if_due         Run the scheduled autotune when it is enabled and due\n");
     print("    service_action_async    Start a service action in the background\n");
     print("    service_action_status   Get background service action status\n");
@@ -233,6 +234,7 @@ function command_spec(command) {
         autotune_run_status: [ "autotune/manager.uc", "run-status", 1 ],
         autotune_apply: [ "autotune/manager.uc", "apply", 1 ],
         autotune_apply_async: [ "autotune/manager.uc", "apply-async", 1 ],
+        autotune_rollback: [ "autotune/manager.uc", "rollback", 0 ],
         autotune_if_due: [ "autotune/manager.uc", "if-due", 0 ]
     };
 
@@ -261,7 +263,8 @@ function main() {
         index([ "start", "main", "restart", "reload", "enable", "service_action_async",
             "component_action", "component_action_async", "subscription_update",
             "subscription_update_async", "subscription_update_if_due", "list_update", "list_update_if_due",
-            "autotune_run", "autotune_run_async", "autotune_if_due", "autotune_apply", "autotune_apply_async" ], command) >= 0) {
+            "autotune_run", "autotune_run_async", "autotune_if_due", "autotune_apply", "autotune_apply_async",
+            "autotune_rollback" ], command) >= 0) {
         warn("Forkop full removal is in progress\n");
         return 1;
     }

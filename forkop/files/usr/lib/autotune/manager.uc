@@ -18,6 +18,8 @@
 //                       recommendation through autotune/apply.uc
 //   run-async <all|group>  start a run as a background job; prints its id
 //   run-status <job>    state and result of a job (read-only)
+//   rollback            the operator's rollback of the recorded apply
+//                       through autotune/apply.uc rollback (write)
 //   cron-sync | cron-remove   the scheduling cron line
 //
 // A run is marked running in the persistent state; the next run finds a
@@ -95,6 +97,44 @@ function worker_view(worker) {
     return free ? { ...worker, state: "crashed" } : worker;
 }
 
+// A Stage 3-5 tool, invoked as its lock identity requires; its JSON output.
+function run_tool(name, args) {
+    let r = capture([ "ucode", "-L", LIB_DIR, LIB_DIR + "/autotune/" + name + ".uc", ...args ]);
+    let parsed = null;
+    try { parsed = json(r.output); } catch (e) { parsed = null; }
+    return type(parsed) == "object" ? parsed : null;
+}
+
+// The recorded Stage 5 apply as the page shows it: the group and candidate
+// it changed, how it ended, whether it still waits for a decision
+// (resolved: false; null when the apply tool gave no answer) and whether the
+// operator can roll it back now: its candidate is still the configuration
+// and no apply runs (an unreadable record is always settled by a rollback).
+// Nothing of the configuration itself (hashes, options, targets) is shown.
+function apply_summary() {
+    if (fs.stat(APPLY_STATE_FILE) == null) return null;
+    let st = run_tool("apply", [ "status" ]);
+    let s = st != null && type(st.state) == "object" ? st.state : null;
+    if (s == null)
+        return { phase: null, reason: "apply_status_unavailable", group: null, candidate: null, finished_at: null,
+            resolved: null, diagnosis: null, in_progress: false, rollback: false };
+    let open = index(APPLY_PHASES, s.phase) >= 0;
+    let in_progress = open && st.autotune_lock_held === true;
+    let candidate_active = st.diagnosis == "candidate_active" &&
+        (open || s.phase == "applied" || s.phase == "needs_attention" || (s.phase == "failed" && s.reason == "interrupted_after_apply"));
+    return {
+        phase: type(s.phase) == "string" ? s.phase : null,
+        reason: type(s.reason) == "string" ? s.reason : null,
+        group: type(s.mutation) == "object" && state_module.valid_id(s.mutation.section) ? s.mutation.section : null,
+        candidate: match(as_string(s.selected), /^[a-z0-9_]{1,32}$/) != null ? s.selected : null,
+        finished_at: type(s.finished_at) == "int" ? s.finished_at : null,
+        resolved: st.resolved === true,
+        diagnosis: type(st.diagnosis) == "string" ? st.diagnosis : null,
+        in_progress,
+        rollback: !in_progress && (s.unreadable === true || candidate_active)
+    };
+}
+
 function status() {
     let sections = config_sections();
     if (sections == null) return { status: "failed", reason: "config_unavailable" };
@@ -109,7 +149,8 @@ function status() {
         next_run_at: state.next_run_at,
         worker: worker_view(state.worker),
         recovered_at: state.recovered_at,
-        state_recovered: state.recovered_from || null
+        state_recovered: state.recovered_from || null,
+        apply: apply_summary()
     };
 }
 
@@ -330,14 +371,6 @@ let interrupted = false;
 
 function script(name) { return LIB_DIR + "/autotune/" + name + ".uc"; }
 function self_pid() { return as_string(fs.readlink("/proc/self")); }
-
-// A Stage 3-5 tool, invoked as its lock identity requires; its JSON output.
-function run_tool(name, args) {
-    let r = capture([ "ucode", "-L", LIB_DIR, script(name), ...args ]);
-    let parsed = null;
-    try { parsed = json(r.output); } catch (e) { parsed = null; }
-    return type(parsed) == "object" ? parsed : null;
-}
 
 // Whatever makes a measurement now unsafe or meaningless, as the apply tool
 // itself reports it (read-only). for_apply: an apply also waits for an
@@ -728,6 +761,40 @@ function manual_apply(name, job) {
     return output;
 }
 
+// ---- operator rollback -------------------------------------------------------
+//
+// The operator's rollback of the recorded apply (design H.7), through the
+// Stage 5 tool: it restores the before-autotune snapshot and proves that the
+// previous strategy runs again; an unreadable record returns to
+// last-known-working (autotune/apply.uc rollback). Never next to a run or an
+// apply of the worker. A rolled back candidate pauses in its group like one
+// that failed its verification, and the group shows the rollback as its last
+// change; it is no apply of the daily budget.
+function operator_rollback() {
+    if (!ensure_state_dir()) return { status: "failed", reason: "state_dir_unavailable" };
+    let lock = flock(WORKER_LOCK, false);
+    if (lock == null) return { status: "busy", result: "refused", reason: "autotune_worker_running" };
+    let r = run_tool("apply", [ "rollback" ]) || { status: "failed", reason: "rollback_output_invalid" };
+    let group = type(r.mutation) == "object" && state_module.valid_id(r.mutation.section) ? r.mutation.section : null;
+    let candidate = match(as_string(r.selected), /^[a-z0-9_]{1,32}$/) != null ? r.selected : null;
+    if (r.status == "rolled_back" && group != null && candidate != null) {
+        let sections = config_sections();
+        let policy = policy_module.read(sections || []).policy;
+        with_state((state) => {
+            let g = type(state.groups[group]) == "object" ? state.groups[group] : hysteresis.empty_group();
+            g.last_apply = { at: now(), group, candidate, representative: null, status: "rolled_back",
+                reason: "operator_rollback", counted: false, attempted: true, trigger: "manual" };
+            g = hysteresis.start_cooldown(g, candidate, policy.cooldown_seconds, now());
+            g.pending = null;
+            g.ready = false;
+            state.groups[group] = g;
+        });
+    }
+    unlock(lock);
+    return { status: r.status == "rolled_back" ? "ok" : r.status == "busy" ? "busy" : "failed",
+        result: as_string(r.status) || "failed", reason: r.reason || null, group, candidate, finished_at: now() };
+}
+
 // ---- background jobs ---------------------------------------------------------
 
 // Where a running manual apply is: the worker phase, and while the Stage 5
@@ -841,7 +908,7 @@ function run_status(id) {
 
 if (sourcepath(1) != null && sourcepath(1) != "")
     return { status, target, groups, policy_set, target_set, target_remove, run, if_due, run_async, run_status,
-        manual_apply, apply_async, cron_sync, cron_remove };
+        manual_apply, apply_async, operator_rollback, cron_sync, cron_remove };
 
 let mode = ARGV[0] || "";
 let output = null;
@@ -862,12 +929,13 @@ else if (index([ "run", "if-due", "run-job", "apply", "apply-job" ], mode) >= 0)
 else if (mode == "run-async") output = run_async(ARGV[1]);
 else if (mode == "apply-async") output = apply_async(ARGV[1]);
 else if (mode == "run-status") output = run_status(ARGV[1]);
+else if (mode == "rollback") output = operator_rollback();
 else if (mode == "cron-sync") output = cron_sync();
 else if (mode == "cron-remove") output = cron_remove();
 else {
     warn("Usage: autotune/manager.uc <status|target <id>|groups|policy-set <option> <value>|" +
         "target-set <id> <host> [enabled] [resolver]|target-remove <id>|run <all|group>|if-due|" +
-        "run-async <all|group>|run-status <job>|apply <group>|apply-async <group>|cron-sync|cron-remove>\n");
+        "run-async <all|group>|run-status <job>|apply <group>|apply-async <group>|rollback|cron-sync|cron-remove>\n");
     exit(1);
 }
 print(sprintf("%J\n", output));

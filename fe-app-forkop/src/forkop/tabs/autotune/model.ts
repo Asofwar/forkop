@@ -219,6 +219,11 @@ export function decisionText(reason: string | null | undefined) {
 // "Before autotune" snapshot (autotune/apply.uc, UC-017).
 const CONFIG_EDITED_DURING_CHECK =
   'verification_failed:config_changed_during_transaction';
+// The candidate's reload did not succeed, and the configuration was edited
+// meanwhile: the apply's own transaction kept the edit instead of putting
+// the previous configuration back and saved it as a snapshot
+// (config/snapshots.uc, UC-023).
+const CONFIG_EDITED_DURING_APPLY = 'apply_config_changed_during_transaction';
 
 export function applyOutcomeView(
   status: string,
@@ -247,6 +252,11 @@ export function applyOutcomeView(
       if (reason === CONFIG_EDITED_DURING_CHECK)
         return {
           label: _('Check failed, not rolled back: configuration edited'),
+          tone: 'error',
+        };
+      if (reason === CONFIG_EDITED_DURING_APPLY)
+        return {
+          label: _('Apply did not finish: configuration edited'),
           tone: 'error',
         };
       return { label: _('Rollback did not finish'), tone: 'error' };
@@ -814,6 +824,14 @@ export function applyResultView(
           ),
           attention: true,
         };
+      if (reason === CONFIG_EDITED_DURING_APPLY)
+        return {
+          tone: 'error',
+          text: _(
+            'Applying the new strategy did not finish: its reload did not succeed, and the configuration was changed meanwhile. Forkop X kept that change instead of rolling back and saved it as a snapshot ("Concurrent edit"). Check the rule, or restore the snapshot you need in History and recovery.',
+          ),
+          attention: true,
+        };
       break;
     case 'unknown':
       break;
@@ -1058,8 +1076,11 @@ export function rollbackResultView(
         ),
         attention: false,
       };
-    // Changes staged on the router with uci would ride along (UC-068).
+    // Changes staged on the router with uci would ride along (UC-068);
+    // also the rollback of an unreadable record, which names the refusal
+    // without the prefix.
     case 'rollback_not_started:uncommitted_uci_changes':
+    case 'rollback_uncommitted_uci_changes':
       return {
         tone: 'warning',
         text: _(

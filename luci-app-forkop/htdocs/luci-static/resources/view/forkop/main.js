@@ -19743,6 +19743,7 @@ function decisionText(reason) {
 }
 var CONFIG_EDITED_DURING_CHECK =
   "verification_failed:config_changed_during_transaction";
+var CONFIG_EDITED_DURING_APPLY = "apply_config_changed_during_transaction";
 function applyOutcomeView(status2, reason) {
   switch (status2) {
     case "applied":
@@ -19764,6 +19765,11 @@ function applyOutcomeView(status2, reason) {
       if (reason === CONFIG_EDITED_DURING_CHECK)
         return {
           label: _("Check failed, not rolled back: configuration edited"),
+          tone: "error",
+        };
+      if (reason === CONFIG_EDITED_DURING_APPLY)
+        return {
+          label: _("Apply did not finish: configuration edited"),
           tone: "error",
         };
       return { label: _("Rollback did not finish"), tone: "error" };
@@ -20219,6 +20225,14 @@ function applyResultView(result, candidate) {
           ),
           attention: true,
         };
+      if (reason === CONFIG_EDITED_DURING_APPLY)
+        return {
+          tone: "error",
+          text: _(
+            'Applying the new strategy did not finish: its reload did not succeed, and the configuration was changed meanwhile. Forkop X kept that change instead of rolling back and saved it as a snapshot ("Concurrent edit"). Check the rule, or restore the snapshot you need in History and recovery.',
+          ),
+          attention: true,
+        };
       break;
     case "unknown":
       break;
@@ -20422,8 +20436,11 @@ function rollbackResultView(result) {
         ),
         attention: false,
       };
-    // Changes staged on the router with uci would ride along (UC-068).
+    // Changes staged on the router with uci would ride along (UC-068);
+    // also the rollback of an unreadable record, which names the refusal
+    // without the prefix.
     case "rollback_not_started:uncommitted_uci_changes":
+    case "rollback_uncommitted_uci_changes":
       return {
         tone: "warning",
         text: _(

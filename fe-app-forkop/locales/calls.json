@@ -29,14 +29,14 @@
     "call": "%d d",
     "key": "%d d",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:616"
+      "src/forkop/tabs/autotune/model.ts:626"
     ]
   },
   {
     "call": "%d h",
     "key": "%d h",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:615"
+      "src/forkop/tabs/autotune/model.ts:625"
     ]
   },
   {
@@ -64,7 +64,7 @@
     "call": "%d ms",
     "key": "%d ms",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:478",
+      "src/forkop/tabs/autotune/model.ts:488",
       "src/forkop/tabs/dashboard/initController.ts:1060",
       "src/forkop/tabs/dashboard/partials/renderSections.ts:318",
       "src/forkop/tabs/dashboard/partials/renderSections.ts:487"
@@ -128,7 +128,7 @@
     "call": "%s in the rule \"%t\"",
     "key": "%s in the rule \"%t\"",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:853"
+      "src/forkop/tabs/autotune/model.ts:871"
     ]
   },
   {
@@ -214,7 +214,7 @@
     "places": [
       "src/forkop/tabs/autotune/initController.ts:214",
       "src/forkop/tabs/autotune/initController.ts:372",
-      "src/forkop/tabs/autotune/model.ts:581"
+      "src/forkop/tabs/autotune/model.ts:591"
     ]
   },
   {
@@ -228,7 +228,7 @@
     "call": "A configuration change did not finish and its protection is still active. Restore a snapshot in History and recovery.",
     "key": "A configuration change did not finish and its protection is still active. Restore a snapshot in History and recovery.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:927"
+      "src/forkop/tabs/autotune/model.ts:945"
     ]
   },
   {
@@ -249,7 +249,7 @@
     "call": "a previous apply is not resolved",
     "key": "a previous apply is not resolved",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:565"
+      "src/forkop/tabs/autotune/model.ts:575"
     ]
   },
   {
@@ -298,14 +298,14 @@
     "call": "a snapshot operation is in progress",
     "key": "a snapshot operation is in progress",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:561"
+      "src/forkop/tabs/autotune/model.ts:571"
     ]
   },
   {
     "call": "A strategy is set for the whole rule, so Forkop X does not change it. You can split the targets into separate rules.",
     "key": "A strategy is set for the whole rule, so Forkop X does not change it. You can split the targets into separate rules.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:298"
+      "src/forkop/tabs/autotune/model.ts:308"
     ]
   },
   {
@@ -690,14 +690,14 @@
     "key": "Another autotune operation is running.",
     "places": [
       "src/forkop/tabs/autotune/initController.ts:306",
-      "src/forkop/tabs/autotune/model.ts:723"
+      "src/forkop/tabs/autotune/model.ts:733"
     ]
   },
   {
     "call": "another check is running",
     "key": "another check is running",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:563"
+      "src/forkop/tabs/autotune/model.ts:573"
     ]
   },
   {
@@ -746,14 +746,14 @@
     "call": "Applied, check passed",
     "key": "Applied, check passed",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:232"
+      "src/forkop/tabs/autotune/model.ts:237"
     ]
   },
   {
     "call": "Apply",
     "key": "Apply",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:640"
+      "src/forkop/tabs/autotune/model.ts:650"
     ]
   },
   {
@@ -767,7 +767,14 @@
     "call": "Apply %s?",
     "key": "Apply %s?",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:631"
+      "src/forkop/tabs/autotune/model.ts:641"
+    ]
+  },
+  {
+    "call": "Apply did not finish: configuration edited",
+    "key": "Apply did not finish: configuration edited",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:259"
     ]
   },
   {
@@ -782,7 +789,7 @@
     "key": "Applying a strategy",
     "places": [
       "src/forkop/tabs/autotune/initController.ts:733",
-      "src/forkop/tabs/autotune/model.ts:533"
+      "src/forkop/tabs/autotune/model.ts:543"
     ]
   },
   {
@@ -798,6 +805,13 @@
     "key": "Applying Forkop configuration…",
     "places": [
       "src/forkop/tabs/dashboard/initController.ts:1331"
+    ]
+  },
+  {
+    "call": "Applying the new strategy did not finish: its reload did not succeed, and the configuration was changed meanwhile. Forkop X kept that change instead of rolling back and saved it as a snapshot (\"Concurrent edit\"). Check the rule, or restore the snapshot you need in History and recovery.",
+    "key": "Applying the new strategy did not finish: its reload did not succeed, and the configuration was changed meanwhile. Forkop X kept that change instead of rolling back and saved it as a snapshot (\"Concurrent edit\"). Check the rule, or restore the snapshot you need in History and recovery.",
+    "places": [
+      "src/forkop/tabs/autotune/model.ts:830"
     ]
   },
   {
@@ -881,7 +895,7 @@
     "call": "Automatic recovery did not finish.",
     "key": "Automatic recovery did not finish.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:833"
+      "src/forkop/tabs/autotune/model.ts:851"
     ]
   },
   {
@@ -1082,7 +1096,7 @@
     "call": "Best",
     "key": "Best",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:508"
+      "src/forkop/tabs/autotune/model.ts:518"
     ]
   },
   {
@@ -1281,7 +1295,7 @@
     "call": "Bypass not needed",
     "key": "Bypass not needed",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:362"
+      "src/forkop/tabs/autotune/model.ts:372"
     ]
   },
   {
@@ -1459,14 +1473,14 @@
     "call": "Check failed, not rolled back: configuration edited",
     "key": "Check failed, not rolled back: configuration edited",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:249"
+      "src/forkop/tabs/autotune/model.ts:254"
     ]
   },
   {
     "call": "Check failed, rolled back automatically",
     "key": "Check failed, rolled back automatically",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:237"
+      "src/forkop/tabs/autotune/model.ts:242"
     ]
   },
   {
@@ -1541,28 +1555,28 @@
     "key": "Checking targets",
     "places": [
       "src/forkop/tabs/autotune/initController.ts:738",
-      "src/forkop/tabs/autotune/model.ts:534"
+      "src/forkop/tabs/autotune/model.ts:544"
     ]
   },
   {
     "call": "Checking the configuration before the change",
     "key": "Checking the configuration before the change",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:651"
+      "src/forkop/tabs/autotune/model.ts:661"
     ]
   },
   {
     "call": "Checking the real production path",
     "key": "Checking the real production path",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:655"
+      "src/forkop/tabs/autotune/model.ts:665"
     ]
   },
   {
     "call": "Checking the recommendation",
     "key": "Checking the recommendation",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:660"
+      "src/forkop/tabs/autotune/model.ts:670"
     ]
   },
   {
@@ -1598,7 +1612,7 @@
     "call": "Checks and changes wait until it is rolled back.",
     "key": "Checks and changes wait until it is rolled back.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:917"
+      "src/forkop/tabs/autotune/model.ts:935"
     ]
   },
   {
@@ -1802,7 +1816,7 @@
     "call": "confidence",
     "key": "confidence",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:508"
+      "src/forkop/tabs/autotune/model.ts:518"
     ]
   },
   {
@@ -1907,14 +1921,14 @@
     "call": "Confirming",
     "key": "Confirming",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:349"
+      "src/forkop/tabs/autotune/model.ts:359"
     ]
   },
   {
     "call": "Conflict",
     "key": "Conflict",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:370"
+      "src/forkop/tabs/autotune/model.ts:380"
     ]
   },
   {
@@ -2146,7 +2160,7 @@
     "call": "Creating a snapshot and reloading the service",
     "key": "Creating a snapshot and reloading the service",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:653"
+      "src/forkop/tabs/autotune/model.ts:663"
     ]
   },
   {
@@ -2455,7 +2469,7 @@
     "key": "Disabled",
     "places": [
       "src/forkop/ui/status.ts:172",
-      "src/forkop/tabs/autotune/model.ts:503",
+      "src/forkop/tabs/autotune/model.ts:513",
       "src/forkop/tabs/updates/initController.ts:1071",
       "src/forkop/tabs/updates/initController.ts:1103"
     ]
@@ -2892,7 +2906,7 @@
     "call": "DPI protection is active",
     "key": "DPI protection is active",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:559"
+      "src/forkop/tabs/autotune/model.ts:569"
     ]
   },
   {
@@ -3089,7 +3103,7 @@
     "call": "Enter a domain name, for example youtube.com.",
     "key": "Enter a domain name, for example youtube.com.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:583"
+      "src/forkop/tabs/autotune/model.ts:593"
     ]
   },
   {
@@ -3177,7 +3191,7 @@
     "call": "Every change made since the last known working configuration is undone, your own edits included. The current configuration is kept as a \"Before restore\" snapshot in History and recovery.",
     "key": "Every change made since the last known working configuration is undone, your own edits included. The current configuration is kept as a \"Before restore\" snapshot in History and recovery.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:962"
+      "src/forkop/tabs/autotune/model.ts:980"
     ]
   },
   {
@@ -3569,7 +3583,7 @@
     "call": "Forkop X is stopped; start it first",
     "key": "Forkop X is stopped; start it first",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:567"
+      "src/forkop/tabs/autotune/model.ts:577"
     ]
   },
   {
@@ -3618,7 +3632,7 @@
     "call": "Forkop X never turns DPI bypass off by itself; remove the targets from the rule manually if you want.",
     "key": "Forkop X never turns DPI bypass off by itself; remove the targets from the rule manually if you want.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:365"
+      "src/forkop/tabs/autotune/model.ts:375"
     ]
   },
   {
@@ -3626,7 +3640,7 @@
     "key": "Forkop X never turns DPI bypass off by itself.",
     "places": [
       "src/forkop/tabs/autotune/model.ts:208",
-      "src/forkop/tabs/autotune/model.ts:696"
+      "src/forkop/tabs/autotune/model.ts:706"
     ]
   },
   {
@@ -3640,14 +3654,14 @@
     "call": "Forkop X restores the \"Before autotune\" snapshot, reloads the service and checks that the previous strategy works.",
     "key": "Forkop X restores the \"Before autotune\" snapshot, reloads the service and checks that the previous strategy works.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:978"
+      "src/forkop/tabs/autotune/model.ts:996"
     ]
   },
   {
     "call": "Forkop X restores the last known working configuration if the current one differs from it, and reloads the service.",
     "key": "Forkop X restores the last known working configuration if the current one differs from it, and reloads the service.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:959"
+      "src/forkop/tabs/autotune/model.ts:977"
     ]
   },
   {
@@ -3689,7 +3703,7 @@
     "call": "Forkop X will create a configuration snapshot, reload the service and check the real production path. If the check fails, the previous configuration is restored automatically.",
     "key": "Forkop X will create a configuration snapshot, reload the service and check the real production path. If the check fails, the previous configuration is restored automatically.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:636"
+      "src/forkop/tabs/autotune/model.ts:646"
     ]
   },
   {
@@ -4783,14 +4797,14 @@
     "call": "Last check completed",
     "key": "Last check completed",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:542"
+      "src/forkop/tabs/autotune/model.ts:552"
     ]
   },
   {
     "call": "Last check postponed",
     "key": "Last check postponed",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:547"
+      "src/forkop/tabs/autotune/model.ts:557"
     ]
   },
   {
@@ -5027,7 +5041,7 @@
     "call": "Manual apply is available only in \"Recommendations only\" mode.",
     "key": "Manual apply is available only in \"Recommendations only\" mode.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:712"
+      "src/forkop/tabs/autotune/model.ts:722"
     ]
   },
   {
@@ -5041,7 +5055,7 @@
     "call": "manually",
     "key": "manually",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:423"
+      "src/forkop/tabs/autotune/model.ts:433"
     ]
   },
   {
@@ -5334,14 +5348,14 @@
     "call": "No change needed",
     "key": "No change needed",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:359"
+      "src/forkop/tabs/autotune/model.ts:369"
     ]
   },
   {
     "call": "No change was needed",
     "key": "No change was needed",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:241"
+      "src/forkop/tabs/autotune/model.ts:246"
     ]
   },
   {
@@ -5386,7 +5400,7 @@
       "src/forkop/ui/states.ts:102",
       "src/forkop/tabs/autotune/initController.ts:1009",
       "src/forkop/tabs/autotune/initController.ts:1105",
-      "src/forkop/tabs/autotune/model.ts:373"
+      "src/forkop/tabs/autotune/model.ts:383"
     ]
   },
   {
@@ -5429,8 +5443,8 @@
     "call": "No measurements yet.",
     "key": "No measurements yet.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:306",
-      "src/forkop/tabs/autotune/model.ts:344"
+      "src/forkop/tabs/autotune/model.ts:316",
+      "src/forkop/tabs/autotune/model.ts:354"
     ]
   },
   {
@@ -5553,7 +5567,7 @@
     "call": "No usable result",
     "key": "No usable result",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:511"
+      "src/forkop/tabs/autotune/model.ts:521"
     ]
   },
   {
@@ -5593,7 +5607,7 @@
     "call": "Not applied",
     "key": "Not applied",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:245"
+      "src/forkop/tabs/autotune/model.ts:250"
     ]
   },
   {
@@ -5611,8 +5625,8 @@
     "places": [
       "src/forkop/ui/status.ts:168",
       "src/forkop/tabs/autotune/model.ts:83",
-      "src/forkop/tabs/autotune/model.ts:343",
-      "src/forkop/tabs/autotune/model.ts:506",
+      "src/forkop/tabs/autotune/model.ts:353",
+      "src/forkop/tabs/autotune/model.ts:516",
       "src/forkop/tabs/diagnostic/connectivityMatrix.ts:102",
       "src/forkop/tabs/diagnostic/statusLabels.ts:32"
     ]
@@ -5717,17 +5731,17 @@
     "call": "Nothing was rolled back",
     "key": "Nothing was rolled back",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:1081",
-      "src/forkop/tabs/autotune/model.ts:1087",
-      "src/forkop/tabs/autotune/model.ts:1093",
-      "src/forkop/tabs/autotune/model.ts:1101"
+      "src/forkop/tabs/autotune/model.ts:1102",
+      "src/forkop/tabs/autotune/model.ts:1108",
+      "src/forkop/tabs/autotune/model.ts:1114",
+      "src/forkop/tabs/autotune/model.ts:1122"
     ]
   },
   {
     "call": "Nothing was rolled back: the router has uncommitted uci changes of Forkop X (made with \"uci set\" without a commit). Commit or revert them, then roll back again.",
     "key": "Nothing was rolled back: the router has uncommitted uci changes of Forkop X (made with \"uci set\" without a commit). Commit or revert them, then roll back again.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:1065"
+      "src/forkop/tabs/autotune/model.ts:1086"
     ]
   },
   {
@@ -5735,7 +5749,7 @@
     "key": "Now",
     "places": [
       "src/forkop/tabs/autotune/initController.ts:892",
-      "src/forkop/tabs/autotune/model.ts:635",
+      "src/forkop/tabs/autotune/model.ts:645",
       "src/forkop/tabs/history/initController.ts:185"
     ]
   },
@@ -5960,7 +5974,7 @@
     "call": "Outcome unknown",
     "key": "Outcome unknown",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:254"
+      "src/forkop/tabs/autotune/model.ts:264"
     ]
   },
   {
@@ -6222,7 +6236,7 @@
     "call": "Preparing the change",
     "key": "Preparing the change",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:659"
+      "src/forkop/tabs/autotune/model.ts:669"
     ]
   },
   {
@@ -6349,7 +6363,7 @@
     "call": "Recommendation confirmed",
     "key": "Recommendation confirmed",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:348"
+      "src/forkop/tabs/autotune/model.ts:358"
     ]
   },
   {
@@ -6719,7 +6733,7 @@
     "call": "Restoring the previous configuration",
     "key": "Restoring the previous configuration",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:657"
+      "src/forkop/tabs/autotune/model.ts:667"
     ]
   },
   {
@@ -6769,22 +6783,22 @@
     "call": "Roll back",
     "key": "Roll back",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:968",
-      "src/forkop/tabs/autotune/model.ts:986"
+      "src/forkop/tabs/autotune/model.ts:986",
+      "src/forkop/tabs/autotune/model.ts:1004"
     ]
   },
   {
     "call": "Roll back %s?",
     "key": "Roll back %s?",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:971"
+      "src/forkop/tabs/autotune/model.ts:989"
     ]
   },
   {
     "call": "Roll back the last autotune change?",
     "key": "Roll back the last autotune change?",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:956"
+      "src/forkop/tabs/autotune/model.ts:974"
     ]
   },
   {
@@ -6798,7 +6812,7 @@
     "call": "Rollback did not finish",
     "key": "Rollback did not finish",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:252"
+      "src/forkop/tabs/autotune/model.ts:262"
     ]
   },
   {
@@ -6813,7 +6827,7 @@
     "call": "Rolled back by an administrator",
     "key": "Rolled back by an administrator",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:235"
+      "src/forkop/tabs/autotune/model.ts:240"
     ]
   },
   {
@@ -7761,7 +7775,7 @@
     "call": "Strategy %s applied and checked.",
     "key": "Strategy %s applied and checked.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:755"
+      "src/forkop/tabs/autotune/model.ts:765"
     ]
   },
   {
@@ -7925,8 +7939,8 @@
     "call": "Targets of this rule need different strategies.",
     "key": "Targets of this rule need different strategies.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:294",
-      "src/forkop/tabs/autotune/model.ts:694"
+      "src/forkop/tabs/autotune/model.ts:304",
+      "src/forkop/tabs/autotune/model.ts:704"
     ]
   },
   {
@@ -8042,14 +8056,14 @@
     "call": "The autotune state was restored after damage. Run the check again.",
     "key": "The autotune state was restored after damage. Run the check again.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:716"
+      "src/forkop/tabs/autotune/model.ts:726"
     ]
   },
   {
     "call": "The best strategy is not stable for every target of the rule.",
     "key": "The best strategy is not stable for every target of the rule.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:293"
+      "src/forkop/tabs/autotune/model.ts:303"
     ]
   },
   {
@@ -8063,14 +8077,14 @@
     "call": "The change affects the whole group:",
     "key": "The change affects the whole group:",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:632"
+      "src/forkop/tabs/autotune/model.ts:642"
     ]
   },
   {
     "call": "The change was not saved.",
     "key": "The change was not saved.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:594"
+      "src/forkop/tabs/autotune/model.ts:604"
     ]
   },
   {
@@ -8105,35 +8119,35 @@
     "call": "The confidence of the recommendation is below the policy minimum.",
     "key": "The confidence of the recommendation is below the policy minimum.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:700"
+      "src/forkop/tabs/autotune/model.ts:710"
     ]
   },
   {
     "call": "The configuration before the change is restored.",
     "key": "The configuration before the change is restored.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:1018"
+      "src/forkop/tabs/autotune/model.ts:1036"
     ]
   },
   {
     "call": "The configuration was changed after the apply, so nothing was rolled back. Restore a snapshot in History and recovery if needed.",
     "key": "The configuration was changed after the apply, so nothing was rolled back. Restore a snapshot in History and recovery if needed.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:1040"
+      "src/forkop/tabs/autotune/model.ts:1058"
     ]
   },
   {
     "call": "The current strategy is already the best.",
     "key": "The current strategy is already the best.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:360"
+      "src/forkop/tabs/autotune/model.ts:370"
     ]
   },
   {
     "call": "The current strategy is kept.",
     "key": "The current strategy is kept.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:311"
+      "src/forkop/tabs/autotune/model.ts:321"
     ]
   },
   {
@@ -8147,14 +8161,14 @@
     "call": "The damaged record is kept aside for inspection.",
     "key": "The damaged record is kept aside for inspection.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:965"
+      "src/forkop/tabs/autotune/model.ts:983"
     ]
   },
   {
     "call": "The damaged record is set aside; the configuration already was the last known working one.",
     "key": "The damaged record is set aside; the configuration already was the last known working one.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:1010"
+      "src/forkop/tabs/autotune/model.ts:1028"
     ]
   },
   {
@@ -8169,7 +8183,7 @@
     "call": "The DNS server must be an IPv4 address.",
     "key": "The DNS server must be an IPv4 address.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:585"
+      "src/forkop/tabs/autotune/model.ts:595"
     ]
   },
   {
@@ -8198,35 +8212,35 @@
     "call": "The last autotune change is not resolved.",
     "key": "The last autotune change is not resolved.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:934"
+      "src/forkop/tabs/autotune/model.ts:952"
     ]
   },
   {
     "call": "The last change (%s) can be rolled back to the configuration before it.",
     "key": "The last change (%s) can be rolled back to the configuration before it.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:941"
+      "src/forkop/tabs/autotune/model.ts:959"
     ]
   },
   {
     "call": "The last change (%s) failed its check, and the automatic rollback did not finish.",
     "key": "The last change (%s) failed its check, and the automatic rollback did not finish.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:874"
+      "src/forkop/tabs/autotune/model.ts:892"
     ]
   },
   {
     "call": "The last change (%s) passed its check, but it could not be recorded as the last known working configuration.",
     "key": "The last change (%s) passed its check, but it could not be recorded as the last known working configuration.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:870"
+      "src/forkop/tabs/autotune/model.ts:888"
     ]
   },
   {
     "call": "The last change (%s) was not checked to the end.",
     "key": "The last change (%s) was not checked to the end.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:879"
+      "src/forkop/tabs/autotune/model.ts:897"
     ]
   },
   {
@@ -8240,22 +8254,22 @@
     "call": "The last check failed",
     "key": "The last check failed",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:551"
+      "src/forkop/tabs/autotune/model.ts:561"
     ]
   },
   {
     "call": "The last check gave no usable result. The current strategy is kept.",
     "key": "The last check gave no usable result. The current strategy is kept.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:308"
+      "src/forkop/tabs/autotune/model.ts:318"
     ]
   },
   {
     "call": "The last check was interrupted",
     "key": "The last check was interrupted",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:537",
-      "src/forkop/tabs/autotune/model.ts:544"
+      "src/forkop/tabs/autotune/model.ts:547",
+      "src/forkop/tabs/autotune/model.ts:554"
     ]
   },
   {
@@ -8276,14 +8290,14 @@
     "call": "The last known working configuration is missing; nothing was rolled back. Restore a snapshot in History and recovery first.",
     "key": "The last known working configuration is missing; nothing was rolled back. Restore a snapshot in History and recovery first.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:1056"
+      "src/forkop/tabs/autotune/model.ts:1074"
     ]
   },
   {
     "call": "The last known working configuration is restored; the damaged record is set aside.",
     "key": "The last known working configuration is restored; the damaged record is set aside.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:1007"
+      "src/forkop/tabs/autotune/model.ts:1025"
     ]
   },
   {
@@ -8304,7 +8318,7 @@
     "call": "The maximum number of targets is reached.",
     "key": "The maximum number of targets is reached.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:587"
+      "src/forkop/tabs/autotune/model.ts:597"
     ]
   },
   {
@@ -8318,28 +8332,28 @@
     "call": "The new strategy did not pass the check, but the configuration was changed during the check, so Forkop X kept that change and did not roll back. The rule may still use the new strategy: check it, or restore the \"Before autotune\" snapshot in History and recovery.",
     "key": "The new strategy did not pass the check, but the configuration was changed during the check, so Forkop X kept that change and did not roll back. The rule may still use the new strategy: check it, or restore the \"Before autotune\" snapshot in History and recovery.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:812"
+      "src/forkop/tabs/autotune/model.ts:822"
     ]
   },
   {
     "call": "The new strategy did not pass the check. Forkop X restored the previous configuration automatically.",
     "key": "The new strategy did not pass the check. Forkop X restored the previous configuration automatically.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:761"
+      "src/forkop/tabs/autotune/model.ts:771"
     ]
   },
   {
     "call": "The new strategy was not applied: the service reload failed and the previous configuration was restored automatically.",
     "key": "The new strategy was not applied: the service reload failed and the previous configuration was restored automatically.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:790"
+      "src/forkop/tabs/autotune/model.ts:800"
     ]
   },
   {
     "call": "The new strategy was not applied: the service was busy and only queued the reload. The previous configuration is kept.",
     "key": "The new strategy was not applied: the service was busy and only queued the reload. The previous configuration is kept.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:782"
+      "src/forkop/tabs/autotune/model.ts:792"
     ]
   },
   {
@@ -8362,56 +8376,56 @@
     "key": "The recommendation is not confirmed yet.",
     "places": [
       "src/forkop/tabs/autotune/model.ts:186",
-      "src/forkop/tabs/autotune/model.ts:690"
+      "src/forkop/tabs/autotune/model.ts:700"
     ]
   },
   {
     "call": "The recommendation is outdated: the configuration changed after the check. Run the check again.",
     "key": "The recommendation is outdated: the configuration changed after the check. Run the check again.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:746"
+      "src/forkop/tabs/autotune/model.ts:756"
     ]
   },
   {
     "call": "The record of the last autotune change is damaged, and the last known working configuration is missing. Restore a snapshot in History and recovery: it becomes the last known working one, and the change can then be rolled back here.",
     "key": "The record of the last autotune change is damaged, and the last known working configuration is missing. Restore a snapshot in History and recovery: it becomes the last known working one, and the change can then be rolled back here.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:906"
+      "src/forkop/tabs/autotune/model.ts:924"
     ]
   },
   {
     "call": "The record of the last autotune change is damaged.",
     "key": "The record of the last autotune change is damaged.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:957"
+      "src/forkop/tabs/autotune/model.ts:975"
     ]
   },
   {
     "call": "The record of the last autotune change is damaged. Checks and changes wait until an administrator rolls it back: Forkop X then makes sure the last known working configuration is active.",
     "key": "The record of the last autotune change is damaged. Checks and changes wait until an administrator rolls it back: Forkop X then makes sure the last known working configuration is active.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:903"
+      "src/forkop/tabs/autotune/model.ts:921"
     ]
   },
   {
     "call": "The rollback did not finish. Open History and recovery.",
     "key": "The rollback did not finish. Open History and recovery.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:1030"
+      "src/forkop/tabs/autotune/model.ts:1048"
     ]
   },
   {
     "call": "The rollback failed.",
     "key": "The rollback failed.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:1104"
+      "src/forkop/tabs/autotune/model.ts:1125"
     ]
   },
   {
     "call": "The rollback of the last change (%s) did not finish.",
     "key": "The rollback of the last change (%s) did not finish.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:878"
+      "src/forkop/tabs/autotune/model.ts:896"
     ]
   },
   {
@@ -8439,7 +8453,7 @@
     "call": "The router did not report the outcome of the rollback; it may still be running. This page shows it once the rollback ends.",
     "key": "The router did not report the outcome of the rollback; it may still be running. This page shows it once the rollback ends.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:998"
+      "src/forkop/tabs/autotune/model.ts:1016"
     ]
   },
   {
@@ -8496,8 +8510,8 @@
     "key": "The rule has a custom strategy; Forkop X keeps it.",
     "places": [
       "src/forkop/tabs/autotune/model.ts:190",
-      "src/forkop/tabs/autotune/model.ts:383",
-      "src/forkop/tabs/autotune/model.ts:708"
+      "src/forkop/tabs/autotune/model.ts:393",
+      "src/forkop/tabs/autotune/model.ts:718"
     ]
   },
   {
@@ -8570,7 +8584,7 @@
     "call": "the service is busy",
     "key": "the service is busy",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:569"
+      "src/forkop/tabs/autotune/model.ts:579"
     ]
   },
   {
@@ -8605,21 +8619,21 @@
     "call": "The snapshot to return to is missing; nothing was rolled back.",
     "key": "The snapshot to return to is missing; nothing was rolled back.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:1048"
+      "src/forkop/tabs/autotune/model.ts:1066"
     ]
   },
   {
     "call": "The snapshot to return to is missing: restore a snapshot in History and recovery. Checks and changes wait until then.",
     "key": "The snapshot to return to is missing: restore a snapshot in History and recovery. Checks and changes wait until then.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:918"
+      "src/forkop/tabs/autotune/model.ts:936"
     ]
   },
   {
     "call": "The state of the last autotune change could not be read.",
     "key": "The state of the last autotune change could not be read.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:896"
+      "src/forkop/tabs/autotune/model.ts:914"
     ]
   },
   {
@@ -8633,14 +8647,14 @@
     "call": "The strategy could not be applied. The previous configuration is kept.",
     "key": "The strategy could not be applied. The previous configuration is kept.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:798"
+      "src/forkop/tabs/autotune/model.ts:808"
     ]
   },
   {
     "call": "The strategy is changed only after %d checks in a row with the same result.",
     "key": "The strategy is changed only after %d checks in a row with the same result.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:354"
+      "src/forkop/tabs/autotune/model.ts:364"
     ]
   },
   {
@@ -8661,30 +8675,30 @@
     "call": "The strategy of the DPI rule \"%s\" returns to the one before autotune.",
     "key": "The strategy of the DPI rule \"%s\" returns to the one before autotune.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:973"
+      "src/forkop/tabs/autotune/model.ts:991"
     ]
   },
   {
     "call": "The strategy of the DPI rule \"%s\" will be changed.",
     "key": "The strategy of the DPI rule \"%s\" will be changed.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:632"
+      "src/forkop/tabs/autotune/model.ts:642"
     ]
   },
   {
     "call": "The strategy returns to the one before autotune.",
     "key": "The strategy returns to the one before autotune.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:976"
+      "src/forkop/tabs/autotune/model.ts:994"
     ]
   },
   {
     "call": "The strategy was not applied",
     "key": "The strategy was not applied",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:727",
-      "src/forkop/tabs/autotune/model.ts:731",
-      "src/forkop/tabs/autotune/model.ts:732"
+      "src/forkop/tabs/autotune/model.ts:737",
+      "src/forkop/tabs/autotune/model.ts:741",
+      "src/forkop/tabs/autotune/model.ts:742"
     ]
   },
   {
@@ -8719,7 +8733,7 @@
     "call": "The targets work without bypass.",
     "key": "The targets work without bypass.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:364"
+      "src/forkop/tabs/autotune/model.ts:374"
     ]
   },
   {
@@ -8754,7 +8768,7 @@
     "call": "The value is outside the allowed range.",
     "key": "The value is outside the allowed range.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:592"
+      "src/forkop/tabs/autotune/model.ts:602"
     ]
   },
   {
@@ -8789,21 +8803,21 @@
     "call": "There are unsaved configuration changes. Save or reset them in Settings first.",
     "key": "There are unsaved configuration changes. Save or reset them in Settings first.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:577"
+      "src/forkop/tabs/autotune/model.ts:587"
     ]
   },
   {
     "call": "There is no recommendation to apply.",
     "key": "There is no recommendation to apply.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:692"
+      "src/forkop/tabs/autotune/model.ts:702"
     ]
   },
   {
     "call": "There is nothing to roll back.",
     "key": "There is nothing to roll back.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:1074"
+      "src/forkop/tabs/autotune/model.ts:1095"
     ]
   },
   {
@@ -8924,21 +8938,21 @@
     "call": "This strategy is already active; nothing was changed.",
     "key": "This strategy is already active; nothing was changed.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:769"
+      "src/forkop/tabs/autotune/model.ts:779"
     ]
   },
   {
     "call": "This strategy is not applied again during the pause after a rollback.",
     "key": "This strategy is not applied again during the pause after a rollback.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:981"
+      "src/forkop/tabs/autotune/model.ts:999"
     ]
   },
   {
     "call": "This strategy is not supported by the installed Zapret.",
     "key": "This strategy is not supported by the installed Zapret.",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:698"
+      "src/forkop/tabs/autotune/model.ts:708"
     ]
   },
   {
@@ -8946,7 +8960,7 @@
     "key": "This strategy was rolled back recently; it waits for the cooldown.",
     "places": [
       "src/forkop/tabs/autotune/model.ts:192",
-      "src/forkop/tabs/autotune/model.ts:704"
+      "src/forkop/tabs/autotune/model.ts:714"
     ]
   },
   {
@@ -9283,7 +9297,7 @@
     "call": "unknown reason",
     "key": "unknown reason",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:569"
+      "src/forkop/tabs/autotune/model.ts:579"
     ]
   },
   {
@@ -9670,7 +9684,7 @@
     "call": "Will be",
     "key": "Will be",
     "places": [
-      "src/forkop/tabs/autotune/model.ts:635"
+      "src/forkop/tabs/autotune/model.ts:645"
     ]
   },
   {

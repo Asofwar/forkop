@@ -614,6 +614,24 @@ describe('manual apply', () => {
       applyOutcomeView('needs_attention', 'verification_failed:rollback_busy')
         .label,
     ).toBe('Rollback did not finish');
+    // UC-023: the candidate reload failed and an edit landed meanwhile: the
+    // edit was kept and saved, nothing was rolled back.
+    const editedDuringApply = view(
+      'needs_attention',
+      'apply_config_changed_during_transaction',
+    );
+    expect(editedDuringApply).toMatchObject({ tone: 'error', attention: true });
+    expect(editedDuringApply.text).toContain('did not finish');
+    expect(editedDuringApply.text).toContain('Concurrent edit');
+    expect(
+      applyOutcomeView(
+        'needs_attention',
+        'apply_config_changed_during_transaction',
+      ),
+    ).toEqual({
+      label: 'Apply did not finish: configuration edited',
+      tone: 'error',
+    });
     expect(view('failed', 'interrupted_after_apply').attention).toBe(true);
     expect(applyResultView(null, 'multisplit').attention).toBe(true);
     expect(
@@ -869,6 +887,14 @@ describe('recorded apply and its rollback', () => {
     });
     expect(staged).toMatchObject({ tone: 'warning', attention: false });
     expect(staged.text).toContain('Commit or revert');
+    // The rollback of an unreadable record names it without the prefix.
+    expect(
+      rollbackResultView({
+        status: 'failed',
+        result: 'failed',
+        reason: 'rollback_uncommitted_uci_changes',
+      }),
+    ).toEqual(staged);
     expect(
       rollbackResultView({
         status: 'failed',

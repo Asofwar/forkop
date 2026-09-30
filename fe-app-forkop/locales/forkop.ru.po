@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-30 07:35+0000\n"
-"PO-Revision-Date: 2026-09-30 07:35+0000\n"
+"POT-Creation-Date: 2026-09-30 07:48+0000\n"
+"PO-Revision-Date: 2026-09-30 07:48+0000\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -335,6 +335,9 @@ msgstr "Применить %s"
 msgid "Apply %s?"
 msgstr "Применить %s?"
 
+msgid "Apply did not finish: configuration edited"
+msgstr "Применение не завершено: конфигурацию изменили"
+
 msgid "Apply section rules only to the specified local IP addresses"
 msgstr "Применять правила секции только к указанным локальным IP-адресам"
 
@@ -346,6 +349,9 @@ msgstr "Применяются изменения…"
 
 msgid "Applying Forkop configuration…"
 msgstr "Применение конфигурации Forkop…"
+
+msgid "Applying the new strategy did not finish: its reload did not succeed, and the configuration was changed meanwhile. Forkop X kept that change instead of rolling back and saved it as a snapshot (\"Concurrent edit\"). Check the rule, or restore the snapshot you need in History and recovery."
+msgstr "Применение новой стратегии не завершено: её перезагрузка не удалась, а конфигурацию тем временем изменили. Forkop X сохранил это изменение вместо отката и записал его снимком («Параллельная правка»). Проверьте правило или восстановите нужный снимок в разделе «История и восстановление»."
 
 msgid "Applying…"
 msgstr "Применение…"

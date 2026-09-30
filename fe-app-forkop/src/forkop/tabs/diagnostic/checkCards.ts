@@ -6,7 +6,7 @@ import { DIAGNOSTICS_CHECKS } from './checks/contstants';
 
 type Check = IDiagnosticsChecksStoreItem;
 
-export type AdviceLink = 'settings' | 'nodes' | 'overview';
+export type AdviceLink = 'settings' | 'rules' | 'nodes' | 'overview';
 
 export interface CheckAdvice {
   meaning: string;
@@ -57,7 +57,7 @@ export function checkAdvice(
         action: _(
           'Make sure the provider is installed and the rule strategy is valid, then restart Forkop X.',
         ),
-        link: 'settings',
+        link: 'rules',
       } satisfies CheckAdvice;
     case DIAGNOSTICS_CHECKS.OUTBOUNDS:
       return {

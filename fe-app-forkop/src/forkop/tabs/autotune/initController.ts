@@ -993,7 +993,7 @@ function renderGroup(card: GroupCard) {
               {
                 type: 'button',
                 class: 'btn cbi-button',
-                click: () => openForkopPage('settings'),
+                click: () => openForkopPage('rules'),
               },
               _('Open rules'),
             ),

@@ -215,7 +215,7 @@ function renderRoutingCard(routing: OverviewRouting, readonly: boolean) {
       linkButton(_('Connections'), () => openForkopPage('monitoring')),
       ...(readonly
         ? []
-        : [linkButton(_('Rules'), () => openForkopPage('settings'))]),
+        : [linkButton(_('Rules'), () => openForkopPage('rules'))]),
     ],
   );
 }

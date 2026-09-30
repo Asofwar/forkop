@@ -18,6 +18,17 @@
       "path": "forkop/page/overview"
     }
   },
+  "admin/services/forkop/rules": {
+    "title": "Rules",
+    "order": 15,
+    "action": {
+      "type": "view",
+      "path": "forkop/page/rules"
+    },
+    "depends": {
+      "acl": [ "luci-app-forkop-admin" ]
+    }
+  },
   "admin/services/forkop/monitoring": {
     "title": "Monitoring",
     "order": 20,

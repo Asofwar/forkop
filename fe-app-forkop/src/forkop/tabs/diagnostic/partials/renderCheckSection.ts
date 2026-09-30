@@ -85,17 +85,19 @@ function renderItems(props: Check) {
 }
 
 function adviceLink(link: AdviceLink | undefined) {
-  // Read-only sessions have no Settings page and cannot restart the service.
+  // Read-only sessions have no Rules or Settings page and cannot restart the service.
   if (!link || (isReadonlyMode() && link !== 'nodes')) return '';
   const [label, open] =
     link === 'settings'
       ? [_('Open settings'), () => openForkopPage('settings')]
-      : link === 'nodes'
-        ? [
-            _('Nodes and groups'),
-            () => openForkopPage('monitoring', { view: 'nodes' }),
-          ]
-        : [_('Overview'), () => openForkopPage('overview')];
+      : link === 'rules'
+        ? [_('Open rules'), () => openForkopPage('rules')]
+        : link === 'nodes'
+          ? [
+              _('Nodes and groups'),
+              () => openForkopPage('monitoring', { view: 'nodes' }),
+            ]
+          : [_('Overview'), () => openForkopPage('overview')];
   return E('button', { type: 'button', class: 'btn cbi-button', click: open }, [
     label,
   ]);

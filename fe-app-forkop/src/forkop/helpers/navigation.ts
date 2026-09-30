@@ -6,6 +6,7 @@ export type ForkopPage =
   | 'diagnostics'
   | 'autotune'
   | 'history'
+  | 'rules'
   | 'settings';
 
 const FORKOP_MENU_PATH = 'admin/services/forkop';

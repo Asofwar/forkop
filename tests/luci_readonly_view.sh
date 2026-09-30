@@ -97,14 +97,20 @@ function stubs(canReadUci, calls, { stale = false } = {}) {
     assert(calls.includes(`init:${tab}`), `${file}: controller not initialised`);
   }
 
-  // Settings: the only page with the configuration form and its Save & Apply.
-  const settingsSource = read('page/settings.js');
-  assert.match(settingsSource, /new form\.Map\(UCI_PACKAGE/, 'settings page must host the form');
-  assert.match(settingsSource, /forkopMap\.handleSaveApply = async function/,
-    'settings page must keep the snapshot-first Save & Apply');
-  assert.match(settingsSource, /snapshotCreate\("automatic"\)[\s\S]*originalHandleSaveApply\.call/,
+  // Rules and Settings: the only pages with configuration forms, both with
+  // the snapshot-first Save & Apply of configform.js.
+  const formSource = read('configform.js');
+  assert.match(formSource, /new form\.Map\(UCI_PACKAGE/, 'configform must build the form');
+  assert.match(formSource, /map\.handleSaveApply = async function/,
+    'configform must keep the snapshot-first Save & Apply');
+  assert.match(formSource, /snapshotCreate\("automatic"\)[\s\S]*originalHandleSaveApply\.call/,
     'a snapshot must be taken before applying');
-  assert(settingsSource.includes('form.GridSection,\n      "section"'), 'settings page lost the rules tab');
+  const settingsSource = read('page/settings.js');
+  const rulesSource = read('page/rules.js');
+  for (const [name, source] of [['settings', settingsSource], ['rules', rulesSource]])
+    assert.match(source, /configform\.createMap\(/, `${name} page must host its form through configform`);
+  assert(rulesSource.includes('form.GridSection,\n      "section"'), 'the rules page must host the rules grid');
+  assert(!settingsSource.includes('"section"'), 'the rules moved out of Settings');
   assert(settingsSource.includes('form.TypedSection,\n      "updates"'), 'settings page lost the components tab');
   assert.match(settingsSource, /forkopMap\.section\(form\.TypedSection, type, title\)/,
     'settings page lost the settings tabs');
@@ -130,7 +136,7 @@ function stubs(canReadUci, calls, { stale = false } = {}) {
   assert.deepEqual(parent.depends.acl, ['luci-app-forkop']);
   const children = Object.entries(menu).filter(([key]) => key.startsWith('admin/services/forkop/'));
   const order = children.sort((a, b) => a[1].order - b[1].order).map(([key]) => key.split('/').pop());
-  assert.deepEqual(order, ['overview', 'monitoring', 'diagnostics', 'autotune', 'history', 'settings']);
+  assert.deepEqual(order, ['overview', 'rules', 'monitoring', 'diagnostics', 'autotune', 'history', 'settings']);
   for (const [key, node] of children) {
     assert.equal(node.action.type, 'view', `${key} must be a view`);
     assert(fs.existsSync(path.join(root, 'luci-app-forkop/htdocs/luci-static/resources/view', `${node.action.path}.js`)),
@@ -138,6 +144,8 @@ function stubs(canReadUci, calls, { stale = false } = {}) {
   }
   assert.deepEqual(menu['admin/services/forkop/settings'].depends, { acl: ['luci-app-forkop-admin'] },
     'Settings must be hidden from the read-only role');
+  assert.deepEqual(menu['admin/services/forkop/rules'].depends, { acl: ['luci-app-forkop-admin'] },
+    'Rules must be hidden from the read-only role');
   for (const key of ['overview', 'monitoring', 'diagnostics', 'autotune', 'history'])
     assert(!menu[`admin/services/forkop/${key}`].depends,
       `${key} must stay available to the read-only role`);

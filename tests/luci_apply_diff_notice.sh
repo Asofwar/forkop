@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Save & Apply on the Settings page takes a snapshot first and, once the
+# Save & Apply on the Rules and Settings pages (configform.js) takes a snapshot first and, once the
 # reload is confirmed, lists what changed since it (config_snapshot_diff).
 # D-2(a), UC-063: an option absent on one side reads "not set", '***' only
 # for a value that exists and is hidden. UC-062: a diff longer than the
@@ -14,7 +14,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const assert = require('node:assert/strict');
 const root = process.argv[2];
-const file = path.join(root, 'luci-app-forkop/htdocs/luci-static/resources/view/forkop/page/settings.js');
+const file = path.join(root, 'luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js');
 
 if (typeof String.prototype.format !== 'function') {
   // LuCI's printf-like String.format(); only %s/%d are used here.
@@ -67,18 +67,14 @@ async function saveApply(entries) {
       getUiState: async () => ({ success: false }),
     },
   };
-  const page = load({
-    view: { extend: (value) => value },
+  const configform = load({
+    baseclass: { extend: (value) => value },
     form: { Map, GridSection: {}, TypedSection: {}, TableSection: { prototype: {} } },
     uci: { get() {} },
     ui: { addNotification(title, node, type) { notes.push({ node, type }); }, addValidator() {} },
     main,
-    shell: { loadUiCapabilities() {}, uiCapabilities: {} },
-    settings: { createSettingsContent() {} },
-    section: { configureSectionSection() {}, createSectionContent() {} },
-    updates: { createUpdatesContent() {} },
   });
-  assert.equal(page.render(), 'rendered');
+  configform.createMap('Settings', null);
   assert.equal(await maps[0].handleSaveApply({}, undefined), 'applied');
   assert.equal(notes.length, 1);
   assert.equal(notes[0].type, 'info');

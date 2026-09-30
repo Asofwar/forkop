@@ -6896,7 +6896,7 @@ function renderRoutingCard(routing, readonly) {
       linkButton(_("Connections"), () => openForkopPage("monitoring")),
       ...(readonly
         ? []
-        : [linkButton(_("Rules"), () => openForkopPage("settings"))]),
+        : [linkButton(_("Rules"), () => openForkopPage("rules"))]),
     ],
   );
 }
@@ -11319,7 +11319,7 @@ function checkAdvice(check) {
         action: _(
           "Make sure the provider is installed and the rule strategy is valid, then restart Forkop X.",
         ),
-        link: "settings",
+        link: "rules",
       };
     case "OUTBOUNDS" /* OUTBOUNDS */:
       return {
@@ -11459,12 +11459,14 @@ function adviceLink(link) {
   const [label, open] =
     link === "settings"
       ? [_("Open settings"), () => openForkopPage("settings")]
-      : link === "nodes"
-        ? [
-            _("Nodes and groups"),
-            () => openForkopPage("monitoring", { view: "nodes" }),
-          ]
-        : [_("Overview"), () => openForkopPage("overview")];
+      : link === "rules"
+        ? [_("Open rules"), () => openForkopPage("rules")]
+        : link === "nodes"
+          ? [
+              _("Nodes and groups"),
+              () => openForkopPage("monitoring", { view: "nodes" }),
+            ]
+          : [_("Overview"), () => openForkopPage("overview")];
   return E("button", { type: "button", class: "btn cbi-button", click: open }, [
     label,
   ]);
@@ -21733,7 +21735,7 @@ function renderGroup(card3) {
               {
                 type: "button",
                 class: "btn cbi-button",
-                click: () => openForkopPage("settings"),
+                click: () => openForkopPage("rules"),
               },
               _("Open rules"),
             ),

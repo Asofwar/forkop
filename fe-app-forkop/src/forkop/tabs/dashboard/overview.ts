@@ -16,6 +16,7 @@ export type OverviewPage =
   | 'monitoring'
   | 'diagnostics'
   | 'history'
+  | 'rules'
   | 'settings';
 
 export interface OverviewInput {

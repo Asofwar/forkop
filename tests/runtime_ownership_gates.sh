@@ -14,7 +14,7 @@ fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 # would reject ambiguous ownership. Without a gate at the top, a stop can
 # discard the fail-closed policy while an unknown sing-box is still alive.
 awk '
-  /^function stop_main\(\) \{/ { inside = 1 }
+  /^function stop_main\([^)]*\) \{/ { inside = 1 }
   inside && /"sing-box-process-conflict"/ && !gate_line { gate_line = NR }
   inside && /module_success\(DNS_FAILOVER_UC, \[ "stop-runtime" \]\)/ && !teardown_line { teardown_line = NR }
   inside && /^}/ { done = 1; exit }

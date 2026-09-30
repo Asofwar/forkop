@@ -458,6 +458,19 @@ kill "$(holder)" 2>/dev/null || true
 json 'a.equal(r.status, "needs_attention"); a.equal(r.reason, "verification_failed:rollback_busy"); a.equal(r.rollback.reason, "service_action_in_progress");' "$WORK/out.json"
 ok "13a verification failed under a lifecycle action -> rollback waits for it (bounded) and restores the pre-apply snapshot"
 
+# 13b. The restore of the rollback does not reload (fails, or is only
+#      queued) and the transaction puts the candidate back: that candidate
+#      has just failed verification, so last-known-working stays on the
+#      pre-apply snapshot (UC-059).
+for plan in "0 1 0" "0 q 0"; do
+  reset_apply; plan_ready; export PROD_PLAN=reset; echo "$plan" > "$STATE/reload.plan"; at apply "$WORK/plan.json"
+  json 'a.equal(r.status, "needs_attention"); a.equal(r.reason, "verification_failed:rollback_recovered"); a.equal(r.rollback.status, "recovered");' "$WORK/out.json"
+  [ "$(chash)" != "$PRE_HASH" ] || fail "$plan: fixture: the candidate was not put back"
+  [ "$(lkg)" = "$PRE_LKG" ] || fail "$plan: last-known-working moved to the candidate that failed verification"
+  unset PROD_PLAN
+done
+ok "13b rollback restore failed or queued, candidate put back -> needs_attention, last-known-working stays pre-apply"
+
 # 22. direct never mutates production
 reset_apply; selection direct; at plan "$WORK/selection.json"
 json 'a.equal(r.status, "direct_not_applicable"); a.equal(r.changes, undefined);' "$WORK/out.json"

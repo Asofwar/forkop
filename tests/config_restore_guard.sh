@@ -178,8 +178,14 @@ rm -f "$FORKOP_PENDING_RELOAD_FILE"
 echo "stale" > "$FORKOP_SNAPSHOT_DIR/last-known-working"
 
 # 10. Target reload queued, rollback reload ran: recovered with the queue
-#     named; LKG names the reloaded pre-restore configuration, never the target.
+#     named; LKG never names the target. The configuration put back was never
+#     confirmed, so LKG stays where it was (UC-059); put back over the
+#     last-known-working configuration itself, LKG names it again.
 config bad; restore "$LIB" valid "q 0"
+check '{"status":"recovered","reason":"target_reload_queued","guardField":"inactive","guard":"absent","config":"bad","lkg":"stale","health":"recovered"}'
+rm -f "$FORKOP_PENDING_RELOAD_FILE"
+"$REAL_UCODE" -L "$LIB" "$SCRIPT" confirm-working > /dev/null
+restore "$LIB" valid "q 0"
 check '{"status":"recovered","reason":"target_reload_queued","guardField":"inactive","guard":"absent","config":"bad","lkgGood":false,"health":"recovered"}'
 lkg_id="$(cat "$FORKOP_SNAPSHOT_DIR/last-known-working")"
 grep -q "marker 'bad'" "$FORKOP_SNAPSHOT_DIR/$lkg_id.json"

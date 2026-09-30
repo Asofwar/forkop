@@ -94,6 +94,19 @@ const assert = require('node:assert/strict');
 assert.equal(JSON.parse(fs.readFileSync(process.argv[2])).status, 'recovered');
 JS
 grep -q '8.8.8.8' "$FORKOP_CONFIG_FILE"
+# The configuration put back (8.8.8.8) was never confirmed: last-known-working
+# stays where it was, it does not move to that configuration (UC-059).
+test "$(cat "$FORKOP_SNAPSHOT_DIR/last-known-working")" = "$id"
+# Put back over the last-known-working configuration itself, it stays so.
+"$REAL_UCODE" -L "$LIB" "$SCRIPT" confirm-working > /dev/null
+confirmed_id="$(cat "$FORKOP_SNAPSHOT_DIR/last-known-working")"
+test "$confirmed_id" != "$id"
+FAIL_OLD_CONFIG=1 PATH="$WORK/bin:$PATH" "$REAL_UCODE" -L "$LIB" "$SCRIPT" restore "$id" > "$WORK/restore-failed.json"
+node - "$WORK/restore-failed.json" <<'JS'
+const fs = require('node:fs');
+const assert = require('node:assert/strict');
+assert.equal(JSON.parse(fs.readFileSync(process.argv[2])).status, 'recovered');
+JS
 recovered_id="$(cat "$FORKOP_SNAPSHOT_DIR/last-known-working")"
 grep -q '8.8.8.8' "$FORKOP_SNAPSHOT_DIR/$recovered_id.json"
 if FAIL_ALL=1 PATH="$WORK/bin:$PATH" "$REAL_UCODE" -L "$LIB" "$SCRIPT" restore "$id" > "$WORK/restore-unknown.json"; then exit 1; fi

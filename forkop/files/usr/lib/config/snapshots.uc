@@ -153,6 +153,11 @@ function metadata(snapshot) {
         config_hash: snapshot.config_hash,
         forkop_version: match(value(snapshot.forkop_version), /^[A-Za-z0-9._-]{1,64}$/) != null ? snapshot.forkop_version : "unknown" };
 }
+// Hash of the configuration the last-known-working snapshot holds.
+function lkg_hash() {
+    let item = read_snapshot(trim(value(fs.readfile(LKG))), false);
+    return item != null ? item.config_hash : "";
+}
 function list_snapshots() {
     let result = [];
     let working = trim(value(fs.readfile(LKG)));
@@ -361,6 +366,11 @@ function reload(reason) {
 // apply_mode (autotune apply): the caller proved no guard was active and the
 // snapshot lock keeps restores out, so the guard is this call's own; an edit
 // made while the guard was installed is never overwritten.
+// A configuration that is put back after the target failed reloaded
+// coherently, but that proves no more than it did before: last-known-working
+// moves to it (pre) only when it already was the last-known-working one. It
+// may be an unconfirmed edit, or an autotune candidate that has just failed
+// its production verification (UC-059).
 // A reload that an explicit stop, or the lack of an explicit start since
 // boot, skipped (D-15, UC-056) proves nothing and starts nothing. on_stopped
 // (a restore) keeps the validated configuration for the next explicit start;
@@ -406,7 +416,8 @@ function guarded_replace(before, content, pre, on_success, reason, apply_mode, o
         else if (rollback != "ran")
             result = { status: "needs_attention", reason: rollback == "queued" ? "rollback_reload_queued" : "runtime_rollback_failed", guard: "active" };
         else if (!restore_guard(true)) result = { status: "needs_attention", reason: "guard_release_failed", guard: "active" };
-        else if (!atomic(LKG, pre.snapshot.id + "\n")) result = { status: "needs_attention", reason: "lkg_update_failed", guard: "inactive" };
+        else if (pre.snapshot.config_hash == lkg_hash() && !atomic(LKG, pre.snapshot.id + "\n"))
+            result = { status: "needs_attention", reason: "lkg_update_failed", guard: "inactive" };
         else result = { status: "recovered", reason: target == "queued" ? "target_reload_queued" : "target_reload_failed", guard: "inactive" };
     }
     result.started = true;

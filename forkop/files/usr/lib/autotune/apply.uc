@@ -682,10 +682,13 @@ function rollback_to(audit, p, why) {
     }
     // Not rolled back. After an edit made while the candidate verified, the
     // candidate may still be part of the edited configuration, which no
-    // longer belongs to this apply.
+    // longer belongs to this apply. An edit that landed while the restore
+    // itself ran (it wrote the pre-apply configuration and reloaded): the
+    // runtime may run either, and the reason says the rollback started.
     if (restored.status != "success") {
         audit.phase = "needs_attention"; audit.status = "needs_attention";
-        audit.reason = why + (edited ? ":config_changed_during_transaction" : ":rollback_" + as_string(restored.status));
+        audit.reason = why + (!edited ? ":rollback_" + as_string(restored.status) :
+            restored.started ? ":config_changed_during_rollback" : ":config_changed_during_transaction");
         audit.finished_at = now();
         state_write(audit); return audit;
     }

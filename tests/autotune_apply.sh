@@ -153,6 +153,9 @@ echo "$*" >> "$STUB_LOG/reload.args"
 set -- $(cat "$STATE/reload.plan" 2>/dev/null)
 rc="${1:-0}"; shift || true; echo "$*" > "$STATE/reload.plan"
 echo "reload $rc" >> "$STUB_LOG/reload.log"
+# EDIT_ON_RELOAD=<n>: an edit (another writer) is committed during the n-th reload.
+[ -z "${EDIT_ON_RELOAD:-}" ] || [ "$(grep -c '^reload' "$STUB_LOG/reload.log")" != "$EDIT_ON_RELOAD" ] ||
+  sed -i "s/option dns_rewrite_ttl '60'/option dns_rewrite_ttl '31'/" "$FORKOP_CONFIG_FILE"
 if [ "$rc" = q ] || [ "$rc" = m ]; then
   "$REAL_UCODE" -L "$FORKOP_LIB" "$FORKOP_LIB/service/state.uc" mark-pending-reload "$FORKOP_PENDING_RELOAD_FILE" reload_busy
   [ "$rc" = m ] || echo queued
@@ -255,7 +258,7 @@ reloads() { grep -c '^reload' "$STUB_LOG/reload.log" 2>/dev/null || true; }
 dpi_args() { tr '\0' ' ' < "/proc/$(head -n 1 "$ZAPRET_CHILD_PID_DIR/Dpi.pid")/cmdline"; }
 reset_apply() {
   reset_state
-  unset PROD_PLAN PROD_SLEEP PROD_QUEUE_BUMP PROD_REMOTE DIG_SLEEP GUARD_SLEEP VALIDATE_SLEEP VALIDATE_FAIL RELOAD_SLEEP UCI_FAIL UCI_EXTRA_CHANGE BREAK_FIRST_RELOAD CONFIRM_FAIL EDIT_BEFORE_RESTORE STAGE_BEFORE_RESTORE NFQWS_STUB_REJECT DIG_STUB_ANSWER \
+  unset PROD_PLAN PROD_SLEEP PROD_QUEUE_BUMP PROD_REMOTE DIG_SLEEP GUARD_SLEEP VALIDATE_SLEEP VALIDATE_FAIL RELOAD_SLEEP UCI_FAIL UCI_EXTRA_CHANGE BREAK_FIRST_RELOAD CONFIRM_FAIL EDIT_BEFORE_RESTORE EDIT_ON_RELOAD STAGE_BEFORE_RESTORE NFQWS_STUB_REJECT DIG_STUB_ANSWER \
     LOCAL_DIG_ANSWER PROD_CHAINS CLASH_DOWN HOLD_SLEEP GUARD_FAIL GUARD_HOLD UCI_SLEEP
   pkill -f "$WORK/bin/nfqws --qnum=40" 2>/dev/null || true
   rm -rf "$FORKOP_SNAPSHOT_DIR" "$FORKOP_SNAPSHOT_HASH_DIR" "$FORKOP_AUTOTUNE_APPLY_STATE" "$STATE"/prod.* "$STATE/reload.plan" "$STATE/zapret-broken" "$STATE/broke-once"\
@@ -977,6 +980,27 @@ grep -q "option dns_rewrite_ttl '31'" "$FORKOP_CONFIG_FILE" || fail "the operato
 [ "$(reloads)" = 0 ] || fail "the operator rollback reloaded over an edit"
 json 'a.equal(r.phase, "applied"); a.equal(r.last_attempt.reason, "rollback_config_changed_during_transaction");' "$FORKOP_AUTOTUNE_APPLY_STATE"
 ok "UC-017 operator rollback racing an edit -> refused before any change, edit kept, record unchanged"
+
+# The edit is committed while the rollback's own reload runs: the rollback
+# wrote the pre-apply configuration and reloaded it, but cannot tell whether
+# the runtime loaded that or the edit. The record says the rollback started
+# (config_changed_during_rollback), the edit is kept and saved, LKG stays.
+reset_apply; plan_ready; export PROD_PLAN=reset EDIT_ON_RELOAD=2
+at apply "$WORK/plan.json"; unset PROD_PLAN EDIT_ON_RELOAD
+json 'a.equal(r.status, "needs_attention", JSON.stringify(r).slice(0, 500)); a.equal(r.reason, "verification_failed:config_changed_during_rollback");
+  a.equal(r.rollback.reason, "config_changed_during_transaction"); a.equal(r.rollback.guard, "inactive");
+  a.match(r.rollback.saved_snapshot, /^[0-9]+_[0-9]+$/);' "$WORK/out.json"
+grep -q "option dns_rewrite_ttl '31'" "$FORKOP_CONFIG_FILE" && grep -qF "option nfqws_opt '$FAKE'" "$FORKOP_CONFIG_FILE" ||
+  fail "an edit during the rollback's reload: not kept on the pre-apply configuration"
+[ "$(reloads)" = 2 ] && [ "$(lkg)" = "$PRE_LKG" ] || fail "an edit during the rollback's reload: $(reloads) reloads, LKG moved"
+at status; json 'a.equal(r.diagnosis, "superseded"); a.equal(r.resolved, true); a.equal(r.unverified_strategy, false);' "$WORK/out.json"
+# The same during the operator's rollback of an applied candidate.
+reset_apply; plan_ready; at apply "$WORK/plan.json"; json 'a.equal(r.status, "applied");' "$WORK/out.json"
+: > "$STUB_LOG/reload.log"
+EDIT_ON_RELOAD=1 at rollback
+json 'a.equal(r.status, "needs_attention", JSON.stringify(r).slice(0, 500)); a.equal(r.reason, "operator_rollback:config_changed_during_rollback");' "$WORK/out.json"
+grep -q "option dns_rewrite_ttl '31'" "$FORKOP_CONFIG_FILE" && [ "$(reloads)" = 1 ] || fail "an edit during the operator rollback's reload was overwritten"
+ok "edit committed during the rollback's own reload -> kept, the record names a rollback that started (automatic and operator)"
 
 # UC-068: changes staged with uci (no commit) would ride along any reload.
 # The rollback's restore refuses while they exist: the candidate stays, the

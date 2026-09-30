@@ -42,24 +42,24 @@ drop_apk_stub
 make_apk_stub
 apk_restore="$(action pkg-forkop-set-command-fixture /tmp/forkop.apk 0 1)"
 case "$apk_restore" in
-  *"apk add"*"--allow-untrusted"*"--force-reinstall"*"/tmp/forkop.apk"*) ;;
+  *apk*add*--allow-untrusted*--force-reinstall*/tmp/forkop.apk*) ;;
   *) fail "apk restore command is missing its flags: $apk_restore" ;;
 esac
 apk_dry="$(action pkg-forkop-set-command-fixture /tmp/forkop.apk 1 0)"
 case "$apk_dry" in
-  *"--simulate"*) ;;
+  *--simulate*) ;;
   *) fail "apk preflight must not modify the system: $apk_dry" ;;
 esac
 
 drop_apk_stub
 opkg_restore="$(action pkg-forkop-set-command-fixture /tmp/forkop.ipk 0 1)"
 case "$opkg_restore" in
-  *"opkg"*install*"--force-reinstall"*"/tmp/forkop.ipk"*) ;;
+  *opkg*install*--force-reinstall*/tmp/forkop.ipk*) ;;
   *) fail "opkg restore command is missing its flags: $opkg_restore" ;;
 esac
 opkg_dry="$(action pkg-forkop-set-command-fixture /tmp/forkop.ipk 1 0)"
 case "$opkg_dry" in
-  *"--noaction"*) ;;
+  *--noaction*) ;;
   *) fail "opkg preflight must not modify the system: $opkg_dry" ;;
 esac
 

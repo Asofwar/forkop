@@ -2251,13 +2251,19 @@ function install_forkop_package_set(latest_version, backend_file, app_file, i18n
         return "Failed to persist Forkop package-set recovery state";
 
     // apk resolves one transaction for all three files and refreshes its index
-    // once, so keep that. opkg installs sequentially either way: the backend
-    // goes first so an old UI cannot call a newer API than the backend behind
-    // it. Neither is atomic, which is what the staged set above is for.
+    // once, so keep that. Order still matters inside it: the backend goes last
+    // because its postinst is what restores the service, and it must find the
+    // matching LuCI files already in place. opkg installs sequentially and
+    // takes the backend first, so an old UI cannot call a newer API than the
+    // backend behind it. Neither is atomic, which is what the staged set is for.
     let failed = false;
     if (is_apk()) {
+        let files = [ app_file ];
+        if (with_i18n)
+            push(files, i18n_file);
+        push(files, backend_file);
         failed = !run_logged("Installing Forkop release packages",
-            pkg_forkop_set_command(new_files, false));
+            pkg_forkop_set_command(files, false));
     }
     else {
         for (let file in new_files) {

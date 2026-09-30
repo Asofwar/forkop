@@ -12,9 +12,10 @@ import sys
 
 source = (pathlib.Path(sys.argv[1]) / 'forkop/files/usr/lib/components/action.uc').read_text()
 names = ('forkop_release_matches', 'opkg_forkop_set_versions_match',
-         'opkg_forkop_set_command', 'opkg_forkop_recovery_files',
+         'pkg_set_extension', 'pkg_forkop_set_command', 'forkop_recovery_files',
          'restore_forkop_opkg_service', 'finish_forkop_opkg_recovery',
-         'recover_forkop_opkg_set', 'install_forkop_opkg_set')
+         'recover_forkop_opkg_set', 'forkop_package_set_space_error',
+         'install_forkop_package_set')
 functions = []
 for name in names:
     match = re.search(r'^function ' + name + r'\([^\n]*\) \{\n.*?^\}', source, re.M | re.S)
@@ -72,6 +73,11 @@ function download_with_retry(url, path, label) { push(downloads, path); return t
 function command_from_args(args) { return join(" ", args); }
 function command_output_from_args(args) { check(args[0] == "dirname", "unexpected path command"); return "/"; }
 function ensure_dir(path) { return path == "/"; }
+// This probe drives the opkg branch; the apk branch is covered separately.
+function is_apk() { return false; }
+// Free space is exercised by its own test, so leave room here.
+function available_kib(path) { return 1048576; }
+function file_bytes(path) { return 0; }
 function path_basename(path) { let parts = split(path, "/"); return parts[length(parts) - 1]; }
 function updates_log(message, level) { push(events, message); }
 function run_logged(description, command) {
@@ -113,7 +119,7 @@ function reset() {
 }
 for (let target in [ "", "forkop", "luci-app-forkop", "luci-i18n-forkop-ru" ]) {
     reset(); failure = target;
-    let error = install_forkop_opkg_set("1.1.0", "/new/forkop_1.1.0.ipk",
+    let error = install_forkop_package_set("1.1.0", "/new/forkop_1.1.0.ipk",
         "/new/luci-app-forkop_1.1.0.ipk", "/new/luci-i18n-forkop-ru_1.1.0.ipk");
     if (target == "") {
         check(error == "" && opkg_forkop_set_versions_match("1.1.0", true), "success path failed");
@@ -129,12 +135,12 @@ for (let target in [ "", "forkop", "luci-app-forkop", "luci-i18n-forkop-ru" ]) {
     }
 }
 reset(); uncommitted = "luci-i18n-forkop-ru";
-check(index(install_forkop_opkg_set("1.1.0", "/new/forkop_1.1.0.ipk",
+check(index(install_forkop_package_set("1.1.0", "/new/forkop_1.1.0.ipk",
     "/new/luci-app-forkop_1.1.0.ipk", "/new/luci-i18n-forkop-ru_1.1.0.ipk"),
     "previous release restored") >= 0 && opkg_forkop_set_versions_match("1.0.0", true),
     "uncommitted final package did not trigger rollback");
 reset(); failure = "luci-i18n-forkop-ru"; rollback_failure = "luci-app-forkop";
-let error = install_forkop_opkg_set("1.1.0", "/new/forkop_1.1.0.ipk",
+let error = install_forkop_package_set("1.1.0", "/new/forkop_1.1.0.ipk",
     "/new/luci-app-forkop_1.1.0.ipk", "/new/luci-i18n-forkop-ru_1.1.0.ipk");
 check(index(error, "archives retained") >= 0 && marker != "" && recovery_dir,
     "failed rollback discarded recovery archive");
@@ -143,27 +149,27 @@ check(recover_forkop_opkg_set() == "" && opkg_forkop_set_versions_match("1.0.0",
     "pending recovery did not restore previous package set");
 reset(); failure = "";
 versions["luci-i18n-forkop-ru"] = "";
-check(install_forkop_opkg_set("1.1.0", "/new/forkop_1.1.0.ipk",
+check(install_forkop_package_set("1.1.0", "/new/forkop_1.1.0.ipk",
     "/new/luci-app-forkop_1.1.0.ipk", "") == "" &&
     opkg_forkop_set_versions_match("1.1.0", false) && versions["luci-i18n-forkop-ru"] == "",
     "upgrade without optional i18n failed");
 reset();
 versions["luci-app-forkop"] = "0.9.0-r1";
-check(index(install_forkop_opkg_set("1.1.0", "/new/forkop_1.1.0.ipk",
+check(index(install_forkop_package_set("1.1.0", "/new/forkop_1.1.0.ipk",
     "/new/luci-app-forkop_1.1.0.ipk", "/new/luci-i18n-forkop-ru_1.1.0.ipk"),
     "inconsistent") >= 0 && length(events) == 0, "mixed initial set was not refused");
 reset(); failure = "forkop";
-check(index(install_forkop_opkg_set("1.1.0", "/new/forkop_1.1.0.ipk",
+check(index(install_forkop_package_set("1.1.0", "/new/forkop_1.1.0.ipk",
     "/new/luci-app-forkop_1.1.0.ipk", "/new/luci-i18n-forkop-ru_1.1.0.ipk"),
     "previous release restored") >= 0 && service_running && marker == "",
     "running service was not restored after backend install failure");
 reset(); failure = "forkop"; forkop_was_running = false; service_running = false;
-check(index(install_forkop_opkg_set("1.1.0", "/new/forkop_1.1.0.ipk",
+check(index(install_forkop_package_set("1.1.0", "/new/forkop_1.1.0.ipk",
     "/new/luci-app-forkop_1.1.0.ipk", "/new/luci-i18n-forkop-ru_1.1.0.ipk"),
     "previous release restored") >= 0 && !service_running && marker == "",
     "stopped service was started by rollback");
 reset(); failure = "luci-app-forkop"; rollback_failure = "luci-app-forkop";
-check(index(install_forkop_opkg_set("1.1.0", "/new/forkop_1.1.0.ipk",
+check(index(install_forkop_package_set("1.1.0", "/new/forkop_1.1.0.ipk",
     "/new/luci-app-forkop_1.1.0.ipk", "/new/luci-i18n-forkop-ru_1.1.0.ipk"),
     "archives retained") >= 0 && marker != "" && !service_running,
     "interrupted recovery fixture not established");
@@ -171,7 +177,7 @@ rollback_failure = ""; forkop_was_running = false;
 check(recover_forkop_opkg_set() == "" && service_running && marker == "",
     "new invocation lost original running state");
 reset(); failure = "forkop"; service_restart_fail = true;
-check(index(install_forkop_opkg_set("1.1.0", "/new/forkop_1.1.0.ipk",
+check(index(install_forkop_package_set("1.1.0", "/new/forkop_1.1.0.ipk",
     "/new/luci-app-forkop_1.1.0.ipk", "/new/luci-i18n-forkop-ru_1.1.0.ipk"),
     "service") >= 0 && marker != "" && !service_running,
     "service restart failure was reported as complete recovery");

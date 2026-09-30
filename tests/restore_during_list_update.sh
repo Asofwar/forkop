@@ -81,9 +81,14 @@ case "${3:-}" in
 esac
 exec "$REAL_UCODE" "$@"
 STUB
-# No nft tables: no restore guard and no probe path for autotune/apply.uc.
+# No nft tables: no restore guard and no probe path for autotune/apply.uc,
+# and no guard kept by a failed lifecycle transition (config/snapshots.uc
+# asks for that one table or chain by name).
 cat > "$WORK/bin/nft" <<'STUB'
 #!/bin/sh
+case "$1 $2" in
+  "list table"|"list chain") exit 1 ;;
+esac
 exit 0
 STUB
 # forkop: the runtime reload records which configuration it loaded.

@@ -1239,14 +1239,47 @@ function nft_add_csv_chunks_to_set(csv, table, set_name, kind, ports_csv, chunk_
     return nft_add_chunks_to_set(table, set_name, prepared.chunks, prepared.invalid);
 }
 
+// The values of each address family, in their order; "other" holds what is
+// neither (invalid values, and valid ones of no family, which the family
+// sets skip). Every value is classified once: a large list (thousands of
+// subnets of one rule set) is no longer validated in full for each family.
+function nft_values_by_family(values, kind) {
+    let result = { v4: [], v6: [], other: [] };
+    for (let line in values) {
+        let ip = line;
+        if (kind == "ip-ports") {
+            let separator = index(line, " . ");
+            if (separator < 0) {
+                push(result.other, line);
+                continue;
+            }
+            ip = substr(line, 0, separator);
+        }
+        let family = core_ip.ip_family(ip);
+        push(family == 4 ? result.v4 : family == 6 ? result.v6 : result.other, line);
+    }
+    return result;
+}
+
+// Both family sets from one list. The builder still validates each value
+// for nft; "other" goes through the IPv4 pass only, so an invalid value is
+// reported once and a value of no family is skipped as before.
+function nft_add_values_to_family_sets_once(values, table, ipv4_set, ipv6_set, kind, ports_csv, chunk_size_text) {
+    let split_values = nft_values_by_family(values, kind);
+    let v4 = nft_build_chunks_from_values(split_values.v4, kind, ports_csv, chunk_size_text, 0);
+    let other = nft_build_chunks_from_values(split_values.other, kind, ports_csv, chunk_size_text, 4);
+    if (!nft_add_chunks_to_set(table, ipv4_set, [ ...v4.chunks, ...other.chunks ], [ ...v4.invalid, ...other.invalid ]))
+        return false;
+    let v6 = nft_build_chunks_from_values(split_values.v6, kind, ports_csv, chunk_size_text, 0);
+    return nft_add_chunks_to_set(table, ipv6_set, v6.chunks, v6.invalid);
+}
+
 function nft_add_file_chunks_to_family_sets(path, table, ipv4_set, ipv6_set, kind, ports_csv, chunk_size_text) {
-    return nft_add_file_chunks_to_set(path, table, ipv4_set, kind, ports_csv, chunk_size_text, 4) &&
-        nft_add_file_chunks_to_set(path, table, ipv6_set, kind, ports_csv, chunk_size_text, 6);
+    return nft_add_values_to_family_sets_once(nft_trimmed_lines(path), table, ipv4_set, ipv6_set, kind, ports_csv, chunk_size_text);
 }
 
 function nft_add_csv_chunks_to_family_sets(csv, table, ipv4_set, ipv6_set, kind, ports_csv, chunk_size_text) {
-    return nft_add_csv_chunks_to_set(csv, table, ipv4_set, kind, ports_csv, chunk_size_text, 4) &&
-        nft_add_csv_chunks_to_set(csv, table, ipv6_set, kind, ports_csv, chunk_size_text, 6);
+    return nft_add_values_to_family_sets_once(nft_csv_values(csv), table, ipv4_set, ipv6_set, kind, ports_csv, chunk_size_text);
 }
 
 function nft_add_inline_ip_cidr_matchers(csv, ports_csv, table, common_set, ip_port_set, chunk_size_text, common6_set, ip_port6_set) {
@@ -1999,11 +2032,7 @@ function nft_community_subnet_lines(path, service, keep_shared_cloudflare) {
 }
 
 function nft_add_values_to_family_sets(values, table, ipv4_set, ipv6_set, kind, ports_csv, chunk_size_text) {
-    let prepared4 = nft_build_chunks_from_values(values, kind, ports_csv, chunk_size_text, 4);
-    let ok4 = nft_add_chunks_to_set(table, ipv4_set, prepared4.chunks, prepared4.invalid);
-    let prepared6 = nft_build_chunks_from_values(values, kind, ports_csv, chunk_size_text, 6);
-    let ok6 = nft_add_chunks_to_set(table, ipv6_set, prepared6.chunks, prepared6.invalid);
-    return ok4 && ok6;
+    return nft_add_values_to_family_sets_once(values, table, ipv4_set, ipv6_set, kind, ports_csv, chunk_size_text);
 }
 
 function nft_add_community_subnet_file_for_section(section, service, filepath, table, common_set, ip_port_set, interface_set, discord_set, mark, chunk_size_text, common6_set, ip_port6_set, discord6_set) {

@@ -49,6 +49,7 @@ let autotune_lock = require("autotune.lock");
 let runtime_lock = require("core.runtime_lock");
 let list_worker = require("core.list_worker");
 let resolver = require("routing.resolve");
+let dpi_strategy = require("core.dpi_strategy");
 
 const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
 const CONFIG_FILE = getenv("FORKOP_CONFIG_FILE") || "/etc/config/forkop";
@@ -77,6 +78,8 @@ const HOLD_SECONDS = 5;
 const DIG = getenv("FORKOP_AUTOTUNE_DIG") || "dig";
 const CURL = getenv("FORKOP_AUTOTUNE_CURL") || "curl";
 const PROD_TABLE = constants.NFT_TABLE_NAME;
+// What an empty nfqws_opt runs (providers/zapret/common.uc).
+const DEFAULT_STRATEGY = getenv("ZAPRET_DEFAULT_NFQWS_OPT") || constants.ZAPRET_DEFAULT_NFQWS_OPT;
 const PROBE_TABLE = "ForkopAutotuneProbe";
 const GUARD_TABLES = [ "ForkopConfigRestoreDpiGuard", PROD_TABLE + "DpiGuard" ];
 const VERIFY_PROBES = 3;
@@ -187,20 +190,8 @@ function owner_of(sections, host, ip, fakeip) {
     return { decided: true, kind: r.route, rule: r.route_rule, outbound: r.outbound, ...scoped };
 }
 
-// One TCP/443 profile: the only strategy shape a TCP/443 candidate can
-// replace without dropping other traffic classes of the rule.
-function tcp443_profile(opt) {
-    let w = words(opt);
-    if (length(w) == 0 || index(w, "--new") >= 0) return false;
-    let tcp = 0;
-    for (let x in w) {
-        // "--filter-udp 443" (value as the next word) is accepted by nfqws too.
-        if (index([ "--filter-tcp", "--filter-udp", "--filter-l3", "--filter-l7" ], x) >= 0) return false;
-        if (substr(x, 0, 13) == "--filter-udp=" || substr(x, 0, 12) == "--filter-l3=") return false;
-        if (substr(x, 0, 13) == "--filter-tcp=") { if (x != "--filter-tcp=443") return false; tcp++; }
-    }
-    return tcp == 1;
-}
+// The strategy nfqws runs for an option value: empty means the default.
+function effective(opt) { let n = normalize(opt); return n != "" ? n : normalize(DEFAULT_STRATEGY); }
 
 // ---- candidate configuration ----------------------------------------------
 
@@ -531,7 +522,7 @@ function verify_production(plan, expected_opt, traffic) {
         status.supervisor_process_count == status.expected_process_count,
         type(status) == "object" ? sprintf("%d/%d running, %d supervisors", status.running_process_count, status.expected_process_count, status.supervisor_process_count) : "status unavailable");
     let saved = identity.read_record(CHILD_PID_DIR + "/" + plan.owner.section + ".pid");
-    let expected_args = [ "--qnum=" + plan.owner.queue, "--dpi-desync-fwmark=" + DESYNC_MARK, ...words(expected_opt) ];
+    let expected_args = [ "--qnum=" + plan.owner.queue, "--dpi-desync-fwmark=" + DESYNC_MARK, ...words(effective(expected_opt)) ];
     let argv = null;
     if (saved != null && identity.start_ticks(saved.pid) == saved.ticks) {
         argv = split(as_string(fs.readfile("/proc/" + saved.pid + "/cmdline")), "\0");
@@ -647,16 +638,20 @@ function plan(selection_file, resolver) {
     if (owner.kind != "zapret") { result.status = "not_applicable"; result.reason = "target_not_handled_by_dpi_rule"; return result; }
     let section = find_section(sections, owner.section);
     let current = section.options.nfqws_opt;
-    result.current_strategy = current == null ? null : normalize(current);
-    result.proposed_strategy = normalize(checked.nfqws_opt);
+    result.current_strategy = normalize(current);
     result.scope = { rule: owner.section, matchers: rule_scope(section) };
-    if (current == null || trim(current) == "") { result.status = "not_applicable"; result.reason = "default_strategy_not_tcp443_scoped"; return result; }
-    if (!tcp443_profile(current)) { result.status = "not_applicable"; result.reason = "strategy_not_tcp443_scoped"; return result; }
-    if (normalize(current) == normalize(checked.nfqws_opt)) { result.status = "no_change_required"; result.reason = "candidate_already_active"; return result; }
-    let candidate = build_candidate(text, owner.section, normalize(checked.nfqws_opt));
+    // Only the TCP/443 profile is replaced; the other profiles of the rule
+    // (HTTP, QUIC) stay word for word. An empty option is the default
+    // strategy, made explicit here.
+    let splice = dpi_strategy.tcp443_splice(effective(current), checked.nfqws_opt);
+    if (splice.error) { result.status = "not_applicable"; result.reason = splice.error; return result; }
+    result.proposed_strategy = splice.opt;
+    result.profile = { index: splice.profile, before: splice.before, after: splice.after };
+    if (splice.opt == effective(current)) { result.status = "no_change_required"; result.reason = "candidate_already_active"; return result; }
+    let candidate = build_candidate(text, owner.section, splice.opt);
     if (candidate.error) { result.status = "failed"; result.reason = candidate.error; return result; }
     result.candidate_hash = candidate.hash;
-    result.changes = [ { section: owner.section, option: "nfqws_opt", from: normalize(current), to: normalize(checked.nfqws_opt) } ];
+    result.changes = [ { section: owner.section, option: "nfqws_opt", from: normalize(current), to: splice.opt } ];
     result.status = "ready";
     result.reason = null;
     result.created_at = now();
@@ -774,8 +769,8 @@ function stale_reason(p, resolver) {
     // must still be a supported TCP/443 profile replacing a TCP/443 profile.
     let entry = catalog.find(p.selected);
     let checked = entry ? catalog.validate_entry(entry) : null;
-    if (checked == null || checked.state != "supported" || checked.protocol != "tcp" ||
-        normalize(checked.nfqws_opt) != p.changes[0].to || !tcp443_profile(p.changes[0].from) || !tcp443_profile(p.changes[0].to))
+    let splice = checked != null ? dpi_strategy.tcp443_splice(effective(p.changes[0].from), checked.nfqws_opt) : null;
+    if (checked == null || checked.state != "supported" || checked.protocol != "tcp" || splice.error || splice.opt != p.changes[0].to)
         return "candidate_invalid";
     return null;
 }

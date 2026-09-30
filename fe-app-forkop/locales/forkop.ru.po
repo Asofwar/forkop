@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-30 19:52+0300\n"
-"PO-Revision-Date: 2026-09-30 19:52+0300\n"
+"POT-Creation-Date: 2026-09-30 20:47+0300\n"
+"PO-Revision-Date: 2026-09-30 20:47+0300\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -3542,6 +3542,9 @@ msgstr "Рекомендация ещё не подтверждена."
 msgid "The recommendation is outdated: the configuration changed after the check. Run the check again."
 msgstr "Рекомендация устарела: конфигурация изменилась после проверки. Запустите проверку ещё раз."
 
+msgid "The recommended strategy is not an HTTPS (TCP/443) strategy."
+msgstr "Рекомендованная стратегия не является стратегией для HTTPS (TCP/443)."
+
 msgid "The record of the last autotune change is damaged, and the last known working configuration is missing. Restore a snapshot in History and recovery: it becomes the last known working one, and the change can then be rolled back here."
 msgstr "Запись о последнем изменении автоподбора повреждена, а последней рабочей конфигурации нет. Восстановите снимок в разделе «История и восстановление»: он станет последней рабочей конфигурацией, и тогда изменение можно будет откатить здесь."
 
@@ -3599,11 +3602,23 @@ msgstr "правило не может использовать само себ�
 msgid "The rule has a custom strategy; Forkop X keeps it."
 msgstr "У правила своя стратегия; Forkop X её не меняет."
 
+msgid "The rule has no strategy."
+msgstr "У правила нет стратегии."
+
 msgid "The rule is limited to devices: the result holds for them. Forkop X checks a change with router requests sent through the queue of this rule."
 msgstr "Правило ограничено устройствами: результат относится к ним. Изменение Forkop X проверяет запросами роутера, отправленными через очередь этого правила."
 
 msgid "The rule matches the same traffic as before. Closing the window without saving discards the conversion."
 msgstr "Правило сопоставляет тот же трафик, что и раньше. Закрытие окна без сохранения отменяет конвертацию."
+
+msgid "The rule strategy handles HTTPS together with other traffic in one profile; Forkop X does not split it. Give HTTPS (--filter-tcp=443) its own profile."
+msgstr "Стратегия правила обрабатывает HTTPS вместе с другим трафиком в одном профиле; Forkop X не разделяет его. Выделите для HTTPS (--filter-tcp=443) отдельный профиль."
+
+msgid "The rule strategy has no HTTPS (TCP/443) profile."
+msgstr "В стратегии правила нет профиля для HTTPS (TCP/443)."
+
+msgid "The rule strategy writes a filter as two words (--filter-tcp 443); write it as --filter-tcp=443."
+msgstr "В стратегии правила фильтр записан двумя словами (--filter-tcp 443); запишите его как --filter-tcp=443."
 
 msgid "The rule that routes it cannot be determined unambiguously (for example, a remote list comes first)."
 msgstr "Правило, по которому она идёт, нельзя определить однозначно (например, выше стоит удалённый список)."

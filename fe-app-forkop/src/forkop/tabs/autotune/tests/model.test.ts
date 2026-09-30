@@ -585,6 +585,14 @@ describe('manual apply', () => {
     expect(view('refused', 'dpi_guard_present').text).toContain(
       'DPI protection is active',
     );
+    // The rule strategy cannot take the recommendation (only its TCP/443
+    // profile is replaced): the reason is named, not a bare refusal.
+    expect(
+      view('refused', 'plan_not_applicable:tcp443_profile_shared').text,
+    ).toContain('--filter-tcp=443');
+    expect(
+      view('refused', 'plan_not_applicable:no_tcp443_profile').text,
+    ).toContain('no HTTPS (TCP/443) profile');
     // A guard a failed service change kept (UC-019): the configuration did
     // not change, and a restart, not a new check, is what is needed.
     for (const outcome of ['stale', 'refused'])

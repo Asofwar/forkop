@@ -20400,7 +20400,31 @@ var STALE_REASONS = [
   "plan_candidate_differs",
 ];
 var BUSY_REASONS = ["service_action_in_progress", "reload_pending"];
+function strategyShapeText(reason) {
+  switch (reason) {
+    case "tcp443_profile_shared":
+      return _(
+        "The rule strategy handles HTTPS together with other traffic in one profile; Forkop X does not split it. Give HTTPS (--filter-tcp=443) its own profile.",
+      );
+    case "no_tcp443_profile":
+      return _("The rule strategy has no HTTPS (TCP/443) profile.");
+    case "strategy_unparsed":
+      return _(
+        "The rule strategy writes a filter as two words (--filter-tcp 443); write it as --filter-tcp=443.",
+      );
+    case "strategy_empty":
+      return _("The rule has no strategy.");
+    case "candidate_not_tcp443":
+      return _("The recommended strategy is not an HTTPS (TCP/443) strategy.");
+    default:
+      return null;
+  }
+}
 function refusalText(reason) {
+  const shape = strategyShapeText(
+    (reason ?? "").replace(/^plan_not_applicable:/, ""),
+  );
+  if (shape) return `${_("The strategy was not applied")}. ${shape}`;
   switch (reason) {
     case "not_confirmed":
       return _("The recommendation is not confirmed yet.");

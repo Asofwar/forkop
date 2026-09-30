@@ -200,6 +200,8 @@ fixture_fail() { echo "start-dpi: $1" | tee -a "$STATE/fixture.error" >&2; exit 
 bound() { grep -q "^ 4000  *$1 " "$FORKOP_AUTOTUNE_PROC_QUEUE"; }
 released() { ! bound "$1"; }
 opt="$(awk '/^config / { in_s = ($0 ~ /^config section .?Dpi.?$/) } in_s && $1 == "option" && $2 == "nfqws_opt" { sub(/^[ \t]*option nfqws_opt[ \t]+/, ""); gsub(/^'"'"'|'"'"'$/, ""); print }' "$FORKOP_CONFIG_FILE")"
+# An empty option runs the provider default, as the real runtime does.
+[ -n "$opt" ] || opt="$ZAPRET_DEFAULT_NFQWS_OPT"
 old="$(head -n 1 "$ZAPRET_CHILD_PID_DIR/Dpi.pid" 2>/dev/null || true)"
 if [ -n "$old" ]; then
   kill "$old" 2>/dev/null || true
@@ -218,6 +220,8 @@ print(sprintf("%J\n", { ready: !broken, conflict: false, expected_process_count:
 UC
 chmod +x "$WORK/bin/ucode" "$WORK/bin/forkop" "$WORK/bin/nft" "$WORK/bin/curl" "$WORK/bin/dig" "$WORK/bin/uci" "$WORK/reload" "$STATE/start-dpi"
 
+# A short provider default with the three profiles of the real one (HTTP, TLS, QUIC).
+export ZAPRET_DEFAULT_NFQWS_OPT='--filter-tcp=80 --dpi-desync=fake --new --filter-tcp=443 --dpi-desync=fake --dpi-desync-fooling=badsum --new --filter-udp=443 --dpi-desync=fake'
 FAKE='--filter-tcp=443 --dpi-desync=fake --dpi-desync-fooling=badsum --dpi-desync-fake-tls-mod=rnd,dupsid,sni=www.google.com'
 MULTISPLIT='--filter-tcp=443 --dpi-desync=multisplit --dpi-desync-split-pos=1,midsld'
 write_config() {
@@ -552,10 +556,15 @@ reset_apply; selection multisplit other.org; at plan "$WORK/selection.json"
 json 'a.equal(r.status, "not_applicable"); a.equal(r.reason, "rule_owner_undecidable:undecidable_matcher");' "$WORK/out.json"
 selection multisplit ads.example; at plan "$WORK/selection.json"
 json 'a.equal(r.status, "not_applicable"); a.equal(r.reason, "target_not_handled_by_dpi_rule");' "$WORK/out.json"
-reset_apply "--filter-tcp=443 --dpi-desync=fake --new --filter-udp=443 --dpi-desync=fake"; selection multisplit; at plan "$WORK/selection.json"
-json 'a.equal(r.status, "not_applicable"); a.equal(r.reason, "strategy_not_tcp443_scoped");' "$WORK/out.json"
-reset_apply; sed -i "/option nfqws_opt '--filter-tcp/d" "$FORKOP_CONFIG_FILE"; selection multisplit; at plan "$WORK/selection.json"
-json 'a.equal(r.status, "not_applicable"); a.equal(r.reason, "default_strategy_not_tcp443_scoped");' "$WORK/out.json"
+# Several profiles: only the TCP/443 profile is replaced, the others stay.
+reset_apply "--filter-tcp=443 --hostlist=/opt/zapret/ipset/yt.txt --dpi-desync=fake --new --filter-udp=443 --dpi-desync=fake"; selection multisplit; at plan "$WORK/selection.json"
+json 'a.equal(r.status, "ready", r.reason); a.equal(r.profile.index, 0);
+  a.equal(r.changes[0].to, "--filter-tcp=443 --hostlist=/opt/zapret/ipset/yt.txt --dpi-desync=multisplit --dpi-desync-split-pos=1,midsld --new --filter-udp=443 --dpi-desync=fake");' "$WORK/out.json"
+# A profile that takes TCP/443 together with other traffic is not split.
+reset_apply "--filter-tcp=80,443 --dpi-desync=fake"; selection multisplit; at plan "$WORK/selection.json"
+json 'a.equal(r.status, "not_applicable"); a.equal(r.reason, "tcp443_profile_shared");' "$WORK/out.json"
+reset_apply "--filter-udp=443 --dpi-desync=fake"; selection multisplit; at plan "$WORK/selection.json"
+json 'a.equal(r.status, "not_applicable"); a.equal(r.reason, "no_tcp443_profile");' "$WORK/out.json"
 reset_apply; node -e 'const fs=require("fs");const f=process.argv[1];const c=JSON.parse(fs.readFileSync(f,"utf8"));const r=c.route.rules;const m=r.splice(5,1)[0];r.splice(3,0,m);fs.writeFileSync(f,JSON.stringify(c))' "$FORKOP_AUTOTUNE_SINGBOX_CONFIG"
 selection multisplit; at plan "$WORK/selection.json"
 json 'a.equal(r.status, "not_applicable"); a.match(r.reason, /undecidable_matcher/);' "$WORK/out.json"
@@ -1209,7 +1218,7 @@ ok "group SIGHUP during checks -> interrupted_before_mutation; inherited SIG_IGN
 
 # Plan inputs: separate-value filter forms, uncommitted uci changes, resolver.
 reset_apply "--filter-tcp=443 --dpi-desync=fake --filter-udp 443"; selection multisplit; at plan "$WORK/selection.json"
-json 'a.equal(r.status, "not_applicable"); a.equal(r.reason, "strategy_not_tcp443_scoped");' "$WORK/out.json"
+json 'a.equal(r.status, "not_applicable"); a.equal(r.reason, "strategy_unparsed");' "$WORK/out.json"
 reset_apply; plan_ready; echo "forkop.Dpi.enabled='0'" > "$FORKOP_AUTOTUNE_UCI_SAVEDIR/forkop"; at apply "$WORK/plan.json"
 json 'a.equal(r.status, "stale"); a.equal(r.reason, "uncommitted_uci_changes");' "$WORK/out.json"
 [ "$(reloads)" = 0 ] || fail "applied with uncommitted uci changes"
@@ -1362,5 +1371,25 @@ reset_apply; rm -f "$STATE/verify.nft"; plan_ready; at apply "$WORK/plan.json"
 json 'a.equal(r.status, "applied"); a.equal(r.verification.traffic.mode, undefined); a.ok(r.verification.checks.find((c) => c.name === "traffic_rule_path").ok);' "$WORK/out.json"
 [ ! -e "$STATE/verify.nft" ] || fail "an unscoped rule used the marked path"
 ok "unscoped rule: still verified with production requests through sing-box"
+
+# The default strategy (an empty option): made explicit, only its TCP/443
+# profile replaced; the rule then runs the result and is known as the candidate.
+reset_apply; sed -i "/option nfqws_opt '--filter-tcp/d" "$FORKOP_CONFIG_FILE"; "$STATE/start-dpi"
+ucode -L "$LIB" "$LIB/config/snapshots.uc" confirm-working > /dev/null; PRE_HASH="$(chash)"
+plan_ready
+json 'a.equal(r.status, "ready", r.reason); a.equal(r.changes[0].from, ""); a.equal(r.profile.index, 1);
+  a.equal(r.changes[0].to, process.env.ZAPRET_DEFAULT_NFQWS_OPT.split(" --new ").map((p, i) => i === 1
+    ? "--filter-tcp=443 --dpi-desync=multisplit --dpi-desync-split-pos=1,midsld" : p).join(" --new "));' "$WORK/plan.json"
+at apply "$WORK/plan.json"
+json 'a.equal(r.status, "applied", JSON.stringify(r).slice(0, 400)); a.ok(r.verification.checks.find((c) => c.name === "nfqws_arguments").ok);' "$WORK/out.json"
+case "$(dpi_args)" in *"--filter-tcp=80 --dpi-desync=fake --new --filter-tcp=443 --dpi-desync=multisplit"*"--new --filter-udp=443 --dpi-desync=fake"*) ;;
+  *) fail "default strategy: the other profiles did not survive: $(dpi_args)";; esac
+cat > "$WORK/view.uc" <<'UC'
+let d = require("core.dpi_strategy");
+let opt = trim(split(require("fs").readfile(ARGV[0]), "option nfqws_opt '")[1]);
+print(d.view({ action: "zapret", nfqws_opt: substr(opt, 0, index(opt, "'")) }).dpi_strategy, "\n");
+UC
+[ "$(ucode -L "$LIB" "$WORK/view.uc" "$FORKOP_CONFIG_FILE")" = multisplit ] || fail "the spliced default is not known as the candidate"
+ok "default strategy: only its TCP/443 profile replaced, applied, known as the candidate"
 
 printf 'autotune_apply: PASS (%d checks)\n' "$pass"

@@ -425,7 +425,8 @@ function save_concurrent_edit(keep) {
 // one that lands during the target reload (or validation) keeps the file as it
 // is instead of putting `before` back, saves it as a snapshot (keep: the ids
 // that snapshot may not push out) and ends needs_attention with the guard
-// active, since no reload proved a coherent runtime (UC-023).
+// active, since no reload proved a coherent runtime; when a stop skipped the
+// reload, the guard goes as described above (UC-023).
 function guarded_replace(before, content, pre, on_success, reason, apply_mode, on_stopped, keep) {
     // A guard left by an earlier needs_attention protects a runtime no reload
     // has proved yet: only this call's own guard may go without a reload.
@@ -448,13 +449,19 @@ function guarded_replace(before, content, pre, on_success, reason, apply_mode, o
         if (!restore_guard(true)) result = { status: "needs_attention", reason: "guard_release_failed", guard: "active" };
         else result = on_success();
     }
+    else if (!config_holds(content)) {
+        let saved = save_concurrent_edit([ pre.snapshot.id, ...(keep || []) ]);
+        // A stopped runtime has nothing a guard could protect (see above).
+        if (target != "stopped")
+            result = { status: "needs_attention", reason: "config_changed_during_transaction", guard: "active", saved_snapshot: saved };
+        else if (!restore_guard(true)) result = { status: "needs_attention", reason: "guard_release_failed", guard: "active" };
+        else result = { status: "needs_attention", reason: "config_changed_during_transaction", guard: "inactive",
+            runtime: "stopped", saved_snapshot: saved };
+    }
     else if (target == "stopped" && on_stopped != null) {
         if (!restore_guard(true)) result = { status: "needs_attention", reason: "guard_release_failed", guard: "active" };
         else result = on_stopped();
     }
-    else if (!config_holds(content))
-        result = { status: "needs_attention", reason: "config_changed_during_transaction", guard: "active",
-            saved_snapshot: save_concurrent_edit([ pre.snapshot.id, ...(keep || []) ]) };
     else if (!atomic(CONFIG, before))
         result = { status: "needs_attention", reason: "config_rollback_failed", guard: "active" };
     else {

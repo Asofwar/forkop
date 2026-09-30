@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-30 06:48+0000\n"
-"PO-Revision-Date: 2026-09-30 06:48+0000\n"
+"POT-Creation-Date: 2026-09-30 07:02+0000\n"
+"PO-Revision-Date: 2026-09-30 07:02+0000\n"
 "Last-Translator: Asofwar <7397608+Asofwar@users.noreply.github.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -3948,15 +3948,15 @@ msgstr ""
 msgid "Restore configuration snapshot?"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:349
+#: src/forkop/tabs/history/model.ts:356
 msgid "Restore did not finish: the configuration was changed while the snapshot was being applied. The change is kept and saved as a snapshot (\"Edited during a rollback\"); the DPI guard stays active. Restore the snapshot you need to finish."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:357
+#: src/forkop/tabs/history/model.ts:364
 msgid "Restore did not finish: the service was busy and only queued the reload. The DPI guard stays active; restore again when the service is idle."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:366
+#: src/forkop/tabs/history/model.ts:373
 msgid "Restore failed; check the recovery state before retrying"
 msgstr ""
 
@@ -3970,6 +3970,10 @@ msgstr ""
 
 #: src/forkop/tabs/history/model.ts:337
 msgid "Restore was not applied: Forkop X was stopped during the restore. The previous configuration is kept."
+msgstr ""
+
+#: src/forkop/tabs/history/model.ts:353
+msgid "Restore was not applied: Forkop X was stopped, and the configuration was changed during the restore. The change is kept and saved as a snapshot (\"Edited during a rollback\")."
 msgstr ""
 
 #: src/forkop/tabs/history/model.ts:312

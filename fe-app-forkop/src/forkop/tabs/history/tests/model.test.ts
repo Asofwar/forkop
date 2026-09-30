@@ -357,6 +357,15 @@ describe('restore result', () => {
     expect(edited.text).toContain('The change is kept');
     expect(edited.text).toContain('Edited during a rollback');
     expect(edited.text).toContain('DPI guard stays active');
+    // Forkop X stopped during the restore: nothing reloaded, no guard left.
+    const stopped = restoreResultToast({
+      status: 'needs_attention',
+      reason: 'config_changed_during_transaction',
+      runtime: 'stopped',
+    });
+    expect(stopped.text).toContain('was not applied');
+    expect(stopped.text).toContain('The change is kept');
+    expect(stopped.text).not.toContain('DPI guard');
   });
 
   it('asks for unsaved changes of this session to be applied first', () => {

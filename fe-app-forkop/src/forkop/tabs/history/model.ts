@@ -346,9 +346,16 @@ export function restoreResultToast(
       // reloaded: the change was kept instead of rolled back (UC-023).
       if (result.reason === 'config_changed_during_transaction')
         return {
-          text: _(
-            'Restore did not finish: the configuration was changed while the snapshot was being applied. The change is kept and saved as a snapshot ("Edited during a rollback"); the DPI guard stays active. Restore the snapshot you need to finish.',
-          ),
+          text:
+            // Forkop X was stopped: the snapshot was not reloaded, no
+            // guard is left.
+            result.runtime === 'stopped'
+              ? _(
+                  'Restore was not applied: Forkop X was stopped, and the configuration was changed during the restore. The change is kept and saved as a snapshot ("Edited during a rollback").',
+                )
+              : _(
+                  'Restore did not finish: the configuration was changed while the snapshot was being applied. The change is kept and saved as a snapshot ("Edited during a rollback"); the DPI guard stays active. Restore the snapshot you need to finish.',
+                ),
           type: 'error',
           duration: 12000,
         };

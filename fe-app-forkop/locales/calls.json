@@ -6635,21 +6635,21 @@
     "call": "Restore did not finish: the configuration was changed while the snapshot was being applied. The change is kept and saved as a snapshot (\"Edited during a rollback\"); the DPI guard stays active. Restore the snapshot you need to finish.",
     "key": "Restore did not finish: the configuration was changed while the snapshot was being applied. The change is kept and saved as a snapshot (\"Edited during a rollback\"); the DPI guard stays active. Restore the snapshot you need to finish.",
     "places": [
-      "src/forkop/tabs/history/model.ts:349"
+      "src/forkop/tabs/history/model.ts:356"
     ]
   },
   {
     "call": "Restore did not finish: the service was busy and only queued the reload. The DPI guard stays active; restore again when the service is idle.",
     "key": "Restore did not finish: the service was busy and only queued the reload. The DPI guard stays active; restore again when the service is idle.",
     "places": [
-      "src/forkop/tabs/history/model.ts:357"
+      "src/forkop/tabs/history/model.ts:364"
     ]
   },
   {
     "call": "Restore failed; check the recovery state before retrying",
     "key": "Restore failed; check the recovery state before retrying",
     "places": [
-      "src/forkop/tabs/history/model.ts:366"
+      "src/forkop/tabs/history/model.ts:373"
     ]
   },
   {
@@ -6671,6 +6671,13 @@
     "key": "Restore was not applied: Forkop X was stopped during the restore. The previous configuration is kept.",
     "places": [
       "src/forkop/tabs/history/model.ts:337"
+    ]
+  },
+  {
+    "call": "Restore was not applied: Forkop X was stopped, and the configuration was changed during the restore. The change is kept and saved as a snapshot (\"Edited during a rollback\").",
+    "key": "Restore was not applied: Forkop X was stopped, and the configuration was changed during the restore. The change is kept and saved as a snapshot (\"Edited during a rollback\").",
+    "places": [
+      "src/forkop/tabs/history/model.ts:353"
     ]
   },
   {

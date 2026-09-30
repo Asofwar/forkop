@@ -66,7 +66,8 @@ STUB
 # Reload outcomes are consumed one per call from $STATE/plan: 0 and 1 are
 # exit codes; e1/e0 first commit an edit (another writer, during the reload),
 # s1 rewrites only the lifecycle's shutdown_correctly flag, eq commits an edit
-# and answers like init.d behind a busy reload lock (queued).
+# and answers like init.d behind a busy reload lock (queued), es commits an
+# edit and answers like init.d while an explicit stop holds the runtime down.
 cat > "$WORK/reload" <<'STUB'
 #!/bin/sh
 set -- $(cat "$STATE/plan")
@@ -74,11 +75,12 @@ step="${1:-0}"; [ $# -eq 0 ] || shift
 echo "$*" > "$STATE/plan"
 echo "reload:$step:$(grep -o "marker '[a-z]*'" "$FORKOP_CONFIG_FILE")" >> "$STATE/events"
 case "$step" in
-  e*|eq) sed -i "s/option marker '[a-z]*'/option marker 'edit'/" "$FORKOP_CONFIG_FILE" ;;
+  e*) sed -i "s/option marker '[a-z]*'/option marker 'edit'/" "$FORKOP_CONFIG_FILE" ;;
   s*) sed -i "s/option shutdown_correctly '[01]'/option shutdown_correctly '1'/" "$FORKOP_CONFIG_FILE" ;;
 esac
 case "$step" in
   eq) echo queued; exit 0 ;;
+  es) echo stopped; exit 0 ;;
   *0) exit 0 ;;
   *) exit 1 ;;
 esac
@@ -162,6 +164,20 @@ restore absent "eq"
 [ "$(marker)" = edit ] && [ "$(reloads)" = 1 ] || fail "queued target: the edit was overwritten or a rollback reload ran"
 rm -f "$FORKOP_PENDING_RELOAD_FILE"
 ok "edit during a queued target reload -> kept, needs_attention"
+
+# 2a. An explicit stop skipped the target reload, and an edit landed
+#     meanwhile: the restore did not put the snapshot in place, so it is not
+#     reported as restored for the next start. No runtime runs that a guard
+#     could protect, so the guard goes (a kept one would outlive the start).
+config bad; echo stale > "$FORKOP_SNAPSHOT_DIR/last-known-working"
+restore absent "es"
+[ "$(field status)" = needs_attention ] && [ "$(field reason)" = config_changed_during_transaction ] ||
+  fail "edit while a stop skipped the target reload: $(cat "$WORK/result.json")"
+[ "$(field guard)" = inactive ] && [ "$(field runtime)" = stopped ] && [ "$(cat "$STATE/guard")" = absent ] ||
+  fail "stopped runtime: the guard must go: $(cat "$WORK/result.json"), guard $(cat "$STATE/guard")"
+[ "$(marker)" = edit ] && [ "$(reloads)" = 1 ] && [ "$(lkg)" = stale ] || fail "stopped runtime: edit overwritten, reloaded or LKG moved"
+[ -n "$(field saved_snapshot)" ] || fail "stopped runtime: the edit is not saved"
+ok "edit while a stop skipped the target reload -> kept, not reported as restored, guard released"
 
 # 3. The validator refuses the target, and an edit lands while it validates.
 config bad

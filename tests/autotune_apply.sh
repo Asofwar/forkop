@@ -28,7 +28,7 @@ export FORKOP_AUTOTUNE_SINGBOX_CONFIG="$WORK/sing-box.json"
 export FORKOP_RELOAD_LOCK_DIR="$WORK/run/reload.lock" FORKOP_PENDING_RELOAD_FILE="$WORK/run/reload.pending"
 export FORKOP_STOP_REQUESTED_FILE="$WORK/run/stop.requested"
 export FORKOP_EXPLICIT_START_FILE="$WORK/run/start.explicit"
-export FORKOP_AUTOTUNE_TMPDIR="$WORK/tmp" FORKOP_AUTOTUNE_UCI_SAVEDIR="$WORK/uci-save"
+export FORKOP_AUTOTUNE_TMPDIR="$WORK/tmp" FORKOP_AUTOTUNE_UCI_SAVEDIR="$WORK/uci-save" FORKOP_UCI_SAVEDIR="$WORK/uci-save"
 SECRET='SECRET-TOKEN-7f3a'
 mkdir -p "$STATE" "$WORK/config" "$WORK/etc" "$WORK/run" "$WORK/tmp" "$WORK/uci-save"
 
@@ -47,7 +47,9 @@ case "${3:-}" in
   */config/snapshots.uc)
     [ "${4:-}" != confirm-working ] || [ -z "${CONFIRM_FAIL:-}" ] || { echo '{"status":"failed","reason":"stub"}'; exit 1; }
     # EDIT_BEFORE_RESTORE: an edit (LuCI Save & Apply, another tab) lands right before a restore reads the file.
-    [ "${4:-}" != restore ] || [ -z "${EDIT_BEFORE_RESTORE:-}" ] || sed -i "s/option dns_rewrite_ttl '60'/option dns_rewrite_ttl '31'/" "$FORKOP_CONFIG_FILE" ;;
+    [ "${4:-}" != restore ] || [ -z "${EDIT_BEFORE_RESTORE:-}" ] || sed -i "s/option dns_rewrite_ttl '60'/option dns_rewrite_ttl '31'/" "$FORKOP_CONFIG_FILE"
+    # STAGE_BEFORE_RESTORE: `uci set` without a commit right before a restore.
+    [ "${4:-}" != restore ] || [ -z "${STAGE_BEFORE_RESTORE:-}" ] || echo "forkop.settings.dns_server='9.9.9.9'" > "$FORKOP_UCI_SAVEDIR/forkop" ;;
 esac
 exec "$REAL_UCODE" "$@"
 SH
@@ -253,7 +255,7 @@ reloads() { grep -c '^reload' "$STUB_LOG/reload.log" 2>/dev/null || true; }
 dpi_args() { tr '\0' ' ' < "/proc/$(head -n 1 "$ZAPRET_CHILD_PID_DIR/Dpi.pid")/cmdline"; }
 reset_apply() {
   reset_state
-  unset PROD_PLAN PROD_SLEEP PROD_QUEUE_BUMP PROD_REMOTE DIG_SLEEP GUARD_SLEEP VALIDATE_SLEEP VALIDATE_FAIL RELOAD_SLEEP UCI_FAIL UCI_EXTRA_CHANGE BREAK_FIRST_RELOAD CONFIRM_FAIL EDIT_BEFORE_RESTORE NFQWS_STUB_REJECT DIG_STUB_ANSWER \
+  unset PROD_PLAN PROD_SLEEP PROD_QUEUE_BUMP PROD_REMOTE DIG_SLEEP GUARD_SLEEP VALIDATE_SLEEP VALIDATE_FAIL RELOAD_SLEEP UCI_FAIL UCI_EXTRA_CHANGE BREAK_FIRST_RELOAD CONFIRM_FAIL EDIT_BEFORE_RESTORE STAGE_BEFORE_RESTORE NFQWS_STUB_REJECT DIG_STUB_ANSWER \
     LOCAL_DIG_ANSWER PROD_CHAINS CLASH_DOWN HOLD_SLEEP GUARD_FAIL GUARD_HOLD UCI_SLEEP
   pkill -f "$WORK/bin/nfqws --qnum=40" 2>/dev/null || true
   rm -rf "$FORKOP_SNAPSHOT_DIR" "$FORKOP_SNAPSHOT_HASH_DIR" "$FORKOP_AUTOTUNE_APPLY_STATE" "$STATE"/prod.* "$STATE/reload.plan" "$STATE/zapret-broken" "$STATE/broke-once"\
@@ -950,6 +952,23 @@ grep -q "option dns_rewrite_ttl '31'" "$FORKOP_CONFIG_FILE" || fail "the operato
 [ "$(reloads)" = 0 ] || fail "the operator rollback reloaded over an edit"
 json 'a.equal(r.phase, "applied"); a.equal(r.last_attempt.reason, "rollback_config_changed_during_transaction");' "$FORKOP_AUTOTUNE_APPLY_STATE"
 ok "UC-017 operator rollback racing an edit -> refused before any change, edit kept, record unchanged"
+
+# UC-068: changes staged with uci (no commit) would ride along any reload.
+# The rollback's restore refuses while they exist: the candidate stays, the
+# record stays unresolved (it blocks), and once the staged changes are
+# committed or reverted the operator's rollback completes.
+reset_apply; plan_ready; export PROD_PLAN=reset STAGE_BEFORE_RESTORE=1
+at apply "$WORK/plan.json"; unset PROD_PLAN STAGE_BEFORE_RESTORE
+json 'a.equal(r.status, "needs_attention", JSON.stringify(r).slice(0, 500)); a.equal(r.reason, "verification_failed:rollback_failed");
+  a.equal(r.rollback.reason, "uncommitted_uci_changes");' "$WORK/out.json"
+[ "$(reloads)" = 1 ] || fail "a restore reloaded with staged uci changes"
+[ "$(lkg)" = "$PRE_LKG" ] || fail "last-known-working moved"
+at status; json 'a.equal(r.diagnosis, "candidate_active"); a.equal(r.resolved, false);' "$WORK/out.json"
+at rollback; json 'a.equal(r.status, "failed"); a.equal(r.reason, "rollback_not_started:uncommitted_uci_changes");' "$WORK/out.json"
+rm -f "$WORK/uci-save/forkop"
+at rollback; json 'a.equal(r.status, "rolled_back", JSON.stringify(r).slice(0, 400));' "$WORK/out.json"
+[ "$(chash)" = "$PRE_HASH" ] || fail "the rollback after the staged changes were reverted did not restore the pre-apply configuration"
+ok "UC-068 staged uci changes -> no restore under them; rollback completes once they are gone"
 
 # Ctrl-C / SSH hangup reach the whole process group: the transaction runs in
 # its own session and completes; only the verdict is missing.

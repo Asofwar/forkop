@@ -24,6 +24,9 @@ const STOP_REQUESTED = getenv("FORKOP_STOP_REQUESTED_FILE") ||
 // phases in which that apply is finished.
 const AUTOTUNE_APPLY_STATE = getenv("FORKOP_AUTOTUNE_APPLY_STATE") || "/etc/forkop/autotune-apply.json";
 const AUTOTUNE_TERMINAL_PHASES = [ "applied", "rolled_back", "failed", "stale", "no_change_required", "needs_attention" ];
+// The save directory of `uci set` without a commit; libuci reads every
+// cursor through it (autotune/apply.uc and manager.uc check it too).
+const UCI_SAVEDIR = getenv("FORKOP_UCI_SAVEDIR") || "/tmp/.uci";
 const RETENTION = 10;
 
 function value(v) { return v == null ? "" : "" + v; }
@@ -334,6 +337,16 @@ function restore_guard_state() {
 function service_action() {
     return runtime_lock.busy(RELOAD_LOCK) || list_worker.running(LIB_DIR) ? "service_action_in_progress" : null;
 }
+// Changes to forkop staged with uci but not committed. The validator, the
+// generator and the lifecycle read the configuration through them, so a
+// restore would validate and load the snapshot plus these changes while LKG
+// names the pure snapshot (UC-068). LuCI keeps its unsaved changes per rpcd
+// session, outside this directory: no reload reads them (the History page
+// asks for those to be saved or reverted first).
+function staged_changes() {
+    let st = fs.stat(UCI_SAVEDIR + "/forkop");
+    return st != null && st.size > 0;
+}
 // A reload that was only queued (another lifecycle action took the reload
 // lock after the check above) exits 0 without touching the runtime. init.d
 // acknowledges it with a "queued" line for this caller's reason; a changed
@@ -498,8 +511,9 @@ function do_restore(id, expected) {
     if (before == null) return { status: "failed", reason: "config_unavailable" };
     if (expected != "" && sha(before) != expected && user_fingerprint(before) != expected)
         return { status: "needs_attention", reason: "config_changed_during_transaction", saved_snapshot: save_concurrent_edit([ id ]) };
-    // Refused before anything changes while the reload would only be queued
-    // behind a live lifecycle action.
+    // Refused before anything changes: staged changes would ride along, and
+    // the reload would only be queued behind a live lifecycle action.
+    if (staged_changes()) return { status: "failed", reason: "uncommitted_uci_changes" };
     let action = service_action();
     if (action != null) return { status: "busy", reason: action };
     let pre = create("automatic", "pre-restore", false, [ id ]);
@@ -594,10 +608,11 @@ else if (mode == "delete") {
 }
 else if (mode == "restore") {
     answer = do_restore(value(ARGV[1]), value(ARGV[2]));
-    // A busy refusal changed nothing and is not a restore attempt.
+    // A busy refusal changed nothing and is not a restore attempt, nor is a
+    // refusal because of staged uci changes.
     // A restore that an explicit stop kept from starting the runtime is no
     // success: nothing verified it.
-    if (answer.status != "busy")
+    if (answer.status != "busy" && answer.reason != "uncommitted_uci_changes")
         success([ "ucode", "-L", LIB_DIR, LIB_DIR + "/diagnostics/health.uc", "record", "restore",
             answer.status == "success" ? "success" : answer.status == "recovered" ? "recovered" :
             answer.status == "restored_not_started" ? "not_started" : "failure" ]);

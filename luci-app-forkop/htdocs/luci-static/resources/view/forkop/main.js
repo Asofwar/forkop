@@ -2932,10 +2932,18 @@ var ForkopShellMethods = {
       "/usr/bin/forkop",
       { allowNonZeroWithStdout: true },
     ),
-  autotuneTargetSet: async (id, host, enabled, resolver) =>
+  // A host target, or with an empty host a rule-list target: the sing-box
+  // rule set tag, how many domains are measured, pinned domains.
+  autotuneTargetSet: async (id, host, enabled, resolver, list) =>
     callBaseMethod(
       Forkop.AvailableMethods.AUTOTUNE_TARGET_SET,
-      [id, host, enabled ? "1" : "0", resolver],
+      [
+        id,
+        host,
+        enabled ? "1" : "0",
+        resolver,
+        ...(list ? [list.ruleSet, list.sample, list.pins.join(",")] : []),
+      ],
       "/usr/bin/forkop",
       { allowNonZeroWithStdout: true },
     ),
@@ -19972,6 +19980,12 @@ function outsideReasonText(reason) {
     case "not_a_dpi_rule":
     case "outbound_without_rule":
       return _("It is not routed by a DPI rule.");
+    case "list_not_local":
+    case "list_file_missing":
+    case "list_unreadable":
+    case "list_has_no_domains":
+    case "list_domains_unresolved":
+      return listErrorText(reason);
     default:
       return _("It is not in a DPI rule.");
   }
@@ -20091,7 +20105,9 @@ function inconclusiveText(reason) {
   return `${targetReasonText(reason)} ${_("The current strategy is kept.")}`;
 }
 function groupCards(status2, live2) {
-  const hosts = Object.fromEntries(status2.targets.map((t) => [t.id, t.host]));
+  const hosts = Object.fromEntries(
+    status2.targets.map((t) => [t.id, t.host ?? t.id]),
+  );
   const ids = /* @__PURE__ */ new Set([
     ...Object.keys(live2?.groups ?? {}),
     ...(live2 ? [] : Object.keys(status2.groups ?? {})),
@@ -20242,33 +20258,120 @@ function candidateRows(summary) {
       selected: candidate.id === summary.selected,
     }));
 }
-function targetRows(targets) {
-  return targets.map((target) => {
-    const last = target.last;
-    let result;
-    let tone = "neutral";
-    if (!target.enabled) {
-      result = _("Disabled");
-      tone = "muted";
-    } else if (!last) {
-      result = _("Not checked");
-    } else if (last.status === "selected" && last.selected) {
-      result = `${_("Best")}: ${strategyLabel(last.selected)} (${_("confidence")} ${confidenceLabel(last.confidence)})`;
-      tone = "success";
-    } else {
-      result = targetReasonText(last.reason) || _("No usable result");
-      tone = "warning";
-    }
-    return {
-      id: target.id,
-      host: target.host,
-      enabled: target.enabled,
-      resolver: target.resolver,
-      result,
-      tone,
-      checkedAt: last?.at ?? null,
-    };
-  });
+function ruleListName(tag, rule) {
+  if (/^inline-/.test(tag)) return _("custom list");
+  let name = tag.replace(/-ruleset$/, "").replace(/-community$/, "");
+  if (rule && name.startsWith(`${rule}-`)) name = name.slice(rule.length + 1);
+  return name || tag;
+}
+function ruleListLabel(tag, lists) {
+  const known = lists?.find((l) => l.tag === tag);
+  return known
+    ? `${known.label}: ${ruleListName(tag, known.rule)}`
+    : ruleListName(tag);
+}
+function listErrorText(reason) {
+  switch (reason) {
+    case "list_not_local":
+    case "list_file_missing":
+      return _(
+        "The list is not downloaded on the router; update the lists or save the rule.",
+      );
+    case "list_unreadable":
+      return _("The list could not be read.");
+    case "list_has_no_domains":
+      return _(
+        "The list has no domain names to check (only keywords, regular expressions or addresses).",
+      );
+    case "list_domains_unresolved":
+      return _("No domain of the list has an address at the DNS server.");
+    default:
+      return reason ? _("The list could not be read.") : "";
+  }
+}
+function listNote(list) {
+  if (list.error) return listErrorText(list.error);
+  const parts = [
+    list.pinned
+      ? _("Pinned domains: %d").replace("%d", String(list.members.length))
+      : _("Checked %d of %d domains")
+          .replace("%d", String(list.members.length))
+          .replace("%d", String(list.total)),
+  ];
+  if (list.missing.length)
+    parts.push(`${_("not in the list")}: ${list.missing.join(", ")}`);
+  if (list.skipped)
+    parts.push(
+      _("%d entries without a domain name are skipped").replace(
+        "%d",
+        String(list.skipped),
+      ),
+    );
+  return parts.join("; ");
+}
+function targetRows(targets, lists) {
+  const members = (parent) =>
+    targets
+      .filter((t) => t.parent === parent)
+      .map((t) => targetRow(t, lists, members));
+  return targets
+    .filter((t) => t.parent === void 0)
+    .map((t) => targetRow(t, lists, members));
+}
+function listRow(target, lists, members) {
+  const list = target.list ?? null;
+  let result = _("Not checked");
+  let tone = "neutral";
+  if (!target.enabled) {
+    result = _("Disabled");
+    tone = "muted";
+  } else if (list?.error) {
+    result = _("Nothing to check");
+    tone = "warning";
+  } else if (list) {
+    result = _("Domains: %d").replace("%d", String(list.members.length));
+  }
+  return {
+    id: target.id,
+    host: `${_("List")} ${ruleListLabel(target.rule_set ?? "", lists)}`,
+    enabled: target.enabled,
+    resolver: target.resolver,
+    result,
+    tone,
+    checkedAt: null,
+    list: {
+      note: target.enabled && list ? listNote(list) : "",
+      members: target.enabled ? members(target.id) : [],
+    },
+  };
+}
+function targetRow(target, lists, members) {
+  if (target.rule_set) return listRow(target, lists, members);
+  const last = target.last;
+  let result;
+  let tone = "neutral";
+  if (!target.enabled) {
+    result = _("Disabled");
+    tone = "muted";
+  } else if (!last) {
+    result = _("Not checked");
+  } else if (last.status === "selected" && last.selected) {
+    result = `${_("Best")}: ${strategyLabel(last.selected)} (${_("confidence")} ${confidenceLabel(last.confidence)})`;
+    tone = "success";
+  } else {
+    result = targetReasonText(last.reason) || _("No usable result");
+    tone = "warning";
+  }
+  return {
+    id: target.id,
+    host: target.host ?? target.id,
+    enabled: target.enabled,
+    resolver: target.resolver,
+    result,
+    tone,
+    checkedAt: last?.at ?? null,
+    list: null,
+  };
 }
 function workerView(worker) {
   if (!worker) return null;
@@ -20329,6 +20432,13 @@ function mutationErrorText(reason) {
       return _("The DNS server must be an IPv4 address.");
     case "too_many_targets":
       return _("The maximum number of targets is reached.");
+    case "invalid_rule_set":
+    case "host_and_rule_set":
+      return _("Choose a list of a DPI rule.");
+    case "invalid_sample":
+      return _("Check 1 to 8 domains of the list.");
+    case "invalid_pin":
+      return _("Pinned domains must be domain names, at most 8.");
     case "number_out_of_range":
     case "duration_out_of_range":
     case "invalid_number":
@@ -20338,8 +20448,8 @@ function mutationErrorText(reason) {
       return _("The change was not saved.");
   }
 }
-function targetIdFor(host, taken) {
-  const base = ("t_" + host.toLowerCase().replace(/[^a-z0-9]+/g, "_"))
+function targetIdFor(host, taken, prefix = "t_") {
+  const base = (prefix + host.toLowerCase().replace(/[^a-z0-9]+/g, "_"))
     .slice(0, 28)
     .replace(/_+$/, "");
   let id = base || "t";
@@ -21285,6 +21395,48 @@ function showPolicyEditor() {
 }
 function showTargetEditor(target) {
   if (!status) return;
+  const lists = status.lists ?? [];
+  const kind = E("select", { class: "cbi-input-select", name: "kind" }, [
+    E("option", { value: "host" }, _("Domain")),
+    E(
+      "option",
+      { value: "list", disabled: lists.length ? void 0 : true },
+      _("List of a rule"),
+    ),
+  ]);
+  kind.value = target?.rule_set ? "list" : "host";
+  const ruleSet = E("select", { class: "cbi-input-select", name: "rule_set" }, [
+    ...lists.map((l) =>
+      E("option", { value: l.tag }, ruleListLabel(l.tag, lists)),
+    ),
+    // A configured list the routing no longer sends to a DPI rule.
+    ...(target?.rule_set && !lists.some((l) => l.tag === target.rule_set)
+      ? [
+          E(
+            "option",
+            { value: target.rule_set },
+            ruleListLabel(target.rule_set, lists),
+          ),
+        ]
+      : []),
+  ]);
+  if (target?.rule_set) ruleSet.value = target.rule_set;
+  const sample = E("input", {
+    class: "cbi-input-text",
+    type: "number",
+    min: "1",
+    max: "8",
+    name: "sample",
+    value: String(target?.sample ?? 3),
+  });
+  const pins = E("input", {
+    class: "cbi-input-text",
+    type: "text",
+    name: "pins",
+    value: (target?.pins ?? []).join(", "),
+    placeholder: _("Automatically"),
+    autocomplete: "off",
+  });
   const host = E("input", {
     class: "cbi-input-text",
     type: "text",
@@ -21307,32 +21459,90 @@ function showTargetEditor(target) {
     checked: target ? (target.enabled ? true : void 0) : true,
   });
   const save = async () => {
+    const isList = kind.value === "list";
     const value = host.value.trim().toLowerCase();
-    if (!value) {
+    if (!isList && !value) {
       showToast(mutationErrorText("invalid_host"), "error");
+      return;
+    }
+    if (isList && !ruleSet.value) {
+      showToast(mutationErrorText("invalid_rule_set"), "error");
       return;
     }
     ui.hideModal();
     const taken = status?.targets.map((t) => t.id) ?? [];
-    const id = target?.id ?? targetIdFor(value, taken);
+    const id =
+      target?.id ??
+      (isList
+        ? targetIdFor(ruleSet.value.replace(/-ruleset$/, ""), taken, "l_")
+        : targetIdFor(value, taken));
     await mutate(
       () =>
         ForkopShellMethods.autotuneTargetSet(
           id,
-          value,
+          isList ? "" : value,
           enabled.checked,
           resolver.value.trim(),
+          isList
+            ? {
+                ruleSet: ruleSet.value,
+                sample: sample.value.trim(),
+                pins: pins.value
+                  .split(/[\s,]+/)
+                  .map((p) => p.trim().toLowerCase())
+                  .filter(Boolean),
+              }
+            : void 0,
         ),
       _("Target saved"),
     );
   };
+  const hostFields = field2(
+    _("Domain"),
+    host,
+    _("A site or service checked through the DPI rule that routes it."),
+  );
+  const listFields = [
+    ...field2(
+      _("List"),
+      ruleSet,
+      _(
+        "A list of a DPI rule. Each check takes a few of its domains; keywords and regular expressions are skipped.",
+      ),
+    ),
+    ...field2(
+      _("Domains to check"),
+      sample,
+      _(
+        "1\u20138 domains, spread evenly over the list; a domain without an address is replaced by the next one.",
+      ),
+    ),
+    ...field2(
+      _("Pinned domains"),
+      pins,
+      _("Optional, comma-separated: check exactly these domains of the list."),
+    ),
+  ];
+  const showKind = () => {
+    const isList = kind.value === "list";
+    for (const el of hostFields) el.style.display = isList ? "none" : "";
+    for (const el of listFields) el.style.display = isList ? "" : "none";
+  };
+  kind.addEventListener("change", showKind);
+  showKind();
   ui.showModal(target ? _("Edit target") : _("Add target"), [
     E("div", { class: "fkp-autotune__form" }, [
       ...field2(
-        _("Domain"),
-        host,
-        _("A site or service checked through the DPI rule that routes it."),
+        _("What to check"),
+        kind,
+        lists.length
+          ? _(
+              "A domain, or a list of a DPI rule measured through a few of its domains.",
+            )
+          : _("No DPI rule has a downloaded list; only domains can be added."),
       ),
+      ...hostFields,
+      ...listFields,
       ...field2(
         _("DNS server for checks"),
         resolver,
@@ -21348,7 +21558,7 @@ function showTargetEditor(target) {
 async function removeTarget(target) {
   const confirmed = await confirmAction({
     title: _("Remove target?"),
-    message: `${target.host}. ${_("Its measurements are deleted as well. Routing rules are not changed.")}`,
+    message: `${target.host ?? ruleListLabel(target.rule_set ?? target.id, status?.lists)}. ${_("Its measurements are deleted as well. Routing rules are not changed.")}`,
     confirmLabel: _("Remove"),
     danger: true,
   });
@@ -21362,7 +21572,7 @@ function showCandidates(target) {
   const last = target.last;
   if (!last) return;
   const rows = candidateRows(last);
-  ui.showModal(`${target.host}: ${_("last check")}`, [
+  ui.showModal(`${target.host ?? target.id}: ${_("last check")}`, [
     E(
       "p",
       { class: "fkp-autotune__muted" },
@@ -21806,7 +22016,13 @@ function renderGroups() {
               outside.map((item) =>
                 E("li", { class: "fkp-autotune__item" }, [
                   E("span", { class: "fkp-autotune__what" }, [
-                    E("strong", {}, item.host),
+                    E(
+                      "strong",
+                      {},
+                      status?.targets.find((t) => t.id === item.id)?.rule_set
+                        ? ruleListLabel(item.host, status?.lists)
+                        : item.host,
+                    ),
                     " \u2014 ",
                     outsideReasonText(item.reason),
                   ]),
@@ -21845,7 +22061,30 @@ function renderTargets() {
     return;
   }
   const byId = new Map(status.targets.map((t) => [t.id, t]));
-  const rows = targetRows(status.targets);
+  const rows = targetRows(status.targets, status.lists);
+  const memberItem = (row) => {
+    const target = byId.get(row.id);
+    return E("li", { class: "fkp-autotune__item" }, [
+      E("span", { class: "fkp-autotune__what" }, [row.host]),
+      renderStatus({ label: row.result, tone: row.tone }),
+      ...(row.checkedAt ? [timeNode(row.checkedAt)] : []),
+      ...(target.last && target.last.candidates.length
+        ? [
+            E("span", { class: "fkp-actions" }, [
+              E(
+                "button",
+                {
+                  type: "button",
+                  class: "btn cbi-button",
+                  click: () => showCandidates(target),
+                },
+                _("Details"),
+              ),
+            ]),
+          ]
+        : []),
+    ]);
+  };
   replace2(
     "autotune-targets",
     rows.length
@@ -21902,6 +22141,30 @@ function renderTargets() {
                       ]),
                     ]),
               ]),
+              ...(row.list
+                ? [
+                    E("div", { class: "fkp-autotune__members" }, [
+                      ...(row.list.note
+                        ? [
+                            E(
+                              "p",
+                              { class: "fkp-autotune__muted" },
+                              row.list.note,
+                            ),
+                          ]
+                        : []),
+                      ...(row.list.members.length
+                        ? [
+                            E(
+                              "ul",
+                              { class: "fkp-autotune__list" },
+                              row.list.members.map(memberItem),
+                            ),
+                          ]
+                        : []),
+                    ]),
+                  ]
+                : []),
             ]);
           }),
         )
@@ -22093,6 +22356,8 @@ var styles8 = `
     min-width: 0;
 }
 .fkp-autotune__item:first-child { border-top: 0; }
+/* The domains of a list target, under it and indented. */
+.fkp-autotune__members { flex: 1 1 100%; min-width: 0; padding-left: var(--fkp-space-3); border-left: 2px solid var(--fkp-border); }
 .fkp-autotune__what { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }
 .fkp-autotune__time { color: var(--fkp-tone-neutral); min-width: 0; }
 .fkp-autotune__table-wrap { width: 0; min-width: 100%; overflow-x: auto; }

@@ -383,15 +383,24 @@ export const ForkopShellMethods = {
       '/usr/bin/forkop',
       { allowNonZeroWithStdout: true },
     ),
+  // A host target, or with an empty host a rule-list target: the sing-box
+  // rule set tag, how many domains are measured, pinned domains.
   autotuneTargetSet: async (
     id: string,
     host: string,
     enabled: boolean,
     resolver: string,
+    list?: { ruleSet: string; sample: string; pins: string[] },
   ) =>
     callBaseMethod<Forkop.AutotuneMutationResult>(
       Forkop.AvailableMethods.AUTOTUNE_TARGET_SET,
-      [id, host, enabled ? '1' : '0', resolver],
+      [
+        id,
+        host,
+        enabled ? '1' : '0',
+        resolver,
+        ...(list ? [list.ruleSet, list.sample, list.pins.join(',')] : []),
+      ],
       '/usr/bin/forkop',
       { allowNonZeroWithStdout: true },
     ),

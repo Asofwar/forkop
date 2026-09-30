@@ -142,12 +142,38 @@ export namespace Forkop {
     candidates: AutotuneCandidateSummary[];
   }
 
+  // A rule-list target (autotune/lists.uc): the domains measured this time
+  // and why none could be taken.
+  export interface AutotuneListView {
+    tag: string;
+    total: number;
+    skipped: number;
+    pinned: boolean;
+    members: string[];
+    missing: string[];
+    error: string | null;
+  }
+
+  // A host target, a rule-list target (rule_set, host null) or a member of
+  // a rule-list target (parent: the list target's id).
   export interface AutotuneTarget {
     id: string;
-    host: string;
+    host: string | null;
     enabled: boolean;
     resolver: string | null;
     last: AutotuneTargetSummary | null;
+    rule_set?: string;
+    sample?: number;
+    pins?: string[];
+    list?: AutotuneListView | null;
+    parent?: string;
+  }
+
+  // A local list the routing sends to a DPI rule, for the target editor.
+  export interface AutotuneRuleList {
+    tag: string;
+    rule: string;
+    label: string;
   }
 
   export interface AutotuneGroupResult {
@@ -222,6 +248,7 @@ export namespace Forkop {
     policy: AutotunePolicy;
     errors: { option?: string; target?: string; error: string }[];
     targets: AutotuneTarget[];
+    lists?: AutotuneRuleList[];
     groups: Record<string, AutotuneGroupState>;
     next_run_at: number | null;
     worker: AutotuneWorker | null;

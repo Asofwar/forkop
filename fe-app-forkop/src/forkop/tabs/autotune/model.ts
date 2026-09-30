@@ -168,6 +168,12 @@ export function outsideReasonText(reason: string) {
     case 'not_a_dpi_rule':
     case 'outbound_without_rule':
       return _('It is not routed by a DPI rule.');
+    case 'list_not_local':
+    case 'list_file_missing':
+    case 'list_unreadable':
+    case 'list_has_no_domains':
+    case 'list_domains_unresolved':
+      return listErrorText(reason);
     default:
       return _('It is not in a DPI rule.');
   }
@@ -348,7 +354,9 @@ export function groupCards(
   status: Forkop.AutotuneStatus,
   live: Forkop.AutotuneGroups | null,
 ): GroupCard[] {
-  const hosts = Object.fromEntries(status.targets.map((t) => [t.id, t.host]));
+  const hosts = Object.fromEntries(
+    status.targets.map((t) => [t.id, t.host ?? t.id]),
+  );
   const ids = new Set<string>([
     ...Object.keys(live?.groups ?? {}),
     ...(live ? [] : Object.keys(status.groups ?? {})),
@@ -528,35 +536,151 @@ export interface TargetRow {
   result: string;
   tone: StatusTone;
   checkedAt: number | null;
+  // A rule-list target: what is measured and its members' rows.
+  list: { note: string; members: TargetRow[] } | null;
 }
 
-export function targetRows(targets: Forkop.AutotuneTarget[]): TargetRow[] {
-  return targets.map((target) => {
-    const last = target.last;
-    let result: string;
-    let tone: StatusTone = 'neutral';
-    if (!target.enabled) {
-      result = _('Disabled');
-      tone = 'muted';
-    } else if (!last) {
-      result = _('Not checked');
-    } else if (last.status === 'selected' && last.selected) {
-      result = `${_('Best')}: ${strategyLabel(last.selected)} (${_('confidence')} ${confidenceLabel(last.confidence)})`;
-      tone = 'success';
-    } else {
-      result = targetReasonText(last.reason) || _('No usable result');
-      tone = 'warning';
-    }
-    return {
-      id: target.id,
-      host: target.host,
-      enabled: target.enabled,
-      resolver: target.resolver,
-      result,
-      tone,
-      checkedAt: last?.at ?? null,
-    };
-  });
+// The name of a list from its sing-box tag: "<rule>-<list>-community-ruleset"
+// reads "<list>"; a list written in the rule itself is a custom list.
+export function ruleListName(tag: string, rule?: string | null) {
+  if (/^inline-/.test(tag)) return _('custom list');
+  let name = tag.replace(/-ruleset$/, '').replace(/-community$/, '');
+  if (rule && name.startsWith(`${rule}-`)) name = name.slice(rule.length + 1);
+  return name || tag;
+}
+
+// "YouTube: youtube" for the list of a rule, as the target editor and the
+// target list show it.
+export function ruleListLabel(
+  tag: string,
+  lists: Forkop.AutotuneRuleList[] | undefined,
+) {
+  const known = lists?.find((l) => l.tag === tag);
+  return known
+    ? `${known.label}: ${ruleListName(tag, known.rule)}`
+    : ruleListName(tag);
+}
+
+// Why a rule-list target measures nothing (autotune/lists.uc).
+export function listErrorText(reason: string | null | undefined) {
+  switch (reason) {
+    case 'list_not_local':
+    case 'list_file_missing':
+      return _(
+        'The list is not downloaded on the router; update the lists or save the rule.',
+      );
+    case 'list_unreadable':
+      return _('The list could not be read.');
+    case 'list_has_no_domains':
+      return _(
+        'The list has no domain names to check (only keywords, regular expressions or addresses).',
+      );
+    case 'list_domains_unresolved':
+      return _('No domain of the list has an address at the DNS server.');
+    default:
+      return reason ? _('The list could not be read.') : '';
+  }
+}
+
+function listNote(list: Forkop.AutotuneListView) {
+  if (list.error) return listErrorText(list.error);
+  const parts = [
+    list.pinned
+      ? _('Pinned domains: %d').replace('%d', String(list.members.length))
+      : _('Checked %d of %d domains')
+          .replace('%d', String(list.members.length))
+          .replace('%d', String(list.total)),
+  ];
+  if (list.missing.length)
+    parts.push(`${_('not in the list')}: ${list.missing.join(', ')}`);
+  if (list.skipped)
+    parts.push(
+      _('%d entries without a domain name are skipped').replace(
+        '%d',
+        String(list.skipped),
+      ),
+    );
+  return parts.join('; ');
+}
+
+// Rows of the configured targets; the members of a rule-list target are
+// the rows of its list.
+export function targetRows(
+  targets: Forkop.AutotuneTarget[],
+  lists?: Forkop.AutotuneRuleList[],
+): TargetRow[] {
+  const members = (parent: string) =>
+    targets
+      .filter((t) => t.parent === parent)
+      .map((t) => targetRow(t, lists, members));
+  return targets
+    .filter((t) => t.parent === undefined)
+    .map((t) => targetRow(t, lists, members));
+}
+
+function listRow(
+  target: Forkop.AutotuneTarget,
+  lists: Forkop.AutotuneRuleList[] | undefined,
+  members: (parent: string) => TargetRow[],
+): TargetRow {
+  const list = target.list ?? null;
+  let result = _('Not checked');
+  let tone: StatusTone = 'neutral';
+  if (!target.enabled) {
+    result = _('Disabled');
+    tone = 'muted';
+  } else if (list?.error) {
+    result = _('Nothing to check');
+    tone = 'warning';
+  } else if (list) {
+    result = _('Domains: %d').replace('%d', String(list.members.length));
+  }
+  return {
+    id: target.id,
+    host: `${_('List')} ${ruleListLabel(target.rule_set ?? '', lists)}`,
+    enabled: target.enabled,
+    resolver: target.resolver,
+    result,
+    tone,
+    checkedAt: null,
+    list: {
+      note: target.enabled && list ? listNote(list) : '',
+      members: target.enabled ? members(target.id) : [],
+    },
+  };
+}
+
+function targetRow(
+  target: Forkop.AutotuneTarget,
+  lists: Forkop.AutotuneRuleList[] | undefined,
+  members: (parent: string) => TargetRow[],
+): TargetRow {
+  if (target.rule_set) return listRow(target, lists, members);
+  const last = target.last;
+  let result: string;
+  let tone: StatusTone = 'neutral';
+  if (!target.enabled) {
+    result = _('Disabled');
+    tone = 'muted';
+  } else if (!last) {
+    result = _('Not checked');
+  } else if (last.status === 'selected' && last.selected) {
+    result = `${_('Best')}: ${strategyLabel(last.selected)} (${_('confidence')} ${confidenceLabel(last.confidence)})`;
+    tone = 'success';
+  } else {
+    result = targetReasonText(last.reason) || _('No usable result');
+    tone = 'warning';
+  }
+  return {
+    id: target.id,
+    host: target.host ?? target.id,
+    enabled: target.enabled,
+    resolver: target.resolver,
+    result,
+    tone,
+    checkedAt: last?.at ?? null,
+    list: null,
+  };
 }
 
 // Worker state for the summary line.
@@ -625,6 +749,13 @@ export function mutationErrorText(reason: string | undefined) {
       return _('The DNS server must be an IPv4 address.');
     case 'too_many_targets':
       return _('The maximum number of targets is reached.');
+    case 'invalid_rule_set':
+    case 'host_and_rule_set':
+      return _('Choose a list of a DPI rule.');
+    case 'invalid_sample':
+      return _('Check 1 to 8 domains of the list.');
+    case 'invalid_pin':
+      return _('Pinned domains must be domain names, at most 8.');
     case 'number_out_of_range':
     case 'duration_out_of_range':
     case 'invalid_number':
@@ -635,9 +766,10 @@ export function mutationErrorText(reason: string | undefined) {
   }
 }
 
-// A target id from its host: letters, digits and "_", unique among `taken`.
-export function targetIdFor(host: string, taken: string[]) {
-  const base = ('t_' + host.toLowerCase().replace(/[^a-z0-9]+/g, '_'))
+// A target id from its host (or "l_<list>" for a rule list): letters, digits
+// and "_", unique among `taken`.
+export function targetIdFor(host: string, taken: string[], prefix = 't_') {
+  const base = (prefix + host.toLowerCase().replace(/[^a-z0-9]+/g, '_'))
     .slice(0, 28)
     .replace(/_+$/, '');
   let id = base || 't';

@@ -10,7 +10,9 @@
 //   target <id>     the last full tune output of one target (read-only)
 //   groups          targets classified into DPI groups now (read-only; DNS)
 //   policy-set <option> <value>                     (write)
-//   target-set <id> <host> [enabled] [resolver]     (write)
+//   target-set <id> <host> [enabled] [resolver] [rule_set] [sample] [pins]
+//                   a host target, or with an empty host a rule-list
+//                   target (autotune/lists.uc); pins: comma-separated (write)
 //   target-remove <id>                              (write)
 //   run <all|group>     tune the targets of the groups now (write)
 //   if-due              the scheduled run, when enabled and due (cron); in
@@ -37,6 +39,8 @@ let hysteresis = require("autotune.hysteresis");
 let autoapply = require("autotune.autoapply");
 let identity = require("core.process_identity");
 let catalog = require("autotune.catalog");
+let lists_module = require("autotune.lists");
+let dpi_strategy = require("core.dpi_strategy");
 
 const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
 const CONFIG_FILE = getenv("FORKOP_CONFIG_FILE") || "/etc/config/" + (getenv("FORKOP_CONFIG_NAME") || "forkop");
@@ -48,6 +52,8 @@ const TMP_DIR = getenv("FORKOP_AUTOTUNE_TMPDIR") || "/tmp";
 const DIG = getenv("FORKOP_AUTOTUNE_DIG") || "dig";
 const STATE_DIR = getenv("FORKOP_AUTOTUNE_STATE_DIR") || "/var/run/forkop/autotune";
 const WORKER_LOCK = STATE_DIR + "/worker.lock";
+// Samples of rule-list targets (autotune/lists.uc), tmpfs.
+const LIST_CACHE_DIR = STATE_DIR + "/lists";
 const STATE_LOCK = STATE_DIR + "/state.lock";
 const JOBS_DIR = getenv("FORKOP_AUTOTUNE_JOBS_DIR") || STATE_DIR + "/jobs";
 const BIN = getenv("FORKOP_BIN") || "/usr/bin/forkop";
@@ -141,16 +147,87 @@ function apply_summary() {
     };
 }
 
+// The tune resolves the target itself and needs the real addresses, never
+// the FakeIP answers of production DNS: the resolver of the target, else the
+// first plain IPv4 bootstrap or upstream DNS server of Forkop.
+function resolver_for(t, sections) {
+    if (t.resolver) return { ip: t.resolver, source: "target" };
+    let settings = resolver.settings_of(sections);
+    for (let key in [ "bootstrap_dns_server", "dns_server" ]) {
+        let values = settings[key];
+        for (let v in type(values) == "array" ? values : [ values ])
+            if (probe_module.valid_ipv4(trim(as_string(v)))) return { ip: trim(as_string(v)), source: "settings" };
+    }
+    return null;
+}
+
+function singbox_config(sections) {
+    return resolver.load_json(SINGBOX_CONFIG != "" ? SINGBOX_CONFIG : resolver.singbox_config_path(sections));
+}
+
+// The targets measured: host targets as they are, a rule-list target as its
+// member targets "<id>__<n>" (autotune/lists.uc). A list that gives no
+// member, or a disabled one, stays one entry { list_error } that the groups
+// show as outside. { targets, lists: { id: list view } }.
+function expand_targets(sections, configured) {
+    let targets = [], lists = {}, local = null;
+    for (let t in configured) {
+        if (t.rule_set == null) { push(targets, t); continue; }
+        if (!t.enabled) { push(targets, { ...t, host: t.rule_set, list_error: "target_disabled" }); continue; }
+        if (local == null) local = lists_module.local_rule_sets(singbox_config(sections));
+        let dns = resolver_for(t, sections);
+        let view = lists_module.expand(t, local[t.rule_set], dns ? dns.ip : null, LIST_CACHE_DIR, TMP_DIR, now());
+        lists[t.id] = view;
+        if (length(view.members) == 0) { push(targets, { ...t, host: t.rule_set, list_error: view.error || "list_has_no_domains" }); continue; }
+        for (let i = 0; i < length(view.members); i++)
+            push(targets, { id: lists_module.member_id(t.id, i + 1), host: view.members[i], enabled: true,
+                resolver: t.resolver, parent: t.id });
+    }
+    return { targets, lists };
+}
+
+// The cached summary of a target, when it was measured for its host now: a
+// list member keeps its id when the sample changes.
+function summary_of(state, t) {
+    let s = state.targets[t.id];
+    return type(s) == "object" && (t.parent == null || s.host == t.host) ? s : null;
+}
+
+// Local lists the routing sends to an enabled DPI rule, for the target
+// editor: [{ tag, rule, label }].
+function rule_lists(sections, config) {
+    let local = lists_module.local_rule_sets(config), seen = {}, result = [];
+    let rules = type(config) == "object" && type(config.route) == "object" && type(config.route.rules) == "array" ? config.route.rules : [];
+    for (let r in rules) {
+        if (type(r) != "object" || (r.action || "route") != "route" || r.rule_set == null) continue;
+        let s = resolver.section_for_outbound(sections, r.outbound);
+        if (s == null || !dpi_strategy.is_dpi_action(s.options.action)) continue;
+        for (let tag in type(r.rule_set) == "array" ? r.rule_set : [ r.rule_set ]) {
+            if (local[tag] == null || seen[tag]) continue;
+            seen[tag] = true;
+            push(result, { tag, rule: s.name, label: as_string(s.options.label) || s.name });
+        }
+    }
+    return result;
+}
+
 function status() {
     let sections = config_sections();
     if (sections == null) return { status: "failed", reason: "config_unavailable" };
     let read = policy_module.read(sections);
     let state = state_module.read();
+    let expanded = expand_targets(sections, read.targets);
     return {
         status: "ok",
         policy: read.policy,
         errors: read.errors,
-        targets: map(read.targets, (t) => ({ ...t, last: state.targets[t.id] || null })),
+        // Configured targets, then the members of rule-list targets (parent).
+        targets: [
+            ...map(read.targets, (t) => ({ ...t, last: t.rule_set == null ? summary_of(state, t) : null,
+                list: expanded.lists[t.id] || null })),
+            ...map(filter(expanded.targets, (t) => t.parent != null), (t) => ({ ...t, last: summary_of(state, t) }))
+        ],
+        lists: rule_lists(sections, singbox_config(sections)),
         groups: state.groups,
         next_run_at: state.next_run_at,
         worker: worker_view(state.worker),
@@ -164,10 +241,11 @@ function target(id) {
     if (!state_module.valid_id(id)) return { status: "failed", reason: "invalid_target" };
     let sections = config_sections();
     if (sections == null) return { status: "failed", reason: "config_unavailable" };
-    let known = filter(policy_module.read(sections).targets, (t) => t.id == id);
+    let known = filter(expand_targets(sections, policy_module.read(sections).targets).targets, (t) => t.id == id && t.list_error == null);
     if (length(known) == 0) return { status: "failed", reason: "unknown_target" };
     let state = state_module.read();
-    return { status: "ok", target: known[0], last: state.targets[id] || null, full: state_module.load_full(id) };
+    let last = summary_of(state, known[0]);
+    return { status: "ok", target: known[0], last, full: last != null ? state_module.load_full(id) : null };
 }
 
 // ---- groups ----------------------------------------------------------------
@@ -185,16 +263,13 @@ function production_dns(host) {
         fakeip: length(answers) > 0 && length(fake) == length(answers) };
 }
 
-function singbox_config(sections) {
-    return resolver.load_json(SINGBOX_CONFIG != "" ? SINGBOX_CONFIG : resolver.singbox_config_path(sections));
-}
-
 // Targets classified into groups and the group results from the cached
 // target summaries. Strategy identities only, never raw strategies.
 function compute_groups(sections, targets, state) {
     let config = singbox_config(sections);
     let groups = {}, outside = [];
     for (let t in targets) {
+        if (t.list_error != null) { push(outside, { id: t.id, host: t.host, reason: t.list_error, detail: null }); continue; }
         if (!t.enabled) { push(outside, { id: t.id, host: t.host, reason: "target_disabled", detail: null }); continue; }
         let dns = production_dns(t.host);
         // A target names no device: a rule limited to devices owns it for
@@ -213,7 +288,7 @@ function compute_groups(sections, targets, state) {
         push(g.targets, t.id);
     }
     for (let name, g in groups)
-        g.result = groups_module.aggregate(map(g.targets, (id) => ({ id, summary: state.targets[id] || null })), g.current);
+        g.result = groups_module.aggregate(map(g.targets, (id) => ({ id, summary: summary_of(state, filter(targets, (t) => t.id == id)[0]) })), g.current);
     return { groups, outside };
 }
 
@@ -221,7 +296,7 @@ function groups() {
     let sections = config_sections();
     if (sections == null) return { status: "failed", reason: "config_unavailable" };
     let read = policy_module.read(sections);
-    return { status: "ok", ...compute_groups(sections, read.targets, state_module.read()) };
+    return { status: "ok", ...compute_groups(sections, expand_targets(sections, read.targets).targets, state_module.read()) };
 }
 
 // ---- cron ----------------------------------------------------------------------
@@ -336,10 +411,27 @@ function policy_set(key, value) {
     return { status: "ok", option: key, value: checked.value, previous: previous[key], cron };
 }
 
-function target_set(id, host, enabled, resolver_ip) {
+// Every state entry of a target: its own and those of its list members.
+function forget_target(state, id) {
+    for (let key in keys(state.targets))
+        if (key == id || substr(key, 0, length(id) + 2) == id + "__") delete state.targets[key];
+}
+
+function target_set(id, host, enabled, resolver_ip, rule_set, sample, pins) {
     if (!policy_module.valid_target_id(id)) return { status: "failed", reason: "invalid_target_id" };
     host = lc(as_string(host));
-    if (!probe_module.valid_host(host)) return { status: "failed", reason: "invalid_host" };
+    rule_set = as_string(rule_set);
+    sample = as_string(sample);
+    pins = uniq(filter(map(split(as_string(pins), /[ ,]+/), (p) => lc(trim(p))), (p) => p != ""));
+    let list = rule_set != "";
+    if (list) {
+        if (host != "") return { status: "failed", reason: "host_and_rule_set" };
+        if (!lists_module.valid_tag(rule_set)) return { status: "failed", reason: "invalid_rule_set" };
+        if (sample != "" && !lists_module.valid_sample(sample)) return { status: "failed", reason: "invalid_sample" };
+        if (length(pins) > lists_module.MAX_SAMPLE || length(filter(pins, (p) => !probe_module.valid_host(p))) > 0)
+            return { status: "failed", reason: "invalid_pin" };
+    }
+    else if (!probe_module.valid_host(host)) return { status: "failed", reason: "invalid_host" };
     enabled = enabled == null || as_string(enabled) == "" ? "1" : as_string(enabled);
     if (index([ "0", "1" ], enabled) < 0) return { status: "failed", reason: "invalid_enabled" };
     resolver_ip = as_string(resolver_ip);
@@ -351,15 +443,30 @@ function target_set(id, host, enabled, resolver_ip) {
     if (existing == null && length(filter(sections, (s) => s.type == "autotune_target")) >= policy_module.MAX_TARGETS)
         return { status: "refused", reason: "too_many_targets" };
     let path = CONFIG_PACKAGE + "." + id;
-    let ops = [ [ "set", path + "=autotune_target" ], [ "set", path + ".host=" + host ], [ "set", path + ".enabled=" + enabled ] ];
-    if (resolver_ip != "") push(ops, [ "set", path + ".resolver=" + resolver_ip ]);
     // uci delete of a missing option fails: only delete what exists.
-    else if (existing != null && existing.options.resolver != null) push(ops, [ "delete", path + ".resolver" ]);
+    let ops = [ [ "set", path + "=autotune_target" ], [ "set", path + ".enabled=" + enabled ] ];
+    let drop = (option) => { if (existing != null && existing.options[option] != null) push(ops, [ "delete", path + "." + option ]); };
+    if (resolver_ip != "") push(ops, [ "set", path + ".resolver=" + resolver_ip ]);
+    else drop("resolver");
+    drop("pin");
+    if (list) {
+        drop("host");
+        push(ops, [ "set", path + ".rule_set=" + rule_set ]);
+        if (sample != "") push(ops, [ "set", path + ".sample=" + sample ]); else drop("sample");
+        for (let p in pins) push(ops, [ "add_list", path + ".pin=" + p ]);
+    } else {
+        drop("rule_set");
+        drop("sample");
+        push(ops, [ "set", path + ".host=" + host ]);
+    }
     let result = uci_apply(ops);
     if (result.status != "ok") return result;
-    // Results measured for another host say nothing about the new one.
-    if (existing != null && lc(as_string(existing.options.host)) != host)
-        with_state((state) => { delete state.targets[id]; });
+    // Results measured for another host or list say nothing about the new one.
+    if (existing != null && (lc(as_string(existing.options.host)) != host || as_string(existing.options.rule_set) != rule_set))
+        with_state((state) => forget_target(state, id));
+    if (list)
+        return { status: "ok", target: { id, host: null, rule_set, sample: sample != "" ? int(sample) : lists_module.DEFAULT_SAMPLE,
+            pins, enabled: enabled == "1", resolver: resolver_ip || null } };
     return { status: "ok", target: { id, host, enabled: enabled == "1", resolver: resolver_ip || null } };
 }
 
@@ -371,7 +478,7 @@ function target_remove(id) {
     if (existing == null) return { status: "failed", reason: "unknown_target" };
     let result = uci_apply([ [ "delete", CONFIG_PACKAGE + "." + id ] ]);
     if (result.status != "ok") return result;
-    with_state((state) => { delete state.targets[id]; });
+    with_state((state) => forget_target(state, id));
     return { status: "ok", removed: id };
 }
 
@@ -399,19 +506,6 @@ function blocker(for_apply) {
     return null;
 }
 
-// The tune resolves the target itself and needs the real addresses, never
-// the FakeIP answers of production DNS: the resolver of the target, else the
-// first plain IPv4 bootstrap or upstream DNS server of Forkop.
-function resolver_for(t, sections) {
-    if (t.resolver) return { ip: t.resolver, source: "target" };
-    let settings = resolver.settings_of(sections);
-    for (let key in [ "bootstrap_dns_server", "dns_server" ]) {
-        let values = settings[key];
-        for (let v in type(values) == "array" ? values : [ values ])
-            if (probe_module.valid_ipv4(trim(as_string(v)))) return { ip: trim(as_string(v)), source: "settings" };
-    }
-    return null;
-}
 
 function tune_target(t, probes, dns_resolver) {
     // The policy value is an upper bound: a run has a fixed number of source
@@ -437,7 +531,7 @@ function merge(updates) {
         // Without the configuration nothing can be checked: only the run
         // itself is recorded.
         if (sections != null) {
-            let targets = policy_module.read(sections).targets;
+            let targets = expand_targets(sections, policy_module.read(sections).targets).targets;
             for (let id, summary in updates.targets) {
                 let t = filter(targets, (x) => x.id == id)[0];
                 if (t != null && t.host == summary.host) state.targets[id] = summary;
@@ -562,7 +656,8 @@ function run_locked(scope, trigger) {
 
     let reason = blocker();
     if (reason == null) {
-        let computed = compute_groups(sections, read.targets, local);
+        let measured = expand_targets(sections, read.targets).targets;
+        let computed = compute_groups(sections, measured, local);
         outside = computed.outside;
         chosen = choose(keys(computed.groups), scope, local.rotation);
         if (chosen == null) { unknown_group = true; chosen = []; }
@@ -572,7 +667,7 @@ function run_locked(scope, trigger) {
                 if (interrupted) { stop = "interrupted"; break; }
                 stop = blocker();
                 if (stop != null) break;
-                let t = filter(read.targets, (x) => x.id == id)[0];
+                let t = filter(measured, (x) => x.id == id)[0];
                 let dns_resolver = resolver_for(t, sections);
                 if (dns_resolver == null) { push(unmeasured, { id, reason: "resolver_missing" }); continue; }
                 let result = tune_target(t, policy.probes, dns_resolver.ip);
@@ -737,10 +832,11 @@ function manual_apply_locked(name, job) {
         return output;
     };
 
-    let fresh = manual_fresh(sections, read.targets, state, name, stored);
+    let measured = expand_targets(sections, read.targets).targets;
+    let fresh = manual_fresh(sections, measured, state, name, stored);
     if (fresh.reason) return finish(refuse(fresh.reason));
     let rep = fresh.result.representative;
-    let t = filter(read.targets, (x) => x.id == rep)[0];
+    let t = filter(measured, (x) => x.id == rep)[0];
     let full = state_module.load_full(rep);
     if (t == null || type(full) != "object" || full.status != "selected" || full.selected != candidate ||
         type(full.target) != "object" || full.target.host != t.host)
@@ -934,7 +1030,7 @@ if (mode == "status") output = status();
 else if (mode == "target") output = target(ARGV[1]);
 else if (mode == "groups") output = groups();
 else if (mode == "policy-set") output = policy_set(ARGV[1], ARGV[2]);
-else if (mode == "target-set") output = target_set(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
+else if (mode == "target-set") output = target_set(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6], ARGV[7]);
 else if (mode == "target-remove") output = target_remove(ARGV[1]);
 else if (index([ "run", "if-due", "run-job", "apply", "apply-job" ], mode) >= 0) {
     // A stop request ends the run after the current target.
@@ -952,7 +1048,7 @@ else if (mode == "cron-sync") output = cron_sync();
 else if (mode == "cron-remove") output = cron_remove();
 else {
     warn("Usage: autotune/manager.uc <status|target <id>|groups|policy-set <option> <value>|" +
-        "target-set <id> <host> [enabled] [resolver]|target-remove <id>|run <all|group>|if-due|" +
+        "target-set <id> <host> [enabled] [resolver] [rule_set] [sample] [pins]|target-remove <id>|run <all|group>|if-due|" +
         "run-async <all|group>|run-status <job>|apply <group>|apply-async <group>|rollback|cron-sync|cron-remove>\n");
     exit(1);
 }

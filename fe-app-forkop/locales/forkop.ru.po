@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-30 21:03+0300\n"
-"PO-Revision-Date: 2026-09-30 21:03+0300\n"
+"POT-Creation-Date: 2026-09-30 21:11+0300\n"
+"PO-Revision-Date: 2026-09-30 21:11+0300\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -28,6 +28,9 @@ msgstr "Соединений сейчас: %d"
 
 msgid "%d d"
 msgstr "%d дн."
+
+msgid "%d entries without a domain name are skipped"
+msgstr "пропущено записей без доменного имени: %d"
 
 msgid "%d h"
 msgstr "%d ч"
@@ -98,6 +101,9 @@ msgstr "+ Добавить URLTest"
 msgid "0–5; 0 turns automatic changes off."
 msgstr "0–5; 0 отключает автоматические изменения."
 
+msgid "1–8 domains, spread evenly over the list; a domain without an address is replaced by the next one."
+msgstr "1–8 доменов, равномерно по списку; домен без адреса заменяется следующим."
+
 msgid "3–7 attempts per strategy and target in each check."
 msgstr "3–7 попыток на стратегию и цель в каждой проверке."
 
@@ -122,6 +128,9 @@ msgstr "Восстановление конфигурации не заверш�
 msgid "A configuration restore did not finish. Traffic that needs DPI bypass stays blocked until you restore the last known good snapshot."
 msgstr "Восстановление конфигурации не завершено. Трафик, которому нужен обход DPI, блокируется, пока вы не восстановите снимок последней рабочей конфигурации."
 
+msgid "A domain, or a list of a DPI rule measured through a few of its domains."
+msgstr "Домен или список DPI-правила, который проверяется по нескольким его доменам."
+
 msgid "a failed change left the DPI guard in place; restart Forkop X"
 msgstr "неудавшееся изменение оставило защиту DPI; перезапустите Forkop X"
 
@@ -133,6 +142,9 @@ msgstr "Неудавшееся изменение оставило защиту 
 
 msgid "A group is one Zapret DPI rule. Forkop X changes only the strategy of an existing rule, for all its targets at once. It never creates or deletes rules and never turns DPI bypass off."
 msgstr "Группа — это одно DPI-правило Zapret. Forkop X меняет только стратегию существующего правила, сразу для всех его целей. Он никогда не создаёт и не удаляет правила и не отключает обход DPI."
+
+msgid "A list of a DPI rule. Each check takes a few of its domains; keywords and regular expressions are skipped."
+msgstr "Список DPI-правила. Каждая проверка берёт несколько его доменов; ключевые слова и регулярные выражения пропускаются."
 
 msgid "a previous apply is not resolved"
 msgstr "предыдущее применение не завершено"
@@ -416,6 +428,9 @@ msgstr "Автоматическая проверка обновлений ко�
 msgid "Automatic recovery did not finish."
 msgstr "Автоматическое восстановление не завершилось."
 
+msgid "Automatically"
+msgstr "Автоматически"
+
 msgid "Automatically add text to the name of each server from this subscription for convenient filtering."
 msgstr "Автоматически добавлять текст к имени каждого сервера из этой подписки для удобной фильтрации."
 
@@ -629,6 +644,9 @@ msgstr "Изменения после этого снимка"
 msgid "Check"
 msgstr "Проверить"
 
+msgid "Check 1 to 8 domains of the list."
+msgstr "Проверяйте от 1 до 8 доменов списка."
+
 msgid "Check a site or app"
 msgstr "Проверить сайт или приложение"
 
@@ -686,6 +704,9 @@ msgstr "URL проверки"
 msgid "Checked"
 msgstr "Проверено"
 
+msgid "Checked %d of %d domains"
+msgstr "Проверяется доменов: %d из %d"
+
 msgid "Checking targets"
 msgstr "Идёт проверка целей"
 
@@ -721,6 +742,9 @@ msgstr "Проверки выполняются на роутере и не по
 
 msgid "Checks that the parameters are valid. It does not test site reachability or bypass effectiveness."
 msgstr "Проверяет корректность параметров. Не проверяет доступность сайтов и эффективность обхода."
+
+msgid "Choose a list of a DPI rule."
+msgstr "Выберите список DPI-правила."
 
 msgid "Choose Forkop X version"
 msgstr "Выбор версии Forkop X"
@@ -934,6 +958,9 @@ msgstr "Текущую секцию нельзя использовать как
 
 msgid "Current section cannot download its own subscription"
 msgstr "Текущую секцию нельзя выбрать для скачивания её же подписки"
+
+msgid "custom list"
+msgstr "свой список"
 
 msgid "Custom outbound configurations in JSON format"
 msgstr "Пользовательские конфигурации outbound в формате JSON"
@@ -1174,6 +1201,9 @@ msgstr "Домены"
 
 msgid "Domains in rules may not resolve, or resolve past Forkop, so their rules do not apply."
 msgstr "Домены из правил могут не разрешаться или разрешаться в обход Forkop — тогда правила к ним не применяются."
+
+msgid "Domains to check"
+msgstr "Доменов для проверки"
 
 msgid "Domains: %d"
 msgstr "Домены: %d"
@@ -2075,8 +2105,14 @@ msgstr "Уровень"
 msgid "Level name"
 msgstr "Название уровня"
 
+msgid "List"
+msgstr "Список"
+
 msgid "List must be an HTTP(S) URL or a local .lst path"
 msgstr "Список должен быть HTTP(S) URL или локальным путём .lst"
+
+msgid "List of a rule"
+msgstr "Список из правила"
 
 msgid "List Update Frequency"
 msgstr "Частота обновления списков"
@@ -2282,6 +2318,12 @@ msgstr "Для этого имени нет DNS-записей"
 msgid "No DNS server for measurements: set a plain IPv4 DNS server in Forkop X or on the target."
 msgstr "Нет DNS-сервера для измерений: укажите обычный IPv4 DNS-сервер в настройках Forkop X или у цели."
 
+msgid "No domain of the list has an address at the DNS server."
+msgstr "Ни один домен списка не получил адрес от DNS-сервера."
+
+msgid "No DPI rule has a downloaded list; only domains can be added."
+msgstr "Ни у одного DPI-правила нет загруженного списка; можно добавить только домены."
+
 msgid "No events of this kind"
 msgstr "Событий этого типа нет"
 
@@ -2372,6 +2414,9 @@ msgstr "Ещё не проверялось"
 msgid "Not determined"
 msgstr "Не определено"
 
+msgid "not in the list"
+msgstr "нет в списке"
+
 msgid "Not installed"
 msgstr "Не установлено"
 
@@ -2401,6 +2446,9 @@ msgstr "Не поддерживается"
 
 msgid "not used"
 msgstr "не используется"
+
+msgid "Nothing to check"
+msgstr "Нечего проверять"
 
 msgid "Nothing was rolled back"
 msgstr "Ничего не откачено"
@@ -2479,6 +2527,9 @@ msgstr "Необязательное значение здесь нужно пе
 
 msgid "Optional values must be attached with '=' here; a separate token would be ignored by nfqws2."
 msgstr "Необязательные значения здесь должны задаваться через '='; отдельный токен будет проигнорирован nfqws2."
+
+msgid "Optional, comma-separated: check exactly these domains of the list."
+msgstr "Необязательно, через запятую: проверять именно эти домены списка."
 
 msgid "Original repositories could not be restored. Removal was cancelled before deleting packages."
 msgstr "Не удалось восстановить исходные репозитории. Удаление отменено до удаления пакетов."
@@ -2572,6 +2623,15 @@ msgstr "Периодически проверять текущий уровен�
 
 msgid "Pin on dashboard"
 msgstr "Закрепить в дашборде"
+
+msgid "Pinned domains"
+msgstr "Закреплённые домены"
+
+msgid "Pinned domains must be domain names, at most 8."
+msgstr "Закреплённые домены — это доменные имена, не больше 8."
+
+msgid "Pinned domains: %d"
+msgstr "Закреплённых доменов: %d"
 
 msgid "Policy"
 msgstr "Политика"
@@ -3509,6 +3569,15 @@ msgstr "Устаревшие условия нельзя конвертиров�
 msgid "The legacy settings are converted. Save the rule to keep the change."
 msgstr "Устаревшие настройки конвертированы. Сохраните правило, чтобы сохранить изменение."
 
+msgid "The list could not be read."
+msgstr "Список не удалось прочитать."
+
+msgid "The list has no domain names to check (only keywords, regular expressions or addresses)."
+msgstr "В списке нет доменных имён для проверки (только ключевые слова, регулярные выражения или адреса)."
+
+msgid "The list is not downloaded on the router; update the lists or save the rule."
+msgstr "Список не загружен на роутер; обновите списки или сохраните правило."
+
 msgid "The maximum number of targets is reached."
 msgstr "Достигнуто максимальное число целей."
 
@@ -4075,6 +4144,9 @@ msgstr "Что Forkop должен делать при совпадении эт
 
 msgid "What it means"
 msgstr "Что это значит"
+
+msgid "What to check"
+msgstr "Что проверять"
 
 msgid "What to do"
 msgstr "Что сделать"

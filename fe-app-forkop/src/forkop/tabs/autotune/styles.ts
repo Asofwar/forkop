@@ -85,6 +85,8 @@ export const styles = `
     min-width: 0;
 }
 .fkp-autotune__item:first-child { border-top: 0; }
+/* The domains of a list target, under it and indented. */
+.fkp-autotune__members { flex: 1 1 100%; min-width: 0; padding-left: var(--fkp-space-3); border-left: 2px solid var(--fkp-border); }
 .fkp-autotune__what { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }
 .fkp-autotune__time { color: var(--fkp-tone-neutral); min-width: 0; }
 .fkp-autotune__table-wrap { width: 0; min-width: 100%; overflow-x: auto; }

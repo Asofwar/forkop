@@ -38,9 +38,11 @@ import {
   strategyLabel,
   targetIdFor,
   targetRows,
+  ruleListLabel,
   workerView,
   type ApplyResultView,
   type GroupCard,
+  type TargetRow,
 } from './model';
 
 const REFRESH_INTERVAL_MS = 15000;
@@ -526,6 +528,49 @@ function showPolicyEditor() {
 
 function showTargetEditor(target?: Forkop.AutotuneTarget) {
   if (!status) return;
+  const lists = status.lists ?? [];
+  // A domain, or a list of a DPI rule measured through a few of its domains.
+  const kind = E('select', { class: 'cbi-input-select', name: 'kind' }, [
+    E('option', { value: 'host' }, _('Domain')),
+    E(
+      'option',
+      { value: 'list', disabled: lists.length ? undefined : true },
+      _('List of a rule'),
+    ),
+  ]) as HTMLSelectElement;
+  kind.value = target?.rule_set ? 'list' : 'host';
+  const ruleSet = E('select', { class: 'cbi-input-select', name: 'rule_set' }, [
+    ...lists.map((l) =>
+      E('option', { value: l.tag }, ruleListLabel(l.tag, lists)),
+    ),
+    // A configured list the routing no longer sends to a DPI rule.
+    ...(target?.rule_set && !lists.some((l) => l.tag === target.rule_set)
+      ? [
+          E(
+            'option',
+            { value: target.rule_set },
+            ruleListLabel(target.rule_set, lists),
+          ),
+        ]
+      : []),
+  ]) as HTMLSelectElement;
+  if (target?.rule_set) ruleSet.value = target.rule_set;
+  const sample = E('input', {
+    class: 'cbi-input-text',
+    type: 'number',
+    min: '1',
+    max: '8',
+    name: 'sample',
+    value: String(target?.sample ?? 3),
+  }) as HTMLInputElement;
+  const pins = E('input', {
+    class: 'cbi-input-text',
+    type: 'text',
+    name: 'pins',
+    value: (target?.pins ?? []).join(', '),
+    placeholder: _('Automatically'),
+    autocomplete: 'off',
+  }) as HTMLInputElement;
   const host = E('input', {
     class: 'cbi-input-text',
     type: 'text',
@@ -549,33 +594,94 @@ function showTargetEditor(target?: Forkop.AutotuneTarget) {
   }) as HTMLInputElement;
 
   const save = async () => {
+    const isList = kind.value === 'list';
     const value = host.value.trim().toLowerCase();
-    if (!value) {
+    if (!isList && !value) {
       showToast(mutationErrorText('invalid_host'), 'error');
+      return;
+    }
+    if (isList && !ruleSet.value) {
+      showToast(mutationErrorText('invalid_rule_set'), 'error');
       return;
     }
     ui.hideModal();
     const taken = status?.targets.map((t) => t.id) ?? [];
-    const id = target?.id ?? targetIdFor(value, taken);
+    const id =
+      target?.id ??
+      (isList
+        ? targetIdFor(ruleSet.value.replace(/-ruleset$/, ''), taken, 'l_')
+        : targetIdFor(value, taken));
     await mutate(
       () =>
         ForkopShellMethods.autotuneTargetSet(
           id,
-          value,
+          isList ? '' : value,
           enabled.checked,
           resolver.value.trim(),
+          isList
+            ? {
+                ruleSet: ruleSet.value,
+                sample: sample.value.trim(),
+                pins: pins.value
+                  .split(/[\s,]+/)
+                  .map((p) => p.trim().toLowerCase())
+                  .filter(Boolean),
+              }
+            : undefined,
         ),
       _('Target saved'),
     );
   };
 
+  const hostFields = field(
+    _('Domain'),
+    host,
+    _('A site or service checked through the DPI rule that routes it.'),
+  );
+  const listFields = [
+    ...field(
+      _('List'),
+      ruleSet,
+      _(
+        'A list of a DPI rule. Each check takes a few of its domains; keywords and regular expressions are skipped.',
+      ),
+    ),
+    ...field(
+      _('Domains to check'),
+      sample,
+      _(
+        '1–8 domains, spread evenly over the list; a domain without an address is replaced by the next one.',
+      ),
+    ),
+    ...field(
+      _('Pinned domains'),
+      pins,
+      _('Optional, comma-separated: check exactly these domains of the list.'),
+    ),
+  ];
+  const showKind = () => {
+    const isList = kind.value === 'list';
+    for (const el of hostFields)
+      (el as HTMLElement).style.display = isList ? 'none' : '';
+    for (const el of listFields)
+      (el as HTMLElement).style.display = isList ? '' : 'none';
+  };
+  kind.addEventListener('change', showKind);
+  showKind();
+
   ui.showModal(target ? _('Edit target') : _('Add target'), [
     E('div', { class: 'fkp-autotune__form' }, [
       ...field(
-        _('Domain'),
-        host,
-        _('A site or service checked through the DPI rule that routes it.'),
+        _('What to check'),
+        kind,
+        lists.length
+          ? _(
+              'A domain, or a list of a DPI rule measured through a few of its domains.',
+            )
+          : _('No DPI rule has a downloaded list; only domains can be added.'),
       ),
+      ...hostFields,
+      ...listFields,
       ...field(
         _('DNS server for checks'),
         resolver,
@@ -592,7 +698,7 @@ function showTargetEditor(target?: Forkop.AutotuneTarget) {
 async function removeTarget(target: Forkop.AutotuneTarget) {
   const confirmed = await confirmAction({
     title: _('Remove target?'),
-    message: `${target.host}. ${_('Its measurements are deleted as well. Routing rules are not changed.')}`,
+    message: `${target.host ?? ruleListLabel(target.rule_set ?? target.id, status?.lists)}. ${_('Its measurements are deleted as well. Routing rules are not changed.')}`,
     confirmLabel: _('Remove'),
     danger: true,
   });
@@ -607,7 +713,7 @@ function showCandidates(target: Forkop.AutotuneTarget) {
   const last = target.last;
   if (!last) return;
   const rows = candidateRows(last);
-  ui.showModal(`${target.host}: ${_('last check')}`, [
+  ui.showModal(`${target.host ?? target.id}: ${_('last check')}`, [
     E(
       'p',
       { class: 'fkp-autotune__muted' },
@@ -1067,7 +1173,13 @@ function renderGroups() {
               outside.map((item) =>
                 E('li', { class: 'fkp-autotune__item' }, [
                   E('span', { class: 'fkp-autotune__what' }, [
-                    E('strong', {}, item.host),
+                    E(
+                      'strong',
+                      {},
+                      status?.targets.find((t) => t.id === item.id)?.rule_set
+                        ? ruleListLabel(item.host, status?.lists)
+                        : item.host,
+                    ),
                     ' — ',
                     outsideReasonText(item.reason),
                   ]),
@@ -1108,7 +1220,31 @@ function renderTargets() {
   }
 
   const byId = new Map(status.targets.map((t) => [t.id, t]));
-  const rows = targetRows(status.targets);
+  const rows = targetRows(status.targets, status.lists);
+  // A member of a list: its domain, result and details, no actions.
+  const memberItem = (row: TargetRow) => {
+    const target = byId.get(row.id)!;
+    return E('li', { class: 'fkp-autotune__item' }, [
+      E('span', { class: 'fkp-autotune__what' }, [row.host]),
+      renderStatus({ label: row.result, tone: row.tone }),
+      ...(row.checkedAt ? [timeNode(row.checkedAt)] : []),
+      ...(target.last && target.last.candidates.length
+        ? [
+            E('span', { class: 'fkp-actions' }, [
+              E(
+                'button',
+                {
+                  type: 'button',
+                  class: 'btn cbi-button',
+                  click: () => showCandidates(target),
+                },
+                _('Details'),
+              ),
+            ]),
+          ]
+        : []),
+    ]);
+  };
   replace(
     'autotune-targets',
     rows.length
@@ -1165,6 +1301,30 @@ function renderTargets() {
                       ]),
                     ]),
               ]),
+              ...(row.list
+                ? [
+                    E('div', { class: 'fkp-autotune__members' }, [
+                      ...(row.list.note
+                        ? [
+                            E(
+                              'p',
+                              { class: 'fkp-autotune__muted' },
+                              row.list.note,
+                            ),
+                          ]
+                        : []),
+                      ...(row.list.members.length
+                        ? [
+                            E(
+                              'ul',
+                              { class: 'fkp-autotune__list' },
+                              row.list.members.map(memberItem),
+                            ),
+                          ]
+                        : []),
+                    ]),
+                  ]
+                : []),
             ]);
           }),
         )

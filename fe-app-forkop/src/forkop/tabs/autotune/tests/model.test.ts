@@ -18,6 +18,9 @@ import {
   strategyLabel,
   targetIdFor,
   targetRows,
+  ruleListName,
+  ruleListLabel,
+  listErrorText,
   workerView,
 } from '../model';
 import type { Forkop } from '../../../types';
@@ -432,6 +435,126 @@ describe('targetRows', () => {
     expect(rows[2]).toMatchObject({ result: 'Disabled', tone: 'muted' });
     expect(rows[3].tone).toBe('warning');
     expect(rows[3].result).toContain('unreachable');
+  });
+});
+
+describe('rule-list targets', () => {
+  const lists = [
+    {
+      tag: 'Zapret-youtube-community-ruleset',
+      rule: 'Zapret',
+      label: 'Zapret',
+    },
+  ];
+  const listTarget = (
+    list: Partial<Forkop.AutotuneListView> | null,
+    enabled = true,
+  ): Forkop.AutotuneTarget => ({
+    id: 'l_yt',
+    host: null,
+    enabled,
+    resolver: null,
+    last: null,
+    rule_set: 'Zapret-youtube-community-ruleset',
+    sample: 3,
+    pins: [],
+    list: list && {
+      tag: 'Zapret-youtube-community-ruleset',
+      total: 42,
+      skipped: 2,
+      pinned: false,
+      members: ['m.youtube.com', 'youtu.be'],
+      missing: [],
+      error: null,
+      ...list,
+    },
+  });
+  const member = (id: string, host: string): Forkop.AutotuneTarget => ({
+    id,
+    host,
+    enabled: true,
+    resolver: null,
+    parent: 'l_yt',
+    last: id.endsWith('1') ? summary({}) : null,
+  });
+
+  it('names lists by their rule', () => {
+    expect(ruleListName('Zapret-youtube-community-ruleset', 'Zapret')).toBe(
+      'youtube',
+    );
+    expect(ruleListName('inline-custom-0284e7486d2f-ruleset', 'main')).toBe(
+      'custom list',
+    );
+    expect(ruleListLabel('Zapret-youtube-community-ruleset', lists)).toBe(
+      'Zapret: youtube',
+    );
+  });
+
+  it('shows the measured domains under the list, not as own targets', () => {
+    const rows = targetRows(
+      [
+        listTarget({}),
+        member('l_yt__1', 'm.youtube.com'),
+        member('l_yt__2', 'youtu.be'),
+      ],
+      lists,
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].host).toBe('List Zapret: youtube');
+    expect(rows[0].result).toBe('Domains: 2');
+    expect(rows[0].list?.note).toBe(
+      'Checked 2 of 42 domains; 2 entries without a domain name are skipped',
+    );
+    expect(rows[0].list?.members.map((m) => [m.host, m.tone])).toEqual([
+      ['m.youtube.com', 'success'],
+      ['youtu.be', 'neutral'],
+    ]);
+  });
+
+  it('explains pins and a list that gives nothing to check', () => {
+    const pinned = targetRows(
+      [
+        listTarget({
+          pinned: true,
+          members: ['m.youtube.com'],
+          missing: ['x.org'],
+          skipped: 0,
+        }),
+      ],
+      lists,
+    )[0];
+    expect(pinned.list?.note).toBe('Pinned domains: 1; not in the list: x.org');
+    const broken = targetRows(
+      [listTarget({ members: [], error: 'list_file_missing' })],
+      lists,
+    )[0];
+    expect(broken).toMatchObject({
+      result: 'Nothing to check',
+      tone: 'warning',
+    });
+    expect(broken.list?.note).toContain('not downloaded');
+    expect(targetRows([listTarget(null, false)], lists)[0]).toMatchObject({
+      result: 'Disabled',
+      tone: 'muted',
+    });
+    for (const reason of [
+      'list_not_local',
+      'list_file_missing',
+      'list_unreadable',
+      'list_has_no_domains',
+      'list_domains_unresolved',
+    ]) {
+      expect(outsideReasonText(reason)).toBe(listErrorText(reason));
+      expect(listErrorText(reason)).not.toMatch(/_/);
+    }
+    for (const reason of ['invalid_rule_set', 'invalid_sample', 'invalid_pin'])
+      expect(mutationErrorText(reason)).not.toBe('The change was not saved.');
+  });
+
+  it('builds list target ids', () => {
+    expect(targetIdFor('Zapret-youtube-community', [], 'l_')).toBe(
+      'l_zapret_youtube_community',
+    );
   });
 });
 

@@ -16,10 +16,16 @@
 //       option enabled '1'
 //       option resolver '192.0.2.53'      # optional, else the router DNS
 //
+//   config autotune_target '<id>'        # a rule list instead of a host
+//       option rule_set '<sing-box rule set tag>'   # autotune/lists.uc
+//       option sample '3'
+//       list pin '<domain>'
+//
 // A missing section means the defaults (mode off): nothing is migrated or
 // written. The DPI group of a target is never stored; it is calculated from
 // the routing (routing/resolve.uc). Pure: reads parsed sections only.
 let probe_module = require("autotune.probe");
+let lists_module = require("autotune.lists");
 
 const MODES = [ "off", "recommend", "auto" ];
 const CONFIDENCES = [ "medium", "high" ];
@@ -106,13 +112,22 @@ function read(sections) {
     for (let s in sections || []) {
         if (s.type != "autotune_target") continue;
         let host = lc(as_string(s.options.host)), resolver = as_string(s.options.resolver);
+        let rule_set = as_string(s.options.rule_set), sample = as_string(s.options.sample);
+        let pins = map(type(s.options.pin) == "array" ? s.options.pin : s.options.pin != null ? [ s.options.pin ] : [], (p) => lc(as_string(p)));
         let enabled = s.options.enabled == null || index([ "1", "true", "yes", "on" ], lc(as_string(s.options.enabled))) >= 0;
+        let list = rule_set != "";
         let problem = !valid_target_id(s.name) ? "invalid_target_id"
-            : !probe_module.valid_host(host) ? "invalid_host"
+            : list && host != "" ? "host_and_rule_set"
+            : list && !lists_module.valid_tag(rule_set) ? "invalid_rule_set"
+            : list && sample != "" && !lists_module.valid_sample(sample) ? "invalid_sample"
+            : list && (length(pins) > lists_module.MAX_SAMPLE || length(filter(pins, (p) => !probe_module.valid_host(p))) > 0) ? "invalid_pin"
+            : !list && !probe_module.valid_host(host) ? "invalid_host"
             : resolver != "" && !probe_module.valid_ipv4(resolver) ? "invalid_resolver"
             : length(targets) >= MAX_TARGETS ? "too_many_targets" : null;
         if (problem != null) { push(errors, { target: as_string(s.name), error: problem }); continue; }
-        push(targets, { id: s.name, host, enabled, resolver: resolver != "" ? resolver : null });
+        let t = { id: s.name, host: list ? null : host, enabled, resolver: resolver != "" ? resolver : null };
+        if (list) { t.rule_set = rule_set; t.sample = sample != "" ? int(sample) : lists_module.DEFAULT_SAMPLE; t.pins = uniq(pins); }
+        push(targets, t);
     }
     return { policy, targets, errors };
 }

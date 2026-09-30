@@ -549,6 +549,44 @@ describe('overview cards', () => {
     expect(text(recoveryCard(true))).not.toContain('Restart Forkop X');
   });
 
+  it('offers a stopped Forkop X with a kept DPI guard a restart, not a start', () => {
+    // A start is refused while a failed change keeps its DPI guard (UC-019):
+    // only the restart removes it.
+    const kept = health({
+      overall: 'error',
+      guard: { active: true, runtime: true, restore: false },
+      recovery: { pending: true, last_event: null, action: 'restart' },
+    });
+    const onStart = vi.fn();
+    const onRestart = vi.fn();
+    const stateCard = (
+      renderOverview(vm({ availability: 'stopped', health: kept }), {
+        ...actions,
+        onStart,
+        onRestart,
+        readonly: false,
+      }) as unknown as FakeNode
+    ).children
+      .flatMap((child) => (child as FakeNode).children || [])
+      .find((node) => text(node).includes('State')) as FakeNode;
+    const buttons = (node: unknown): FakeNode[] =>
+      !node || typeof node !== 'object'
+        ? []
+        : [
+            ...((node as FakeNode).tag === 'button' ? [node as FakeNode] : []),
+            ...((node as FakeNode).children || []).flatMap(buttons),
+          ];
+
+    expect(text(stateCard)).not.toContain('Start Forkop X');
+    const restart = buttons(stateCard).find((button) =>
+      text(button).includes('Restart Forkop X'),
+    );
+    expect(restart).toBeDefined();
+    (restart!.attrs.click as () => void)();
+    expect(onRestart).toHaveBeenCalledOnce();
+    expect(onStart).not.toHaveBeenCalled();
+  });
+
   it('gives a read-only session the same answers without controls', () => {
     const node = renderOverview(vm({ availability: 'stopped' }), {
       ...actions,

@@ -578,6 +578,10 @@ export function blockerText(reason: string | null | undefined) {
   switch (reason) {
     case 'dpi_guard_present':
       return _('DPI protection is active');
+    // A guard a failed service change kept: only a restart removes it
+    // (UC-019).
+    case 'runtime_guard_active':
+      return _('a failed change left the DPI guard in place; restart Forkop X');
     case 'snapshot_operation_active':
       return _('a snapshot operation is in progress');
     case 'autotune_in_progress':
@@ -743,6 +747,7 @@ function refusalText(reason: string | null | undefined) {
     case 'autotune_in_progress':
       return _('Another autotune operation is running.');
     case 'dpi_guard_present':
+    case 'runtime_guard_active':
     case 'snapshot_operation_active':
     case 'apply_unresolved':
       return `${_('The strategy was not applied')}: ${blockerText(reason)}.`;
@@ -793,7 +798,13 @@ export function applyResultView(
     case 'stale':
       // A lifecycle action took the reload lock after the checks: nothing
       // was changed and the recommendation still stands.
-      if (BUSY_REASONS.includes(reason ?? '') || reason === 'service_stopped')
+      // So is a guard a failed service change kept: the configuration did
+      // not change, a restart is needed (UC-019).
+      if (
+        BUSY_REASONS.includes(reason ?? '') ||
+        reason === 'service_stopped' ||
+        reason === 'runtime_guard_active'
+      )
         return { tone: 'warning', text: refusalText(reason), attention: false };
       // Production must run the last known working configuration; running
       // the check again does not change that.
@@ -1159,6 +1170,15 @@ export function rollbackResultView(
       return {
         tone: 'warning',
         text: `${_('Nothing was rolled back')}: ${blockerText('dpi_guard_present')}.`,
+        attention: false,
+      };
+    // The restore refuses before any change while a failed service change
+    // keeps its guard; a restart removes it (UC-019).
+    case 'runtime_guard_active':
+    case 'rollback_not_started:runtime_guard_active':
+      return {
+        tone: 'warning',
+        text: `${_('Nothing was rolled back')}: ${blockerText('runtime_guard_active')}.`,
         attention: false,
       };
     case 'snapshot_operation_in_progress':

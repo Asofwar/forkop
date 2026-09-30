@@ -48,6 +48,7 @@ const REASONS = [
   'owner_changed',
   'not_confirmed',
   'dpi_guard_present',
+  'runtime_guard_active',
   'reload_failed_recovered',
   'reload_queued_recovered',
   'interrupted_after_apply',

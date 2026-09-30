@@ -43,6 +43,7 @@ import {
   type OverviewInput,
 } from './overview';
 import { renderOverview } from './overviewCards';
+import { runOverviewServiceAction } from './serviceActionFlow';
 import {
   serviceReloadOutcome,
   urlTestChangeToast,
@@ -158,17 +159,17 @@ async function handleServiceAction(action: ForkopServiceAction) {
   if (overviewServiceBusy) return;
   if (action === 'stop' && !(await confirmStopForkop())) return;
 
-  overviewServiceBusy = true;
-  renderOverviewCards();
-  try {
-    await runForkopServiceAction(action);
-  } catch (error) {
-    showToast(serviceActionErrorText(error), 'error', 6000);
-  } finally {
-    overviewServiceBusy = false;
-    await refreshRuntimeUiState({ force: true });
-    renderOverviewCards();
-  }
+  const mountId = dashboardMountId;
+  await runOverviewServiceAction({
+    run: () => runForkopServiceAction(action),
+    onError: (error) => showToast(serviceActionErrorText(error), 'error', 6000),
+    refreshRuntime: () => refreshRuntimeUiState({ force: true }),
+    refreshHealth: () => refreshHealth(mountId),
+    setBusy: (busy) => {
+      overviewServiceBusy = busy;
+      renderOverviewCards();
+    },
+  });
 }
 
 async function handleToggleAutostart() {

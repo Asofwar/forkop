@@ -449,6 +449,15 @@ describe('workerView', () => {
         reason: 'dpi_guard_present',
       })?.label,
     ).toContain('DPI protection is active');
+    expect(
+      workerView({
+        state: 'finished',
+        result: 'skipped',
+        reason: 'runtime_guard_active',
+      })?.label,
+    ).toBe(
+      'Last check postponed: a failed change left the DPI guard in place; restart Forkop X',
+    );
     expect(workerView({ state: 'finished', result: 'completed' })?.tone).toBe(
       'success',
     );
@@ -558,6 +567,14 @@ describe('manual apply', () => {
     expect(view('refused', 'dpi_guard_present').text).toContain(
       'DPI protection is active',
     );
+    // A guard a failed service change kept (UC-019): the configuration did
+    // not change, and a restart, not a new check, is what is needed.
+    for (const outcome of ['stale', 'refused'])
+      expect(view(outcome, 'runtime_guard_active')).toEqual({
+        tone: 'warning',
+        text: 'The strategy was not applied: a failed change left the DPI guard in place; restart Forkop X.',
+        attention: false,
+      });
     expect(view('failed', 'reload_failed_recovered')).toMatchObject({
       tone: 'warning',
       attention: false,
@@ -932,6 +949,18 @@ describe('recorded apply and its rollback', () => {
         reason: 'rollback_not_started:config_changed_during_transaction',
       }).text,
     ).toContain('changed after the apply');
+    // UC-019: a guard a failed service change kept; nothing was changed.
+    for (const reason of [
+      'runtime_guard_active',
+      'rollback_not_started:runtime_guard_active',
+    ])
+      expect(
+        rollbackResultView({ status: 'failed', result: 'failed', reason }),
+      ).toEqual({
+        tone: 'warning',
+        text: 'Nothing was rolled back: a failed change left the DPI guard in place; restart Forkop X.',
+        attention: false,
+      });
     // UC-068: uci changes staged on the router.
     const staged = rollbackResultView({
       status: 'failed',

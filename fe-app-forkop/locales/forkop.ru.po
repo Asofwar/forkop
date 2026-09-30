@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-30 09:53+0000\n"
-"PO-Revision-Date: 2026-09-30 09:53+0000\n"
+"POT-Creation-Date: 2026-09-30 11:17+0000\n"
+"PO-Revision-Date: 2026-09-30 11:17+0000\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -121,6 +121,9 @@ msgstr "Восстановление конфигурации не заверш�
 
 msgid "A configuration restore did not finish. Traffic that needs DPI bypass stays blocked until you restore the last known good snapshot."
 msgstr "Восстановление конфигурации не завершено. Трафик, которому нужен обход DPI, блокируется, пока вы не восстановите снимок последней рабочей конфигурации."
+
+msgid "a failed change left the DPI guard in place; restart Forkop X"
+msgstr "неудавшееся изменение оставило защиту DPI; перезапустите Forkop X"
 
 msgid "A failed change left the DPI guard in place: restart Forkop X to remove it."
 msgstr "Неудавшееся изменение оставило защиту DPI: чтобы снять её, перезапустите Forkop X."

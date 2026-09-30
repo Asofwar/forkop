@@ -85,12 +85,31 @@ function renderWarning(warning: OverviewWarning) {
   ]);
 }
 
-function renderStateCard(state: OverviewState, actions: OverviewActions) {
+function renderStateCard(
+  state: OverviewState,
+  actions: OverviewActions,
+  restartRequired: boolean,
+) {
   const footer: Node[] = [];
   const menu: Node[] = [];
 
   if (!actions.readonly) {
-    if (state.stopped) {
+    // A start is refused while a failed change keeps its DPI guard: only a
+    // restart removes it (UC-019).
+    if (state.stopped && restartRequired) {
+      footer.push(
+        E(
+          'button',
+          {
+            type: 'button',
+            class: 'btn cbi-button cbi-button-action',
+            disabled: actions.serviceBusy ? true : undefined,
+            click: actions.onRestart,
+          },
+          _('Restart Forkop X'),
+        ),
+      );
+    } else if (state.stopped) {
       footer.push(
         E(
           'button',
@@ -206,7 +225,7 @@ function renderRecoveryCard(
   actions: OverviewActions,
 ) {
   // The restart that removes a DPI guard a failed change kept (UC-019),
-  // also while the runtime is down and the state card offers only a start.
+  // whether the runtime runs or not.
   const restart =
     !actions.readonly && recovery.step === 'restart'
       ? [
@@ -264,7 +283,7 @@ export function renderOverview(
   return E('div', { class: 'fkp-overview' }, [
     ...(vm.warning ? [renderWarning(vm.warning)] : []),
     E('div', { class: 'fkp-overview__grid' }, [
-      renderStateCard(vm.state, actions),
+      renderStateCard(vm.state, actions, vm.recovery.step === 'restart'),
       renderRoutingCard(vm.routing, actions.readonly),
       renderRecoveryCard(vm.recovery, actions),
       renderEventCard(vm.event),

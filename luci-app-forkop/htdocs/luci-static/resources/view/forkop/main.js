@@ -6775,11 +6775,24 @@ function renderWarning(warning) {
     linkButton(warning.link.label, () => openForkopPage(warning.link.page)),
   ]);
 }
-function renderStateCard(state, actions) {
+function renderStateCard(state, actions, restartRequired) {
   const footer = [];
   const menu = [];
   if (!actions.readonly) {
-    if (state.stopped) {
+    if (state.stopped && restartRequired) {
+      footer.push(
+        E(
+          "button",
+          {
+            type: "button",
+            class: "btn cbi-button cbi-button-action",
+            disabled: actions.serviceBusy ? true : void 0,
+            click: actions.onRestart,
+          },
+          _("Restart Forkop X"),
+        ),
+      );
+    } else if (state.stopped) {
       footer.push(
         E(
           "button",
@@ -6940,12 +6953,29 @@ function renderOverview(vm, actions) {
   return E("div", { class: "fkp-overview" }, [
     ...(vm.warning ? [renderWarning(vm.warning)] : []),
     E("div", { class: "fkp-overview__grid" }, [
-      renderStateCard(vm.state, actions),
+      renderStateCard(vm.state, actions, vm.recovery.step === "restart"),
       renderRoutingCard(vm.routing, actions.readonly),
       renderRecoveryCard(vm.recovery, actions),
       renderEventCard(vm.event),
     ]),
   ]);
+}
+
+// src/forkop/tabs/dashboard/serviceActionFlow.ts
+async function runOverviewServiceAction(steps) {
+  steps.setBusy(true);
+  try {
+    await steps.run();
+  } catch (error) {
+    steps.onError(error);
+  } finally {
+    try {
+      await steps.refreshRuntime();
+      await steps.refreshHealth();
+    } finally {
+      steps.setBusy(false);
+    }
+  }
 }
 
 // src/forkop/tabs/dashboard/serviceReload.ts
@@ -7709,17 +7739,17 @@ function overviewInput() {
 async function handleServiceAction(action) {
   if (overviewServiceBusy) return;
   if (action === "stop" && !(await confirmStopForkop())) return;
-  overviewServiceBusy = true;
-  renderOverviewCards();
-  try {
-    await runForkopServiceAction(action);
-  } catch (error) {
-    showToast(serviceActionErrorText(error), "error", 6e3);
-  } finally {
-    overviewServiceBusy = false;
-    await refreshRuntimeUiState({ force: true });
-    renderOverviewCards();
-  }
+  const mountId3 = dashboardMountId;
+  await runOverviewServiceAction({
+    run: () => runForkopServiceAction(action),
+    onError: (error) => showToast(serviceActionErrorText(error), "error", 6e3),
+    refreshRuntime: () => refreshRuntimeUiState({ force: true }),
+    refreshHealth: () => refreshHealth(mountId3),
+    setBusy: (busy2) => {
+      overviewServiceBusy = busy2;
+      renderOverviewCards();
+    },
+  });
 }
 async function handleToggleAutostart() {
   if (overviewServiceBusy) return;
@@ -20240,6 +20270,10 @@ function blockerText(reason) {
   switch (reason) {
     case "dpi_guard_present":
       return _("DPI protection is active");
+    // A guard a failed service change kept: only a restart removes it
+    // (UC-019).
+    case "runtime_guard_active":
+      return _("a failed change left the DPI guard in place; restart Forkop X");
     case "snapshot_operation_active":
       return _("a snapshot operation is in progress");
     case "autotune_in_progress":
@@ -20373,6 +20407,7 @@ function refusalText(reason) {
     case "autotune_in_progress":
       return _("Another autotune operation is running.");
     case "dpi_guard_present":
+    case "runtime_guard_active":
     case "snapshot_operation_active":
     case "apply_unresolved":
       return `${_("The strategy was not applied")}: ${blockerText(reason)}.`;
@@ -20416,7 +20451,11 @@ function applyResultView(result, candidate) {
         attention: false,
       };
     case "stale":
-      if (BUSY_REASONS.includes(reason ?? "") || reason === "service_stopped")
+      if (
+        BUSY_REASONS.includes(reason ?? "") ||
+        reason === "service_stopped" ||
+        reason === "runtime_guard_active"
+      )
         return { tone: "warning", text: refusalText(reason), attention: false };
       if (reason === "config_not_last_known_good")
         return {
@@ -20734,6 +20773,15 @@ function rollbackResultView(result) {
       return {
         tone: "warning",
         text: `${_("Nothing was rolled back")}: ${blockerText("dpi_guard_present")}.`,
+        attention: false,
+      };
+    // The restore refuses before any change while a failed service change
+    // keeps its guard; a restart removes it (UC-019).
+    case "runtime_guard_active":
+    case "rollback_not_started:runtime_guard_active":
+      return {
+        tone: "warning",
+        text: `${_("Nothing was rolled back")}: ${blockerText("runtime_guard_active")}.`,
         attention: false,
       };
     case "snapshot_operation_in_progress":

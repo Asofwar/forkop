@@ -315,13 +315,15 @@ function run_pending_reload_if_requested(path, init_script) {
 //      the automatic latency test.
 //   3. subscription-update.lock: start_main (service/lifecycle.uc), inside
 //      reload.lock for a start and for a reload that restarts the runtime,
-//      after it stopped the deferred bootstrap retry (UC-057); the
-//      subscription update, after reload.lock; the deferred subscription
-//      bootstrap retry (subscription/cache.uc), which holds nothing else and
-//      releases it before it requests a reload. A forced subscription update
-//      does not wait for the retry's download inside reload.lock (UC-057):
-//      it releases reload.lock, waits holding nothing else (taking the lock
-//      and letting go of it at once), and takes both again in order.
+//      after it stopped the deferred bootstrap retry (UC-057; the start's
+//      own deferred bootstrap still downloads under both locks, a known
+//      remainder); the subscription update, after reload.lock; the deferred
+//      subscription bootstrap retry (subscription/cache.uc), which holds
+//      nothing else and releases it before it requests a reload. A forced
+//      subscription update does not wait for the retry's download inside
+//      reload.lock (UC-057): it releases reload.lock, waits holding nothing
+//      else (taking the lock and letting go of it at once), and takes both
+//      again in order.
 // The lock protocol and the owner record: core/runtime_lock.uc.
 function release_runtime_dir_lock(lock_dir, owner_pid) {
     return runtime_lock.release(lock_dir, owner_pid);

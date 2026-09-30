@@ -5,8 +5,8 @@ set -euo pipefail
 # reload.lock (UC-057 class, found by the S3 regression).
 #
 # The retry (subscription/cache.uc deferred-bootstrap-worker) is the only
-# process that holds subscription-update.lock without reload.lock: it
-# downloads the deferred rules through the sing-box service proxy under it,
+# process that downloads under subscription-update.lock without reload.lock:
+# it fetches the deferred rules through the sing-box service proxy under it,
 # for as long as those requests take. Global lock order (service/state.uc):
 # reload.lock before subscription-update.lock. A forced subscription update
 # that took reload.lock and then waited (up to 300 s) for the retry, or a

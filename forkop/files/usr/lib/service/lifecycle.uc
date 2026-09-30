@@ -673,17 +673,30 @@ function validate_start_config() {
 }
 
 // Taken inside reload.lock, which service/initd.uc holds around `forkop start`
-// and `forkop reload` (global lock order: service/state.uc). The one holder
-// of subscription-update.lock without reload.lock is the deferred
-// subscription bootstrap retry, which downloads under it for as long as its
-// requests take; waiting for it here would hold reload.lock, and a DNS
-// failover switch and every reload with it, for that long (UC-057). This
-// start supersedes the retry: it prepares the subscription caches itself and
-// retries the rules it defers once sing-box runs, with a new retry for those
-// that stay unavailable (run-deferred-bootstrap). So it stops the retry by its
-// identity first, as a stop and a restarting reload do in stop_main; the lock
-// of the stopped retry is stale and taken at once. The bounded wait is left
-// for a holder that is not the retry.
+// and `forkop reload` (global lock order: service/state.uc). The one process
+// that downloads under subscription-update.lock without reload.lock is the
+// deferred subscription bootstrap retry, which holds the lock for as long as
+// its requests take (a forced subscription update waiting for the lock takes
+// it only for a moment, holding nothing else). Waiting for the retry here
+// would hold reload.lock, and a DNS failover switch and every reload with it,
+// for that long (UC-057). This start supersedes the retry: it prepares the
+// subscription caches itself and retries the rules it defers once sing-box
+// runs, with a new retry for those that stay unavailable
+// (run-deferred-bootstrap). So it stops the retry by its identity first, as a
+// stop and a restarting reload do in stop_main; the lock of the stopped retry
+// is stale and taken at once. The bounded wait is left for a holder that is
+// not the retry.
+//
+// The start's own downloads still run inside reload.lock, which it holds for
+// its whole run (S3). The stopped retry's unfinished download is lost:
+// prepare-caches defers again the rules it had not recovered, and
+// run-deferred-bootstrap downloads them through the service proxy before
+// this start releases subscription-update.lock. A start that meets the retry
+// mid-download so holds reload.lock for one full download of those rules,
+// where it used to wait for the rest of the retry's download and then skip
+// the rules the retry recovered. That is a known remainder of UC-057; moving
+// the start's deferred bootstrap out of reload.lock (to the background retry)
+// is a change of its own.
 function acquire_start_subscription_update_lock() {
     module_success(SUBSCRIPTION_CACHE_UC, [ "stop-deferred-bootstrap-worker" ]);
     if (module_success(STATE_UC, [ "acquire-runtime-dir-lock-wait", SUBSCRIPTION_UPDATE_LOCK_DIR, owner_pid(), "300" ])) {

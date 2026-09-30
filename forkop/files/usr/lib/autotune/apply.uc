@@ -12,17 +12,23 @@
 //   the first route rule the target matches (decided statically from the
 //   generated sing-box config) belongs to an enabled zapret rule, the match
 //   is by matchers the resolver can decide (static domain/IP matchers and
-//   local lists sing-box is asked about; no undownloaded lists above it, no
-//   source restriction), and that rule's strategy is one TCP/443 profile
+//   local lists sing-box is asked about; no undownloaded lists above it),
+//   and that rule's strategy is one TCP/443 profile
 //   -> set that rule's nfqws_opt to the candidate template.
 // The change applies to the rule's whole target group, which the plan names.
+// A rule limited to devices (source_ip_cidr) owns the target for those
+// devices only. The router cannot send their traffic, so such a rule is
+// applied only on the operator's explicit request ("manual") and verified by
+// runtime coherence alone: no production traffic check, no automatic
+// rollback on a strategy that does not work for the device.
 // Everything else is "not_applicable" with the reason. "direct" never
 // changes production: it is "no_change_required" when no DPI rule handles
 // the target and "direct_not_applicable" when one does.
 //
 // Modes:
 //   plan <selection.json> [resolver]   read-only; prints the plan
-//   apply <plan.json> [resolver]       stale checks, revalidation, transaction
+//   apply <plan.json> [resolver] [manual|automatic]
+//                                      stale checks, revalidation, transaction
 //   verify <plan.json> [proposed|current] [traffic]  read-only verification
 //   rollback                           restore the recorded pre-apply snapshot
 //   status                             durable state and current diagnosis
@@ -146,10 +152,10 @@ function find_section(sections, name) { return resolver.find_section(sections, n
 function rule_scope(section) { return resolver.rule_scope(section); }
 function is_fakeip(ip) { return resolver.is_fakeip(ip); }
 
-// Autotune only tunes TCP/443 and never knows the client: source-scoped
-// rules stay undecidable.
+// Autotune only tunes TCP/443 and never knows the client: a source-scoped
+// rule is asked about for its own devices (owner.source_scoped).
 function tcp443_target(host, ip, fakeip) {
-    return resolver.target(host, ip, { fakeip, network: "tcp", port: 443 });
+    return resolver.target(host, ip, { fakeip, network: "tcp", port: 443, assume_rule_source: true });
 }
 
 // Exported for callers that ask for the first route rule only.
@@ -164,9 +170,11 @@ function singbox_config(sections) {
 function owner_of(sections, host, ip, fakeip) {
     let r = resolver.resolve(singbox_config(sections), sections, tcp443_target(host, ip, fakeip));
     if (r.status != "decided") return { decided: false, reason: r.reason, rule: r.route_rule };
+    // source_scoped is present only for a rule limited to devices.
+    let scoped = r.source_scope != null ? { source_scoped: true } : {};
     if (r.zapret != null)
-        return { decided: true, kind: "zapret", rule: r.route_rule, outbound: r.outbound, ...r.zapret };
-    return { decided: true, kind: r.route, rule: r.route_rule, outbound: r.outbound };
+        return { decided: true, kind: "zapret", rule: r.route_rule, outbound: r.outbound, ...r.zapret, ...scoped };
+    return { decided: true, kind: r.route, rule: r.route_rule, outbound: r.outbound, ...scoped };
 }
 
 // One TCP/443 profile: the only strategy shape a TCP/443 candidate can
@@ -438,9 +446,13 @@ function verify_production(plan, expected_opt, traffic) {
     let action = service_action();
     check(checks, "no_service_action", action == null, action);
     check(checks, "no_probe_table", table_present(PROBE_TABLE) == false);
-    let result = { ok: true, checks, traffic: null };
+    let result = { ok: true, checks, traffic: null, traffic_skipped: null };
     for (let c in checks) if (!c.ok) result.ok = false;
     if (!traffic || !result.ok) return result;
+    // Requests of the router never enter a rule limited to other devices:
+    // there is no production traffic to judge. Decided from the routing as
+    // it is now, never from the plan file.
+    if (owner.source_scoped === true) { result.traffic_skipped = "source_scoped_rule"; return result; }
 
     // Normal production requests: system resolver, no pinned address, no
     // isolation mark or source ports.
@@ -627,7 +639,7 @@ function unresolved(s, d) {
 }
 
 // Everything that must still hold for the plan: nothing is changed on failure.
-function stale_reason(p, resolver) {
+function stale_reason(p, resolver, trigger) {
     if (service_stopped()) return "service_stopped";
     if (runtime_guard_kept()) return "runtime_guard_active";
     if (length(guards_present()) > 0) return "restore_guard_active";
@@ -650,6 +662,7 @@ function stale_reason(p, resolver) {
     if (!production_dns(p.target.host).fakeip) return "target_not_fakeip_routed";
     let owner = owner_of(sections, p.target.host, p.target.ip, true);
     if (!owner.decided || owner.kind != "zapret" || owner.section != p.owner.section || owner.queue != p.owner.queue) return "rule_owner_changed";
+    if (owner.source_scoped === true && trigger != "manual") return "source_scoped_rule_manual_only";
     if (!verify_production(p, p.changes[0].from, false).ok) return "runtime_not_on_planned_strategy";
     let resolved = probe_module.resolve(p.target.host, resolver || p.target.resolver || "");
     if (resolved.status != "ok" || index(resolved.addresses, p.target.ip) < 0) return "target_resolution_changed";
@@ -737,7 +750,7 @@ function valid_plan(p) {
         valid_hash(p.config_hash) && valid_hash(p.candidate_hash);
 }
 
-function apply(plan_file, resolver) {
+function apply(plan_file, resolver, trigger) {
     let p = read_json(plan_file);
     if (!valid_plan(p)) return { status: "failed", reason: "invalid_plan", applied: false };
     let previous = state_read();
@@ -761,7 +774,7 @@ function apply(plan_file, resolver) {
         else state_write(audit);
         return audit;
     };
-    let reason = stale_reason(p, resolver);
+    let reason = stale_reason(p, resolver, trigger);
     // A terminal signal also hits the checks' children (dig, curl): the
     // interruption, not their failure, is the reason.
     if (interrupted) return refuse("failed", "interrupted_before_mutation");
@@ -1003,7 +1016,7 @@ else if (mode == "apply" || mode == "rollback") {
     if (!autotune_lock.acquire())
         output = autotune_lock.busy() ? { status: "busy", reason: "autotune_in_progress" } : { status: "failed", reason: "lock_unavailable" };
     else {
-        output = mode == "apply" ? apply(ARGV[1], ARGV[2]) : rollback();
+        output = mode == "apply" ? apply(ARGV[1], ARGV[2], ARGV[3]) : rollback();
         autotune_lock.release();
         // Exit 0 only when the requested outcome happened: apply applied (or
         // nothing to do), rollback rolled back.

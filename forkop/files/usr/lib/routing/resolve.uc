@@ -149,7 +149,9 @@ function is_fakeip(ip) {
 
 // The connection being asked about. fakeip: the target reaches sing-box as
 // a FakeIP address (replaced by the domain name); defaults to whether ip is
-// in the FakeIP range. Without a source, source-scoped rules are undecidable.
+// in the FakeIP range. Without a source, source-scoped rules are undecidable,
+// unless assume_rule_source asks "for the devices of the first source-scoped
+// rule that takes the destination" (resolve() then names the address it used).
 function target(host, ip, opts) {
     opts = type(opts) == "object" ? opts : {};
     return {
@@ -158,7 +160,8 @@ function target(host, ip, opts) {
         fakeip: opts.fakeip != null ? !!opts.fakeip : is_fakeip(ip),
         network: lc(as_string(opts.network || "tcp")),
         port: opts.port != null && as_string(opts.port) != "" ? int(opts.port) : 443,
-        source: as_string(opts.source)
+        source: as_string(opts.source),
+        assume_rule_source: opts.assume_rule_source === true
     };
 }
 
@@ -306,9 +309,10 @@ function route_owner(config, t) {
         if (action != "route" && action != "reject") continue;
         let m = rule_matches(r, t, lists);
         if (m == "no") continue;
-        if (type(m) == "object") return { decided: false, reason: m.reason, rule: i };
+        if (type(m) == "object")
+            return { decided: false, reason: m.reason, rule: i, sources: m.reason == "source_scoped_rule" ? list_of(r.source_ip_cidr) : null };
         if (action == "reject") return { decided: true, kind: "reject", rule: i };
-        return { decided: true, kind: "outbound", outbound: r.outbound, rule: i };
+        return { decided: true, kind: "outbound", outbound: r.outbound, rule: i, source_scoped: r.source_ip_cidr != null };
     }
     return { decided: true, kind: "final", outbound: config.route.final || null, rule: null };
 }
@@ -345,6 +349,16 @@ function section_for_outbound(sections, tag) {
     return best;
 }
 
+// An address the rule's source_ip_cidr covers: the base address of its first
+// IPv4 entry (the resolver compares IPv4 sources only).
+function source_of(cidrs) {
+    for (let c in list_of(cidrs)) {
+        let m = match(as_string(c), /^([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)(\/[0-9]+)?$/);
+        if (m != null) return m[1];
+    }
+    return null;
+}
+
 // Undecidable: the config does not say. Unsupported: a rule shape the
 // static resolver does not evaluate. Unavailable: no config to read.
 function status_for(reason) {
@@ -358,12 +372,19 @@ function status_for(reason) {
 // { status: decided|undecidable|unsupported|unavailable, reason,
 //   route: outbound|reject|final, route_rule, kind: rule|bypass|block|direct|outbound,
 //   section, label, action, outbound, dpi: { provider, strategy, custom },
-//   zapret: { section, index, mark, mark_value, queue }, scope, provenance }
+//   zapret: { section, index, mark, mark_value, queue }, scope, provenance,
+//   source_scope: null | { source, assumed } — the owner is a source-scoped
+//   rule; assumed: the answer holds for the rule's own devices only (the
+//   target asked with assume_rule_source and named no source) }
 function resolve(config, sections, t) {
-    let route = route_owner(config, t);
+    let route = route_owner(config, t), assumed = null;
+    if (!route.decided && route.reason == "source_scoped_rule" && t.assume_rule_source) {
+        assumed = source_of(route.sources);
+        if (assumed != null) route = route_owner(config, { ...t, source: assumed });
+    }
     let result = { status: "decided", reason: null, route: null, route_rule: route.rule, kind: null,
         section: null, label: null, action: null, outbound: null, dpi: null, zapret: null, scope: null,
-        provenance: "simulated" };
+        provenance: "simulated", source_scope: null };
     if (!route.decided) {
         result.status = status_for(route.reason);
         result.reason = route.reason;
@@ -372,6 +393,7 @@ function resolve(config, sections, t) {
     }
     result.route = route.kind;
     result.outbound = route.outbound || null;
+    if (route.source_scoped === true) result.source_scope = { source: assumed != null ? assumed : t.source, assumed: assumed != null };
     // Zapret identity (route mark and queue) is proven from the outbound
     // itself, exactly as autotune apply checks it.
     if (route.kind == "outbound") result.zapret = zapret_owner(config, sections, route.outbound);

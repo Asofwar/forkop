@@ -12,7 +12,9 @@
 function as_string(v) { return v == null ? "" : "" + v; }
 
 // Where one target stands, from its DNS answer and the routing:
-// { in_group: <section> | null, reason, detail }.
+// { in_group: <section> | null, reason, detail, source_scoped }.
+// source_scoped: the rule handles the target for its own devices only
+// (source_ip_cidr); the routing was asked for those devices.
 // dns: { answers, fakeip }, r: routing/resolve.uc resolve() result.
 function classify(dns, r) {
     if (dns == null || dns.answers == 0) return { in_group: null, reason: "target_unresolved" };
@@ -23,7 +25,7 @@ function classify(dns, r) {
     if (r.kind == "rule") {
         if (r.action == "zapret")
             return r.zapret != null
-                ? { in_group: r.section, reason: null, label: r.label }
+                ? { in_group: r.section, reason: null, label: r.label, source_scoped: r.source_scope != null }
                 : { in_group: null, reason: "dpi_identity_unproven", detail: r.section };
         if (r.action == "zapret2" || r.action == "byedpi")
             return { in_group: null, reason: "provider_not_supported", detail: r.section };

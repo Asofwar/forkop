@@ -197,15 +197,19 @@ function compute_groups(sections, targets, state) {
     for (let t in targets) {
         if (!t.enabled) { push(outside, { id: t.id, host: t.host, reason: "target_disabled", detail: null }); continue; }
         let dns = production_dns(t.host);
-        let r = resolver.resolve(config, sections, resolver.target(t.host, dns.ip, { fakeip: dns.fakeip }));
+        // A target names no device: a rule limited to devices owns it for
+        // those devices, and the group says so (source_scoped).
+        let r = resolver.resolve(config, sections, resolver.target(t.host, dns.ip, { fakeip: dns.fakeip, assume_rule_source: true }));
         let c = groups_module.classify(dns, r);
         if (c.in_group == null) { push(outside, { id: t.id, host: t.host, reason: c.reason, detail: c.detail || null }); continue; }
         let g = groups[c.in_group];
         if (g == null) {
             let section = resolver.find_section(sections, c.in_group);
             g = groups[c.in_group] = { label: c.label, targets: [], current: r.dpi ? r.dpi.strategy : null,
-                custom: r.dpi ? r.dpi.custom : null, fingerprint: groups_module.fingerprint(section), result: null };
+                custom: r.dpi ? r.dpi.custom : null, fingerprint: groups_module.fingerprint(section), result: null,
+                source_scoped: false };
         }
+        if (c.source_scoped) g.source_scoped = true;
         push(g.targets, t.id);
     }
     for (let name, g in groups)
@@ -478,6 +482,9 @@ function apply_group(name, aggregate, full, dns_resolver, trigger) {
     // confirmed; routing edits since the classification make it void.
     else if (type(plan.owner) != "object" || plan.owner.section != name) record.reason = "owner_changed";
     else if (plan.selected != aggregate.candidate) record.reason = "plan_candidate_differs";
+    // The production traffic of a device-limited rule cannot be verified
+    // from the router: only the operator applies to such a rule.
+    else if (!manual && plan.owner.source_scoped === true) record.reason = "source_scoped_rule_manual_only";
     else if (fs.writefile(plan_file, sprintf("%J\n", plan)) == null) record.reason = "plan_write_failed";
     else {
         // A crash from here on leaves an apply of unknown outcome; the next
@@ -486,7 +493,9 @@ function apply_group(name, aggregate, full, dns_resolver, trigger) {
             if (type(state.worker) == "object")
                 state.worker = { ...state.worker, phase: "applying", group: name, candidate: aggregate.candidate, phase_at: now() };
         });
-        let result = run_tool("apply", [ "apply", plan_file, dns_resolver ]);
+        let result = run_tool("apply", [ "apply", plan_file, dns_resolver, manual ? "manual" : "automatic" ]);
+        if (type(result) == "object" && type(result.verification) == "object" && result.verification.traffic_skipped != null)
+            record.verification = "runtime_only";
         let o = autoapply.outcome(result);
         record.status = o.status;
         record.reason = type(result) == "object" ? result.reason || null : "apply_output_invalid";
@@ -585,11 +594,11 @@ function run_locked(scope, trigger) {
             let observed = hysteresis.observe(local.groups[name], { ...aggregate, fingerprint: g.fingerprint }, policy, now());
             let was_ready = type(local.groups[name]) == "object" && local.groups[name].ready === true;
             if (observed.ready && !was_ready) history("autotune_recommendation", "success");
-            let group = { ...observed.group, label: g.label, targets: g.targets, current: g.current,
+            let group = { ...observed.group, label: g.label, targets: g.targets, current: g.current, source_scoped: g.source_scoped,
                 events: observed.events, ready: observed.ready, required: observed.required, result: aggregate };
             // At most one production change per run.
             let decision = applied != null ? { apply: false, reason: "one_apply_per_run" } : autoapply.decide({
-                policy, trigger, group, result: aggregate, custom: g.custom, applies: local.applies, now: now(),
+                policy, trigger, group, result: aggregate, custom: g.custom, source_scoped: g.source_scoped, applies: local.applies, now: now(),
                 cooldown_until: hysteresis.cooldown_until(group, aggregate.candidate), recovered_at });
             if (decision.apply && results[aggregate.representative] == null) decision = { apply: false, reason: "representative_not_measured" };
             group.decision = { reason: decision.reason, at: now() };

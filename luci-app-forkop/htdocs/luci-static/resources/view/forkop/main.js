@@ -19974,6 +19974,10 @@ function outsideReasonText(reason) {
       return _("It is not in a DPI rule.");
   }
 }
+var DEVICE_LIMITED_TEXT = () =>
+  _(
+    "The rule is limited to devices: the result holds for them, and Forkop X changes such a rule only when you apply it yourself.",
+  );
 function decisionText(reason) {
   switch (reason) {
     case "mode_not_auto":
@@ -19988,6 +19992,8 @@ function decisionText(reason) {
       return _("Automatic apply requires high confidence.");
     case "custom_strategy_kept":
       return _("The rule has a custom strategy; Forkop X keeps it.");
+    case "source_scoped_rule_manual_only":
+      return DEVICE_LIMITED_TEXT();
     case "candidate_in_cooldown":
       return _(
         "This strategy was rolled back recently; it waits for the cooldown.",
@@ -20096,6 +20102,8 @@ function groupCards(status2, live2) {
     const targets = now?.targets ?? state?.targets ?? [];
     const current = now?.current ?? state?.current ?? null;
     const custom = now?.custom ?? null;
+    const deviceLimited =
+      (now?.source_scoped ?? state?.source_scoped ?? false) === true;
     const result = state?.result ?? now?.result ?? null;
     const required = state?.required ?? status2.policy.confirmations;
     const pending = state?.pending ?? null;
@@ -20144,6 +20152,8 @@ function groupCards(status2, live2) {
     if (decision) explanation.push(decision);
     if (custom && result?.status === "recommendation")
       explanation.push(_("The rule has a custom strategy; Forkop X keeps it."));
+    if (deviceLimited && !explanation.includes(DEVICE_LIMITED_TEXT()))
+      explanation.push(DEVICE_LIMITED_TEXT());
     const apply = state?.last_apply ?? null;
     const nowSeconds = Math.floor(Date.now() / 1e3);
     const cooling = (candidate) =>
@@ -20164,6 +20174,7 @@ function groupCards(status2, live2) {
       targetCount: targets.length,
       badge,
       current: currentStrategyLabel(current, custom),
+      deviceLimited,
       recommended,
       confidence:
         result?.status === "recommendation" || result?.status === "no_change"
@@ -20355,9 +20366,13 @@ function applyConfirmation(card3) {
     consequences: card3.targets.length ? card3.targets : ["\u2014"],
     notes: [
       `${_("Now")}: ${card3.current}. ${_("Will be")}: ${candidate}.`,
-      _(
-        "Forkop X will create a configuration snapshot, reload the service and check the real production path. If the check fails, the previous configuration is restored automatically.",
-      ),
+      card3.deviceLimited
+        ? _(
+            'The rule is limited to devices, and the router cannot send their traffic. Forkop X will create a configuration snapshot, reload the service and check that the rule runs the new strategy, but not that the sites open. If they stop opening on the device, restore the snapshot in "History and recovery".',
+          )
+        : _(
+            "Forkop X will create a configuration snapshot, reload the service and check the real production path. If the check fails, the previous configuration is restored automatically.",
+          ),
     ],
     confirmLabel: _("Apply"),
   };
@@ -20409,6 +20424,8 @@ function refusalText(reason) {
       );
     case "custom_strategy_kept":
       return _("The rule has a custom strategy; Forkop X keeps it.");
+    case "source_scoped_rule_manual_only":
+      return DEVICE_LIMITED_TEXT();
     case "mode_off":
     case "mode_not_recommend":
     case "mode_changed":

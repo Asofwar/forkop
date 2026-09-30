@@ -1281,4 +1281,37 @@ json 'a.equal(r.status, "needs_attention"); a.equal(r.reason, "apply_failed:snap
 at status; json 'a.equal(r.resolved, false); a.equal(r.diagnosis, "in_transaction");' "$WORK/out.json"
 ok "transaction killed with the guard installed -> needs_attention (in_transaction), not a resolved failure"
 
+# A rule limited to devices (source_ip_cidr) owns the target for those devices.
+# The router cannot send their traffic: only the operator applies to it, and
+# the verification is the runtime coherence alone.
+scope_dpi_rule() {
+  sed -i "/list domain_suffix 'example.com'/a\\	list source_ip_cidr '192.168.1.50'" "$FORKOP_CONFIG_FILE"
+  node -e 'const fs=require("fs");const f=process.argv[1];const c=JSON.parse(fs.readFileSync(f,"utf8"));
+    c.route.rules.find((r)=>r.outbound==="Dpi-out").source_ip_cidr=["192.168.1.50"];fs.writeFileSync(f,JSON.stringify(c))' "$FORKOP_AUTOTUNE_SINGBOX_CONFIG"
+  ucode -L "$LIB" "$LIB/config/snapshots.uc" confirm-working > /dev/null
+  PRE_LKG="$(lkg)"; PRE_HASH="$(chash)"
+}
+reset_apply; scope_dpi_rule; plan_ready
+json 'a.equal(r.status, "ready"); a.equal(r.owner.kind, "zapret"); a.equal(r.owner.section, "Dpi"); a.equal(r.owner.source_scoped, true);' "$WORK/plan.json"
+for trigger in "" automatic; do
+  # shellcheck disable=SC2086
+  at apply "$WORK/plan.json" "" $trigger
+  json 'a.equal(r.status, "stale"); a.equal(r.reason, "source_scoped_rule_manual_only"); a.equal(r.applied, false);' "$WORK/out.json"
+  { [ "$(chash)" = "$PRE_HASH" ] && [ "$(reloads)" = 0 ] && [ "$(lkg)" = "$PRE_LKG" ]; } || fail "a device-limited rule was changed without the operator"
+done
+ok "device-limited rule: planned for its devices, refused unless the operator applies"
+at apply "$WORK/plan.json" "" manual
+json 'a.equal(r.status, "applied"); a.equal(r.applied, true);
+  a.equal(r.verification.ok, true); a.equal(r.verification.traffic_skipped, "source_scoped_rule"); a.equal(r.verification.traffic, null);
+  a.ok(!r.verification.checks.some((c) => c.name.startsWith("traffic_")), "no production traffic check");
+  a.ok(r.verification.checks.find((c) => c.name === "rule_owns_target").ok);
+  a.ok(r.verification.checks.find((c) => c.name === "nfqws_arguments").ok);' "$WORK/out.json"
+case "$(dpi_args)" in *multisplit*) ;; *) fail "manual apply to a device-limited rule did not start the candidate";; esac
+[ "$(lkg)" != "$PRE_LKG" ] || fail "manual apply to a device-limited rule did not confirm the candidate"
+ok "device-limited rule: manual apply verified by runtime coherence only (no production traffic)"
+reset_apply; plan_ready; at apply "$WORK/plan.json" "" manual
+json 'a.equal(r.status, "applied"); a.equal(r.verification.traffic_skipped, null); a.notEqual(r.verification.traffic, null);
+  a.ok(r.verification.checks.find((c) => c.name === "traffic_rule_path").ok);' "$WORK/out.json"
+ok "unscoped rule: a manual apply is still verified with production traffic"
+
 printf 'autotune_apply: PASS (%d checks)\n' "$pass"

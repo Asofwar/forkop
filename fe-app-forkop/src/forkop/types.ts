@@ -172,6 +172,7 @@ export namespace Forkop {
 
   // Hysteresis state of a group, written by the worker.
   export interface AutotuneGroupState {
+    source_scoped?: boolean;
     pending: {
       candidate: string;
       count: number;
@@ -267,6 +268,9 @@ export namespace Forkop {
     targets: string[];
     current: string | null;
     custom: boolean | null;
+    // The rule is limited to devices (source_ip_cidr): it owns the targets
+    // for those devices only.
+    source_scoped?: boolean;
     result: AutotuneGroupResult | null;
   }
 

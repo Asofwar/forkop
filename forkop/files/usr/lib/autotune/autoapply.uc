@@ -11,6 +11,8 @@
 //   - the group result is a recommendation with at least
 //     policy.apply_min_confidence (always "high");
 //   - the rule does not carry a custom strategy of the user;
+//   - the rule is not limited to devices (source_ip_cidr): their traffic
+//     cannot be verified from the router, so only the operator applies;
 //   - the candidate is not in its cooldown after a rollback or failure;
 //   - fewer than policy.max_applies_per_day applies in the last 24 hours;
 //   - the state was not recovered from a corrupt file within policy.cooldown.
@@ -29,7 +31,7 @@ function applies_today(applies, now) {
 }
 
 // ctx: { policy, trigger, group (hysteresis state), result (aggregate),
-//        custom, applies, now, cooldown_until, recovered_at }
+//        custom, source_scoped, applies, now, cooldown_until, recovered_at }
 // → { apply: bool, reason } — reason is null only when it may be applied.
 function decide(ctx) {
     let p = ctx.policy, r = ctx.result || {};
@@ -41,6 +43,7 @@ function decide(ctx) {
     if (!policy_module.confidence_at_least(r.confidence, p.apply_min_confidence || "high"))
         return { apply: false, reason: "confidence_too_low" };
     if (ctx.custom === true) return { apply: false, reason: "custom_strategy_kept" };
+    if (ctx.source_scoped === true) return { apply: false, reason: "source_scoped_rule_manual_only" };
     if (ctx.cooldown_until != null && ctx.now < ctx.cooldown_until) return { apply: false, reason: "candidate_in_cooldown" };
     if (type(ctx.recovered_at) == "int" && ctx.now < ctx.recovered_at + int(p.cooldown_seconds))
         return { apply: false, reason: "state_recovered" };

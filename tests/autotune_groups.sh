@@ -78,6 +78,11 @@ config section 'youtube'
 config section 'z2'
 	option action 'zapret2'
 	option nfqws2_opt '--lua-desync=private-z2'
+config section 'kids'
+	option action 'zapret'
+	option label 'Kids tablet'
+	list source_ip_cidr '192.168.1.50'
+	option nfqws_opt '--filter-tcp=443 --dpi-desync=fake'
 config autotune_target 'yt'
 	option host 'www.youtube.com'
 config autotune_target 'ytimg'
@@ -94,6 +99,8 @@ config autotune_target 'lua'
 	option host 'lua.example.net'
 config autotune_target 'lists'
 	option host 'listed.example.com'
+config autotune_target 'scoped'
+	option host 'kids.example.net'
 config autotune_target 'off'
 	option host 'off.example.com'
 	option enabled '0'
@@ -103,10 +110,11 @@ cat >"$WORK/sing-box.json" <<'JSON'
  {"action":"route","inbound":"tproxy-in","domain_suffix":["youtube.com","ytimg.com"],"outbound":"youtube-out"},
  {"action":"route","inbound":"tproxy-in","domain_suffix":["telegram.org"],"outbound":"main-out"},
  {"action":"route","inbound":"tproxy-in","domain_suffix":["lua.example.net"],"outbound":"z2-out"},
+ {"action":"route","inbound":"tproxy-in","domain_suffix":["kids.example.net"],"source_ip_cidr":["192.168.1.50"],"outbound":"kids-out"},
  {"action":"route","inbound":"tproxy-in","domain_suffix":["example.org"],"outbound":"direct-out"},
  {"action":"route","inbound":"tproxy-in","rule_set":["remote-list"],"outbound":"main-out"}
 ]},"outbounds":[{"type":"direct","tag":"direct-out"},{"type":"vless","tag":"main-out"},
- {"type":"direct","tag":"youtube-out","routing_mark":16777217},{"type":"direct","tag":"z2-out","routing_mark":33554433}]}
+ {"type":"direct","tag":"youtube-out","routing_mark":16777217},{"type":"direct","tag":"kids-out","routing_mark":16777218},{"type":"direct","tag":"z2-out","routing_mark":33554433}]}
 JSON
 cat >"$WORK/dig" <<'SH'
 #!/bin/sh
@@ -173,8 +181,11 @@ assert.deepEqual([a.empty.status, a.empty.reason], ['inconclusive', 'no_targets'
 assert(a.fp_same && a.fp_diff, 'rule fingerprints follow the options, not their order');
 
 const g = read('groups');
-assert.deepEqual(Object.keys(g.groups), ['youtube']);
+assert.deepEqual(Object.keys(g.groups), ['youtube', 'kids']);
 const yt = g.groups.youtube;
+// A rule limited to devices owns its target for those devices; the group says so.
+assert.deepEqual([g.groups.kids.label, g.groups.kids.targets, g.groups.kids.source_scoped], ['Kids tablet', ['scoped'], true]);
+assert.equal(yt.source_scoped, false);
 assert.deepEqual([yt.label, yt.targets, yt.current, yt.custom], ['YouTube', ['yt', 'ytimg'], 'multisplit', false]);
 assert.deepEqual([yt.result.status, yt.result.candidate, yt.result.confidence, yt.result.representative],
   ['recommendation', 'fake', 'medium', 'yt']);

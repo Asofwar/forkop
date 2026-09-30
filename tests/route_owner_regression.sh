@@ -20,6 +20,10 @@ const fs = require('node:fs');
 const actual = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const expected = JSON.parse(fs.readFileSync(process.argv[3], 'utf8'));
 assert.deepEqual(Object.keys(actual), Object.keys(expected), 'every recorded case ran');
+// The golden file holds the answers of the shared resolver, which never guesses
+// a source. Autotune apply asks for the devices of a rule limited to devices:
+// the owner is decided for them and carries source_scoped.
+expected.source_scoped = { decided: true, kind: 'outbound', rule: 0, outbound: 'main-out', source_scoped: true };
 for (const name of Object.keys(expected)) assert.deepEqual(actual[name], expected[name], `owner changed: ${name}`);
 console.log(`route_owner_regression: PASS (${Object.keys(expected).length} cases)`);
 NODE

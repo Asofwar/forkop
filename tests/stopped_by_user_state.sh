@@ -159,6 +159,50 @@ for source in package component user; do
 done
 rm -f "$STOP_MARKER" "$START_RECORD"
 
+# 2c. Forkop's own stop for a component change (or a package upgrade that a
+#     component action runs) while that component action is still at work:
+#     its start is still to come (components/action.uc restarts Forkop when
+#     the change ends). The UI state says so ("restarting"), not a failure
+#     and not a plain stop; health calls it transitioning. Once the action
+#     ended without the start, it is a failure again. The user's stop during
+#     a component action stays the user's.
+sleep 300 &
+component_worker=$!
+trap 'kill "$component_worker" 2>/dev/null || true; rm -rf "$WORK_DIR"' EXIT
+mkdir -p "$FORKOP_UI_COMPONENT_ACTION_DIR"
+component_job="$FORKOP_UI_COMPONENT_ACTION_DIR/1700000000-4242.json"
+for source in component package user; do
+  printf '1.000000001.42\nby=%s\n' "$source" >"$STOP_MARKER"
+  rm -f "$START_RECORD"
+  [ "$source" = user ] || : >"$START_RECORD"
+  printf '{"running":true,"kind":"component","action":"install","component":"sing-box","pid":"%s","started_at":%s}\n' \
+    "$component_worker" "$(date +%s)" >"$component_job"
+  ui_state
+  status="$(forkop_field "$WORK_DIR/ui.json" status)"
+  if [ "$source" = user ]; then
+    [ "$status" != restarting ] || fail "the user's stop during a component action is shown as a restart: $(cat "$WORK_DIR/ui.json")"
+    [ "$(forkop_field "$WORK_DIR/ui.json" stopped_by_user)" = 1 ] ||
+      fail "the user's stop during a component action: $(cat "$WORK_DIR/ui.json")"
+    continue
+  fi
+  [ "$status" = restarting ] ||
+    fail "Forkop stopped by '$source' while the component action runs is not shown as restarting: $(cat "$WORK_DIR/ui.json")"
+  [ "$(forkop_field "$WORK_DIR/ui.json" stopped_by_user)" = 0 ] || fail "a stop by '$source' is shown as the user's"
+  printf '{"running":0,"stopped_by_user":0,"not_started":0,"status":"%s"}' "$status" >"$WORK_DIR/forkop.json"
+  health "$(cat "$WORK_DIR/forkop.json")"
+  [ "$(health_field service.forkop)" = transitioning ] ||
+    fail "health of Forkop stopped by '$source' for a running component action: $(cat "$WORK_DIR/health.json")"
+  # The component action ended; its start never came.
+  printf '{"running":false,"kind":"component","action":"install","component":"sing-box","success":false}\n' >"$component_job"
+  ui_state
+  [ "$(forkop_field "$WORK_DIR/ui.json" status)" != restarting ] ||
+    fail "Forkop stopped by '$source' is shown as restarting after the component action ended: $(cat "$WORK_DIR/ui.json")"
+  [ "$(forkop_field "$WORK_DIR/ui.json" not_started)" = 0 ] || fail "a stop by '$source' whose start never came is not a failure"
+done
+kill "$component_worker" 2>/dev/null || true
+wait "$component_worker" 2>/dev/null || true
+rm -f "$STOP_MARKER" "$START_RECORD" "$component_job"
+
 # 3. Health: stopped by the user is "stopped", not a failure; down without a
 #    stop stays an error; a failed change still is one.
 health '{"running":0,"stopped_by_user":1}'

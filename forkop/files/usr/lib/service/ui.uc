@@ -1109,6 +1109,25 @@ function not_started(running) {
     return !running && fs.stat(EXPLICIT_START_FILE) == null && !stopped_by_user(running);
 }
 
+// Down after Forkop's own stop for a component change (or a package upgrade
+// run as a component action) while that component action is still at work:
+// the start that follows the stop is still to come
+// (components/action.uc restart_forkop_after_successful_change). Neither
+// a failure yet nor a stop; once the action ended without the start, it is a
+// failure (D-15, UC-056).
+function stopped_for_component_action(running) {
+    let request = running ? null : fs.readfile(STOP_REQUESTED_FILE);
+    let by = request == null ? null : match(request, /(^|\n)by=([a-z]*)/);
+    if (by == null || (by[2] != "component" && by[2] != "package"))
+        return false;
+    for (let path in fs.glob(COMPONENT_ACTION_DIR + "/*.json")) {
+        let value = read_json_file(path);
+        if (type(value) == "object" && value.running === true)
+            return true;
+    }
+    return false;
+}
+
 function current_ui_state_json() {
     refresh_action_dirs();
 
@@ -1132,6 +1151,8 @@ function current_ui_state_json() {
         forkop_status = "restarting";
     else if (active_action == "reload")
         forkop_status = "reloading";
+    else if (stopped_for_component_action(forkop_is_running))
+        forkop_status = "restarting";
 
     write_json({
         service: {

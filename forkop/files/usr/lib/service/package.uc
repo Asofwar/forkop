@@ -206,6 +206,12 @@ function prerm_cleanup(action) {
         // Forkop's own stop for the package change, not the user's
         // (service/initd.uc stop_request_source).
         command_success_from_args([ "env", "FORKOP_STOP_SOURCE=package", INIT_PATH, "stop" ]);
+        // No start follows a removal: the explicit start ends with it, and
+        // a reinstall that does not start Forkop shows it not started, not
+        // as a start that failed (service/initd.uc EXPLICIT_START_FILE;
+        // D-15(a)).
+        if (as_string(action) == "remove")
+            command_success_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/service/initd.uc", "clear-explicit-start" ]);
         restore_dnsmasq_if_needed();
         remove_managed_sing_box();
     }

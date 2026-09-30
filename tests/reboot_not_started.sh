@@ -455,4 +455,20 @@ no_event '^runtime-start:' || fail "the upgrade started a Forkop that was not st
 initd reload "" >/dev/null || fail "the reload after the upgrade failed"
 no_event '^runtime-reload:' || fail "a reload after the upgrade started a Forkop that was not started since boot"
 
+# 5d. Removing the package stops Forkop for good: no start follows, so the
+#     start record goes with it. A reinstall that does not start Forkop leaves
+#     it not started, not a failed start, and no reload starts it.
+reboot
+initd start >/dev/null || fail "the start before the removal failed: $(cat "$WORK/init.d.err")"
+[ -e "$START_RECORD" ] || fail "fixture: the start before the removal was not recorded"
+"$REAL_UCODE" -L "$LIB" "$LIB/service/package.uc" prerm remove || fail "prerm of the removal failed"
+[ "$(runtime)" = down ] || fail "fixture: prerm of the removal did not stop Forkop"
+[ ! -e "$START_RECORD" ] || fail "the removal of the package kept the record of an explicit start"
+clear_events
+"$REAL_UCODE" -L "$LIB" "$LIB/service/package.uc" postinst || fail "postinst of the reinstall failed"
+no_event '^runtime-start:' || fail "the reinstall started Forkop"
+[ ! -e "$START_RECORD" ] || fail "the reinstall recorded an explicit start"
+initd reload "" >/dev/null || fail "the reload after the reinstall failed"
+no_event '^runtime-reload:' || fail "a reload after the reinstall started Forkop"
+
 printf 'reboot not started checks passed\n'

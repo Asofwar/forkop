@@ -62,11 +62,12 @@ const STOP_REQUESTED_FILE = getenv("FORKOP_STOP_REQUESTED_FILE") || RUNTIME_STAT
 // (start_service, already while it waits for reload.lock: the start at boot
 // with autostart, a UI or CLI start or restart, init.d start or restart;
 // service/lifecycle.uc start and restart; the package postinst for a Forkop
-// that ran before the upgrade) and removed by the user's stop. Like the stop request it lives in runtime state and
-// ends with a reboot. A runtime that is down without it was not started
-// since boot, or the user stopped it: no reload, restore or list update
-// starts it (D-15(a), UC-056). One that is down with it went down after an
-// explicit start, and a reload repairs it.
+// that ran before the upgrade) and removed by the user's stop and by the
+// removal of the package (service/package.uc prerm). Like the stop request
+// it lives in runtime state and ends with a reboot. A runtime that is down
+// without it was not started since boot, or the user stopped it: no reload,
+// restore or list update starts it (D-15(a), UC-056). One that is down with
+// it went down after an explicit start, and a reload repairs it.
 const EXPLICIT_START_FILE = getenv("FORKOP_EXPLICIT_START_FILE") || RUNTIME_STATE_DIR + "/start.explicit";
 const SERVICE_TRIGGER_SYNC_FILE = getenv("FORKOP_SERVICE_TRIGGER_SYNC_FILE") || RUNTIME_STATE_DIR + "/service-triggers.sync";
 const INTERNAL_CONFIG_TRIGGER_GUARD = getenv("FORKOP_INTERNAL_CONFIG_TRIGGER_GUARD") || "/var/run/forkop.internal-config-change";
@@ -1302,6 +1303,9 @@ else if (mode == "deferred-start-pending")
 // start; the previous version may have kept no record of it.
 else if (mode == "mark-explicit-start")
     exit((ARGV[1] == "if-running" && !runtime_is_running()) || mark_explicit_start() ? 0 : 1);
+// service/package.uc prerm: no start follows the removal of the package.
+else if (mode == "clear-explicit-start")
+    unlink_file(EXPLICIT_START_FILE);
 else if (mode == "begin-action") {
     let job_id = begin_external_service_action(ARGV[1], ARGV[2] || "initd", ARGV[3]);
     if (job_id != "")

@@ -273,6 +273,21 @@ no_event '^forkop start' || fail "the retried start ran while another process he
 release_reload_lock
 started_once "automatic start"
 
+# 1b. Switching autostart off (init.d disable cancels the scheduled retry of a
+#     failed start) during the deferral is no stop: the explicit start still
+#     runs once the lock is released, and leaves no deferred start behind for
+#     a later WAN-up to run with autostart off. The retry is scheduled later
+#     here, so that disable surely finds it waiting.
+reset_case
+hold_reload_lock
+FORKOP_START_DEFERRED_RETRY_DELAY_SECONDS=4 launch_start
+wait_until 15 start_deferred || fail "the start did not give up waiting for reload.lock"
+retry_worker_running || fail "the deferred start scheduled no retry"
+# What init.d disable runs besides removing the host's rc.d links.
+initd cancel-scheduled-start-retry >/dev/null 2>&1 || fail "cancelling a scheduled start retry failed"
+release_reload_lock
+started_once "start deferred across init.d disable"
+
 # 2. An explicit stop during the deferral wins: the deferred start does not
 #    run after the holder has released the lock.
 reset_case

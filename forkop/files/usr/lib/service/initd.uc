@@ -375,6 +375,15 @@ function cancel_scheduled_start_retry(path) {
         unlink_file(path);
 }
 
+// init.d disable: autostart no longer applies, so the scheduled retry of a
+// failed start ends. A deferred start was requested explicitly and does not
+// depend on autostart (retry_start_on_wan_up): disabling autostart is no
+// stop, and its retry stays scheduled.
+function cancel_autostart_start_retry(path) {
+    if (deferred_start_stop_request() == null)
+        cancel_scheduled_start_retry(path);
+}
+
 function schedule_start_retry(path, delay_seconds) {
     path = as_string(path || START_RETRY_PID_FILE);
     delay_seconds = as_string(delay_seconds || START_RETRY_DELAY_SECONDS);
@@ -1222,7 +1231,7 @@ else if (mode == "start-failure-blocks-retry")
 else if (mode == "schedule-start-retry")
     exit(schedule_start_retry(ARGV[1], ARGV[2]) ? 0 : 1);
 else if (mode == "cancel-scheduled-start-retry")
-    cancel_scheduled_start_retry(ARGV[1]);
+    cancel_autostart_start_retry(ARGV[1]);
 else if (mode == "begin-action") {
     let job_id = begin_external_service_action(ARGV[1], ARGV[2] || "initd", ARGV[3]);
     if (job_id != "")

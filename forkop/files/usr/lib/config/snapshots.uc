@@ -20,6 +20,10 @@ const RELOAD_LOCK = getenv("FORKOP_RELOAD_LOCK_DIR") || "/var/run/forkop.reload.
 // explicit start no reload brings the runtime back (D-15, UC-056).
 const STOP_REQUESTED = getenv("FORKOP_STOP_REQUESTED_FILE") ||
     (getenv("FORKOP_RUNTIME_STATE_DIR") || "/var/run/forkop") + "/stop.requested";
+// The record of the last DPI autotune apply (autotune/apply.uc) and the
+// phases in which that apply is finished.
+const AUTOTUNE_APPLY_STATE = getenv("FORKOP_AUTOTUNE_APPLY_STATE") || "/etc/forkop/autotune-apply.json";
+const AUTOTUNE_TERMINAL_PHASES = [ "applied", "rolled_back", "failed", "stale", "no_change_required", "needs_attention" ];
 const RETENTION = 10;
 
 function value(v) { return v == null ? "" : "" + v; }
@@ -423,6 +427,37 @@ function guarded_replace(before, content, pre, on_success, reason, apply_mode, o
     result.started = true;
     return result;
 }
+// The user configuration, without the lifecycle's own shutdown_correctly
+// bookkeeping, hashed as autotune/apply.uc fingerprints it.
+function user_fingerprint(content) {
+    let lines = [];
+    for (let line in split(content, "\n"))
+        if (match(line, /^[ \t]*option[ \t]+shutdown_correctly([ \t]|$)/) == null) push(lines, line);
+    return sha(join("\n", lines));
+}
+// Why the configuration may not become last-known-working because of an
+// autotune apply, or null. A start or a reload proves that a configuration
+// runs, not that an autotune candidate works: a candidate is confirmed only
+// by the apply that verified it in production (confirm-working autotune).
+// Nothing else confirms while an apply is running, while its record cannot
+// be read (it may hide an unresolved apply), or while a record that still
+// waits for a decision names the configuration as its candidate: an
+// interrupted or crashed verification, a failed one whose rollback did not
+// finish (UC-020, UC-069).
+function autotune_objection(content) {
+    if (fs.stat(AUTOTUNE_APPLY_STATE) == null) return null;
+    let record = null;
+    try { record = json(value(fs.readfile(AUTOTUNE_APPLY_STATE))); } catch (e) { record = null; }
+    if (type(record) != "object" || type(record.phase) != "string") return "autotune_apply_unreadable";
+    if (record.mutation == null) return null;
+    let finished = index(AUTOTUNE_TERMINAL_PHASES, record.phase) >= 0;
+    if (!finished && require("autotune.lock").held()) return "autotune_apply_in_progress";
+    let hash = sha(content);
+    let candidate = hash != "" && (hash == record.candidate_hash ||
+        (record.candidate_fingerprint != null && user_fingerprint(content) == record.candidate_fingerprint));
+    let undecided = !finished || record.phase == "needs_attention" || (record.phase == "failed" && record.rollback_available === true);
+    return candidate && undecided ? "autotune_apply_unresolved" : null;
+}
 function do_restore(id) {
     let target = read_snapshot(id, true);
     if (target == null) return { status: "failed", reason: "invalid_snapshot" };
@@ -540,11 +575,18 @@ else if (mode == "apply") {
             answer.status == "success" ? "success" : answer.status == "recovered" ? "recovered" : "failure" ]);
 }
 else if (mode == "confirm-working") {
-    let found = create("automatic", "last-known-working", true);
-    if (found.snapshot != null &&
-        (trim(value(fs.readfile(LKG))) == found.snapshot.id || atomic(LKG, found.snapshot.id + "\n")))
-        answer = { status: "confirmed" };
+    // A start or reload of the lifecycle; "autotune": the apply that has
+    // just verified its candidate in production.
+    let content = read_config();
+    let objection = content == null || value(ARGV[1]) == "autotune" ? null : autotune_objection(content);
+    if (objection != null) answer = { status: "not_confirmed", reason: objection };
+    else {
+        let found = create("automatic", "last-known-working", true);
+        if (found.snapshot != null &&
+            (trim(value(fs.readfile(LKG))) == found.snapshot.id || atomic(LKG, found.snapshot.id + "\n")))
+            answer = { status: "confirmed" };
+    }
 }
 release();
 print(sprintf("%J\n", answer));
-exit(index([ "failed", "needs_attention", "busy" ], answer.status) >= 0 ? 1 : 0);
+exit(index([ "failed", "needs_attention", "busy", "not_confirmed" ], answer.status) >= 0 ? 1 : 0);

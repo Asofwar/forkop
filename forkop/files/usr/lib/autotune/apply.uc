@@ -780,7 +780,9 @@ function apply(plan_file, resolver) {
         audit.lkg = "not_confirmed"; audit.finished_at = now();
         state_write(audit); return audit;
     }
-    let confirmed = snapshots([ "confirm-working" ]);
+    // The one confirmation of a candidate: a start or reload never confirms
+    // it while this record is unfinished or undecided (config/snapshots.uc).
+    let confirmed = snapshots([ "confirm-working", "autotune" ]);
     audit.lkg = confirmed.status;
     audit.finished_at = now();
     if (confirmed.status != "confirmed") {

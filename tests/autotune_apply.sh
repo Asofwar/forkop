@@ -270,6 +270,8 @@ reset_apply() {
   PRE_LKG="$(lkg)"; PRE_HASH="$(chash)"; : > "$STUB_LOG/reload.log"
 }
 no_secret() { ! grep -rq "$SECRET" "$WORK/out.json" "$FORKOP_AUTOTUNE_APPLY_STATE" "$STUB_LOG" 2>/dev/null || fail "$1: secret leaked"; }
+# What a start or reload of the lifecycle asks for once it succeeded.
+confirm() { ucode -L "$LIB" "$LIB/config/snapshots.uc" confirm-working > "$WORK/confirm.json" || true; }
 plan_ready() { selection multisplit; at plan "$WORK/selection.json"; cp "$WORK/out.json" "$WORK/plan.json"; }
 
 # 1. plan is read-only
@@ -467,9 +469,27 @@ for plan in "0 1 0" "0 q 0"; do
   json 'a.equal(r.status, "needs_attention"); a.equal(r.reason, "verification_failed:rollback_recovered"); a.equal(r.rollback.status, "recovered");' "$WORK/out.json"
   [ "$(chash)" != "$PRE_HASH" ] || fail "$plan: fixture: the candidate was not put back"
   [ "$(lkg)" = "$PRE_LKG" ] || fail "$plan: last-known-working moved to the candidate that failed verification"
+  # Nor does the next start or reload confirm it (lifecycle confirm-working).
+  confirm; json 'a.equal(r.status, "not_confirmed"); a.equal(r.reason, "autotune_apply_unresolved");' "$WORK/confirm.json"
+  [ "$(lkg)" = "$PRE_LKG" ] || fail "$plan: a later start or reload confirmed the rejected candidate"
   unset PROD_PLAN
 done
 ok "13b rollback restore failed or queued, candidate put back -> needs_attention, last-known-working stays pre-apply"
+
+# 13c. While the rollback waits for a lifecycle action, that action (a reload
+#      of the unchanged candidate) ends and confirms the working configuration
+#      (service/lifecycle.uc finish_reload_status): the record is still being
+#      rolled back, so the candidate is not confirmed (UC-020).
+reset_apply; plan_ready; rm -f "$STATE/lock-taken" "$WORK/confirm.json"
+( for _ in $(seq 1 300); do grep -q '"phase": "rolling_back"' "$FORKOP_AUTOTUNE_APPLY_STATE" 2>/dev/null && break; sleep 0.1; done
+  confirm ) &
+watcher=$!
+WORK_RELOAD="$WORK/reload" FORKOP_RELOAD_COMMAND="$WORK/reload-then-lock" FORKOP_AUTOTUNE_ROLLBACK_WAIT_SECONDS=4 at apply "$WORK/plan.json"
+wait "$watcher" 2>/dev/null || true; kill "$(holder)" 2>/dev/null || true
+json 'a.equal(r.status, "needs_attention"); a.equal(r.reason, "verification_failed:rollback_busy");' "$WORK/out.json"
+json 'a.notEqual(r.status, "confirmed");' "$WORK/confirm.json"
+[ "$(lkg)" = "$PRE_LKG" ] || fail "a reload during the rollback wait confirmed the rejected candidate"
+ok "13c reload ending while the rollback waits for it -> the rejected candidate is not confirmed"
 
 # 22. direct never mutates production
 reset_apply; selection direct; at plan "$WORK/selection.json"
@@ -577,6 +597,41 @@ at rollback
 json 'a.equal(r.status, "rolled_back"); a.equal(r.rollback.config_hash_restored, true); a.ok(r.rollback.runtime.ok);' "$WORK/out.json"
 [ "$(chash)" = "$PRE_HASH" ] || fail "explicit rollback"
 ok "20 interruption after reload -> recorded (LKG unchanged), explicit rollback restores"
+
+# 20a. SIGKILL (power loss, OOM) during the verification: the record stays in
+#      phase verifying while the unverified candidate runs. The start or
+#      reload after it does not make the candidate last-known-working
+#      (UC-020); nor does it while an interrupted record (SIGTERM) names it.
+reset_apply; plan_ready; export PROD_SLEEP=1
+ucode -L "$LIB" "$LIB/autotune/apply.uc" apply "$WORK/plan.json" > "$WORK/out.json" &
+runner=$!
+for _ in $(seq 1 200); do grep -q 'curl production' "$STUB_LOG/curl.log" 2>/dev/null && break; sleep 0.05; done
+kill -9 "$runner"; pkill -9 -f "$WORK/bin/curl" || true; wait "$runner" 2>/dev/null || true; unset PROD_SLEEP
+json 'a.equal(r.phase, "verifying");' "$FORKOP_AUTOTUNE_APPLY_STATE"
+[ "$(chash)" != "$PRE_HASH" ] || fail "fixture: the candidate is not active"
+confirm; json 'a.equal(r.status, "not_confirmed"); a.equal(r.reason, "autotune_apply_unresolved");' "$WORK/confirm.json"
+[ "$(lkg)" = "$PRE_LKG" ] || fail "the start after a crash during verification confirmed the unverified candidate"
+reset_apply; plan_ready; export PROD_SLEEP=1
+ucode -L "$LIB" "$LIB/autotune/apply.uc" apply "$WORK/plan.json" > "$WORK/out.json" &
+runner=$!
+for _ in $(seq 1 200); do grep -q 'curl production' "$STUB_LOG/curl.log" 2>/dev/null && break; sleep 0.05; done
+kill -TERM "$runner"; wait "$runner" || true; unset PROD_SLEEP
+json 'a.equal(r.reason, "interrupted_after_apply");' "$WORK/out.json"
+confirm; json 'a.equal(r.status, "not_confirmed");' "$WORK/confirm.json"
+[ "$(lkg)" = "$PRE_LKG" ] || fail "the start after an interrupted verification confirmed the unverified candidate"
+at rollback; json 'a.equal(r.status, "rolled_back");' "$WORK/out.json"
+confirm; json 'a.equal(r.status, "confirmed");' "$WORK/confirm.json"
+ok "20a crash or interruption during verification -> a later start/reload does not confirm the candidate; after the rollback it confirms"
+
+# 20b. An apply record that exists but cannot be read (empty after a power
+#      cut, garbage) may hide an unresolved apply: nothing is confirmed.
+for content in '' 'garbage{' '[]' '"x"'; do
+  reset_apply; printf '%s' "$content" > "$FORKOP_AUTOTUNE_APPLY_STATE"
+  sed -i "s/option dns_rewrite_ttl '60'/option dns_rewrite_ttl '20'/" "$FORKOP_CONFIG_FILE"
+  confirm; json 'a.equal(r.status, "not_confirmed"); a.equal(r.reason, "autotune_apply_unreadable");' "$WORK/confirm.json"
+  [ "$(lkg)" = "$PRE_LKG" ] || fail "'$content': confirmed although the apply record is unreadable"
+done
+ok "20b unreadable or empty apply record -> last-known-working is not confirmed"
 
 # Review hardening -------------------------------------------------------------
 

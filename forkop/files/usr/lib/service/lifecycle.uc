@@ -417,11 +417,33 @@ function mark_pending_reload_if_config_changed(initial_fingerprint, reason) {
     return false;
 }
 
+// Last-known-working names only a configuration that this start or reload
+// proved (UC-019, UC-020): the file is still the one it began with (an edit
+// made meanwhile waits for the reload queued for it), and no DPI transition
+// guard, neither of a restore or autotune apply nor of a failed lifecycle
+// transition, protects a runtime that no reload has proved yet.
+// config/snapshots.uc also refuses while an autotune apply is unfinished or
+// has not settled on the candidate that is now the configuration.
+function confirm_working_config(initial_fingerprint) {
+    if (external_config_fingerprint() != as_string(initial_fingerprint))
+        return false;
+    for (let table in [ "ForkopConfigRestoreDpiGuard", NFT_TABLE_NAME + "DpiGuard" ])
+        if (command_success_from_args([ "nft", "list", "table", "inet", table ])) {
+            log_message("Working configuration not confirmed as last known working: " + table + " is still installed", "info");
+            return false;
+        }
+    let result = module_capture(LIB_DIR + "/config/snapshots.uc", [ "confirm-working" ]);
+    let answer = null;
+    try { answer = json(result.output); } catch (e) { answer = null; }
+    if (type(answer) == "object" && answer.status == "not_confirmed")
+        log_message("Working configuration not confirmed as last known working: " + as_string(answer.reason), "info");
+    return result.status == 0;
+}
+
 function finish_reload_status(status, initial_fingerprint) {
     status = int(status || 0);
-    if (status == 0 && external_config_fingerprint() == initial_fingerprint &&
-        !command_success_from_args([ "nft", "list", "table", "inet", "ForkopConfigRestoreDpiGuard" ]))
-        module_success(LIB_DIR + "/config/snapshots.uc", [ "confirm-working" ]);
+    if (status == 0)
+        confirm_working_config(initial_fingerprint);
     if (status == 0)
         mark_pending_reload_if_config_changed(initial_fingerprint, "config_changed_during_reload");
     return status;
@@ -2459,7 +2481,7 @@ if (mode == "start" || mode == "main") {
     if (status == 0 || fs.stat(STOP_REQUESTED_FILE) == null)
         module_success(LIB_DIR + "/diagnostics/health.uc", [ "record", "start", status == 0 ? "success" : "failure" ]);
     if (status == 0)
-        module_success(LIB_DIR + "/config/snapshots.uc", [ "confirm-working" ]);
+        confirm_working_config(startup_config_fingerprint);
 }
 else if (mode == "stop")
     status = stop();

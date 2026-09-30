@@ -103,6 +103,9 @@ export const styles = `
 }
 .fkp-autotune__form input,
 .fkp-autotune__form select { width: 100%; min-width: 0; box-sizing: border-box; }
+/* The checkboxes of the domain list keep their own size; the domain reads left to right. */
+.fkp-autotune__form .fkp-autotune__domain { text-align: left; justify-content: flex-start; width: 100%; }
+.fkp-autotune__form .fkp-autotune__domain input { width: auto; flex: none; margin: 0; }
 .fkp-autotune__field-hint { grid-column: 2; margin-top: calc(-1 * var(--fkp-space-1)); color: var(--fkp-tone-neutral); font-size: 0.9em; }
 
 @media (max-width: 599px) {

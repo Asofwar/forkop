@@ -24,6 +24,9 @@ set -euo pipefail
 # 3. All three at once: the retry downloads, a forced update waits for it and
 #    a start comes through init.d. Nobody deadlocks, and the update never
 #    waits for one lock while it holds the other.
+# 4. The retry lets go of its lock only as the update's wait for it runs out:
+#    the update still tries the free reload.lock once and completes instead of
+#    giving up as if a reload held it.
 #
 # The update is the real components/updates.uc, the switch the real
 # service/lifecycle.uc dns-failover-apply, the start the real init.d
@@ -155,6 +158,15 @@ if (name == "service/state.uc" && index(mode, "runtime-dir-lock") >= 0) {
     let lock = "" + (ARGV[1] ?? "");
     let lock_name = lock == getenv("RELOAD_LOCK") ? "reload" : lock == getenv("SUB_LOCK") ? "sub" : lock;
     ev(actor + " call " + mode + " " + lock_name);
+    // Case 4: the retry lets go of its lock only once the update's wait for
+    // it (the timeout it passes) has run out.
+    if (actor == "B" && mode == "acquire-runtime-dir-lock-wait" && lock_name == "sub" &&
+        getenv("SUB_FREED_AT_DEADLINE") == "1") {
+        system("sleep " + int(ARGV[3] ?? "0"));
+        system("touch " + q(getenv("TEST_WORK") + "/worker.gate"));
+        for (let n = 0; fs.stat(lock) != null && n < 200; n++)
+            system("sleep 0.05");
+    }
     let status = real(name, ARGV);
     if (index(mode, "acquire") == 0)
         ev(actor + " " + mode + " " + lock_name + " rc=" + status);
@@ -248,8 +260,9 @@ launch_worker() {
   WORKER="$(head -n 1 "$WORKER_PID_FILE")"
 }
 
+# Arguments: extra environment assignments for the update.
 launch_update() {
-  start_actor env ACTOR=B ucode -L "$REAL_LIB" "$REAL_LIB/components/updates.uc" subscription-update >"$WORK_DIR/update.out" 2>&1
+  start_actor env ACTOR=B "$@" ucode -L "$REAL_LIB" "$REAL_LIB/components/updates.uc" subscription-update >"$WORK_DIR/update.out" 2>&1
   UPDATE_PID="$LAST_ACTOR"
   wait_until 20 has_event '^B call acquire-runtime-dir-lock-wait sub$' ||
     fail "the forced update did not start waiting for subscription-update.lock: $(cat "$WORK_DIR/update.out")"
@@ -366,5 +379,26 @@ no_event '^B service/state.uc mark-pending-reload$' || fail "the forced update g
 update_lock_order "start and forced update behind the retry"
 exclusive "start and forced update behind the retry"
 locks_released "start and forced update behind the retry"
+
+# 4. The retry holds its lock until the forced update's wait for it has run
+#    out (a 3 s budget here) and only then lets go of it. The update got
+#    subscription-update.lock within its wait and reload.lock is free: it
+#    tries reload.lock once more and completes, rather than giving up as if a
+#    reload held it and queueing a reload that brings no new subscription.
+reset_case
+launch_worker 0
+launch_update SUB_FREED_AT_DEADLINE=1 FORKOP_SUBSCRIPTION_LOCK_WAIT_SECONDS=3
+wait_until 60 process_gone "$UPDATE_PID" || fail "the forced update did not finish (deadlock on reload.lock/subscription-update.lock)"
+status=0
+wait "$UPDATE_PID" || status=$?
+has_event '^W sub released$' || fail "the retry did not let go of its lock at the end of the update's wait"
+no_event '^B service/state.uc mark-pending-reload$' ||
+  fail "the forced update gave up with reload.lock free and queued a reload after it got subscription-update.lock at the end of its wait"
+[ "$status" = 0 ] || fail "the forced update failed with status $status: $(cat "$WORK_DIR/update.out")"
+has_event '^B subscription/cache.uc update-request$' || fail "the forced update did not update the subscription cache"
+before "W sub released" "B subscription/cache.uc update-request" || fail "the forced update ran before the retry released its lock"
+update_lock_order "forced update freed at the end of its wait"
+exclusive "forced update freed at the end of its wait"
+locks_released "forced update freed at the end of its wait"
 
 printf 'subscription bootstrap lock wait checks passed\n'

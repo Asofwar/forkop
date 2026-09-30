@@ -4482,7 +4482,7 @@ function subscription_update_common_locked(force, target_section, target_source_
     return true;
 }
 
-const SUBSCRIPTION_LOCK_WAIT_SECONDS = 300;
+const SUBSCRIPTION_LOCK_WAIT_SECONDS = int(getenv("FORKOP_SUBSCRIPTION_LOCK_WAIT_SECONDS") || "300");
 
 // Takes reload.lock and then subscription-update.lock: the global lock order
 // (service/state.uc). A start holds reload.lock around start_main, which then
@@ -4522,8 +4522,10 @@ function acquire_subscription_update_locks(force) {
         if (remaining <= 0 || !acquire_runtime_lock(SUBSCRIPTION_UPDATE_LOCK_DIR, true, remaining))
             return "subscription_update_busy";
         release_runtime_lock(SUBSCRIPTION_UPDATE_LOCK_DIR);
+        // The wait may get the lock only as the bound runs out; reload.lock
+        // is then still tried once (a wait of 0 s is a single attempt).
         remaining = deadline - now_seconds();
-        if (remaining <= 0 || !acquire_runtime_lock(RELOAD_LOCK_DIR, true, remaining))
+        if (!acquire_runtime_lock(RELOAD_LOCK_DIR, true, remaining > 0 ? remaining : 0))
             return "reload_busy";
     }
     return "";

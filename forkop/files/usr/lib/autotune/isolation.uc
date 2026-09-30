@@ -78,8 +78,12 @@ const MAX_TUNE_PROBES_TOTAL = 32;
 // connections to finish closing and for queued packets to get a verdict.
 const DRAIN_TIMEOUT = int(getenv("FORKOP_AUTOTUNE_DRAIN_TIMEOUT") || "3");
 // Seconds the table is kept after nfqws stopped, until no socket of the probe
-// tuple is left (TIME_WAIT lasts 60 s on Linux).
-const HOLD_TIMEOUT = int(getenv("FORKOP_AUTOTUNE_HOLD_TIMEOUT") || "65");
+// tuple is left. The wait ends as soon as they are gone. TIME_WAIT lasts 60 s,
+// but a probe the DPI blocked leaves an orphan with unacknowledged data that
+// the kernel keeps retransmitting until tcp_orphan_retries run out: about
+// 150 s on GL-MT6000 for a blocked target, where a 65 s hold discarded every
+// measurement. The bound covers the retransmission with a margin.
+const HOLD_TIMEOUT = int(getenv("FORKOP_AUTOTUNE_HOLD_TIMEOUT") || "300");
 // Seconds to wait for production queues to be momentarily empty before the
 // temporary hooks are registered or unregistered.
 const QUIET_TIMEOUT = int(getenv("FORKOP_AUTOTUNE_QUIET_TIMEOUT") || "2");

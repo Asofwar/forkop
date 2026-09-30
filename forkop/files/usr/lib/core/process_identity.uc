@@ -89,6 +89,20 @@ function read_record(path) {
     return { pid, ticks };
 }
 
+// Arguments as comparable tokens. nfqws tokenises a comma list in place
+// while it parses its options, so "--dpi-desync=fake,multisplit" reads back
+// from /proc/<pid>/cmdline as two arguments, "--dpi-desync=fake" and
+// "multisplit". Both sides are split at commas (argv[0], a path, is not);
+// a null expectation stays one wildcard token.
+function argv_tokens(argv) {
+    let tokens = [];
+    for (let i = 0; i < length(argv); i++) {
+        if (argv[i] == null || i == 0) push(tokens, argv[i]);
+        else for (let t in split(as_string(argv[i]), ",")) push(tokens, t);
+    }
+    return tokens;
+}
+
 function matches_record(saved, expected_executable, expected_argv, exact, require_ticks) {
     if (type(saved) != "object" || type(saved.pid) != "string" ||
         match(saved.pid, /^[1-9][0-9]*$/) == null || type(saved.ticks) != "string" ||
@@ -112,6 +126,8 @@ function matches_record(saved, expected_executable, expected_argv, exact, requir
     let argv = split(raw, "\0");
     if (length(argv) > 0 && argv[length(argv) - 1] == "")
         pop(argv);
+    argv = argv_tokens(argv);
+    expected_argv = argv_tokens(expected_argv);
     if (length(argv) < length(expected_argv) || (exact && length(argv) != length(expected_argv)))
         return "";
     for (let i = 0; i < length(expected_argv); i++) {
@@ -162,4 +178,4 @@ function promote_legacy_child(child_path, supervisor_path, supervisor_argv, chil
     return record(child_path, child_pid);
 }
 
-return { stat_fields, start_ticks, parent_pid, descendant_of, record, read_record, matches, matches_record, signal, signal_record, promote_legacy_child };
+return { stat_fields, start_ticks, parent_pid, descendant_of, record, read_record, argv_tokens, matches, matches_record, signal, signal_record, promote_legacy_child };

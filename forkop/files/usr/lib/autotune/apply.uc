@@ -438,7 +438,8 @@ function verify_production(plan, expected_opt, traffic) {
     }
     let exe = saved != null ? replace(as_string(fs.readlink("/proc/" + saved.pid + "/exe")), /^.*\//, "") : "";
     check(checks, "nfqws_arguments", argv != null && replace(exe, / \(deleted\)$/, "") == "nfqws" &&
-        sprintf("%J", slice(argv, 1)) == sprintf("%J", expected_args), argv == null ? "process missing" : null);
+        sprintf("%J", identity.argv_tokens(argv)) == sprintf("%J", identity.argv_tokens([ argv[0], ...expected_args ])),
+        argv == null ? "process missing" : null);
     let q = queue_entry(plan.owner.queue);
     check(checks, "queue_owner", q != null && saved != null && q.portid == saved.pid, q == null ? "queue unbound" : null);
     check(checks, "no_guard", length(guards_present()) == 0, join(",", guards_present()));

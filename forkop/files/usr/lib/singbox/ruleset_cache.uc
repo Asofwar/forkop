@@ -453,15 +453,19 @@ function refresh_entry(entry, proxy_address, runtime_manifest) {
             fs.unlink(binary_validation_path(temporary));
             continue;
         }
-        if (!valid_cache(temporary, format)) {
+        let current = active_cache_path(runtime_manifest, url, format);
+        let old_md5 = file_md5(current);
+        let new_md5 = file_md5(temporary);
+        // The same bytes as the active cache, which was validated when it was
+        // stored: validating the download again only repeats a decompile that
+        // takes seconds for a large list.
+        let identical = old_md5 != "" && old_md5 == new_md5 && valid_cache(current, format);
+        if (!identical && !valid_cache(temporary, format)) {
             fs.unlink(temporary);
             fs.unlink(binary_validation_path(temporary));
             continue;
         }
-        let current = active_cache_path(runtime_manifest, url, format);
-        let old_md5 = file_md5(current);
-        let new_md5 = file_md5(temporary);
-        if (old_md5 != "" && old_md5 == new_md5) {
+        if (identical) {
             let new_bytes = allocated_bytes(temporary);
             if (current == runtime_target && new_bytes >= 0 && persistent_cache_can_store(persistent_target, new_bytes) &&
                 commit_persistent_candidate(temporary, persistent_target, format)) {

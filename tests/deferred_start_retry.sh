@@ -119,6 +119,10 @@ case "$1" in
   stop)
     ev "forkop stop"
     rm -f "$TEST_WORK/runtime.up"
+    # A case leaves a process in the background with this output open.
+    if [ -e "$TEST_WORK/stop.background" ]; then
+      (while [ -e "$TEST_WORK/stop.background" ] && [ -d "$TEST_WORK" ]; do sleep 0.1; done) &
+    fi
     ;;
   get_status)
     if [ -e "$TEST_WORK/runtime.up" ]; then printf '{"running":1}\n'; else printf '{"running":0}\n'; fi
@@ -255,6 +259,7 @@ reset_case() {
   fi
   rm -f "$WORK_DIR"/runtime.up "$WORK_DIR"/hold.gate "$WORK_DIR"/hold.acquired \
     "$WORK_DIR"/start.hold "$WORK_DIR"/logger.hold "$WORK_DIR"/logger.held "$WORK_DIR"/rc.calls \
+    "$WORK_DIR"/stop.background \
     "$STATE_DIR"/start.retry "$STATE_DIR"/start-retry.pid "$STOP_MARKER" "$STATE_DIR"/start-result.*
   : >"$EVENTS"
   : >"$WORK_DIR/syslog"
@@ -506,5 +511,19 @@ wait_until 20 retried_start_job || fail "the retried start after the UI job had 
 wait_until 20 grep -q '"running": *false' "$RETRIED_JOB" || fail "the retried start's job did not finish: $(cat "$RETRIED_JOB")"
 grep -q '"success": *true' "$RETRIED_JOB" || fail "the retried start's job did not finish as success: $(cat "$RETRIED_JOB")"
 started_once "UI start beyond its bound"
+
+# 8. Only a start's outcome is read from what its command prints. A UI stop
+#    waits for init.d, not for a process that the stop leaves in the
+#    background with that output open.
+reset_case
+: >"$WORK_DIR/runtime.up"
+: >"$WORK_DIR/stop.background"
+started_json="$(ui service-action-async stop)" || fail "the UI stop was refused: $started_json"
+job="$(printf '%s\n' "$started_json" | sed -n 's/.*"job_id": *"\([^"]*\)".*/\1/p')"
+[ -n "$job" ] || fail "the UI stop named no job: $started_json"
+UI_JOB="$FORKOP_UI_SERVICE_ACTION_DIR/$job.json"
+wait_until 10 job_finished || fail "the UI stop job waited for a process that the stop left in the background: $(cat "$UI_JOB")"
+rm -f "$WORK_DIR/stop.background"
+grep -q '"success": *true' "$UI_JOB" || fail "the UI stop did not finish as success: $(cat "$UI_JOB")"
 
 printf 'deferred start retry checks passed\n'

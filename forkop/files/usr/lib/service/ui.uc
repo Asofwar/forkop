@@ -1405,19 +1405,22 @@ function service_action_worker(path, action, job_id_value, reason) {
     reason = as_string(reason || "");
     if (reason != "")
         push(args, reason);
+    if (action != "start" && action != "restart") {
+        let status = command_status("FORKOP_UI_ACTION_TRACKED=1 " + command_from_args(args) + " >/dev/null 2>&1");
+        finish_service_action_after_command(action, job_id_value, status, false);
+        return;
+    }
+
     // init.d exits 0 under procd before a detached start has run: wait for
     // the start's own result through the same init.d call (UC-013). A start
     // deferred for reload.lock marks this job (mark_service_action_deferred).
-    if (action == "start" || action == "restart")
-        args = [ "ucode", "-L", LIB_DIR, LIB_DIR + "/service/initd.uc", "start-and-wait", action, reason, SERVICE_ACTION_TIMEOUT_SECONDS,
-            as_string(job_id_value) ];
-    let command = "FORKOP_UI_ACTION_TRACKED=1 " + command_from_args(args) + " 2>/dev/null";
-    let result = command_capture(command);
+    args = [ "ucode", "-L", LIB_DIR, LIB_DIR + "/service/initd.uc", "start-and-wait", action, reason, SERVICE_ACTION_TIMEOUT_SECONDS,
+        as_string(job_id_value) ];
+    let result = command_capture("FORKOP_UI_ACTION_TRACKED=1 " + command_from_args(args) + " 2>/dev/null");
     // The start goes on after this job's bound: a start deferred for
     // reload.lock is retried, a slow one is still at work. It has not failed
     // (start-and-wait prints "pending"); the log says how it ends.
-    if (result.status != 0 && (action == "start" || action == "restart") &&
-        match(result.output, /(^|\n)pending\n/) != null && fs.stat(path) != null) {
+    if (result.status != 0 && match(result.output, /(^|\n)pending\n/) != null && fs.stat(path) != null) {
         write_finished_service_action_state(path, action, false, "Service " + action + " did not finish within " +
             SERVICE_ACTION_TIMEOUT_SECONDS + " s and is still pending; see the Forkop log for its outcome", result.status);
         return;

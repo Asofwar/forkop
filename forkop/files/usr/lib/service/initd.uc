@@ -335,6 +335,12 @@ function start_retry_stop_requested() {
     return deferred_after == null || stop_request_value() != deferred_after;
 }
 
+// A deferred start is still to run: requested, and no stop won over it. A
+// package upgrade stops Forkop for a start that follows (service/package.uc).
+function deferred_start_pending() {
+    return deferred_start_stop_request() != null && !start_retry_stop_requested();
+}
+
 function clear_start_retry(path) {
     path = as_string(path || START_RETRY_FILE);
     if (file_exists(path))
@@ -1242,6 +1248,8 @@ else if (mode == "schedule-start-retry")
     exit(schedule_start_retry(ARGV[1], ARGV[2]) ? 0 : 1);
 else if (mode == "cancel-scheduled-start-retry")
     cancel_autostart_start_retry(ARGV[1]);
+else if (mode == "deferred-start-pending")
+    exit(deferred_start_pending() ? 0 : 1);
 else if (mode == "begin-action") {
     let job_id = begin_external_service_action(ARGV[1], ARGV[2] || "initd", ARGV[3]);
     if (job_id != "")

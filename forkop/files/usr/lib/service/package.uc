@@ -188,8 +188,10 @@ function remember_upgrade_state(action) {
     // an upgrade" erased the only hand-off telling postinst to restart a
     // service that prerm had just stopped, so the router came back with Forkop
     // down. Service state is authoritative here: record a restart only when
-    // Forkop was actually running immediately before prerm.
-    if (command_success_from_args([ INIT_PATH, "status" ]))
+    // Forkop was actually running immediately before prerm, or a start
+    // deferred for reload.lock was still to run: the stop below cancels it.
+    if (command_success_from_args([ INIT_PATH, "status" ]) ||
+        command_success_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/service/initd.uc", "deferred-start-pending" ]))
         fs.writefile(PACKAGE_UPGRADE_STATE, "1\n");
     else
         unlink_if_exists(PACKAGE_UPGRADE_STATE);

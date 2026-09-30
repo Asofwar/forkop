@@ -10,6 +10,10 @@ LUCI_UCI_DEFAULTS="$ROOT_DIR/luci-app-forkop/root/etc/uci-defaults/50_luci-forko
 BUILD_SCRIPT="$ROOT_DIR/build.sh"
 WORK_DIR="$(mktemp -d)"
 export FORKOP_PACKAGE_UPGRADE_STATE="$WORK_DIR/package-was-running"
+# prerm reads service/initd.uc runtime state (a deferred start); never the
+# host's.
+export FORKOP_RUNTIME_STATE_DIR="$WORK_DIR/run"
+mkdir -p "$FORKOP_RUNTIME_STATE_DIR"
 
 cleanup() {
   rm -rf "$WORK_DIR"
@@ -317,6 +321,38 @@ FORKOP_RT_TABLES="$WORK_DIR/rt_tables_upgrade" \
     fail "package prerm (case 14) exited non-zero"
 [ ! -e "$FORKOP_PACKAGE_UPGRADE_STATE" ] ||
   fail "prerm without an action must not mark an already stopped service"
+
+# A start deferred for reload.lock (service/initd.uc) was requested but does
+# not run yet: the package's own stop cancels it, so postinst starts Forkop
+# in its place. A stop requested after that start has won over it (D-15), and
+# the retry of a failed start is no requested start.
+mkdir -p "$WORK_DIR/deferred-run"
+prerm_with_stopped_runtime() {
+  local lib="$FORKOP_LIB"
+  FORKOP_PACKAGE_TEST_MODE=1 \
+  FORKOP_FAKE_STATUS=1 \
+  FORKOP_INIT="$WORK_DIR/upgrade-init" \
+  FORKOP_LIB="$lib" \
+  FORKOP_RUNTIME_STATE_DIR="$WORK_DIR/deferred-run" \
+  FORKOP_RT_TABLES="$WORK_DIR/rt_tables_upgrade" \
+    ucode -L "$lib" "$PACKAGE_UC" prerm upgrade ||
+      fail "package prerm upgrade ($1) exited non-zero"
+}
+printf 'reason=start_deferred\nupdated_at=1\nstop_request=\n' >"$WORK_DIR/deferred-run/start.retry"
+prerm_with_stopped_runtime "deferred start"
+[ -f "$FORKOP_PACKAGE_UPGRADE_STATE" ] ||
+  fail "package pre-upgrade must restart a start deferred for the runtime lock"
+rm -f "$FORKOP_PACKAGE_UPGRADE_STATE"
+printf 'later\nby=user\n' >"$WORK_DIR/deferred-run/stop.requested"
+prerm_with_stopped_runtime "deferred start, later stop"
+[ ! -e "$FORKOP_PACKAGE_UPGRADE_STATE" ] ||
+  fail "package pre-upgrade must not restart a deferred start that a later stop cancelled"
+rm -f "$WORK_DIR/deferred-run/stop.requested"
+printf 'reason=start_failed\nupdated_at=1\n' >"$WORK_DIR/deferred-run/start.retry"
+prerm_with_stopped_runtime "failed start retry"
+[ ! -e "$FORKOP_PACKAGE_UPGRADE_STATE" ] ||
+  fail "package pre-upgrade must not take the retry of a failed start for a requested start"
+rm -f "$WORK_DIR/deferred-run/start.retry"
 
 # An explicit removal stays unambiguous: nothing is restored afterwards.
 FORKOP_PACKAGE_TEST_MODE=1 \

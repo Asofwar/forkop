@@ -11,8 +11,9 @@
 // strategy. The only unambiguous mapping of "candidate X for target T" is:
 //   the first route rule the target matches (decided statically from the
 //   generated sing-box config) belongs to an enabled zapret rule, the match
-//   is by static domain/IP matchers (no remote lists above it, no source
-//   restriction), and that rule's strategy is one TCP/443 profile
+//   is by matchers the resolver can decide (static domain/IP matchers and
+//   local lists sing-box is asked about; no undownloaded lists above it, no
+//   source restriction), and that rule's strategy is one TCP/443 profile
 //   -> set that rule's nfqws_opt to the candidate template.
 // The change applies to the rule's whole target group, which the plan names.
 // Everything else is "not_applicable" with the reason. "direct" never

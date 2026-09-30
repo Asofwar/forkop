@@ -6,10 +6,11 @@
 //
 // Pure and read-only: no traffic, no nft, no UCI writes. The answer is the
 // first sing-box route rule the connection takes (first-match). When the
-// config cannot prove it — remote or binary lists, regexes, logical rules,
-// source-scoped rules without a source, unknown fields, a resolve action
-// above the owner of a FakeIP connection — the result says so with a reason
-// instead of guessing.
+// config cannot prove it — lists sing-box cannot be asked about (remote,
+// not downloaded), regexes, logical rules, source-scoped rules without a
+// source, unknown fields, a resolve action above the owner of a FakeIP
+// connection — the result says so with a reason instead of guessing.
+// The only command it runs is "sing-box rule-set match" on a local list file.
 let fs = require("fs");
 let constants = require("core.constants");
 let dpi_strategy = require("core.dpi_strategy");
@@ -20,6 +21,7 @@ const BYPASS_OUTBOUND = constants.SB_BYPASS_OUTBOUND_TAG || "bypass-out";
 const DEFAULT_SINGBOX_CONFIG = "/etc/sing-box/config.json";
 const FAKEIP_PREFIX = [ "198.18.0.0", 15 ];
 const LEGACY_CONNECTION_ACTIONS = [ "proxy", "outbound", "vpn" ];
+const RULESET_MATCH_BIN = getenv("FORKOP_RULESET_MATCH_BIN") || "/usr/bin/sing-box";
 
 function as_string(v) { return v == null ? "" : "" + v; }
 function list_of(v) { return v == null ? [] : type(v) == "array" ? v : [ v ]; }
@@ -183,14 +185,59 @@ function filter_keys(r, drop) {
     return copy;
 }
 
+function shell_quote(v) { return "'" + replace(as_string(v), /'/g, "'\''") + "'"; }
+
+// The local list files of the generated config: { tag: { format, path } }.
+function local_rule_sets(config) {
+    let result = {};
+    let list = type(config) == "object" && type(config.route) == "object" ? config.route.rule_set : null;
+    for (let e in list_of(list)) {
+        if (type(e) != "object" || e.type != "local" || as_string(e.tag) == "" || as_string(e.path) == "") continue;
+        let format = e.format == null ? "source" : as_string(e.format);
+        if (format != "binary" && format != "source") continue;
+        result[e.tag] = { format, path: as_string(e.path) };
+    }
+    return result;
+}
+
+// Whether a list holds the value, asked of sing-box itself: "match", "no",
+// or "unknown" when it cannot be asked (no local file, a failing command).
+// sing-box prints the matching rule and exits 0 either way.
+function rule_set_holds(entry, value) {
+    if (entry == null || fs.stat(entry.path) == null) return "unknown";
+    let pipe = fs.popen(join(" ", map([ RULESET_MATCH_BIN, "rule-set", "match", "-f", entry.format, entry.path, value ], shell_quote)) +
+        " 2>/dev/null", "r");
+    if (pipe == null) return "unknown";
+    let output = as_string(pipe.read("all"));
+    if (pipe.close() != 0) return "unknown";
+    return index(output, "match") >= 0 ? "match" : "no";
+}
+
+// The values a list is asked about: the name a FakeIP connection reaches
+// sing-box with; a real-address connection also by its address. null: the
+// target is not a plain host/address and is never handed to a command.
+function rule_set_values(t) {
+    let values = [];
+    if (t.host != "") {
+        if (match(t.host, /^[a-z0-9]([a-z0-9._-]*[a-z0-9])?$/) == null) return null;
+        push(values, t.host);
+    }
+    if (!t.fakeip && t.ip != "") {
+        if (match(t.ip, /^[0-9a-fA-F:.]+$/) == null) return null;
+        push(values, t.ip);
+    }
+    return values;
+}
+
 // Whether a rule's matchers take the connection: "match", "no", or
 // { reason } when that cannot be decided statically.
 // A FakeIP connection reaches sing-box as the domain name (the FakeIP
 // address is replaced by the FQDN), so ip_cidr matches nothing unless a
 // resolve action filled real addresses in (route_owner refuses to decide
 // past one); a real-address connection is matched by ip_cidr and by the
-// sniffed domain.
-function rule_matches(r, t) {
+// sniffed domain. lists: local_rule_sets() of the config; without it a
+// rule_set matcher is undecidable.
+function rule_matches(r, t, lists) {
     if (r.type == "logical" || r.invert) return { reason: "logical_rule" };
     for (let key in keys(r)) if (index(RULE_KEYS, key) < 0) return { reason: "unknown_rule_field:" + key };
     if (r.network != null && index(list_of(r.network), t.network) < 0) return "no";
@@ -217,7 +264,18 @@ function rule_matches(r, t) {
     for (let d in list_of(r.domain_keyword)) { dest_fields++; if (host != "" && index(host, lc(d)) >= 0) hit(); }
     for (let d in list_of(r.domain_regex)) { dest_fields++; unknown(); }
     for (let c in list_of(r.ip_cidr)) { dest_fields++; if (!t.fakeip && cidr_contains(c, t.ip)) hit(); }
-    for (let n in list_of(r.rule_set)) { dest_fields++; unknown(); }
+    for (let n in list_of(r.rule_set)) {
+        dest_fields++;
+        if (dest == "match") continue;
+        let values = type(lists) == "object" ? rule_set_values(t) : null, held = "no";
+        if (values == null) { unknown(); continue; }
+        for (let v in values) {
+            let answer = rule_set_holds(lists[n], v);
+            if (answer == "match") { held = "match"; break; }
+            if (answer == "unknown") held = "unknown";
+        }
+        if (held == "match") hit(); else if (held == "unknown") unknown();
+    }
     if (dest_fields > 0 && dest == "no") return "no";
     if (dest == "unknown") return { reason: "undecidable_matcher" };
     if (r.source_ip_cidr != null) {
@@ -234,6 +292,7 @@ function rule_matches(r, t) {
 function route_owner(config, t) {
     let rules = type(config) == "object" && type(config.route) == "object" && type(config.route.rules) == "array" ? config.route.rules : null;
     if (rules == null) return { decided: false, reason: "singbox_config_unavailable" };
+    let lists = local_rule_sets(config);
     for (let i = 0; i < length(rules); i++) {
         let r = rules[i];
         if (type(r) != "object") continue;
@@ -241,11 +300,11 @@ function route_owner(config, t) {
         let action = r.action || "route";
         if (action == "resolve") {
             if (!t.fakeip) continue;
-            if (rule_matches(filter_keys(r, RESOLVE_KEYS), t) != "no") return { decided: false, reason: "resolve_rule", rule: i };
+            if (rule_matches(filter_keys(r, RESOLVE_KEYS), t, lists) != "no") return { decided: false, reason: "resolve_rule", rule: i };
             continue;
         }
         if (action != "route" && action != "reject") continue;
-        let m = rule_matches(r, t);
+        let m = rule_matches(r, t, lists);
         if (m == "no") continue;
         if (type(m) == "object") return { decided: false, reason: m.reason, rule: i };
         if (action == "reject") return { decided: true, kind: "reject", rule: i };

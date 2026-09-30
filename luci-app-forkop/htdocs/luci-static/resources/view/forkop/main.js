@@ -6843,6 +6843,40 @@ function renderOverview(vm, actions) {
   ]);
 }
 
+// src/forkop/tabs/dashboard/serviceReload.ts
+function serviceReloadOutcome(state) {
+  if (state.outcome === "queued") return "queued";
+  if (state.outcome === "stopped") return "stopped";
+  return state.success === false ? "failed" : "reloaded";
+}
+function urlTestChangeToast(outcome, reset) {
+  const done = reset
+    ? _("URLTest settings reset")
+    : _("URLTest settings saved");
+  switch (outcome) {
+    case "queued":
+      return {
+        text: `${done}. ${_("Forkop X is busy with another operation: the change applies when it finishes.")}`,
+        type: "warning",
+        duration: 8e3,
+      };
+    case "stopped":
+      return {
+        text: `${done}. ${_("Forkop X is stopped: the change applies when it is started.")}`,
+        type: "warning",
+        duration: 8e3,
+      };
+    case "failed":
+      return {
+        text: `${done}. ${_("Forkop X could not apply the change; see the Forkop X log.")}`,
+        type: "error",
+        duration: 1e4,
+      };
+    default:
+      return { text: done, type: "success", duration: 3e3 };
+  }
+}
+
 // src/partials/button/styles.ts
 var styles = `
 .fkp-partial-button {
@@ -8569,6 +8603,11 @@ function renderUrlTestEditorModal(outbound) {
     if (!result.success) throw new Error("reload failed");
     setBusy(true, _("Refreshing Dashboard\u2026"));
     await fetchDashboardSections({ force: true });
+    return serviceReloadOutcome(result.data);
+  };
+  const toast = (outcome, reset2) => {
+    const { text, type, duration } = urlTestChangeToast(outcome, reset2);
+    showToast(text, type, duration);
   };
   const save = async () => {
     setBusy(true, _("Saving URLTest settings\u2026"));
@@ -8583,9 +8622,9 @@ function renderUrlTestEditorModal(outbound) {
     );
     if ((response.code ?? 0) !== 0)
       throw new Error(response.stderr || "save failed");
-    await reload();
+    const outcome = await reload();
     ui.hideModal();
-    showToast(_("URLTest settings saved"), "success");
+    toast(outcome, false);
   };
   const reset = async () => {
     setBusy(true, _("Removing user settings\u2026"));
@@ -8595,9 +8634,9 @@ function renderUrlTestEditorModal(outbound) {
     );
     if ((response.code ?? 0) !== 0)
       throw new Error(response.stderr || "reset failed");
-    await reload();
+    const outcome = await reload();
     ui.hideModal();
-    showToast(_("URLTest settings reset"), "success");
+    toast(outcome, true);
   };
   const action = (fn) => async (event) => {
     activeButton = event.currentTarget;

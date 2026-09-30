@@ -43,6 +43,11 @@ import {
   type OverviewInput,
 } from './overview';
 import { renderOverview } from './overviewCards';
+import {
+  serviceReloadOutcome,
+  urlTestChangeToast,
+  type ServiceReloadOutcome,
+} from './serviceReload';
 import { readLastRun } from '../diagnostic/partials/renderRunAction';
 import { serviceActionErrorText } from '../diagnostic/serviceTransition';
 import {
@@ -1327,6 +1332,8 @@ function renderUrlTestEditorModal(outbound: Forkop.Outbound) {
       control,
     ]);
 
+  // A reload that init.d only queued, or skipped for a stopped Forkop X, is
+  // not reported as applied (UC-061).
   const reload = async () => {
     setBusy(true, _('Applying Forkop configuration…'));
     const response = await ForkopShellMethods.serviceActionStart('reload');
@@ -1338,6 +1345,11 @@ function renderUrlTestEditorModal(outbound: Forkop.Outbound) {
     if (!result.success) throw new Error('reload failed');
     setBusy(true, _('Refreshing Dashboard…'));
     await fetchDashboardSections({ force: true });
+    return serviceReloadOutcome(result.data);
+  };
+  const toast = (outcome: ServiceReloadOutcome, reset: boolean) => {
+    const { text, type, duration } = urlTestChangeToast(outcome, reset);
+    showToast(text, type, duration);
   };
   const save = async () => {
     setBusy(true, _('Saving URLTest settings…'));
@@ -1352,9 +1364,9 @@ function renderUrlTestEditorModal(outbound: Forkop.Outbound) {
     );
     if ((response.code ?? 0) !== 0)
       throw new Error(response.stderr || 'save failed');
-    await reload();
+    const outcome = await reload();
     ui.hideModal();
-    showToast(_('URLTest settings saved'), 'success');
+    toast(outcome, false);
   };
   const reset = async () => {
     setBusy(true, _('Removing user settings…'));
@@ -1364,9 +1376,9 @@ function renderUrlTestEditorModal(outbound: Forkop.Outbound) {
     );
     if ((response.code ?? 0) !== 0)
       throw new Error(response.stderr || 'reset failed');
-    await reload();
+    const outcome = await reload();
     ui.hideModal();
-    showToast(_('URLTest settings reset'), 'success');
+    toast(outcome, true);
   };
   const action = (fn: () => Promise<void>) => async (event: MouseEvent) => {
     activeButton = event.currentTarget as HTMLButtonElement;

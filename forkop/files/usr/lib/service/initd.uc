@@ -1137,13 +1137,13 @@ function reload_begin_value(reason, owner_pid, runtime_running_value, service_en
     active_service_action = active_service_action == null ? active_service_action_value() : as_string(active_service_action);
     if (reason == "pending" && active_service_action != "" && !ui_action_tracked()) {
         mark_pending_reload(PENDING_RELOAD_FILE, reason);
-        return { action: "skip", job_id: "" };
+        return { action: "skip", job_id: "", queued: true };
     }
 
     if (reason == "pending") {
         if (list_update_worker_running() || !acquire_runtime_dir_lock(RELOAD_LOCK_DIR, owner_pid || owner_pid_value())) {
             mark_pending_reload(PENDING_RELOAD_FILE, reason || "reload_busy");
-            return { action: "skip", job_id: "" };
+            return { action: "skip", job_id: "", queued: true };
         }
 
         unlink_file(SERVICE_TRIGGER_SYNC_FILE);
@@ -1156,7 +1156,7 @@ function reload_begin_value(reason, owner_pid, runtime_running_value, service_en
 
     if (initd_should_queue_config_change_reload(reason, CONFIG_CHANGE_REASON, running, active_service_action)) {
         mark_pending_reload(PENDING_RELOAD_FILE, reason || "reload_queued");
-        return { action: "skip", job_id: "" };
+        return { action: "skip", job_id: "", queued: true };
     }
 
     if (initd_should_ignore_config_change_reload(reason, CONFIG_CHANGE_REASON, running, enabled)) {
@@ -1174,7 +1174,7 @@ function reload_begin_value(reason, owner_pid, runtime_running_value, service_en
             return { action: "skip", job_id: "", stopped: true };
         }
         mark_pending_reload(PENDING_RELOAD_FILE, reason || "reload_busy");
-        return { action: "skip", job_id: "" };
+        return { action: "skip", job_id: "", queued: true };
     }
 
     unlink_file(SERVICE_TRIGGER_SYNC_FILE);
@@ -1208,15 +1208,21 @@ function reload_finish(reason, job_id, status, owner_pid) {
 
 function reload_service(reason, owner_pid) {
     let plan = reload_begin_value(reason, owner_pid, null, null);
-    let stop_ack = index(STOP_ACK_REASONS, as_string(reason)) >= 0;
+    // The job of a UI reload (service/ui.uc) reports what happened to it as
+    // well: a reload only queued behind the operation that holds reload.lock
+    // is not a completed one (UC-061).
+    let tracked = ui_action_tracked();
+    let stop_ack = index(STOP_ACK_REASONS, as_string(reason)) >= 0 || tracked;
     if (plan.action != "run") {
         // Callers of QUEUE_ACK_REASONS must distinguish an accepted queued
         // request from a completed lifecycle; for them a skip is a queued
         // request, and for STOP_ACK_REASONS a skip after an explicit stop is
-        // "stopped". Ordinary callers keep no output and status 0.
+        // "stopped". A UI-tracked caller is told both, and "queued" only for
+        // a skip that queued the request. Ordinary callers keep no output
+        // and status 0.
         if (plan.stopped && stop_ack)
             print("stopped\n");
-        else if (!plan.stopped && index(QUEUE_ACK_REASONS, as_string(reason)) >= 0)
+        else if (!plan.stopped && (index(QUEUE_ACK_REASONS, as_string(reason)) >= 0 || (tracked && plan.queued)))
             print("queued\n");
         return 0;
     }

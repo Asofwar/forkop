@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-30 08:53+0000\n"
-"PO-Revision-Date: 2026-09-30 08:53+0000\n"
+"POT-Creation-Date: 2026-09-30 09:45+0000\n"
+"PO-Revision-Date: 2026-09-30 09:45+0000\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -1472,14 +1472,23 @@ msgstr "Forkop не будет изменять вашу конфигураци�
 msgid "Forkop X and sing-box have been removed. Original repositories have been restored."
 msgstr "Forkop X и sing-box удалены. Исходные репозитории восстановлены."
 
+msgid "Forkop X could not apply the change; see the Forkop X log."
+msgstr "Forkop X не смог применить изменение; подробности в журнале Forkop X."
+
 msgid "Forkop X does not apply recommendations in this mode."
 msgstr "В этом режиме Forkop X не применяет рекомендации."
+
+msgid "Forkop X is busy with another operation: the change applies when it finishes."
+msgstr "Forkop X занят другой операцией: изменение применится, когда она завершится."
 
 msgid "Forkop X is running"
 msgstr "Forkop X работает"
 
 msgid "Forkop X is stopped; start it first"
 msgstr "Forkop X остановлен; сначала запустите его"
+
+msgid "Forkop X is stopped: the change applies when it is started."
+msgstr "Forkop X остановлен: изменение применится, когда вы его запустите."
 
 msgid "Forkop X is stopped: the configuration is replaced and checked, but Forkop X is not started. It takes effect when you start Forkop X."
 msgstr "Forkop X остановлен: конфигурация будет заменена и проверена, но Forkop X не запустится. Она вступит в силу, когда вы запустите Forkop X."

@@ -838,6 +838,9 @@ export namespace Forkop {
     kind: 'service';
     action: ServiceAction;
     source?: string;
+    // A reload that did not run (service/ui.uc): init.d only queued it
+    // behind another operation, or skipped it because Forkop X is stopped.
+    outcome?: 'queued' | 'stopped';
   }
 
   export interface LatencyActionState extends UiActionState {

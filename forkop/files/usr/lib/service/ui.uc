@@ -1366,7 +1366,20 @@ function write_finished_service_action_state(path, action, success, message, exi
     return written;
 }
 
-function finish_service_action_after_command(action, job_id_value, status, spawn_waiter) {
+// A finished reload job that did not reload: "queued" or "stopped" (the
+// init.d token, service/initd.uc reload_service).
+function write_skipped_reload_state(path, outcome) {
+    let queued = outcome == "queued";
+    let value = finished_action_state_value(path, !queued, queued ?
+        "Service reload queued: it runs after the operation in progress" :
+        "Service reload skipped: Forkop is stopped; the configuration applies when it is started", 0, now_seconds());
+    value.outcome = outcome;
+    return write_state_file(path, value);
+}
+
+// reload_token: what init.d told this UI-tracked reload ("queued",
+// "stopped" or empty; service_action_worker).
+function finish_service_action_after_command(action, job_id_value, status, spawn_waiter, reload_token) {
     status = arg_number(status);
     if (as_string(job_id_value) == "")
         return 0;
@@ -1380,13 +1393,23 @@ function finish_service_action_after_command(action, job_id_value, status, spawn
         return 0;
     }
 
+    // init.d only queued the reload behind the operation that holds
+    // reload.lock (a list or subscription update, a start, another
+    // reload): not completed, and no queued reload is applied on its
+    // behalf; the lock holder drains the request (UC-061).
+    if (action == "reload" && reload_token == "queued") {
+        write_skipped_reload_state(path, "queued");
+        return 0;
+    }
+
     // A reload after an explicit stop, or of a Forkop not started since
-    // boot, that left the runtime stopped: a reload skipped under
-    // reload.lock (service/lifecycle.uc). Nothing is left to wait for, and
-    // no queued reload is applied on its behalf (UC-012, UC-056, D-15(a)).
-    if (action == "reload" && (fs.stat(STOP_REQUESTED_FILE) != null || fs.stat(EXPLICIT_START_FILE) == null) &&
-        !forkop_running()) {
-        write_finished_action_state(path, true, "Service reload completed", 0);
+    // boot, that left the runtime stopped: init.d skipped it, or the
+    // lifecycle did under reload.lock (service/lifecycle.uc). Nothing is
+    // left to wait for, and no queued reload is applied on its behalf
+    // (UC-012, UC-056, D-15(a)). It did not fail, but did not reload.
+    if (action == "reload" && (reload_token == "stopped" ||
+        ((fs.stat(STOP_REQUESTED_FILE) != null || fs.stat(EXPLICIT_START_FILE) == null) && !forkop_running()))) {
+        write_skipped_reload_state(path, "stopped");
         return 0;
     }
 
@@ -1441,8 +1464,19 @@ function service_action_worker(path, action, job_id_value, reason) {
     if (reason != "")
         push(args, reason);
     if (action != "start" && action != "restart") {
-        let status = command_status("FORKOP_UI_ACTION_TRACKED=1 " + command_from_args(args) + " >/dev/null 2>&1");
-        finish_service_action_after_command(action, job_id_value, status, false);
+        // What init.d tells a reload ("queued", "stopped") is read from a
+        // file next to the job: a process that the command leaves in the
+        // background keeps no pipe of this worker open.
+        let output = action == "reload" ? replace(path, /\.json$/, "") + ".out" : "/dev/null";
+        let status = command_status("FORKOP_UI_ACTION_TRACKED=1 " + command_from_args(args) + " >" + shell_quote(output) + " 2>/dev/null");
+        let token = "";
+        if (action == "reload") {
+            for (let line in split(as_string(fs.readfile(output)), "\n"))
+                if (trim(line) == "queued" || trim(line) == "stopped")
+                    token = trim(line);
+            remove_file(output);
+        }
+        finish_service_action_after_command(action, job_id_value, status, false, token);
         return;
     }
 

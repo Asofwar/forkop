@@ -287,16 +287,19 @@ no_active_service_action || fail "a direct background reload after a stop left a
 no_reload_health_event || fail "health recorded a direct background reload that a stop skipped"
 
 # 4. A queued reload that service/ui.uc applies in a job of its own keeps its
-#    reason, so it is skipped after a stop too, and its job completes without
-#    waiting for the stopped runtime.
+#    reason, so it is skipped after a stop too, and its job ends without
+#    waiting for the stopped runtime: no failure, but no reload either
+#    (UC-061).
 reset_case
 job="$(ui service-action-begin-if-idle reload initd)" || fail "the queued reload job was not opened"
 timeout -s KILL 30 ucode -L "$LIB" "$LIB/service/ui.uc" service-action-worker \
   "$FORKOP_UI_SERVICE_ACTION_DIR/$job.json" reload "$job" pending ||
   fail "the queued reload job worker did not finish in time"
 state="$(job_state "$job")"
-[ "$state" = "running=false success=true message=Service reload completed" ] ||
-  fail "the queued reload job after a stop did not complete: $state"
+case "$state" in
+  "running=false success=true message=Service reload skipped: Forkop is stopped"*) ;;
+  *) fail "the queued reload job after a stop did not end as skipped: $state" ;;
+esac
 if grep -q '^reload ran' "$EVENTS"; then
   fail "the queued reload that service/ui.uc applied after a stop ran as a manual reload"
 fi
@@ -348,15 +351,17 @@ no_reload_health_event || fail "health recorded a reload of a Forkop not started
 grep -q "Reload 'ruleset-cache' skipped: Forkop was not started" "$WORK_DIR/syslog" ||
   fail "the lifecycle gate did not skip the reload of a Forkop not started"
 
-# 6c. A queued reload that service/ui.uc applies in a job of its own
-#     completes without waiting for a runtime that nobody started.
+# 6c. A queued reload that service/ui.uc applies in a job of its own ends
+#     as skipped without waiting for a runtime that nobody started.
 not_started_case
 job="$(ui service-action-begin-if-idle reload initd)" || fail "the queued reload job was not opened"
 timeout -s KILL 30 ucode -L "$LIB" "$LIB/service/ui.uc" service-action-worker \
   "$FORKOP_UI_SERVICE_ACTION_DIR/$job.json" reload "$job" pending ||
   fail "the queued reload job worker did not finish in time"
 state="$(job_state "$job")"
-[ "$state" = "running=false success=true message=Service reload completed" ] ||
-  fail "the queued reload job of a Forkop not started did not complete: $state"
+case "$state" in
+  "running=false success=true message=Service reload skipped: Forkop is stopped"*) ;;
+  *) fail "the queued reload job of a Forkop not started did not end as skipped: $state" ;;
+esac
 
 printf 'stopped reload job checks passed\n'

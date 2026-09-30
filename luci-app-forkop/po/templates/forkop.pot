@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-30 08:53+0000\n"
-"PO-Revision-Date: 2026-09-30 08:53+0000\n"
+"POT-Creation-Date: 2026-09-30 09:45+0000\n"
+"PO-Revision-Date: 2026-09-30 09:45+0000\n"
 "Last-Translator: Asofwar <7397608+Asofwar@users.noreply.github.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -54,7 +54,7 @@ msgid "%d more groups"
 msgstr ""
 
 #: src/forkop/tabs/autotune/model.ts:499
-#: src/forkop/tabs/dashboard/initController.ts:1060
+#: src/forkop/tabs/dashboard/initController.ts:1065
 #: src/forkop/tabs/dashboard/partials/renderSections.ts:318
 #: src/forkop/tabs/dashboard/partials/renderSections.ts:487
 msgid "%d ms"
@@ -487,7 +487,7 @@ msgstr ""
 msgid "Applying changes…"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1331
+#: src/forkop/tabs/dashboard/initController.ts:1338
 msgid "Applying Forkop configuration…"
 msgstr ""
 
@@ -495,7 +495,7 @@ msgstr ""
 msgid "Applying the new strategy did not finish: its reload did not succeed, and the configuration was changed meanwhile. Forkop X kept that change instead of rolling back. Check the rule, or restore the snapshot you need in History and recovery."
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1321
+#: src/forkop/tabs/dashboard/initController.ts:1326
 msgid "Applying…"
 msgstr ""
 
@@ -552,7 +552,7 @@ msgid "Automatically check installed components for new versions"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3301
-#: src/forkop/tabs/dashboard/initController.ts:1544
+#: src/forkop/tabs/dashboard/initController.ts:1556
 msgid "Automatically select the fastest node in the current level"
 msgstr ""
 
@@ -798,7 +798,7 @@ msgstr ""
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:4978
 #: src/forkop/ui/confirmAction.ts:30
 #: src/forkop/tabs/autotune/initController.ts:424
-#: src/forkop/tabs/dashboard/initController.ts:1404
+#: src/forkop/tabs/dashboard/initController.ts:1416
 #: src/forkop/tabs/updates/fullUninstall.ts:11
 #: src/forkop/tabs/updates/releaseSelector.ts:50
 #: src/forkop/tabs/updates/releaseSelector.ts:111
@@ -897,7 +897,7 @@ msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2789
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3252
-#: src/forkop/tabs/dashboard/initController.ts:1531
+#: src/forkop/tabs/dashboard/initController.ts:1543
 msgid "Check interval"
 msgstr ""
 
@@ -927,7 +927,7 @@ msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2815
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3239
-#: src/forkop/tabs/dashboard/initController.ts:1529
+#: src/forkop/tabs/dashboard/initController.ts:1541
 msgid "Check URL"
 msgstr ""
 
@@ -1034,8 +1034,8 @@ msgstr ""
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3581
 #: src/partials/modal/renderModal.ts:263
 #: src/forkop/tabs/autotune/initController.ts:648
-#: src/forkop/tabs/dashboard/initController.ts:1285
-#: src/forkop/tabs/dashboard/initController.ts:1663
+#: src/forkop/tabs/dashboard/initController.ts:1290
+#: src/forkop/tabs/dashboard/initController.ts:1675
 #: src/forkop/tabs/history/initController.ts:222
 #: src/forkop/tabs/updates/releaseSelector.ts:121
 msgid "Close"
@@ -1229,8 +1229,8 @@ msgstr ""
 msgid "Copy details"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:168
-#: src/forkop/tabs/dashboard/initController.ts:171
+#: src/forkop/tabs/dashboard/initController.ts:173
+#: src/forkop/tabs/dashboard/initController.ts:176
 msgid "Could not change autostart"
 msgstr ""
 
@@ -1774,7 +1774,7 @@ msgstr ""
 msgid "Duration"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1273
+#: src/forkop/tabs/dashboard/initController.ts:1278
 msgid "Edit"
 msgstr ""
 
@@ -1786,7 +1786,7 @@ msgstr ""
 msgid "Edit target"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1409
+#: src/forkop/tabs/dashboard/initController.ts:1421
 msgid "Edit URLTest"
 msgstr ""
 
@@ -2014,20 +2014,20 @@ msgstr ""
 msgid "Failed to execute"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1379
+#: src/forkop/tabs/dashboard/initController.ts:1391
 msgid "Failed to save URLTest settings"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:933
 #: src/forkop/tabs/dashboard/initController.ts:938
+#: src/forkop/tabs/dashboard/initController.ts:943
 msgid "Failed to switch the node"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:370
-#: src/forkop/tabs/dashboard/initController.ts:460
-#: src/forkop/tabs/dashboard/initController.ts:461
-#: src/forkop/tabs/dashboard/initController.ts:526
-#: src/forkop/tabs/dashboard/initController.ts:1718
+#: src/forkop/tabs/dashboard/initController.ts:375
+#: src/forkop/tabs/dashboard/initController.ts:465
+#: src/forkop/tabs/dashboard/initController.ts:466
+#: src/forkop/tabs/dashboard/initController.ts:531
+#: src/forkop/tabs/dashboard/initController.ts:1730
 msgid "Failed to update subscriptions"
 msgstr ""
 
@@ -2053,7 +2053,7 @@ msgid "FakeIP works; public IP comparison is inconclusive"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3312
-#: src/forkop/tabs/dashboard/initController.ts:1550
+#: src/forkop/tabs/dashboard/initController.ts:1562
 msgid "Faster server search interval"
 msgstr ""
 
@@ -2134,8 +2134,16 @@ msgstr ""
 msgid "Forkop X and sing-box have been removed. Original repositories have been restored."
 msgstr ""
 
+#: src/forkop/tabs/dashboard/serviceReload.ts:40
+msgid "Forkop X could not apply the change; see the Forkop X log."
+msgstr ""
+
 #: src/forkop/tabs/autotune/model.ts:180
 msgid "Forkop X does not apply recommendations in this mode."
+msgstr ""
+
+#: src/forkop/tabs/dashboard/serviceReload.ts:28
+msgid "Forkop X is busy with another operation: the change applies when it finishes."
 msgstr ""
 
 #: src/forkop/tabs/dashboard/overview.ts:202
@@ -2144,6 +2152,10 @@ msgstr ""
 
 #: src/forkop/tabs/autotune/model.ts:588
 msgid "Forkop X is stopped; start it first"
+msgstr ""
+
+#: src/forkop/tabs/dashboard/serviceReload.ts:34
+msgid "Forkop X is stopped: the change applies when it is started."
 msgstr ""
 
 #: src/forkop/tabs/history/model.ts:274
@@ -2307,7 +2319,7 @@ msgid "high"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3276
-#: src/forkop/tabs/dashboard/initController.ts:1536
+#: src/forkop/tabs/dashboard/initController.ts:1548
 msgid "Higher-level check interval"
 msgstr ""
 
@@ -2361,8 +2373,8 @@ msgid "HTTPS request made by the router itself"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2828
-#: src/forkop/tabs/dashboard/initController.ts:1170
-#: src/forkop/tabs/dashboard/initController.ts:1415
+#: src/forkop/tabs/dashboard/initController.ts:1175
+#: src/forkop/tabs/dashboard/initController.ts:1427
 msgid "Idle timeout"
 msgstr ""
 
@@ -2494,9 +2506,9 @@ msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2842
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3328
-#: src/forkop/tabs/dashboard/initController.ts:1172
-#: src/forkop/tabs/dashboard/initController.ts:1416
-#: src/forkop/tabs/dashboard/initController.ts:1556
+#: src/forkop/tabs/dashboard/initController.ts:1177
+#: src/forkop/tabs/dashboard/initController.ts:1428
+#: src/forkop/tabs/dashboard/initController.ts:1568
 msgid "Interrupt connections"
 msgstr ""
 
@@ -2508,8 +2520,8 @@ msgstr ""
 msgid "Interrupt connections when URLTest switches the selected server"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1168
-#: src/forkop/tabs/dashboard/initController.ts:1413
+#: src/forkop/tabs/dashboard/initController.ts:1173
+#: src/forkop/tabs/dashboard/initController.ts:1425
 msgid "Interval"
 msgstr ""
 
@@ -2891,8 +2903,8 @@ msgstr ""
 
 #: src/forkop/methods/shell/index.ts:624
 #: src/forkop/methods/shell/index.ts:645
-#: src/forkop/tabs/dashboard/initController.ts:1013
-#: src/forkop/tabs/dashboard/initController.ts:1021
+#: src/forkop/tabs/dashboard/initController.ts:1018
+#: src/forkop/tabs/dashboard/initController.ts:1026
 msgid "Latency test failed"
 msgstr ""
 
@@ -2913,7 +2925,7 @@ msgstr ""
 msgid "Legacy settings"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1492
+#: src/forkop/tabs/dashboard/initController.ts:1504
 msgid "Level"
 msgstr ""
 
@@ -3162,10 +3174,10 @@ msgstr ""
 msgid "nftables checks"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1036
-#: src/forkop/tabs/dashboard/initController.ts:1040
-#: src/forkop/tabs/dashboard/initController.ts:1116
-#: src/forkop/tabs/dashboard/initController.ts:1447
+#: src/forkop/tabs/dashboard/initController.ts:1041
+#: src/forkop/tabs/dashboard/initController.ts:1045
+#: src/forkop/tabs/dashboard/initController.ts:1121
+#: src/forkop/tabs/dashboard/initController.ts:1459
 msgid "No"
 msgstr ""
 
@@ -3314,13 +3326,13 @@ msgstr ""
 msgid "No usable result"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1257
-#: src/forkop/tabs/dashboard/initController.ts:1648
+#: src/forkop/tabs/dashboard/initController.ts:1262
+#: src/forkop/tabs/dashboard/initController.ts:1660
 msgid "Node list is empty"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1196
-#: src/forkop/tabs/dashboard/initController.ts:1580
+#: src/forkop/tabs/dashboard/initController.ts:1201
+#: src/forkop/tabs/dashboard/initController.ts:1592
 #: src/forkop/tabs/dashboard/partials/renderSections.ts:335
 msgid "Nodes"
 msgstr ""
@@ -3724,13 +3736,13 @@ msgstr ""
 msgid "Priority"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1675
+#: src/forkop/tabs/dashboard/initController.ts:1687
 #: src/forkop/tabs/dashboard/partials/renderSections.ts:465
 #: src/forkop/tabs/dashboard/partials/renderSections.ts:466
 msgid "Priority details"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1517
+#: src/forkop/tabs/dashboard/initController.ts:1529
 msgid "Priority details are unavailable"
 msgstr ""
 
@@ -3828,7 +3840,7 @@ msgstr ""
 msgid "Refill"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1339
+#: src/forkop/tabs/dashboard/initController.ts:1346
 msgid "Refreshing Dashboard…"
 msgstr ""
 
@@ -3903,7 +3915,7 @@ msgstr ""
 msgid "Removing Forkop X…"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1360
+#: src/forkop/tabs/dashboard/initController.ts:1372
 msgid "Removing user settings…"
 msgstr ""
 
@@ -4200,7 +4212,7 @@ msgstr ""
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3590
 #: src/forkop/tabs/autotune/initController.ts:523
 #: src/forkop/tabs/autotune/initController.ts:588
-#: src/forkop/tabs/dashboard/initController.ts:1399
+#: src/forkop/tabs/dashboard/initController.ts:1411
 msgid "Save"
 msgstr ""
 
@@ -4208,7 +4220,7 @@ msgstr ""
 msgid "Saved, service stopped"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1343
+#: src/forkop/tabs/dashboard/initController.ts:1355
 msgid "Saving URLTest settings…"
 msgstr ""
 
@@ -4290,7 +4302,7 @@ msgid "Select path for sing-box config file. Change this ONLY if you know what y
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3290
-#: src/forkop/tabs/dashboard/initController.ts:1540
+#: src/forkop/tabs/dashboard/initController.ts:1552
 msgid "Select the fastest node"
 msgstr ""
 
@@ -4310,8 +4322,8 @@ msgstr ""
 msgid "Select the WAN interfaces to be monitored"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1164
-#: src/forkop/tabs/dashboard/initController.ts:1526
+#: src/forkop/tabs/dashboard/initController.ts:1169
+#: src/forkop/tabs/dashboard/initController.ts:1538
 msgid "Selected"
 msgstr ""
 
@@ -4655,7 +4667,7 @@ msgstr ""
 msgid "Subscription URL settings"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:486
+#: src/forkop/tabs/dashboard/initController.ts:491
 msgid "Subscriptions updated"
 msgstr ""
 
@@ -4769,8 +4781,8 @@ msgstr ""
 msgid "Test servers whose names match the expression."
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1167
-#: src/forkop/tabs/dashboard/initController.ts:1412
+#: src/forkop/tabs/dashboard/initController.ts:1172
+#: src/forkop/tabs/dashboard/initController.ts:1424
 msgid "Testing URL"
 msgstr ""
 
@@ -5362,8 +5374,8 @@ msgid "TLS, median"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2801
-#: src/forkop/tabs/dashboard/initController.ts:1169
-#: src/forkop/tabs/dashboard/initController.ts:1414
+#: src/forkop/tabs/dashboard/initController.ts:1174
+#: src/forkop/tabs/dashboard/initController.ts:1426
 msgid "Tolerance"
 msgstr ""
 
@@ -5469,7 +5481,7 @@ msgid "Unable to validate the NFQWS2 strategy through the backend parser."
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3264
-#: src/forkop/tabs/dashboard/initController.ts:1534
+#: src/forkop/tabs/dashboard/initController.ts:1546
 msgid "Unavailability timeout"
 msgstr ""
 
@@ -5609,13 +5621,13 @@ msgstr ""
 msgid "URLTest"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1434
+#: src/forkop/tabs/dashboard/initController.ts:1446
 #: src/forkop/tabs/dashboard/partials/renderSections.ts:446
 #: src/forkop/tabs/dashboard/partials/renderSections.ts:447
 msgid "URLTest details"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1155
+#: src/forkop/tabs/dashboard/initController.ts:1160
 msgid "URLTest details are unavailable"
 msgstr ""
 
@@ -5624,11 +5636,11 @@ msgstr ""
 msgid "URLTest settings"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1369
+#: src/forkop/tabs/dashboard/serviceReload.ts:23
 msgid "URLTest settings reset"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1357
+#: src/forkop/tabs/dashboard/serviceReload.ts:24
 msgid "URLTest settings saved"
 msgstr ""
 
@@ -5654,7 +5666,7 @@ msgstr ""
 msgid "Use sing-box duration format like 1d, 12h or 30m"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1390
+#: src/forkop/tabs/dashboard/initController.ts:1402
 msgid "Use source values"
 msgstr ""
 
@@ -5799,7 +5811,7 @@ msgstr ""
 msgid "YACD Secret Key"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/initController.ts:1036
+#: src/forkop/tabs/dashboard/initController.ts:1041
 msgid "Yes"
 msgstr ""
 

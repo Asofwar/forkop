@@ -346,9 +346,11 @@ no_event '^start-managed$' || fail "a reload restarted sing-box while a stop was
 # 3. init.d: the reload of a stopped runtime is not run, whoever requests
 #    it. The transaction callers (snapshot restore, autotune apply) are told
 #    "stopped", never an empty answer that reads as a reload that ran
-#    (tests/config_restore_user_stop.sh); for others the answer stays empty.
+#    (tests/config_restore_user_stop.sh), and so is the job of a UI reload
+#    (service/ui.uc, tests/ui_reload_queued_job.sh); for others the answer
+#    stays empty. Only service/ui.uc runs init.d with FORKOP_UI_ACTION_TRACKED.
 initd_reload() {
-  bash "$WORK_DIR/rc" reload "$@" 2>"$WORK_DIR/initd.err"
+  env -u FORKOP_UI_ACTION_TRACKED bash "$WORK_DIR/rc" reload "$@" 2>"$WORK_DIR/initd.err"
 }
 for reason in "" list-content some-caller config-restore autotune; do
   reset_case
@@ -364,6 +366,13 @@ for reason in "" list-content some-caller config-restore autotune; do
   [ ! -e "$FORKOP_RELOAD_LOCK_DIR" ] || fail "init.d reload '$reason' of a stopped runtime left reload.lock behind"
   [ -e "$STOP_MARKER" ] || fail "init.d reload '$reason' ended the explicit stop"
 done
+reset_case
+runtime_down
+printf 'stop\n' >"$STOP_MARKER"
+output="$(FORKOP_UI_ACTION_TRACKED=1 bash "$WORK_DIR/rc" reload "" 2>"$WORK_DIR/initd.err")" ||
+  fail "the UI reload of a stopped runtime failed: $(cat "$WORK_DIR/initd.err")"
+[ "$output" = stopped ] || fail "the UI reload of a stopped runtime answered '$output', not 'stopped'"
+no_event '^reload ran' || fail "init.d ran the UI reload of a stopped runtime"
 
 # 3b. Controls: a running runtime, and one that is down without a stop after
 #     an explicit start, are reloaded (the lifecycle repairs the latter); the

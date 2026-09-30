@@ -42,6 +42,77 @@ function eventText(event: { kind: string; status: string; timestamp: number }) {
   };
 }
 
+// The DPI guard by what ends it (diagnostics/health.uc recovery.action):
+// only one that a change still holds is transient (UC-019, UC-066).
+function guardRow(health: Forkop.HealthStatus) {
+  if (!health.guard.active)
+    return { value: _('Inactive'), tone: 'success' as const };
+  switch (health.recovery.action) {
+    case 'wait':
+      return {
+        value: _('Active: a change is being applied'),
+        tone: 'loading' as const,
+      };
+    case 'restart':
+      return {
+        value: _('Active: kept by a failed change'),
+        tone: 'error' as const,
+      };
+    case 'restore':
+      return {
+        value: _('Active: restore not finished'),
+        tone: 'error' as const,
+      };
+    default:
+      return {
+        value: _('Active: DPI switch not confirmed'),
+        tone: 'error' as const,
+      };
+  }
+}
+
+// recovery.pending means a guard is left or the last event failed: neither
+// is in progress unless a change still holds its guard. A failed last event
+// is named, with the previous configuration kept (UC-066).
+function lastRecoveryRow(health: Forkop.HealthStatus) {
+  if (health.guard.active)
+    return health.recovery.action === 'wait'
+      ? { value: _('In progress'), tone: 'loading' as const }
+      : { value: _('Needs attention'), tone: 'error' as const };
+  const failed = health.recovery.last_event;
+  if (failed) return eventText(failed);
+  return { value: _('Needs attention'), tone: 'error' as const };
+}
+
+// The step that ends a DPI guard that is left; none while a change holds it.
+function nextStepRow(health: Forkop.HealthStatus): RecoveryRow[] {
+  if (!health.guard.active) return [];
+  switch (health.recovery.action) {
+    case 'restart':
+      return [
+        {
+          label: _('Next step'),
+          value: _(
+            'Restart Forkop X: the restart removes the DPI guard that a failed change left in place.',
+          ),
+          tone: 'warning',
+        },
+      ];
+    case 'restore':
+      return [
+        {
+          label: _('Next step'),
+          value: _(
+            'Restore the last known good snapshot: the restore finishes and removes the DPI guard.',
+          ),
+          tone: 'warning',
+        },
+      ];
+    default:
+      return [];
+  }
+}
+
 export function recoveryRows(
   health: Forkop.HealthStatus,
   snapshots: Forkop.SnapshotMetadata[] | null,
@@ -56,21 +127,17 @@ export function recoveryRows(
   return [
     {
       label: _('DPI guard'),
-      ...(health.guard.active
-        ? {
-            value: _('Active: DPI switch not confirmed'),
-            tone: 'error' as const,
-          }
-        : { value: _('Inactive'), tone: 'success' as const }),
+      ...guardRow(health),
     },
     {
       label: _('Last recovery'),
       ...(health.recovery.pending
-        ? { value: _('In progress'), tone: 'loading' as const }
+        ? lastRecoveryRow(health)
         : last
           ? eventText(last)
           : { value: _('Not needed'), tone: 'success' as const }),
     },
+    ...nextStepRow(health),
     {
       label: _('Package recovery'),
       ...(health.package_recovery.pending
@@ -318,6 +385,16 @@ export function restoreResultToast(
         duration: 8000,
       };
     case 'failed':
+      // A failed lifecycle transition kept its DPI guard: no reload runs
+      // until a restart removes it, so nothing was changed (UC-019).
+      if (result.reason === 'runtime_guard_active')
+        return {
+          text: _(
+            'Restore was not started: a failed change left the DPI guard in place, and nothing can be reloaded until Forkop X is restarted. Restart Forkop X, then restore the snapshot if it is still needed.',
+          ),
+          type: 'warning',
+          duration: 12000,
+        };
       // Changes staged on the router with uci but not committed would ride
       // along the reload (UC-068): nothing was changed.
       if (result.reason === 'uncommitted_uci_changes')
@@ -367,6 +444,16 @@ export function restoreResultToast(
           duration: 12000,
         };
       }
+      // The reload left, or met, a DPI guard that a failed transition kept:
+      // the restore's own guard stays until a restore after the restart.
+      if (result.reason === 'runtime_guard_active')
+        return {
+          text: _(
+            'Restore did not finish: a failed change left the DPI guard in place, and the DPI guard stays active. Restart Forkop X, then restore the snapshot again.',
+          ),
+          type: 'error',
+          duration: 12000,
+        };
       if (result.reason === 'rollback_reload_queued')
         return {
           text: _(

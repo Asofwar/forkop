@@ -39,10 +39,16 @@ export namespace Forkop {
     dns: { status: HealthLevel; configured?: boolean };
     dpi: { status: HealthLevel };
     lists: { status: HealthLevel };
-    guard: { active: boolean };
+    // runtime: a guard that a failed lifecycle transition kept (only a
+    // restart removes it); restore: the guard of a snapshot restore or an
+    // autotune apply (diagnostics/health.uc, UC-019).
+    guard: { active: boolean; runtime?: boolean; restore?: boolean };
     recovery: {
       pending: boolean;
       last_event: { kind: string; status: string; timestamp: number } | null;
+      // What ends the guard that is left: a restart, a restore of a
+      // snapshot, or nothing yet while a change still holds its own guard.
+      action?: 'restart' | 'restore' | 'wait' | null;
     };
     package_recovery: { pending: boolean };
     last_reload: { kind?: string; status: string; timestamp: number } | null;

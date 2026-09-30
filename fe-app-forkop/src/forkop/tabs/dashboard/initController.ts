@@ -72,6 +72,7 @@ let sectionsRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let healthRefreshTimer: ReturnType<typeof setInterval> | null = null;
 
 let overviewHealth: Forkop.HealthStatus | null = null;
+let overviewHealthStale = false;
 let overviewRuleCount: number | null = null;
 let overviewSnapshotCount: number | null = null;
 let overviewServiceBusy = false;
@@ -84,7 +85,14 @@ let clashUpdatesStarted = false;
 async function refreshHealth(mountId: number) {
   const response = await ForkopShellMethods.getHealthStatus();
   if (!dashboardMounted || mountId !== dashboardMountId) return;
-  overviewHealth = response.success && response.data ? response.data : null;
+  // A failed poll keeps the last known health, so a DPI guard it showed
+  // stays visible, and marks it stale: it proves nothing healthy (UC-021).
+  if (response.success && response.data) {
+    overviewHealth = response.data;
+    overviewHealthStale = false;
+  } else {
+    overviewHealthStale = true;
+  }
   renderOverviewCards();
 }
 
@@ -120,6 +128,7 @@ function overviewInput(): OverviewInput {
 
   return {
     health: overviewHealth,
+    healthStale: overviewHealthStale,
     availability: getDashboardServiceAvailability(),
     forkopEnabled: Boolean(services.data.forkopEnabled),
     forkopStoppedByUser: Boolean(services.data.forkopStoppedByUser),

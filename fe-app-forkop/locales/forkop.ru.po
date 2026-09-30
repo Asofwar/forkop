@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-30 09:45+0000\n"
-"PO-Revision-Date: 2026-09-30 09:45+0000\n"
+"POT-Creation-Date: 2026-09-30 09:53+0000\n"
+"PO-Revision-Date: 2026-09-30 09:53+0000\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -110,8 +110,23 @@ msgstr "Резервная копия настроек будет сохране
 msgid "A configuration change did not finish and its protection is still active. Restore a snapshot in History and recovery."
 msgstr "Изменение конфигурации не завершилось, и его защита всё ещё активна. Восстановите снимок в разделе «История и восстановление»."
 
-msgid "A configuration change was not confirmed. Traffic that needs DPI bypass may be blocked until recovery completes."
-msgstr "Изменение конфигурации не подтвердилось. Трафик, которому нужен обход DPI, может блокироваться, пока не завершится восстановление."
+msgid "A configuration change is being applied. Traffic that needs DPI bypass may be blocked until it finishes."
+msgstr "Применяется изменение конфигурации. Трафик, которому нужен обход DPI, может блокироваться, пока оно не завершится."
+
+msgid "A configuration change was not confirmed. Traffic that needs DPI bypass may be blocked; see the recovery details for the next step."
+msgstr "Изменение конфигурации не подтвердилось. Трафик, которому нужен обход DPI, может блокироваться; следующий шаг указан в подробностях о восстановлении."
+
+msgid "A configuration restore did not finish: restore the last known good snapshot to finish it."
+msgstr "Восстановление конфигурации не завершено: чтобы завершить его, восстановите снимок последней рабочей конфигурации."
+
+msgid "A configuration restore did not finish. Traffic that needs DPI bypass stays blocked until you restore the last known good snapshot."
+msgstr "Восстановление конфигурации не завершено. Трафик, которому нужен обход DPI, блокируется, пока вы не восстановите снимок последней рабочей конфигурации."
+
+msgid "A failed change left the DPI guard in place: restart Forkop X to remove it."
+msgstr "Неудавшееся изменение оставило защиту DPI: чтобы снять её, перезапустите Forkop X."
+
+msgid "A failed change left the DPI guard in place. Traffic that needs DPI bypass stays blocked until you restart Forkop X."
+msgstr "Неудавшееся изменение оставило защиту DPI. Трафик, которому нужен обход DPI, блокируется, пока вы не перезапустите Forkop X."
 
 msgid "A group is one Zapret DPI rule. Forkop X changes only the strategy of an existing rule, for all its targets at once. It never creates or deletes rules and never turns DPI bypass off."
 msgstr "Группа — это одно DPI-правило Zapret. Forkop X меняет только стратегию существующего правила, сразу для всех его целей. Он никогда не создаёт и не удаляет правила и не отключает обход DPI."
@@ -164,8 +179,17 @@ msgstr "Активные соединения всех устройств буд
 msgid "Active Main DNS"
 msgstr "Активный основной DNS"
 
+msgid "Active: a change is being applied"
+msgstr "Активна: применяется изменение"
+
 msgid "Active: DPI switch not confirmed"
 msgstr "Активна: переключение DPI не подтверждено"
+
+msgid "Active: kept by a failed change"
+msgstr "Активна: осталась после неудавшегося изменения"
+
+msgid "Active: restore not finished"
+msgstr "Активна: восстановление не завершено"
 
 msgid "Add a rule"
 msgstr "Добавить правило"
@@ -583,6 +607,9 @@ msgstr "Не удалось сохранить правило"
 
 msgid "Cascade connection"
 msgstr "Каскадное подключение"
+
+msgid "Change in progress"
+msgstr "Изменение выполняется"
 
 msgid "Changes"
 msgstr "Изменения"
@@ -1595,6 +1622,9 @@ msgstr "Глобальная проверка"
 msgid "has no effect"
 msgstr "ни на что не влияет"
 
+msgid "Health state unavailable"
+msgstr "Состояние работоспособности недоступно"
+
 msgid "Healthy"
 msgstr "Норма"
 
@@ -2180,6 +2210,9 @@ msgstr "Новости"
 msgid "Next scheduled check"
 msgstr "Следующая плановая проверка"
 
+msgid "Next step"
+msgstr "Следующий шаг"
+
 msgid "NFQUEUE range is available"
 msgstr "Диапазон NFQUEUE свободен"
 
@@ -2726,14 +2759,23 @@ msgstr "Перезапустить Forkop X"
 msgid "Restart Forkop X on the Overview. If it repeats, open the logs under Technical data."
 msgstr "Перезапустите Forkop X на «Обзоре». Если ошибка повторится, откройте логи в «Технических данных»."
 
+msgid "Restart Forkop X: the restart removes the DPI guard that a failed change left in place."
+msgstr "Перезапустите Forkop X: перезапуск снимет защиту DPI, оставленную неудавшимся изменением."
+
 msgid "Restart Forkop X. If another add-on marks traffic, make sure it does not conflict."
 msgstr "Перезапустите Forkop X. Если трафик маркирует другое дополнение, убедитесь, что оно не конфликтует."
+
+msgid "Restart required"
+msgstr "Нужен перезапуск"
 
 msgid "Restore"
 msgstr "Восстановить"
 
 msgid "Restore configuration snapshot?"
 msgstr "Восстановить снимок конфигурации?"
+
+msgid "Restore did not finish: a failed change left the DPI guard in place, and the DPI guard stays active. Restart Forkop X, then restore the snapshot again."
+msgstr "Восстановление не завершено: неудавшееся изменение оставило защиту DPI, и она остаётся активной. Перезапустите Forkop X, затем восстановите снимок ещё раз."
 
 msgid "Restore did not finish: the configuration was changed while the snapshot was being applied."
 msgstr "Восстановление не завершено: конфигурацию изменили, пока применялся снимок."
@@ -2753,6 +2795,12 @@ msgstr "Восстановление не удалось; прежняя кон�
 msgid "Restore normal mode"
 msgstr "Вернуть обычный режим"
 
+msgid "Restore required"
+msgstr "Нужно восстановление"
+
+msgid "Restore the last known good snapshot: the restore finishes and removes the DPI guard."
+msgstr "Восстановите снимок последней рабочей конфигурации: восстановление завершится и снимет защиту DPI."
+
 msgid "Restore the snapshot you need to finish."
 msgstr "Чтобы завершить, восстановите нужный снимок."
 
@@ -2767,6 +2815,9 @@ msgstr "Восстановление не применено: служба бы�
 
 msgid "Restore was not applied: the snapshot configuration did not pass validation. The previous configuration is kept; Forkop X stays stopped."
 msgstr "Восстановление не применено: конфигурация снимка не прошла проверку. Прежняя конфигурация сохранена; Forkop X остаётся остановленным."
+
+msgid "Restore was not started: a failed change left the DPI guard in place, and nothing can be reloaded until Forkop X is restarted. Restart Forkop X, then restore the snapshot if it is still needed."
+msgstr "Восстановление не начато: неудавшееся изменение оставило защиту DPI, и до перезапуска Forkop X ничего нельзя перезагрузить. Перезапустите Forkop X, затем восстановите снимок, если он ещё нужен."
 
 msgid "Restore was not started: the router has uncommitted uci changes of Forkop X (made with \"uci set\" without a commit). Commit or revert them, then restore again."
 msgstr "Восстановление не запущено: на роутере есть незафиксированные изменения Forkop X в uci (внесённые «uci set» без commit). Зафиксируйте или отмените их и повторите восстановление."

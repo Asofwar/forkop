@@ -112,6 +112,73 @@ describe('recovery state', () => {
   });
 });
 
+// UC-066, UC-019: a guard that is left or a failed last change is never
+// shown as "In progress", and the step that ends a guard is named.
+describe('recovery state that needs an action', () => {
+  const guarded = (
+    action: 'restart' | 'restore' | 'wait',
+    kinds: { runtime?: boolean; restore?: boolean },
+  ) =>
+    health({
+      overall: 'error',
+      guard: { active: true, runtime: false, restore: false, ...kinds },
+      recovery: { pending: true, last_event: null, action },
+    });
+  const row = (rows: ReturnType<typeof recoveryRows>, label: string) =>
+    rows.find((item) => item.label === label);
+
+  it('asks for a restart while a failed transition keeps its guard', () => {
+    const rows = recoveryRows(guarded('restart', { runtime: true }), []);
+    expect(row(rows, 'DPI guard')).toMatchObject({
+      value: 'Active: kept by a failed change',
+      tone: 'error',
+    });
+    expect(row(rows, 'Last recovery')).toMatchObject({
+      value: 'Needs attention',
+      tone: 'error',
+    });
+    expect(row(rows, 'Next step')?.value).toContain('Restart Forkop X');
+  });
+
+  it('asks for a snapshot restore while an unfinished restore keeps its guard', () => {
+    const rows = recoveryRows(guarded('restore', { restore: true }), []);
+    expect(row(rows, 'DPI guard')).toMatchObject({
+      value: 'Active: restore not finished',
+      tone: 'error',
+    });
+    expect(row(rows, 'Last recovery')?.value).toBe('Needs attention');
+    expect(row(rows, 'Next step')?.value).toContain(
+      'Restore the last known good snapshot',
+    );
+  });
+
+  it('shows a guard that a running change holds as in progress', () => {
+    const rows = recoveryRows(guarded('wait', { restore: true }), []);
+    expect(row(rows, 'DPI guard')?.tone).toBe('loading');
+    expect(row(rows, 'Last recovery')).toMatchObject({
+      value: 'In progress',
+      tone: 'loading',
+    });
+    expect(row(rows, 'Next step')).toBeUndefined();
+  });
+
+  it('names the failed last change instead of "In progress"', () => {
+    const failed = { kind: 'reload', status: 'failure', timestamp: 9 };
+    const rows = recoveryRows(
+      health({
+        overall: 'error',
+        recovery: { pending: true, last_event: failed, action: null },
+        recent_activity: [failed],
+      }),
+      [],
+    );
+    const last = row(rows, 'Last recovery');
+    expect(last?.value).toMatch(/^Configuration reload: Failed · /);
+    expect(last?.tone).toBe('error');
+    expect(row(rows, 'Next step')).toBeUndefined();
+  });
+});
+
 describe('history list', () => {
   const events: Forkop.HistoryEvent[] = [
     { kind: 'start', status: 'success', timestamp: 100 },
@@ -343,6 +410,26 @@ describe('restore result', () => {
     expect(staged.type).toBe('warning');
     expect(staged.text).toContain('was not started');
     expect(staged.text).toContain('Commit or revert');
+  });
+
+  // UC-019: a guard that a failed lifecycle transition kept refuses the
+  // restore, or ends it needs_attention; the restart comes first.
+  it('asks for a restart when a kept runtime guard stops the restore', () => {
+    const refused = restoreResultToast({
+      status: 'failed',
+      reason: 'runtime_guard_active',
+    });
+    expect(refused.type).toBe('warning');
+    expect(refused.text).toContain('was not started');
+    expect(refused.text).toContain('Restart Forkop X');
+    const unfinished = restoreResultToast({
+      status: 'needs_attention',
+      reason: 'runtime_guard_active',
+      guard: 'active',
+    });
+    expect(unfinished.type).toBe('error');
+    expect(unfinished.text).toContain('did not finish');
+    expect(unfinished.text).toContain('Restart Forkop X');
   });
 
   it('keeps an edit made during the restore instead of calling it restored', () => {

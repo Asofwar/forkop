@@ -201,7 +201,27 @@ function renderRoutingCard(routing: OverviewRouting, readonly: boolean) {
   );
 }
 
-function renderRecoveryCard(recovery: OverviewRecovery) {
+function renderRecoveryCard(
+  recovery: OverviewRecovery,
+  actions: OverviewActions,
+) {
+  // The restart that removes a DPI guard a failed change kept (UC-019),
+  // also while the runtime is down and the state card offers only a start.
+  const restart =
+    !actions.readonly && recovery.step === 'restart'
+      ? [
+          E(
+            'button',
+            {
+              type: 'button',
+              class: 'btn cbi-button cbi-button-action',
+              disabled: actions.serviceBusy ? true : undefined,
+              click: actions.onRestart,
+            },
+            _('Restart Forkop X'),
+          ),
+        ]
+      : [];
   return card(
     _('Recovery'),
     [
@@ -210,7 +230,10 @@ function renderRecoveryCard(recovery: OverviewRecovery) {
       ]),
       renderLines(recovery.lines),
     ],
-    [linkButton(_('Recovery details'), () => openForkopPage('history'))],
+    [
+      ...restart,
+      linkButton(_('Recovery details'), () => openForkopPage('history')),
+    ],
   );
 }
 
@@ -243,7 +266,7 @@ export function renderOverview(
     E('div', { class: 'fkp-overview__grid' }, [
       renderStateCard(vm.state, actions),
       renderRoutingCard(vm.routing, actions.readonly),
-      renderRecoveryCard(vm.recovery),
+      renderRecoveryCard(vm.recovery, actions),
       renderEventCard(vm.event),
     ]),
   ]);

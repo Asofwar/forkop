@@ -6,6 +6,7 @@ const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
 const RUNTIME_DIR = getenv("FORKOP_RUNTIME_STATE_DIR") || "/var/run/forkop";
 const EVENT_FILE = RUNTIME_DIR + "/health-events.json";
 const PACKAGE_PENDING = getenv("FORKOP_OPKG_RECOVERY_DIR") || "/etc/forkop/opkg-package-set-recovery";
+const SNAPSHOT_LOCK = getenv("FORKOP_SNAPSHOT_LOCK_DIR") || "/var/run/forkop/config-snapshot.lock";
 // Significant events survive reboots in a small journal on flash. Only
 // recorded events land there (starts, reloads, restores, autotune applies,
 // manual snapshot changes), never probes or measurements. When the journal
@@ -149,7 +150,30 @@ function as_string(value) {
     return value == null ? "" : "" + value;
 }
 
-function health(ui, guard, package_pending, events) {
+// A snapshot restore or autotune apply is running: its lock holds the owner
+// record of a live config/snapshots.uc process (as autotune/apply.uc reads
+// it; a crashed operation leaves a stale one).
+function snapshot_operation_active() {
+    let identity = require("core.process_identity");
+    for (let name in fs.lsdir(SNAPSHOT_LOCK) || []) {
+        let m = match(name, /^owner\.([1-9][0-9]*)\.([0-9]+)$/);
+        if (m != null && identity.matches_record({ pid: m[1], ticks: m[2] }, "ucode",
+            [ "ucode", "-L", LIB_DIR, LIB_DIR + "/config/snapshots.uc" ], false, true) != "")
+            return true;
+    }
+    return false;
+}
+
+// guards: the fail-closed DPI guards that are installed. runtime: one that a
+// failed lifecycle transition kept (ForkopTableDpiGuard, the
+// forkop_transition_guard chain); the lifecycle refuses start and reload
+// over it and only a restart removes it. restore: the guard of a snapshot
+// restore or an autotune apply (ForkopConfigRestoreDpiGuard); only a restore
+// of a snapshot releases one that such a transaction left. transaction: a
+// snapshot operation is running, whose own guard that may be (UC-019,
+// UC-066).
+function health(ui, guards, package_pending, events) {
+    let guard = guards.active === true || guards.runtime === true || guards.restore === true;
     let service = type(ui.service) == "object" ? ui.service : {};
     let forkop = type(service.forkop) == "object" ? service.forkop : {};
     let sing_box = type(service.sing_box) == "object" ? service.sing_box : {};
@@ -169,6 +193,10 @@ function health(ui, guard, package_pending, events) {
             break;
         }
     let failed = last != null && last.status == "failure";
+    // What ends the guard that is left, named for the recovery pages: none
+    // while a service action or a snapshot operation may still hold its own.
+    let action = !guard ? null : transition || guards.transaction === true ? "wait" :
+        guards.runtime === true ? "restart" : guards.restore === true ? "restore" : null;
     let overall = guard || package_pending || failed ? "error" :
         transition ? "transitioning" : service_status;
     if (overall == "ok" && last != null && last.status == "recovered")
@@ -183,8 +211,8 @@ function health(ui, guard, package_pending, events) {
             configured: forkop.dns_configured == 1 },
         dpi: { status: guard ? "transitioning" : "unknown" },
         lists: { status: "unknown" },
-        guard: { active: guard },
-        recovery: { pending: guard || failed, last_event: last },
+        guard: { active: guard, runtime: guards.runtime === true, restore: guards.restore === true },
+        recovery: { pending: guard || failed, last_event: last, action },
         package_recovery: { pending: package_pending },
         last_reload,
         recent_activity: events
@@ -203,8 +231,9 @@ if (mode == "history") {
 }
 if (mode == "fixture") {
     let input = read_object(ARGV[1]);
-    print(sprintf("%J\n", health(input.ui || {}, input.guard === true,
-        input.package_pending === true, input.events || [])));
+    print(sprintf("%J\n", health(input.ui || {}, { active: input.guard === true,
+        runtime: input.runtime_guard === true, restore: input.restore_guard === true,
+        transaction: input.transaction === true }, input.package_pending === true, input.events || [])));
     exit(0);
 }
 if (mode != "get")
@@ -215,8 +244,12 @@ try {
     ui = json(capture([ "ucode", "-L", LIB_DIR, LIB_DIR + "/service/ui.uc", "get-ui-state" ]));
 }
 catch (e) {}
-let guard = command_ok([ "nft", "list", "table", "inet", "ForkopTableDpiGuard" ]) ||
-    command_ok([ "nft", "list", "table", "inet", "ForkopConfigRestoreDpiGuard" ]) ||
-    command_ok([ "nft", "list", "chain", "inet", "ForkopTable", "forkop_transition_guard" ]);
+let guards = {
+    runtime: command_ok([ "nft", "list", "table", "inet", "ForkopTableDpiGuard" ]) ||
+        command_ok([ "nft", "list", "chain", "inet", "ForkopTable", "forkop_transition_guard" ]),
+    restore: command_ok([ "nft", "list", "table", "inet", "ForkopConfigRestoreDpiGuard" ])
+};
+if (guards.restore)
+    guards.transaction = snapshot_operation_active();
 let package_pending = fs.stat(PACKAGE_PENDING + "/pending") != null;
-print(sprintf("%J\n", health(ui, guard, package_pending, event_state())));
+print(sprintf("%J\n", health(ui, guards, package_pending, event_state())));

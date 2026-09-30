@@ -6349,6 +6349,26 @@ function lastEvent(health2) {
   const events = health2?.recent_activity || [];
   return events.length ? events[events.length - 1] : null;
 }
+function guardWarningText(action) {
+  switch (action) {
+    case "restart":
+      return _(
+        "A failed change left the DPI guard in place. Traffic that needs DPI bypass stays blocked until you restart Forkop X.",
+      );
+    case "restore":
+      return _(
+        "A configuration restore did not finish. Traffic that needs DPI bypass stays blocked until you restore the last known good snapshot.",
+      );
+    case "wait":
+      return _(
+        "A configuration change is being applied. Traffic that needs DPI bypass may be blocked until it finishes.",
+      );
+    default:
+      return _(
+        "A configuration change was not confirmed. Traffic that needs DPI bypass may be blocked; see the recovery details for the next step.",
+      );
+  }
+}
 function overviewWarning(health2) {
   if (!health2) return null;
   const details = {
@@ -6358,9 +6378,7 @@ function overviewWarning(health2) {
   if (health2.guard?.active) {
     return {
       title: _("DPI protection is holding traffic"),
-      text: _(
-        "A configuration change was not confirmed. Traffic that needs DPI bypass may be blocked until recovery completes.",
-      ),
+      text: guardWarningText(health2.recovery?.action),
       link: details,
     };
   }
@@ -6446,7 +6464,15 @@ function overviewState(input) {
     status2 = "error";
     title = _("Forkop X needs attention");
   } else {
-    status2 = health2?.overall === "recovered" ? "warning" : "healthy";
+    const known =
+      !input.healthStale &&
+      (health2?.overall === "ok" || health2?.overall === "recovered");
+    status2 =
+      health2?.overall === "recovered"
+        ? "warning"
+        : known
+          ? "healthy"
+          : "unknown";
     title = _("Forkop X is running");
     if (health2?.overall === "recovered") {
       lines.push({
@@ -6454,6 +6480,7 @@ function overviewState(input) {
         tone: "warning",
       });
     }
+    if (!known) lines.push({ text: _("Health state unavailable") });
   }
   if (availability === "running") {
     lines.push(
@@ -6531,7 +6558,6 @@ function overviewRecovery(input) {
   if (!health2) {
     return { status: "unknown", title: _("State unavailable"), lines: [] };
   }
-  const guard = Boolean(health2.guard?.active);
   const lines = [];
   const reload = health2.last_reload;
   if (reload) {
@@ -6551,11 +6577,72 @@ function overviewRecovery(input) {
       text: _("Snapshots: %d").replace("%d", String(input.snapshotCount)),
     });
   }
-  return {
-    status: guard ? "needs_attention" : "healthy",
-    title: guard ? _("Protection is active") : _("No recovery needed"),
-    lines,
-  };
+  const state = recoveryState(health2);
+  if (input.healthStale && state.status === "healthy")
+    return { status: "unknown", title: _("State unavailable"), lines };
+  return { ...state, lines: [...state.lines, ...lines] };
+}
+function recoveryState(health2) {
+  if (health2.guard?.active) {
+    switch (health2.recovery?.action) {
+      case "restart":
+        return {
+          status: "needs_attention",
+          title: _("Restart required"),
+          step: "restart",
+          lines: [
+            {
+              text: _(
+                "A failed change left the DPI guard in place: restart Forkop X to remove it.",
+              ),
+              tone: "error",
+            },
+          ],
+        };
+      case "restore":
+        return {
+          status: "needs_attention",
+          title: _("Restore required"),
+          step: "restore",
+          lines: [
+            {
+              text: _(
+                "A configuration restore did not finish: restore the last known good snapshot to finish it.",
+              ),
+              tone: "error",
+            },
+          ],
+        };
+      case "wait":
+        return { status: "busy", title: _("Change in progress"), lines: [] };
+      default:
+        return {
+          status: "needs_attention",
+          title: _("Protection is active"),
+          lines: [],
+        };
+    }
+  }
+  if (health2.package_recovery?.pending) {
+    return {
+      status: "needs_attention",
+      title: _("Package recovery has not finished"),
+      lines: [],
+    };
+  }
+  if (health2.recovery?.pending) {
+    return {
+      status: "error",
+      title: _("The last configuration change failed"),
+      lines: [
+        {
+          text: _("Forkop X kept or restored the previous configuration."),
+          tone: "error",
+        },
+      ],
+    };
+  }
+  return { status: "healthy", title: _("No recovery needed"), lines: [] };
 }
 function overviewLastEvent(input) {
   const event = lastEvent(input.health);
@@ -6800,7 +6887,22 @@ function renderRoutingCard(routing, readonly) {
     ],
   );
 }
-function renderRecoveryCard(recovery) {
+function renderRecoveryCard(recovery, actions) {
+  const restart =
+    !actions.readonly && recovery.step === "restart"
+      ? [
+          E(
+            "button",
+            {
+              type: "button",
+              class: "btn cbi-button cbi-button-action",
+              disabled: actions.serviceBusy ? true : void 0,
+              click: actions.onRestart,
+            },
+            _("Restart Forkop X"),
+          ),
+        ]
+      : [];
   return card(
     _("Recovery"),
     [
@@ -6809,7 +6911,10 @@ function renderRecoveryCard(recovery) {
       ]),
       renderLines(recovery.lines),
     ],
-    [linkButton(_("Recovery details"), () => openForkopPage("history"))],
+    [
+      ...restart,
+      linkButton(_("Recovery details"), () => openForkopPage("history")),
+    ],
   );
 }
 function renderEventCard(event) {
@@ -6837,7 +6942,7 @@ function renderOverview(vm, actions) {
     E("div", { class: "fkp-overview__grid" }, [
       renderStateCard(vm.state, actions),
       renderRoutingCard(vm.routing, actions.readonly),
-      renderRecoveryCard(vm.recovery),
+      renderRecoveryCard(vm.recovery, actions),
       renderEventCard(vm.event),
     ]),
   ]);
@@ -7531,6 +7636,7 @@ var LATENCY_TEST_BUTTON_LABEL_CLASS =
 var sectionsRefreshTimer = null;
 var healthRefreshTimer = null;
 var overviewHealth = null;
+var overviewHealthStale = false;
 var overviewRuleCount = null;
 var overviewSnapshotCount = null;
 var overviewServiceBusy = false;
@@ -7539,7 +7645,12 @@ var clashUpdatesStarted = false;
 async function refreshHealth(mountId3) {
   const response = await ForkopShellMethods.getHealthStatus();
   if (!dashboardMounted || mountId3 !== dashboardMountId) return;
-  overviewHealth = response.success && response.data ? response.data : null;
+  if (response.success && response.data) {
+    overviewHealth = response.data;
+    overviewHealthStale = false;
+  } else {
+    overviewHealthStale = true;
+  }
   renderOverviewCards();
 }
 async function loadOverviewCounts(mountId3) {
@@ -7570,6 +7681,7 @@ function overviewInput() {
   const systemInfo = state.systemInfoWidget;
   return {
     health: overviewHealth,
+    healthStale: overviewHealthStale,
     availability: getDashboardServiceAvailability(),
     forkopEnabled: Boolean(services.data.forkopEnabled),
     forkopStoppedByUser: Boolean(services.data.forkopStoppedByUser),
@@ -18805,6 +18917,67 @@ function eventText(event) {
     tone: outcome.tone,
   };
 }
+function guardRow(health2) {
+  if (!health2.guard.active) return { value: _("Inactive"), tone: "success" };
+  switch (health2.recovery.action) {
+    case "wait":
+      return {
+        value: _("Active: a change is being applied"),
+        tone: "loading",
+      };
+    case "restart":
+      return {
+        value: _("Active: kept by a failed change"),
+        tone: "error",
+      };
+    case "restore":
+      return {
+        value: _("Active: restore not finished"),
+        tone: "error",
+      };
+    default:
+      return {
+        value: _("Active: DPI switch not confirmed"),
+        tone: "error",
+      };
+  }
+}
+function lastRecoveryRow(health2) {
+  if (health2.guard.active)
+    return health2.recovery.action === "wait"
+      ? { value: _("In progress"), tone: "loading" }
+      : { value: _("Needs attention"), tone: "error" };
+  const failed2 = health2.recovery.last_event;
+  if (failed2) return eventText(failed2);
+  return { value: _("Needs attention"), tone: "error" };
+}
+function nextStepRow(health2) {
+  if (!health2.guard.active) return [];
+  switch (health2.recovery.action) {
+    case "restart":
+      return [
+        {
+          label: _("Next step"),
+          value: _(
+            "Restart Forkop X: the restart removes the DPI guard that a failed change left in place.",
+          ),
+          tone: "warning",
+        },
+      ];
+    case "restore":
+      return [
+        {
+          label: _("Next step"),
+          value: _(
+            "Restore the last known good snapshot: the restore finishes and removes the DPI guard.",
+          ),
+          tone: "warning",
+        },
+      ];
+    default:
+      return [];
+  }
+}
 function recoveryRows(health2, snapshots2) {
   const last = lastRecoveryEvent(health2);
   const reload = health2.last_reload;
@@ -18815,21 +18988,17 @@ function recoveryRows(health2, snapshots2) {
   return [
     {
       label: _("DPI guard"),
-      ...(health2.guard.active
-        ? {
-            value: _("Active: DPI switch not confirmed"),
-            tone: "error",
-          }
-        : { value: _("Inactive"), tone: "success" }),
+      ...guardRow(health2),
     },
     {
       label: _("Last recovery"),
       ...(health2.recovery.pending
-        ? { value: _("In progress"), tone: "loading" }
+        ? lastRecoveryRow(health2)
         : last
           ? eventText(last)
           : { value: _("Not needed"), tone: "success" }),
     },
+    ...nextStepRow(health2),
     {
       label: _("Package recovery"),
       ...(health2.package_recovery.pending
@@ -19022,6 +19191,14 @@ function restoreResultToast(result) {
         duration: 8e3,
       };
     case "failed":
+      if (result.reason === "runtime_guard_active")
+        return {
+          text: _(
+            "Restore was not started: a failed change left the DPI guard in place, and nothing can be reloaded until Forkop X is restarted. Restart Forkop X, then restore the snapshot if it is still needed.",
+          ),
+          type: "warning",
+          duration: 12e3,
+        };
       if (result.reason === "uncommitted_uci_changes")
         return {
           text: _(
@@ -19065,6 +19242,14 @@ function restoreResultToast(result) {
           duration: 12e3,
         };
       }
+      if (result.reason === "runtime_guard_active")
+        return {
+          text: _(
+            "Restore did not finish: a failed change left the DPI guard in place, and the DPI guard stays active. Restart Forkop X, then restore the snapshot again.",
+          ),
+          type: "error",
+          duration: 12e3,
+        };
       if (result.reason === "rollback_reload_queued")
         return {
           text: _(

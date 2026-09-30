@@ -20,6 +20,9 @@ export type OverviewPage =
 
 export interface OverviewInput {
   health: Forkop.HealthStatus | null;
+  // The last health report is kept when a later poll fails, so a guard it
+  // showed stays visible; it no longer proves the system healthy (UC-021).
+  healthStale?: boolean;
   availability: 'loading' | 'running' | 'stopped' | 'unavailable';
   forkopEnabled: boolean;
   // Stopped by the user, as opposed to down after a failed start or a
@@ -77,6 +80,9 @@ export interface OverviewRecovery {
   status: SemanticStatus;
   title: string;
   lines: OverviewLine[];
+  // The step that ends a DPI guard that is left (UC-019): the card offers
+  // the restart itself, the restore is on the History page.
+  step?: 'restart' | 'restore';
 }
 
 export interface OverviewEvent {
@@ -88,6 +94,30 @@ export interface OverviewEvent {
 function lastEvent(health: Forkop.HealthStatus | null) {
   const events = health?.recent_activity || [];
   return events.length ? events[events.length - 1] : null;
+}
+
+// What the DPI guard that is left means, by what ends it
+// (diagnostics/health.uc recovery.action): it does not go on its own unless
+// a change still holds it (UC-019, UC-066).
+function guardWarningText(action: Forkop.HealthStatus['recovery']['action']) {
+  switch (action) {
+    case 'restart':
+      return _(
+        'A failed change left the DPI guard in place. Traffic that needs DPI bypass stays blocked until you restart Forkop X.',
+      );
+    case 'restore':
+      return _(
+        'A configuration restore did not finish. Traffic that needs DPI bypass stays blocked until you restore the last known good snapshot.',
+      );
+    case 'wait':
+      return _(
+        'A configuration change is being applied. Traffic that needs DPI bypass may be blocked until it finishes.',
+      );
+    default:
+      return _(
+        'A configuration change was not confirmed. Traffic that needs DPI bypass may be blocked; see the recovery details for the next step.',
+      );
+  }
 }
 
 export function overviewWarning(
@@ -102,9 +132,7 @@ export function overviewWarning(
   if (health.guard?.active) {
     return {
       title: _('DPI protection is holding traffic'),
-      text: _(
-        'A configuration change was not confirmed. Traffic that needs DPI bypass may be blocked until recovery completes.',
-      ),
+      text: guardWarningText(health.recovery?.action),
       link: details,
     };
   }
@@ -198,7 +226,17 @@ export function overviewState(input: OverviewInput): OverviewState {
     status = 'error';
     title = _('Forkop X needs attention');
   } else {
-    status = health?.overall === 'recovered' ? 'warning' : 'healthy';
+    // Running, but only a health report proves it healthy: none yet, one
+    // that failed to load, or an unknown one is not (UC-021).
+    const known =
+      !input.healthStale &&
+      (health?.overall === 'ok' || health?.overall === 'recovered');
+    status =
+      health?.overall === 'recovered'
+        ? 'warning'
+        : known
+          ? 'healthy'
+          : 'unknown';
     title = _('Forkop X is running');
     if (health?.overall === 'recovered') {
       lines.push({
@@ -206,6 +244,7 @@ export function overviewState(input: OverviewInput): OverviewState {
         tone: 'warning',
       });
     }
+    if (!known) lines.push({ text: _('Health state unavailable') });
   }
 
   if (availability === 'running') {
@@ -293,7 +332,6 @@ export function overviewRecovery(input: OverviewInput): OverviewRecovery {
     return { status: 'unknown', title: _('State unavailable'), lines: [] };
   }
 
-  const guard = Boolean(health.guard?.active);
   const lines: OverviewLine[] = [];
   const reload = health.last_reload;
   if (reload) {
@@ -314,11 +352,78 @@ export function overviewRecovery(input: OverviewInput): OverviewRecovery {
     });
   }
 
-  return {
-    status: guard ? 'needs_attention' : 'healthy',
-    title: guard ? _('Protection is active') : _('No recovery needed'),
-    lines,
-  };
+  const state = recoveryState(health);
+  // A stale report may still show what is left, never that nothing is.
+  if (input.healthStale && state.status === 'healthy')
+    return { status: 'unknown', title: _('State unavailable'), lines };
+  return { ...state, lines: [...state.lines, ...lines] };
+}
+
+// Whatever is left is never "No recovery needed" (UC-021): a DPI guard,
+// named by what ends it (UC-019, UC-066), an unfinished package recovery,
+// or a failed last change (health.uc recovery.pending without a guard: the
+// previous configuration was kept, nothing is in progress).
+function recoveryState(health: Forkop.HealthStatus): OverviewRecovery {
+  if (health.guard?.active) {
+    switch (health.recovery?.action) {
+      case 'restart':
+        return {
+          status: 'needs_attention',
+          title: _('Restart required'),
+          step: 'restart',
+          lines: [
+            {
+              text: _(
+                'A failed change left the DPI guard in place: restart Forkop X to remove it.',
+              ),
+              tone: 'error',
+            },
+          ],
+        };
+      case 'restore':
+        return {
+          status: 'needs_attention',
+          title: _('Restore required'),
+          step: 'restore',
+          lines: [
+            {
+              text: _(
+                'A configuration restore did not finish: restore the last known good snapshot to finish it.',
+              ),
+              tone: 'error',
+            },
+          ],
+        };
+      case 'wait':
+        return { status: 'busy', title: _('Change in progress'), lines: [] };
+      default:
+        return {
+          status: 'needs_attention',
+          title: _('Protection is active'),
+          lines: [],
+        };
+    }
+  }
+  if (health.package_recovery?.pending) {
+    return {
+      status: 'needs_attention',
+      title: _('Package recovery has not finished'),
+      lines: [],
+    };
+  }
+  if (health.recovery?.pending) {
+    return {
+      status: 'error',
+      title: _('The last configuration change failed'),
+      lines: [
+        {
+          text: _('Forkop X kept or restored the previous configuration.'),
+          tone: 'error',
+        },
+      ],
+    };
+  }
+  return { status: 'healthy', title: _('No recovery needed'), lines: [] };
 }
 
 export function overviewLastEvent(input: OverviewInput): OverviewEvent | null {

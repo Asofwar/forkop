@@ -287,6 +287,46 @@ describe('overview state', () => {
     );
   });
 
+  // UC-021: missing or unknown health is never shown as healthy.
+  it('does not call a running Forkop X healthy while its health is unknown', () => {
+    for (const value of [null, health({ overall: 'unknown' })]) {
+      const state = overviewState(input({ health: value }));
+      expect(state.status).toBe('unknown');
+      expect(state.title).toBe('Forkop X is running');
+      expect(state.lines.map((line) => line.text)).toContain(
+        'Health state unavailable',
+      );
+    }
+  });
+
+  // A failed health poll keeps the last report: a guard it showed stays
+  // visible, but it no longer proves anything healthy.
+  it('does not call a stale health report healthy', () => {
+    const stale = overviewState(input({ healthStale: true }));
+    expect(stale.status).toBe('unknown');
+    expect(stale.lines.map((line) => line.text)).toContain(
+      'Health state unavailable',
+    );
+    expect(overviewRecovery(input({ healthStale: true }))).toMatchObject({
+      status: 'unknown',
+      title: 'State unavailable',
+    });
+    const guarded = health({
+      overall: 'error',
+      guard: { active: true, runtime: true, restore: false },
+      recovery: { pending: true, last_event: null, action: 'restart' },
+    });
+    expect(
+      overviewRecovery(input({ health: guarded, healthStale: true })).title,
+    ).toBe('Restart required');
+    expect(
+      overviewState(input({ health: guarded, healthStale: true })).status,
+    ).toBe('error');
+    expect(overviewWarning(guarded)?.title).toBe(
+      'DPI protection is holding traffic',
+    );
+  });
+
   it('says when diagnostics has never run', () => {
     expect(
       overviewState(input({ lastDiagnosticRun: null })).lines.map(
@@ -358,6 +398,105 @@ describe('overview recovery and last event', () => {
   });
 });
 
+// Every recovery state the backend reports (diagnostics/health.uc): the
+// Recovery card and the warning never read "No recovery needed" or
+// "healthy" while something is left, and name the step that ends it
+// (UC-019, UC-021, UC-066).
+describe('overview recovery states', () => {
+  const guard = (
+    action: 'restart' | 'restore' | 'wait' | null,
+    kinds: { runtime?: boolean; restore?: boolean },
+  ) =>
+    health({
+      overall: 'error',
+      guard: { active: true, runtime: false, restore: false, ...kinds },
+      recovery: { pending: true, last_event: null, action },
+    });
+  const texts = (lines: Array<{ text: string }>) =>
+    lines.map((line) => line.text).join(' | ');
+
+  it('asks for a restart while a failed transition keeps its guard', () => {
+    const value = guard('restart', { runtime: true });
+    const recovery = overviewRecovery(input({ health: value }));
+    expect(recovery.status).toBe('needs_attention');
+    expect(recovery.title).toBe('Restart required');
+    expect(texts(recovery.lines)).toContain('restart Forkop X');
+    const warning = overviewWarning(value);
+    expect(warning?.title).toBe('DPI protection is holding traffic');
+    expect(warning?.text).toContain('until you restart Forkop X');
+    expect(warning?.text).not.toContain('until recovery completes');
+  });
+
+  it('asks for a snapshot restore while an unfinished restore keeps its guard', () => {
+    const value = guard('restore', { restore: true });
+    const recovery = overviewRecovery(input({ health: value }));
+    expect(recovery.status).toBe('needs_attention');
+    expect(recovery.title).toBe('Restore required');
+    expect(texts(recovery.lines)).toContain('last known good snapshot');
+    expect(overviewWarning(value)?.text).toContain(
+      'until you restore the last known good snapshot',
+    );
+  });
+
+  it('shows a guard that a running change holds as in progress', () => {
+    const value = guard('wait', { restore: true });
+    const recovery = overviewRecovery(input({ health: value }));
+    expect(recovery.status).toBe('busy');
+    expect(recovery.title).toBe('Change in progress');
+    expect(overviewWarning(value)?.text).toContain('is being applied');
+  });
+
+  it('needs attention for a guard whose recovery the backend does not name', () => {
+    const recovery = overviewRecovery(
+      input({ health: guard(null, { runtime: true }) }),
+    );
+    expect(recovery.status).toBe('needs_attention');
+    expect(recovery.title).toBe('Protection is active');
+  });
+
+  it('does not call an unfinished package recovery "No recovery needed"', () => {
+    const recovery = overviewRecovery(
+      input({
+        health: health({
+          overall: 'error',
+          package_recovery: { pending: true },
+        }),
+      }),
+    );
+    expect(recovery.status).toBe('needs_attention');
+    expect(recovery.title).toBe('Package recovery has not finished');
+  });
+
+  it('reports a failed last change as an error, not as in progress', () => {
+    const failed = { kind: 'reload', status: 'failure', timestamp: ts(60) };
+    const recovery = overviewRecovery(
+      input({
+        health: health({
+          overall: 'error',
+          recovery: { pending: true, last_event: failed, action: null },
+          last_reload: failed,
+          recent_activity: [failed],
+        }),
+      }),
+    );
+    expect(recovery.status).toBe('error');
+    expect(recovery.title).toBe('The last configuration change failed');
+    expect(texts(recovery.lines)).toContain(
+      'Forkop X kept or restored the previous configuration.',
+    );
+  });
+
+  it('says "No recovery needed" only when nothing is left', () => {
+    const recovery = overviewRecovery(input());
+    expect(recovery.status).toBe('healthy');
+    expect(recovery.title).toBe('No recovery needed');
+    expect(overviewRecovery(input({ health: null }))).toMatchObject({
+      status: 'unknown',
+      title: 'State unavailable',
+    });
+  });
+});
+
 describe('overview cards', () => {
   const actions = {
     serviceBusy: false,
@@ -387,6 +526,27 @@ describe('overview cards', () => {
     expect(text(node)).toContain('Start Forkop X');
     expect(labels(node)).toContain('Service actions');
     expect(text(node)).toContain('Rules');
+  });
+
+  it('offers the restart that removes a kept DPI guard, to administrators only', () => {
+    const kept = health({
+      overall: 'error',
+      guard: { active: true, runtime: true, restore: false },
+      recovery: { pending: true, last_event: null, action: 'restart' },
+    });
+    const recoveryCard = (readonly: boolean) =>
+      (
+        renderOverview(vm({ availability: 'stopped', health: kept }), {
+          ...actions,
+          readonly,
+        }) as unknown as FakeNode
+      ).children
+        .flatMap((child) => (child as FakeNode).children || [])
+        .find((node) => text(node).includes('Restart required'));
+
+    expect(text(recoveryCard(false))).toContain('Restart Forkop X');
+    expect(recoveryCard(true)).toBeDefined();
+    expect(text(recoveryCard(true))).not.toContain('Restart Forkop X');
   });
 
   it('gives a read-only session the same answers without controls', () => {

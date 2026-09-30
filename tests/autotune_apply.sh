@@ -66,6 +66,16 @@ case "$*" in
   "list table inet ForkopTableDpiGuard") [ -e "$NFT_STATE/tables/ForkopTableDpiGuard" ]; exit $? ;;
   "list chain inet "*) [ -e "$NFT_STATE/chains/$4.$5" ]; exit $? ;;
   "list ruleset") echo "table inet ForkopTable {"; echo "}"; exit 0 ;;
+  # The marked verification of a device-limited rule (autotune/apply.uc).
+  "-f -") cat > "$STATE/verify.nft"
+    [ -z "${VERIFY_CREATE_FAIL:-}" ] || exit 1
+    grep -q '^create table inet ForkopAutotuneVerify$' "$STATE/verify.nft" || exit 1
+    touch "$NFT_STATE/tables/ForkopAutotuneVerify"; echo 0 > "$STATE/verify.counter"; exit 0 ;;
+  "delete table inet ForkopAutotuneVerify") rm -f "$NFT_STATE/tables/ForkopAutotuneVerify"; exit 0 ;;
+  "-j list table inet ForkopAutotuneVerify")
+    [ -e "$NFT_STATE/tables/ForkopAutotuneVerify" ] || exit 1
+    read -r p < "$STATE/verify.counter"
+    printf '{"nftables":[{"rule":{"family":"inet","table":"ForkopAutotuneVerify","chain":"premark","handle":2,"comment":"rule_mark","expr":[{"counter":{"packets":%s,"bytes":0}},{"accept":null}]}}]}\n' "$p"; exit 0 ;;
   "-j list chain inet ForkopTable mangle_output")
     read -r p < "$STATE/prod.counter"
     printf '{"nftables":[{"rule":{"family":"inet","table":"ForkopTable","chain":"mangle_output","handle":119,"expr":[{"match":{"op":"==","left":{"meta":{"key":"mark"}},"right":16777217}},{"match":{"op":"==","left":{"meta":{"key":"l4proto"}},"right":"tcp"}},{"counter":{"packets":%s,"bytes":0}},{"queue":{"num":4000,"flags":["bypass"]}}]}}]}\n' "$p"; exit 0 ;;
@@ -96,6 +106,13 @@ printf '%s\n' "$@" > "$STUB_LOG/curl.args"
 if printf '%s\n' "$@" | grep -q -- '--resolve'; then echo "curl isolated" >> "$STUB_LOG/curl.log"; else echo "curl production" >> "$STUB_LOG/curl.log"; fi
 [ -z "${PROD_SLEEP:-}" ] || sleep "$PROD_SLEEP"
 n=$(( $(cat "$STATE/prod.calls" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$STATE/prod.calls"
+# A pinned request reaches the Dpi queue only through the marking rule of the
+# verification table; VERIFY_NO_MARK: the mark never takes it there.
+marked=""
+if printf '%s\n' "$@" | grep -q -- '--resolve' && [ -e "$NFT_STATE/tables/ForkopAutotuneVerify" ]; then
+  marked=1
+  [ -z "${VERIFY_NO_MARK:-}" ] || PROD_QUEUE_BUMP=0
+fi
 plan="${PROD_PLAN:-success}"; steps=$(tr '|' '\n' <<<"$plan" | wc -l)
 mode="$(tr '|' '\n' <<<"$plan" | sed -n "$(( (n - 1) % steps + 1 ))p")"
 bump="${PROD_QUEUE_BUMP:-6}"
@@ -105,6 +122,7 @@ bump="${PROD_QUEUE_BUMP:-6}"
     "$FORKOP_AUTOTUNE_PROC_QUEUE" > "$FORKOP_AUTOTUNE_PROC_QUEUE.tmp" && mv "$FORKOP_AUTOTUNE_PROC_QUEUE.tmp" "$FORKOP_AUTOTUNE_PROC_QUEUE"
 ) 9>"$FORKOP_AUTOTUNE_PROC_QUEUE.lock"
 read -r p < "$STATE/prod.counter"; echo "$((p + bump))" > "$STATE/prod.counter"
+if [ -n "$marked" ]; then read -r v < "$STATE/verify.counter"; echo "$((v + bump))" > "$STATE/verify.counter"; fi
 remote="${PROD_REMOTE:-198.18.0.5}"
 case "$mode" in
   success) echo "0|51000|$remote|404|0.020|0.110|0.150|0.151|" ;;
@@ -1282,36 +1300,67 @@ at status; json 'a.equal(r.resolved, false); a.equal(r.diagnosis, "in_transactio
 ok "transaction killed with the guard installed -> needs_attention (in_transaction), not a resolved failure"
 
 # A rule limited to devices (source_ip_cidr) owns the target for those devices.
-# The router cannot send their traffic: only the operator applies to it, and
-# the verification is the runtime coherence alone.
+# sing-box sends nothing of the router into it, so the verification marks the
+# router's own requests with the route mark of the rule (a temporary table)
+# and proves they passed its production queue.
 scope_dpi_rule() {
   sed -i "/list domain_suffix 'example.com'/a\\	list source_ip_cidr '192.168.1.50'" "$FORKOP_CONFIG_FILE"
   node -e 'const fs=require("fs");const f=process.argv[1];const c=JSON.parse(fs.readFileSync(f,"utf8"));
     c.route.rules.find((r)=>r.outbound==="Dpi-out").source_ip_cidr=["192.168.1.50"];fs.writeFileSync(f,JSON.stringify(c))' "$FORKOP_AUTOTUNE_SINGBOX_CONFIG"
   ucode -L "$LIB" "$LIB/config/snapshots.uc" confirm-working > /dev/null
   PRE_LKG="$(lkg)"; PRE_HASH="$(chash)"
+  rm -f "$STATE/verify.nft"
 }
+no_verify_table() { [ ! -e "$NFT_STATE/tables/ForkopAutotuneVerify" ] || fail "$1: the verification table was left behind"; }
+
 reset_apply; scope_dpi_rule; plan_ready
 json 'a.equal(r.status, "ready"); a.equal(r.owner.kind, "zapret"); a.equal(r.owner.section, "Dpi"); a.equal(r.owner.source_scoped, true);' "$WORK/plan.json"
-for trigger in "" automatic; do
-  # shellcheck disable=SC2086
-  at apply "$WORK/plan.json" "" $trigger
-  json 'a.equal(r.status, "stale"); a.equal(r.reason, "source_scoped_rule_manual_only"); a.equal(r.applied, false);' "$WORK/out.json"
-  { [ "$(chash)" = "$PRE_HASH" ] && [ "$(reloads)" = 0 ] && [ "$(lkg)" = "$PRE_LKG" ]; } || fail "a device-limited rule was changed without the operator"
-done
-ok "device-limited rule: planned for its devices, refused unless the operator applies"
-at apply "$WORK/plan.json" "" manual
-json 'a.equal(r.status, "applied"); a.equal(r.applied, true);
-  a.equal(r.verification.ok, true); a.equal(r.verification.traffic_skipped, "source_scoped_rule"); a.equal(r.verification.traffic, null);
-  a.ok(!r.verification.checks.some((c) => c.name.startsWith("traffic_")), "no production traffic check");
-  a.ok(r.verification.checks.find((c) => c.name === "rule_owns_target").ok);
-  a.ok(r.verification.checks.find((c) => c.name === "nfqws_arguments").ok);' "$WORK/out.json"
-case "$(dpi_args)" in *multisplit*) ;; *) fail "manual apply to a device-limited rule did not start the candidate";; esac
-[ "$(lkg)" != "$PRE_LKG" ] || fail "manual apply to a device-limited rule did not confirm the candidate"
-ok "device-limited rule: manual apply verified by runtime coherence only (no production traffic)"
-reset_apply; plan_ready; at apply "$WORK/plan.json" "" manual
-json 'a.equal(r.status, "applied"); a.equal(r.verification.traffic_skipped, null); a.notEqual(r.verification.traffic, null);
-  a.ok(r.verification.checks.find((c) => c.name === "traffic_rule_path").ok);' "$WORK/out.json"
-ok "unscoped rule: a manual apply is still verified with production traffic"
+at apply "$WORK/plan.json"
+json 'a.equal(r.status, "applied"); a.equal(r.applied, true); a.equal(r.verification.ok, true);
+  const t = r.verification.traffic; a.equal(t.mode, "rule_mark"); a.equal(t.stability, "stable"); a.equal(t.probes.length, 3);
+  a.ok(t.marked_packets >= 3); a.ok(t.queue_packets >= t.marked_packets); a.ok(t.queue_rule_packets >= t.marked_packets);
+  const names = r.verification.checks.map((c) => c.name);
+  for (const n of ["verify_path_available", "verify_path_created", "traffic_transport", "traffic_rule_mark", "traffic_dpi_queue", "verify_path_removed"])
+    a.ok(r.verification.checks.find((c) => c.name === n).ok, n);
+  a.ok(!names.includes("traffic_rule_path") && !names.includes("traffic_sing_box_path"), "no sing-box path claim for a device-limited rule");' "$WORK/out.json"
+grep -qx 'add rule inet ForkopAutotuneVerify premark ip daddr 93.184.216.34 tcp dport 443 tcp sport 61000-61031 meta mark 0x00000000 meta mark set 0x01000001 counter accept comment "rule_mark"' "$STATE/verify.nft" ||
+  fail "the marking rule is not confined to the probe tuple: $(cat "$STATE/verify.nft")"
+grep -q -- '--resolve' "$STUB_LOG/curl.args" && grep -qx -- '61000-61031' "$STUB_LOG/curl.args" || fail "marked probes must pin the address and the source ports"
+case "$(dpi_args)" in *multisplit*) ;; *) fail "the candidate was not started for the device-limited rule";; esac
+[ "$(lkg)" != "$PRE_LKG" ] || fail "the verified candidate of a device-limited rule was not confirmed"
+no_verify_table "applied"
+ok "device-limited rule: applied and verified with marked requests through its production queue"
+
+# The mark does not reach the queue (the rule lost its queue rule, say): rolled back.
+reset_apply; scope_dpi_rule; plan_ready; export VERIFY_NO_MARK=1; at apply "$WORK/plan.json"; unset VERIFY_NO_MARK
+json 'a.equal(r.status, "rolled_back"); a.equal(r.applied, false);
+  a.equal(r.verification.checks.find((c) => c.name === "traffic_rule_mark").ok, false);' "$WORK/out.json"
+[ "$(chash)" = "$PRE_HASH" ] || fail "a failed marked verification did not restore the configuration"
+no_verify_table "rolled back"
+ok "device-limited rule: marked requests that miss the queue -> rolled back"
+
+# The strategy does not work for the target: rolled back, as for any rule.
+reset_apply; scope_dpi_rule; plan_ready; export PROD_PLAN=reset; at apply "$WORK/plan.json"; unset PROD_PLAN
+json 'a.equal(r.status, "rolled_back"); a.equal(r.verification.checks.find((c) => c.name === "traffic_transport").ok, false);' "$WORK/out.json"
+[ "$(chash)" = "$PRE_HASH" ] || fail "a failing strategy stayed on a device-limited rule"
+no_verify_table "transport failure"
+ok "device-limited rule: a strategy that fails for the target -> rolled back"
+
+# The temporary table cannot be created: nothing is proven, rolled back.
+reset_apply; scope_dpi_rule; plan_ready; export VERIFY_CREATE_FAIL=1; at apply "$WORK/plan.json"; unset VERIFY_CREATE_FAIL
+json 'a.equal(r.status, "rolled_back"); a.equal(r.verification.checks.find((c) => c.name === "verify_path_created").ok, false);' "$WORK/out.json"
+[ "$(chash)" = "$PRE_HASH" ] || fail "an unverifiable candidate stayed on a device-limited rule"
+ok "device-limited rule: no marked path -> rolled back"
+
+# A table left by a killed verification is removed before anything else.
+reset_apply; scope_dpi_rule; plan_ready; touch "$NFT_STATE/tables/ForkopAutotuneVerify"; at apply "$WORK/plan.json"
+json 'a.equal(r.status, "applied");' "$WORK/out.json"
+no_verify_table "leftover"
+ok "device-limited rule: a leftover verification table is removed"
+
+reset_apply; rm -f "$STATE/verify.nft"; plan_ready; at apply "$WORK/plan.json"
+json 'a.equal(r.status, "applied"); a.equal(r.verification.traffic.mode, undefined); a.ok(r.verification.checks.find((c) => c.name === "traffic_rule_path").ok);' "$WORK/out.json"
+[ ! -e "$STATE/verify.nft" ] || fail "an unscoped rule used the marked path"
+ok "unscoped rule: still verified with production requests through sing-box"
 
 printf 'autotune_apply: PASS (%d checks)\n' "$pass"

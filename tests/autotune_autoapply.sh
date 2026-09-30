@@ -41,7 +41,6 @@ print(sprintf("%J\n", {
   direct: d({ result: { ...ok, candidate: "direct" } }),
   medium: d({ result: { ...ok, confidence: "medium" } }),
   custom: d({ custom: true }),
-  scoped: d({ source_scoped: true }),
   cooldown: d({ cooldown_until: 100001 }),
   cooldown_over: d({ cooldown_until: 100000 }),
   disabled: d({ policy: { ...policy, max_applies_per_day: 0 } }),
@@ -60,7 +59,6 @@ assert.deepEqual(p.ok, { apply: true, reason: null });
 assert.deepEqual([p.recommend, p.manual, p.unconfirmed, p.conflict, p.direct, p.medium, p.custom, p.cooldown],
   ['mode_not_auto', 'manual_run', 'not_confirmed', 'no_recommendation', 'direct_not_applicable', 'confidence_too_low',
    'custom_strategy_kept', 'candidate_in_cooldown']);
-assert.equal(p.scoped, 'source_scoped_rule_manual_only', 'a device-limited rule is never changed autonomously');
 assert.equal(p.cooldown_over, null, 'a cooldown ends at its time');
 assert.deepEqual([p.disabled, p.limit, p.limit_old, p.limit_uncounted], ['applies_disabled', 'daily_limit_reached', null, null]);
 const o = p.outcomes.map((x) => [x.status, x.counted, x.cooldown, x.reset, x.history]);

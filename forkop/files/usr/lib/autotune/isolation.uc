@@ -68,6 +68,7 @@ const PROC_NET = getenv("FORKOP_AUTOTUNE_PROC_NET") || "/proc/net";
 const CHILD_PID_DIR = getenv("ZAPRET_CHILD_PID_DIR") || constants.ZAPRET_CHILD_PID_DIR;
 const SNAPSHOT_LOCK = getenv("FORKOP_SNAPSHOT_LOCK_DIR") || "/var/run/forkop/config-snapshot.lock";
 const GUARD_TABLES = [ "ForkopConfigRestoreDpiGuard", PROD_TABLE + "DpiGuard" ];
+const VERIFY_TABLE = "ForkopAutotuneVerify";
 const LISTENER_WAIT = int(getenv("FORKOP_AUTOTUNE_LISTENER_WAIT") || "5");
 const TRACE = getenv("FORKOP_AUTOTUNE_TRACE") == "1";
 const NFQWS_DEBUG = getenv("FORKOP_AUTOTUNE_NFQWS_DEBUG") == "1";
@@ -821,6 +822,12 @@ function preflight(result, host, resolver, ip, on_dns_failure) {
 
     let refusal = null, found = [];
     if (length(guards_present()) > 0) refusal = "guard_active";
+    // The marking rule of an apply verification (autotune/apply.uc) matches
+    // the same probe tuple at the same priority. One a killed verification
+    // left behind is removed (this run holds the autotune lock, so no
+    // verification is running); never measure next to one.
+    else if (table_exists(VERIFY_TABLE) && (!success([ "nft", "delete", "table", "inet", VERIFY_TABLE ]) || table_exists(VERIFY_TABLE)))
+        refusal = "verify_path_present";
     else if (fs.stat(SNAPSHOT_LOCK) != null) refusal = "snapshot_operation_in_progress";
     // An nfqws of the run signature that no run recorded is not ours to stop.
     else if (length(found = orphans()) > 0) refusal = "queue_in_use";

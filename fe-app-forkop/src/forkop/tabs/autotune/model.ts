@@ -173,11 +173,12 @@ export function outsideReasonText(reason: string) {
   }
 }
 
-// A rule limited to devices: the router cannot send their traffic, so the
-// change is never verified with production requests and never autonomous.
+// A rule limited to devices: sing-box sends nothing of the router into it,
+// so a change is verified with router requests marked for the queue of the
+// rule.
 const DEVICE_LIMITED_TEXT = () =>
   _(
-    'The rule is limited to devices: the result holds for them, and Forkop X changes such a rule only when you apply it yourself.',
+    'The rule is limited to devices: the result holds for them. Forkop X checks a change with router requests sent through the queue of this rule.',
   );
 
 // Why autonomous apply did not happen on the last run (autoapply.uc).
@@ -195,8 +196,6 @@ export function decisionText(reason: string | null | undefined) {
       return _('Automatic apply requires high confidence.');
     case 'custom_strategy_kept':
       return _('The rule has a custom strategy; Forkop X keeps it.');
-    case 'source_scoped_rule_manual_only':
-      return DEVICE_LIMITED_TEXT();
     case 'candidate_in_cooldown':
       return _(
         'This strategy was rolled back recently; it waits for the cooldown.',
@@ -676,7 +675,7 @@ export function applyConfirmation(card: GroupCard) {
       `${_('Now')}: ${card.current}. ${_('Will be')}: ${candidate}.`,
       card.deviceLimited
         ? _(
-            'The rule is limited to devices, and the router cannot send their traffic. Forkop X will create a configuration snapshot, reload the service and check that the rule runs the new strategy, but not that the sites open. If they stop opening on the device, restore the snapshot in "History and recovery".',
+            'Forkop X will create a configuration snapshot, reload the service and check the new strategy with router requests sent through the queue of this rule. If the check fails, the previous configuration is restored automatically.',
           )
         : _(
             'Forkop X will create a configuration snapshot, reload the service and check the real production path. If the check fails, the previous configuration is restored automatically.',
@@ -751,8 +750,6 @@ function refusalText(reason: string | null | undefined) {
       );
     case 'custom_strategy_kept':
       return _('The rule has a custom strategy; Forkop X keeps it.');
-    case 'source_scoped_rule_manual_only':
-      return DEVICE_LIMITED_TEXT();
     case 'mode_off':
     case 'mode_not_recommend':
     case 'mode_changed':

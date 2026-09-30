@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-30 17:58+0300\n"
-"PO-Revision-Date: 2026-09-30 17:58+0300\n"
+"POT-Creation-Date: 2026-09-30 19:52+0300\n"
+"PO-Revision-Date: 2026-09-30 19:52+0300\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -1567,6 +1567,9 @@ msgstr "Forkop X не останавливали вручную: его запу
 
 msgid "Forkop X will change the strategy of existing DPI rules by itself, only after several confirmations in a row, with a production check and automatic rollback."
 msgstr "Forkop X будет сам менять стратегию существующих DPI-правил — только после нескольких подтверждений подряд, с проверкой в рабочем режиме и автоматическим откатом."
+
+msgid "Forkop X will create a configuration snapshot, reload the service and check the new strategy with router requests sent through the queue of this rule. If the check fails, the previous configuration is restored automatically."
+msgstr "Forkop X создаст снимок конфигурации, перезагрузит службу и проверит новую стратегию запросами роутера, отправленными через очередь этого правила. Если проверка не пройдёт, прежняя конфигурация восстановится автоматически."
 
 msgid "Forkop X will create a configuration snapshot, reload the service and check the real production path. If the check fails, the previous configuration is restored automatically."
 msgstr "Forkop X создаст снимок конфигурации, перезагрузит сервис и проверит реальный production path. Если проверка не пройдёт, предыдущая конфигурация будет восстановлена автоматически."
@@ -3596,11 +3599,8 @@ msgstr "правило не может использовать само себ�
 msgid "The rule has a custom strategy; Forkop X keeps it."
 msgstr "У правила своя стратегия; Forkop X её не меняет."
 
-msgid "The rule is limited to devices, and the router cannot send their traffic. Forkop X will create a configuration snapshot, reload the service and check that the rule runs the new strategy, but not that the sites open. If they stop opening on the device, restore the snapshot in \"History and recovery\"."
-msgstr "Правило ограничено устройствами, а роутер не может отправить их трафик. Forkop X создаст снимок конфигурации, перезагрузит службу и проверит, что правило работает с новой стратегией, но не то, что сайты открываются. Если на устройстве они перестанут открываться, восстановите снимок в «Истории и восстановлении»."
-
-msgid "The rule is limited to devices: the result holds for them, and Forkop X changes such a rule only when you apply it yourself."
-msgstr "Правило ограничено устройствами: результат относится к ним, и Forkop X меняет такое правило, только когда вы применяете рекомендацию сами."
+msgid "The rule is limited to devices: the result holds for them. Forkop X checks a change with router requests sent through the queue of this rule."
+msgstr "Правило ограничено устройствами: результат относится к ним. Изменение Forkop X проверяет запросами роутера, отправленными через очередь этого правила."
 
 msgid "The rule matches the same traffic as before. Closing the window without saving discards the conversion."
 msgstr "Правило сопоставляет тот же трафик, что и раньше. Закрытие окна без сохранения отменяет конвертацию."

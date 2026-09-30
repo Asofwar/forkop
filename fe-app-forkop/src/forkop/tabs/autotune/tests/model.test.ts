@@ -533,7 +533,7 @@ describe('manual apply', () => {
     expect(JSON.stringify(confirm)).not.toMatch(/dpi-desync|nfqws|--/);
   });
 
-  it('says that a device-limited rule is not verified with production traffic', () => {
+  it('says how a device-limited rule is verified', () => {
     const scoped = groupState({
       pending: { candidate: 'multisplit', count: 3 },
       ready: true,
@@ -541,13 +541,11 @@ describe('manual apply', () => {
     });
     const [card] = groupCards(status({ groups: { youtube: scoped } }), live());
     expect(card.deviceLimited).toBe(true);
-    // Still applied by the operator in "recommend" mode.
     expect(card.applyCandidate).toBe('multisplit');
     expect(card.explanation.join(' ')).toContain('limited to devices');
     const confirm = applyConfirmation(card);
-    expect(confirm.notes[1]).toContain('router cannot send their traffic');
-    expect(confirm.notes[1]).toContain('but not that the sites open');
-    expect(confirm.notes[1]).not.toContain('restored automatically');
+    expect(confirm.notes[1]).toContain('through the queue of this rule');
+    expect(confirm.notes[1]).toContain('restored automatically');
     const [plain] = groupCards(status({ groups: { youtube: ready } }), live());
     expect(plain.deviceLimited).toBe(false);
     expect(plain.explanation.join(' ')).not.toContain('limited to devices');

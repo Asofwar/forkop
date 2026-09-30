@@ -17,18 +17,20 @@
 //   -> set that rule's nfqws_opt to the candidate template.
 // The change applies to the rule's whole target group, which the plan names.
 // A rule limited to devices (source_ip_cidr) owns the target for those
-// devices only. The router cannot send their traffic, so such a rule is
-// applied only on the operator's explicit request ("manual") and verified by
-// runtime coherence alone: no production traffic check, no automatic
-// rollback on a strategy that does not work for the device.
+// devices only, and sing-box sends nothing of the router into it. Its DPI
+// queue, however, is chosen by the route mark of the rule, not by the
+// source: the verification sends the router's own requests to the pinned
+// address of the target with that mark (a rule in a temporary table,
+// confined to the probe tuple), so they pass the production queue and the
+// production nfqws of the rule. What is not exercised is the sing-box
+// decision "this device -> this rule", which the resolver proves statically.
 // Everything else is "not_applicable" with the reason. "direct" never
 // changes production: it is "no_change_required" when no DPI rule handles
 // the target and "direct_not_applicable" when one does.
 //
 // Modes:
 //   plan <selection.json> [resolver]   read-only; prints the plan
-//   apply <plan.json> [resolver] [manual|automatic]
-//                                      stale checks, revalidation, transaction
+//   apply <plan.json> [resolver]       stale checks, revalidation, transaction
 //   verify <plan.json> [proposed|current] [traffic]  read-only verification
 //   rollback                           restore the recorded pre-apply snapshot
 //   status                             durable state and current diagnosis
@@ -78,6 +80,14 @@ const PROD_TABLE = constants.NFT_TABLE_NAME;
 const PROBE_TABLE = "ForkopAutotuneProbe";
 const GUARD_TABLES = [ "ForkopConfigRestoreDpiGuard", PROD_TABLE + "DpiGuard" ];
 const VERIFY_PROBES = 3;
+// The marked verification of a device-limited rule: a table of its own with
+// one rule for the probe tuple (the pinned target, the dedicated source
+// ports of autotune probes), removed as soon as the probes are done.
+const VERIFY_TABLE = "ForkopAutotuneVerify";
+const VERIFY_PORT_FIRST = 61000, VERIFY_PORT_LAST = 61031;
+const VERIFY_SETTLE = int(getenv("FORKOP_AUTOTUNE_VERIFY_SETTLE") || "10");
+const PORT_RANGE_FILE = getenv("FORKOP_AUTOTUNE_PORT_RANGE_FILE") || "/proc/sys/net/ipv4/ip_local_port_range";
+const PROC_NET = getenv("FORKOP_AUTOTUNE_PROC_NET") || "/proc/net";
 const ROLLBACK_WAIT_SECONDS = int(getenv("FORKOP_AUTOTUNE_ROLLBACK_WAIT_SECONDS") || "300");
 const TERMINAL_PHASES = [ "applied", "rolled_back", "failed", "stale", "no_change_required", "needs_attention" ];
 
@@ -411,6 +421,97 @@ function path_probe(host, config) {
 }
 function check(checks, name, ok, detail) { push(checks, { name, ok: !!ok, detail: detail == null ? null : detail }); return !!ok; }
 
+// ---- marked verification of a device-limited rule ---------------------------
+
+function remove_verify_table() {
+    if (table_present(VERIFY_TABLE) === false) return true;
+    success([ "nft", "delete", "table", "inet", VERIFY_TABLE ]);
+    return table_present(VERIFY_TABLE) === false;
+}
+function fields(line) { return filter(split(trim(replace(as_string(line), "\t", " ")), " "), (f) => f != ""); }
+// The dedicated source ports must be outside the ephemeral range, or another
+// connection of the router to the target could pick one.
+function verify_ports_free() {
+    let range = fields(fs.readfile(PORT_RANGE_FILE));
+    return length(range) == 2 && (VERIFY_PORT_LAST < int(range[0]) || VERIFY_PORT_FIRST > int(range[1]));
+}
+function create_verify_table(ip, mark_value) {
+    let pipe = fs.popen("nft -f - >/dev/null 2>&1", "w");
+    if (pipe == null) return false;
+    pipe.write("create table inet " + VERIFY_TABLE + "\n" +
+        "add chain inet " + VERIFY_TABLE + " premark { type route hook output priority mangle - 2; policy accept; }\n" +
+        "add rule inet " + VERIFY_TABLE + " premark ip daddr " + ip + " tcp dport 443 tcp sport " + VERIFY_PORT_FIRST + "-" + VERIFY_PORT_LAST +
+        " meta mark 0x00000000 meta mark set " + sprintf("0x%08x", mark_value) + " counter accept comment \"rule_mark\"\n");
+    return pipe.close() == 0 && table_present(VERIFY_TABLE) === true;
+}
+function verify_rule_packets() {
+    let listing = parse_json(capture([ "nft", "-j", "list", "table", "inet", VERIFY_TABLE ]).output);
+    if (type(listing) != "object" || type(listing.nftables) != "array") return null;
+    for (let item in listing.nftables) {
+        let r = item.rule;
+        if (type(r) != "object" || r.comment != "rule_mark") continue;
+        for (let e in r.expr || []) if (type(e.counter) == "object") return int(e.counter.packets);
+    }
+    return null;
+}
+// Sockets of the probe tuple that may still send (TIME_WAIT sends nothing new).
+function verify_sockets(ip) {
+    let o = split(ip, "."), count = 0;
+    let be = sprintf("%02X%02X%02X%02X", int(o[0]), int(o[1]), int(o[2]), int(o[3]));
+    let le = sprintf("%02X%02X%02X%02X", int(o[3]), int(o[2]), int(o[1]), int(o[0]));
+    for (let line in split(as_string(fs.readfile(PROC_NET + "/tcp")), "\n")) {
+        let f = fields(line);
+        if (length(f) < 4 || index(f[1], ":") < 0 || index(f[2], ":") < 0) continue;
+        let port = hex(substr(f[1], index(f[1], ":") + 1));
+        let remote = uc(substr(f[2], 0, index(f[2], ":")));
+        if (port < VERIFY_PORT_FIRST || port > VERIFY_PORT_LAST || (remote != be && remote != le)) continue;
+        if (f[3] != "06") count++;
+    }
+    return count;
+}
+// Requests of the router through the production queue of the rule. The
+// table is removed before the verdict in every outcome.
+function marked_traffic(plan, owner, checks, result) {
+    let ip = plan.target.ip;
+    if (!check(checks, "verify_path_available", probe_module.valid_ipv4(ip) && owner.mark_value != null &&
+        verify_ports_free() && remove_verify_table(), "pinned address, rule mark, free probe ports, no leftover table")) {
+        result.ok = false; return result;
+    }
+    let before_q = queue_entry(plan.owner.queue), before_c = queue_rule_counter(plan.owner);
+    let created = create_verify_table(ip, owner.mark_value), probes = [];
+    for (let i = 0; created && i < VERIFY_PROBES && !interrupted; i++)
+        push(probes, probe_module.probe({ host: plan.target.host, ip, port_range: VERIFY_PORT_FIRST + "-" + VERIFY_PORT_LAST }));
+    // The rule counter first, the queue after it: the queue window contains
+    // the window of the marked packets.
+    let marked = created ? verify_rule_packets() : null;
+    let after_q = queue_entry(plan.owner.queue), after_c = queue_rule_counter(plan.owner);
+    for (let i = 0; created && i < VERIFY_SETTLE && verify_sockets(ip) > 0; i++) system("sleep 1");
+    let removed = remove_verify_table();
+    if (interrupted) return { ok: false, checks, traffic: null, interrupted: true };
+    let successes = length(filter(probes, (p) => p.class == "success"));
+    let t = {
+        mode: "rule_mark",
+        probes: map(probes, (p) => ({ class: p.class, http_status: p.http_status, remote_ip: p.remote_ip,
+            time_appconnect_ms: p.time_appconnect_ms, curl_exit_code: p.curl_exit_code })),
+        stability: select_module.stability(successes, length(probes)),
+        marked_packets: marked,
+        queue_packets: before_q && after_q ? after_q.id_sequence - before_q.id_sequence : null,
+        queue_rule_packets: before_c != null && after_c != null ? after_c - before_c : null
+    };
+    result.traffic = t;
+    check(checks, "verify_path_created", created);
+    check(checks, "traffic_transport", t.stability == "stable", sprintf("%d/%d", successes, length(probes)));
+    // Every probe connection sends at least one packet with the rule mark,
+    // and every marked packet enters the rule's production queue.
+    check(checks, "traffic_rule_mark", marked != null && marked >= VERIFY_PROBES, as_string(marked) + " marked packets");
+    check(checks, "traffic_dpi_queue", marked != null && t.queue_packets != null && t.queue_packets >= marked &&
+        t.queue_rule_packets != null && t.queue_rule_packets >= marked,
+        sprintf("queue %s, rule %s packets", as_string(t.queue_packets), as_string(t.queue_rule_packets)));
+    check(checks, "verify_path_removed", removed);
+    for (let c in checks) if (!c.ok) result.ok = false;
+    return result;
+}
+
 // Runtime coherence of the rule with an expected strategy, plus (optionally)
 // a small sample of normal production requests proving they took this rule's
 // zapret path (FakeIP answer, the rule's queue and queue rule counting them).
@@ -447,13 +548,13 @@ function verify_production(plan, expected_opt, traffic) {
     let action = service_action();
     check(checks, "no_service_action", action == null, action);
     check(checks, "no_probe_table", table_present(PROBE_TABLE) == false);
-    let result = { ok: true, checks, traffic: null, traffic_skipped: null };
+    let result = { ok: true, checks, traffic: null };
     for (let c in checks) if (!c.ok) result.ok = false;
     if (!traffic || !result.ok) return result;
-    // Requests of the router never enter a rule limited to other devices:
-    // there is no production traffic to judge. Decided from the routing as
-    // it is now, never from the plan file.
-    if (owner.source_scoped === true) { result.traffic_skipped = "source_scoped_rule"; return result; }
+    // sing-box sends nothing of the router into a rule limited to other
+    // devices: its queue is proven with marked requests instead. Decided
+    // from the routing as it is now, never from the plan file.
+    if (owner.source_scoped === true) return marked_traffic(plan, owner, checks, result);
 
     // Normal production requests: system resolver, no pinned address, no
     // isolation mark or source ports.
@@ -640,7 +741,7 @@ function unresolved(s, d) {
 }
 
 // Everything that must still hold for the plan: nothing is changed on failure.
-function stale_reason(p, resolver, trigger) {
+function stale_reason(p, resolver) {
     if (service_stopped()) return "service_stopped";
     if (runtime_guard_kept()) return "runtime_guard_active";
     if (length(guards_present()) > 0) return "restore_guard_active";
@@ -648,6 +749,9 @@ function stale_reason(p, resolver, trigger) {
     let action = service_action();
     if (action != null) return action;
     if (table_present(PROBE_TABLE) != false) return "probe_path_present";
+    // Left by a verification that was killed; nothing else creates it and
+    // this process holds the autotune lock.
+    if (!remove_verify_table()) return "verify_path_present";
     // Pending LuCI/uci changes would ride along: reload reads through them.
     if (uncommitted_changes()) return "uncommitted_uci_changes";
     let text = fs.readfile(CONFIG_FILE);
@@ -663,7 +767,6 @@ function stale_reason(p, resolver, trigger) {
     if (!production_dns(p.target.host).fakeip) return "target_not_fakeip_routed";
     let owner = owner_of(sections, p.target.host, p.target.ip, true);
     if (!owner.decided || owner.kind != "zapret" || owner.section != p.owner.section || owner.queue != p.owner.queue) return "rule_owner_changed";
-    if (owner.source_scoped === true && trigger != "manual") return "source_scoped_rule_manual_only";
     if (!verify_production(p, p.changes[0].from, false).ok) return "runtime_not_on_planned_strategy";
     let resolved = probe_module.resolve(p.target.host, resolver || p.target.resolver || "");
     if (resolved.status != "ok" || index(resolved.addresses, p.target.ip) < 0) return "target_resolution_changed";
@@ -751,7 +854,7 @@ function valid_plan(p) {
         valid_hash(p.config_hash) && valid_hash(p.candidate_hash);
 }
 
-function apply(plan_file, resolver, trigger) {
+function apply(plan_file, resolver) {
     let p = read_json(plan_file);
     if (!valid_plan(p)) return { status: "failed", reason: "invalid_plan", applied: false };
     let previous = state_read();
@@ -775,7 +878,7 @@ function apply(plan_file, resolver, trigger) {
         else state_write(audit);
         return audit;
     };
-    let reason = stale_reason(p, resolver, trigger);
+    let reason = stale_reason(p, resolver);
     // A terminal signal also hits the checks' children (dig, curl): the
     // interruption, not their failure, is the reason.
     if (interrupted) return refuse("failed", "interrupted_before_mutation");
@@ -1017,7 +1120,7 @@ else if (mode == "apply" || mode == "rollback") {
     if (!autotune_lock.acquire())
         output = autotune_lock.busy() ? { status: "busy", reason: "autotune_in_progress" } : { status: "failed", reason: "lock_unavailable" };
     else {
-        output = mode == "apply" ? apply(ARGV[1], ARGV[2], ARGV[3]) : rollback();
+        output = mode == "apply" ? apply(ARGV[1], ARGV[2]) : rollback();
         autotune_lock.release();
         // Exit 0 only when the requested outcome happened: apply applied (or
         // nothing to do), rollback rolled back.

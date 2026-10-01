@@ -1,7 +1,6 @@
 "use strict";
 "require baseclass";
 "require uci";
-"require ui";
 "require view.forkop.main as main";
 
 // Shared start-up of every Forkop page (admin/services/forkop/*): access
@@ -258,9 +257,6 @@ function detectAccess() {
 function startPage(pageId) {
   main.injectGlobalStyles();
   main.setForkopPage?.(pageId);
-  // The page navigation is built while the view loads, so renderPage stays
-  // synchronous: LuCI resolves load() before it calls render().
-  const menu = loadMenuTree();
   const capabilities = loadUiCapabilities().catch(() => null);
 
   if (!coreStarted) {
@@ -271,72 +267,14 @@ function startPage(pageId) {
     });
   }
 
-  return Promise.all([capabilities, menu]).then(([loaded]) => loaded);
-}
-
-// Every page renders its own bar of sibling pages instead of relying on the
-// one LuCI builds from the menu tree. That bar is drawn into #tabmenu by the
-// theme's menu script, and a theme is free to ship one that never touches it:
-// menu-footstrap.js does not, so on footstrap the container keeps the
-// display:none the template gives it and a page can be reached only by walking
-// the Services menu again.
-//
-// The pages come from the menu tree rather than a list kept here, so the bar
-// cannot drift from the menu, and the subtree LuCI serves a session is already
-// filtered by the ACL each entry depends on: Rules and Settings require
-// luci-app-forkop-admin, and a read-only session is never offered a tab it
-// would be refused. LuCI's own tab markup is used, so every theme styles the
-// bar as its native tabs.
-const MENU_DEPTH = 3; // admin/services/forkop
-let menuTree = null;
-
-function loadMenuTree() {
-  if (menuTree != null) return Promise.resolve(menuTree);
-  return ui.menu
-    .load()
-    .then((tree) => {
-      menuTree = tree;
-      return tree;
-    })
-    .catch(() => null);
-}
-
-// The admin/services/forkop node of the tree, or null when this page is not
-// below it or the tree never loaded.
-function forkopNode() {
-  let node = menuTree;
-  for (let depth = 0; depth < MENU_DEPTH && node; depth++)
-    node = (node.children || {})[L.env.dispatchpath[depth]];
-  return node || null;
-}
-
-function renderNav() {
-  const node = forkopNode();
-  if (node == null) return null;
-  const children = ui.menu.getChildren(node);
-  if (!children.length) return null;
-
-  const base = L.env.dispatchpath.slice(0, MENU_DEPTH).join("/");
-  const active = L.env.dispatchpath[MENU_DEPTH];
-  return E(
-    "ul",
-    { class: "cbi-tabmenu" },
-    children.map((child) =>
-      E(
-        "li",
-        { class: child.name === active ? "cbi-tab" : "cbi-tab-disabled" },
-        [E("a", { href: L.url(base, child.name) }, [_(child.title)])],
-      ),
-    ),
-  );
+  return capabilities;
 }
 
 function renderPage(title, content) {
-  const children = [E("h2", { name: "content" }, title)];
-  const nav = renderNav();
-  if (nav != null) children.push(nav);
-  children.push(content);
-  return E("div", { class: "fkp-page" }, children);
+  return E("div", { class: "fkp-page" }, [
+    E("h2", { name: "content" }, title),
+    content,
+  ]);
 }
 
 const EntryPoint = {

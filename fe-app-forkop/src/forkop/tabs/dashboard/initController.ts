@@ -207,6 +207,12 @@ function renderOverviewCards() {
       readonly: isReadonlyMode(),
       serviceBusy: overviewServiceBusy,
       autostart: input.forkopEnabled,
+      restartBlocked: Boolean(
+        store.get().servicesInfoWidget.data.forkopRestartBlocked,
+      ),
+      stopAvailable: Boolean(
+        store.get().servicesInfoWidget.data.forkopStopAvailable,
+      ),
       onStart: () => void handleServiceAction('start'),
       onRestart: () => void handleServiceAction('restart'),
       onStop: () => void handleServiceAction('stop'),

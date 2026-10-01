@@ -97,3 +97,65 @@ export function serviceActionErrorText(error: unknown) {
     ? `${_('Service action failed')}: ${detail}`
     : _('Service action failed');
 }
+
+export function shouldShowRestartAction({
+  forkopRunning,
+  restartBlocked = false,
+  restartLoading,
+  startLoading,
+  stopLoading,
+}: {
+  forkopRunning: boolean;
+  restartBlocked?: boolean;
+  restartLoading: boolean;
+  startLoading: boolean;
+  stopLoading: boolean;
+}) {
+  // A restart cannot prove which sing-box it would be replacing, so it is
+  // withheld until the runtime has been stopped outright.
+  return (
+    restartLoading ||
+    (forkopRunning && !restartBlocked && !startLoading && !stopLoading)
+  );
+}
+
+export function shouldShowStartAction({
+  forkopRunning,
+  restartLoading,
+  startLoading,
+  stopAvailable = false,
+  stopLoading,
+}: {
+  forkopRunning: boolean;
+  restartLoading: boolean;
+  startLoading: boolean;
+  stopAvailable?: boolean;
+  stopLoading: boolean;
+}) {
+  return (
+    startLoading ||
+    (!restartLoading && !forkopRunning && !stopAvailable && !stopLoading)
+  );
+}
+
+export function shouldShowStopAction({
+  forkopRunning,
+  restartLoading,
+  startLoading,
+  stopAvailable = false,
+  stopLoading,
+}: {
+  forkopRunning: boolean;
+  restartLoading: boolean;
+  startLoading: boolean;
+  stopAvailable?: boolean;
+  stopLoading: boolean;
+}) {
+  // Traffic may still be intercepted while Forkop reports unhealthy. Stop is
+  // the way out of that state, so it stays reachable.
+  return (
+    stopLoading ||
+    restartLoading ||
+    ((forkopRunning || stopAvailable) && !startLoading)
+  );
+}

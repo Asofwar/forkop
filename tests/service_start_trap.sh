@@ -122,7 +122,7 @@ require_file_pattern "$PRIORITY_UC" '>/dev/null 2>&1 1000>&- & echo $!' \
   "priority worker must close inherited procd lock fd"
 awk '
   /function cleanup_failed_runtime\(\)/ { in_cleanup = 1 }
-  in_cleanup && /stop_main\(\);/ { saw_stop = 1 }
+  in_cleanup && /stop_main\([^)]*\);/ { saw_stop = 1 }
   in_cleanup && /dnsmasq_restore_fail_safe\(\);/ && saw_stop { saw_dns = 1 }
   in_cleanup && /mark_runtime_stopped_clean\(\);/ && saw_dns { ok = 1; exit }
   in_cleanup && /^}/ { exit }

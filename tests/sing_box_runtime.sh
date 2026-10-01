@@ -1518,8 +1518,11 @@ let subscription_group = cfg("subscription-group");
 let provider_group = outbound(subscription_group, "Provider Group");
 assert(provider_group && provider_group.type == "urltest", "provider URLTest group imported");
 assert(length(provider_group.outbounds) == 2, "provider URLTest group keeps leaf references");
-assert(provider_group.outbounds[0] == "grouped-out-1", "provider URLTest group leaf reference retagged");
-assert(provider_group.outbounds[1] == "leaf", "provider URLTest group second leaf reference kept");
+// Provider groups start at a rotated offset, so position carries no meaning
+// here. What must hold is that both leaves survive and the hidden one is
+// referenced by its new tag.
+assert(contains(provider_group.outbounds, "grouped-out-1"), "provider URLTest group leaf reference retagged");
+assert(contains(provider_group.outbounds, "leaf"), "provider URLTest group second leaf reference kept");
 assert(provider_group.detour == null, "provider URLTest group does not receive outbound detour");
 let grouped_leaf = outbound(subscription_group, "grouped-out-1");
 let second_leaf = outbound(subscription_group, "leaf");
@@ -1533,7 +1536,7 @@ let grouped_state = cfg("subscription-group.json.section-cache/grouped");
 assert(grouped_state.outboundMetadata.names["Provider Group"] == "Provider Group", "provider group metadata visible");
 assert(grouped_state.outboundMetadata.names["grouped-out-1"] == "grouped-out", "hidden leaf metadata visible");
 assert(length(grouped_state.urltestGroups["Provider Group"].outbounds) == 2, "provider group membership cached");
-assert(grouped_state.urltestGroups["Provider Group"].outbounds[0] == "grouped-out-1", "provider group membership retagged");
+assert(contains(grouped_state.urltestGroups["Provider Group"].outbounds, "grouped-out-1"), "provider group membership retagged");
 assert(grouped_state.linkRefs == null, "section cache omits source link refs");
 assert(index(grouped_state.links["grouped-out-1"], "vless://") == 0, "hidden leaf caches its direct proxy link");
 assert(index(grouped_state.links["leaf"], "vless://") == 0, "second hidden leaf caches its direct proxy link");

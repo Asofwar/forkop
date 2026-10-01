@@ -72,6 +72,11 @@ disable() {
 
 stop_service() {
     initd_ucode stop-service "$$"
+    local status="$?"
+    # rc.common calls procd_kill even when stop_service returns an error.
+    # Abort this invocation when Stop fails, so procd does not unregister a
+    # service whose runtime is still up and then report success.
+    [ "$status" -eq 0 ] || exit "$status"
 }
 
 reload_service() {

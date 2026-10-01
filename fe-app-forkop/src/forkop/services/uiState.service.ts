@@ -99,6 +99,8 @@ function applyServiceState(uiState: Forkop.UiState) {
         forkopStatus: uiState.service.forkop.status,
         forkopStoppedByUser: uiState.service.forkop.stopped_by_user ?? 0,
         forkopNotStarted: uiState.service.forkop.not_started ?? null,
+        forkopRestartBlocked: uiState.service.forkop.restart_blocked ?? 0,
+        forkopStopAvailable: uiState.service.forkop.stop_available ?? 0,
       },
     },
     diagnosticsSystemInfo: normalizeSingBoxVariantFields(nextSystemInfo),

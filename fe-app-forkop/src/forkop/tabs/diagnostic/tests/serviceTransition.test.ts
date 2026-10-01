@@ -8,6 +8,9 @@ import {
   shouldDisableDiagnosticRunAction,
   shouldResetDiagnosticsChecks,
   shouldSkipServicesInfoAutoRefresh,
+  shouldShowRestartAction,
+  shouldShowStartAction,
+  shouldShowStopAction,
 } from '../serviceTransition';
 
 const idleActions = {
@@ -144,5 +147,49 @@ describe('service action errors', () => {
     );
     expect(serviceActionErrorText(new Error(''))).toBe('Service action failed');
     expect(serviceActionErrorText('x')).toBe('Service action failed');
+  });
+
+  it('withholds restart while sing-box ownership is unclear', () => {
+    expect(
+      shouldShowRestartAction({
+        forkopRunning: true,
+        restartBlocked: true,
+        restartLoading: false,
+        startLoading: false,
+        stopLoading: false,
+      }),
+    ).toBe(false);
+    // A restart already under way still shows its progress.
+    expect(
+      shouldShowRestartAction({
+        forkopRunning: true,
+        restartBlocked: true,
+        restartLoading: true,
+        startLoading: false,
+        stopLoading: false,
+      }),
+    ).toBe(true);
+  });
+
+  it('offers stop, not start, while a stray runtime is still up', () => {
+    // Forkop reports unhealthy, but something is still intercepting traffic.
+    expect(
+      shouldShowStopAction({
+        forkopRunning: false,
+        restartLoading: false,
+        startLoading: false,
+        stopAvailable: true,
+        stopLoading: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldShowStartAction({
+        forkopRunning: false,
+        restartLoading: false,
+        startLoading: false,
+        stopAvailable: true,
+        stopLoading: false,
+      }),
+    ).toBe(false);
   });
 });

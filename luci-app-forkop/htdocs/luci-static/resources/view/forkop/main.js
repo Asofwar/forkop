@@ -5105,6 +5105,8 @@ var initialStore = {
       forkopStatus: "",
       forkopStoppedByUser: 0,
       forkopNotStarted: null,
+      forkopRestartBlocked: 0,
+      forkopStopAvailable: 0,
     },
   },
   sectionsWidget: {
@@ -5529,6 +5531,8 @@ function applyServiceState(uiState) {
         forkopStatus: uiState.service.forkop.status,
         forkopStoppedByUser: uiState.service.forkop.stopped_by_user ?? 0,
         forkopNotStarted: uiState.service.forkop.not_started ?? null,
+        forkopRestartBlocked: uiState.service.forkop.restart_blocked ?? 0,
+        forkopStopAvailable: uiState.service.forkop.stop_available ?? 0,
       },
     },
     diagnosticsSystemInfo: normalizeSingBoxVariantFields(nextSystemInfo),
@@ -6161,6 +6165,12 @@ async function fetchServicesInfo() {
         forkopNotStarted: forkop.success
           ? (forkop.data.not_started ?? null)
           : previousData.forkopNotStarted,
+        forkopRestartBlocked: forkop.success
+          ? (forkop.data.restart_blocked ?? 0)
+          : previousData.forkopRestartBlocked,
+        forkopStopAvailable: forkop.success
+          ? (forkop.data.stop_available ?? 0)
+          : previousData.forkopStopAvailable,
       },
     },
   });
@@ -6795,7 +6805,32 @@ function renderStateCard(state, actions, restartRequired) {
   const footer = [];
   const menu = [];
   if (!actions.readonly) {
-    if (state.stopped && restartRequired) {
+    const stopOffered = !state.stopped || actions.stopAvailable === true;
+    const restartOffered = actions.restartBlocked !== true;
+    if (actions.restartBlocked)
+      footer.push(
+        E(
+          "p",
+          { class: "fkp-overview__hint" },
+          _(
+            "Multiple sing-box processes were found or their ownership is unclear. Restart is unavailable; traffic routing was not changed. To stop all sing-box processes, use Stop Forkop X, then start Forkop X again.",
+          ),
+        ),
+      );
+    if (state.stopped && actions.stopAvailable) {
+      footer.push(
+        E(
+          "button",
+          {
+            type: "button",
+            class: "btn cbi-button cbi-button-remove",
+            disabled: actions.serviceBusy ? true : void 0,
+            click: actions.onStop,
+          },
+          _("Stop Forkop X\u2026"),
+        ),
+      );
+    } else if (state.stopped && restartRequired && restartOffered) {
       footer.push(
         E(
           "button",
@@ -6824,21 +6859,25 @@ function renderStateCard(state, actions, restartRequired) {
     }
     menu.push(
       renderOverflowMenu(_("Service actions"), [
-        ...(state.stopped
-          ? []
-          : [
+        ...(!state.stopped && restartOffered
+          ? [
               {
                 label: _("Restart Forkop X"),
                 onClick: actions.onRestart,
                 disabled: actions.serviceBusy,
               },
+            ]
+          : []),
+        ...(stopOffered
+          ? [
               {
                 label: _("Stop Forkop X\u2026"),
                 onClick: actions.onStop,
                 disabled: actions.serviceBusy,
                 danger: true,
               },
-            ]),
+            ]
+          : []),
         {
           label: actions.autostart
             ? _("Disable autostart")
@@ -7799,6 +7838,12 @@ function renderOverviewCards() {
       readonly: isReadonlyMode(),
       serviceBusy: overviewServiceBusy,
       autostart: input.forkopEnabled,
+      restartBlocked: Boolean(
+        store.get().servicesInfoWidget.data.forkopRestartBlocked,
+      ),
+      stopAvailable: Boolean(
+        store.get().servicesInfoWidget.data.forkopStopAvailable,
+      ),
       onStart: () => void handleServiceAction("start"),
       onRestart: () => void handleServiceAction("restart"),
       onStop: () => void handleServiceAction("stop"),

@@ -8084,6 +8084,41 @@ function isBuiltinRulesetValue(value) {
   return Object.prototype.hasOwnProperty.call(main.DOMAIN_LIST_OPTIONS, value);
 }
 
+// A rule set that is already in the list has nothing to offer in the
+// suggestions below it, and on a long service list the entries that are still
+// available get lost among the ones that are not.
+function hideSelectedRulesetChoices(option, choices) {
+  option.renderWidget = function (section_id, _option_index, cfgvalue) {
+    const values = L.toArray(cfgvalue != null ? cfgvalue : this.default);
+    const labels = Object.fromEntries(
+      choices.map(({ value, label }) => [value, label]),
+    );
+    const widget = new ui.DynamicList(values, labels, {
+      id: this.cbid(section_id),
+      sort: this.keylist,
+      allowduplicates: false,
+      optional: this.optional || this.rmempty,
+      datatype: this.datatype,
+      placeholder: this.placeholder,
+      validate: L.bind(this.validate, this, section_id),
+      disabled: this.readonly != null ? this.readonly : this.map.readonly,
+    });
+    const node = widget.render();
+    const refreshChoices = () => {
+      const selected = new Set(L.toArray(widget.getValue()));
+      const available = choices.filter(({ value }) => !selected.has(value));
+      widget.clearChoices();
+      widget.addChoices(
+        available.map(({ value }) => value),
+        labels,
+      );
+    };
+    node.addEventListener("cbi-dynlist-change", refreshChoices);
+    refreshChoices();
+    return node;
+  };
+}
+
 const SECONDARY_RULESET_MIRROR_PREFIX =
   "https://mirror.infotechtg.ru/forkop/lists/b4geoip-forkop/srs/";
 const LEGACY_SECONDARY_RULESET_MIRROR_PREFIX =
@@ -9298,6 +9333,20 @@ function createSectionContent(section) {
   secondaryRulesetOption.remove = function (section_id) {
     writeSecondaryRulesetReferences(section_id, []);
   };
+
+  hideSelectedRulesetChoices(
+    builtInRulesetOption,
+    Object.entries(main.DOMAIN_LIST_OPTIONS).map(([value, label]) => ({
+      value,
+      label: _(label),
+    })),
+  );
+  hideSelectedRulesetChoices(
+    secondaryRulesetOption,
+    Object.entries(main.SECONDARY_RULESET_OPTIONS || {}).map(
+      ([value, label]) => ({ value, label: _(label) }),
+    ),
+  );
 
   const ruleSetOption = section.taboption(
     "match",

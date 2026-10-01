@@ -23,6 +23,7 @@ let runtime_settings_cache = null;
 let runtime_ruleset_folder = runtime_constants.TMP_RULESET_FOLDER;
 let runtime_supports_xhttp = true;
 let runtime_supports_dns_response_matching = false;
+let provider_urltest_start_seed = "";
 
 let as_string = common.as_string;
 let read_json_file = common.read_json_file;
@@ -49,6 +50,17 @@ let url_path = runtime_url.path;
 let url_query_params = runtime_url.query_params;
 
 const CONFIG_NAME = "forkop";
+
+// One seed per generated configuration, so every provider group on this
+// router rotates together and the result is stable until the next generation.
+// The environment override exists so tests can pin it.
+function urltest_start_seed() {
+    if (provider_urltest_start_seed == "")
+        provider_urltest_start_seed = trim(as_string(
+            getenv("FORKOP_URLTEST_START_SEED") || fs.readfile("/proc/sys/kernel/random/uuid")
+        ));
+    return provider_urltest_start_seed;
+}
 
 function parent_dir(path) {
     path = as_string(path);
@@ -819,6 +831,13 @@ function add_subscription_source_with_state(config, section, source_index, sourc
     for (let outbound in prepared)
         if (as_string(outbound.type || "") == "urltest")
             urltest_override.apply(outbound, section_name, as_string(outbound.tag || ""));
+    // Only provider groups are rotated. A URLTest the user assembled has an
+    // order they chose, and it stays exactly as written.
+    for (let i = 0; i < length(prepared); i++) {
+        let group = prepared[i];
+        if (group_flags[i] === true && as_string(group.type || "") == "urltest")
+            group.outbounds = runtime_urltest.rotate_start(group.outbounds, urltest_start_seed(), group.tag);
+    }
     let added = 0;
     for (let i = 0; i < length(prepared); i++) {
         let outbound = prepared[i];

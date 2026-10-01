@@ -528,6 +528,30 @@ describe('overview cards', () => {
     expect(text(node)).toContain('Rules');
   });
 
+  it('offers Stop, not Start, while a stray runtime still intercepts traffic', () => {
+    const node = renderOverview(vm({ availability: 'stopped' }), {
+      ...actions,
+      readonly: false,
+      stopAvailable: true,
+    });
+
+    expect(text(node)).toContain('Stop Forkop X…');
+    expect(text(node)).not.toContain('Start Forkop X');
+  });
+
+  it('withholds restart and says why while sing-box ownership is unclear', () => {
+    const node = renderOverview(vm({}), {
+      ...actions,
+      readonly: false,
+      restartBlocked: true,
+      stopAvailable: true,
+    });
+
+    expect(text(node)).toContain('Restart is unavailable');
+    expect(text(node)).toContain('Stop Forkop X…');
+    expect(text(node)).not.toContain('Restart Forkop X');
+  });
+
   it('offers the restart that removes a kept DPI guard, to administrators only', () => {
     const kept = health({
       overall: 'error',

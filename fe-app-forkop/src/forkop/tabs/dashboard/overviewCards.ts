@@ -23,6 +23,12 @@ export interface OverviewActions {
   readonly: boolean;
   serviceBusy: boolean;
   autostart: boolean;
+  // Several sing-box processes, or ownership unclear: a restart cannot prove
+  // which one it would replace, so only Stop is offered.
+  restartBlocked?: boolean;
+  // Something may still intercept traffic although Forkop is not healthy:
+  // Stop stays reachable and Start waits for it.
+  stopAvailable?: boolean;
   onStart: () => void;
   onRestart: () => void;
   onStop: () => void;
@@ -94,9 +100,36 @@ function renderStateCard(
   const menu: Node[] = [];
 
   if (!actions.readonly) {
+    const stopOffered = !state.stopped || actions.stopAvailable === true;
+    const restartOffered = actions.restartBlocked !== true;
+    if (actions.restartBlocked)
+      footer.push(
+        E(
+          'p',
+          { class: 'fkp-overview__hint' },
+          _(
+            'Multiple sing-box processes were found or their ownership is unclear. Restart is unavailable; traffic routing was not changed. To stop all sing-box processes, use Stop Forkop X, then start Forkop X again.',
+          ),
+        ),
+      );
+    // Down, but something still intercepts traffic: the way out is Stop.
+    if (state.stopped && actions.stopAvailable) {
+      footer.push(
+        E(
+          'button',
+          {
+            type: 'button',
+            class: 'btn cbi-button cbi-button-remove',
+            disabled: actions.serviceBusy ? true : undefined,
+            click: actions.onStop,
+          },
+          _('Stop Forkop X…'),
+        ),
+      );
+    }
     // A start is refused while a failed change keeps its DPI guard: only a
     // restart removes it (UC-019).
-    if (state.stopped && restartRequired) {
+    else if (state.stopped && restartRequired && restartOffered) {
       footer.push(
         E(
           'button',
@@ -125,21 +158,25 @@ function renderStateCard(
     }
     menu.push(
       renderOverflowMenu(_('Service actions'), [
-        ...(state.stopped
-          ? []
-          : [
+        ...(!state.stopped && restartOffered
+          ? [
               {
                 label: _('Restart Forkop X'),
                 onClick: actions.onRestart,
                 disabled: actions.serviceBusy,
               },
+            ]
+          : []),
+        ...(stopOffered
+          ? [
               {
                 label: _('Stop Forkop X…'),
                 onClick: actions.onStop,
                 disabled: actions.serviceBusy,
                 danger: true,
               },
-            ]),
+            ]
+          : []),
         {
           label: actions.autostart
             ? _('Disable autostart')

@@ -149,10 +149,32 @@ function filter_mode(mode, tags, names, countries, include_names, include_regexe
     return array_or_empty(tags);
 }
 
+// sing-box probes a URLTest group in order and settles on the first node that
+// answers, so every router with the same provider list converges on the same
+// node. Rotate the starting point per group: the order is unchanged, only
+// where it begins, and it stays stable for one generated configuration.
+function rotate_start(values, generation_seed, group_tag) {
+    values = array_or_empty(values);
+    generation_seed = as_string(generation_seed);
+    if (length(values) < 2 || generation_seed == "")
+        return values;
+
+    let hash = 2166136261;
+    let key = generation_seed + ":" + as_string(group_tag);
+    for (let i = 0; i < length(key); i++)
+        hash = (hash * 33 + ord(substr(key, i, 1))) % 4294967296;
+    let start = hash % length(values);
+    let result = [];
+    for (let i = 0; i < length(values); i++)
+        push(result, values[(start + i) % length(values)]);
+    return result;
+}
+
 return {
     normalized_country_list,
     countries_from_flag_names,
     regex_matching_tag_array,
     filter_array,
-    filter_mode
+    filter_mode,
+    rotate_start
 };

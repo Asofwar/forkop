@@ -68,6 +68,12 @@ export async function fetchServicesInfo() {
         forkopNotStarted: forkop.success
           ? (forkop.data.not_started ?? null)
           : previousData.forkopNotStarted,
+        forkopRestartBlocked: forkop.success
+          ? (forkop.data.restart_blocked ?? 0)
+          : previousData.forkopRestartBlocked,
+        forkopStopAvailable: forkop.success
+          ? (forkop.data.stop_available ?? 0)
+          : previousData.forkopStopAvailable,
       },
     },
   });

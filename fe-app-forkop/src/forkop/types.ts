@@ -855,6 +855,8 @@ export namespace Forkop {
     // 1 while Forkop is down and nobody started it since boot (D-15): not a
     // failure either. Down with both 0: it failed after an explicit start.
     not_started?: number;
+    restart_blocked?: number;
+    stop_available?: number;
   }
 
   export interface GetOutboundMetadata {

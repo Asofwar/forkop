@@ -37,6 +37,8 @@ const mutations = [
   '/usr/bin/forkop autotune_run_async all',
   '/usr/bin/forkop autotune_run all',
   '/usr/bin/forkop autotune_if_due',
+  '/usr/bin/forkop killswitch_sync',
+  '/usr/bin/forkop killswitch_disable',
 ];
 // UC-001: rpcd passes the caller's env table to the child, so the read role
 // may only reach the CLI through the wrapper that starts it with env -i.
@@ -64,7 +66,7 @@ for (const command of [
   if (allowed(RO + ' ' + command)) throw Error(`read role may execute ${command}`);
 }
 for (const command of [
-  RO + ' get_status', RO + ' get_ui_state',
+  RO + ' get_status', RO + ' get_ui_state', RO + ' killswitch_status',
   RO + ' get_readonly_config_sections',
   RO + ' get_health_status',
   RO + ' get_history',

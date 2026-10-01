@@ -3,6 +3,7 @@
 "require uci";
 "require baseclass";
 "require tools.widgets as widgets";
+"require view.forkop.killswitch as killswitch";
 "require view.forkop.main as main";
 
 const UCI_PACKAGE = main.FORKOP_UCI_PACKAGE;
@@ -408,6 +409,23 @@ function createSettingsContent(sections, capabilities) {
   configureDownloadSectionOption(o, "dns_detour_section", capabilities);
 
   o = sections.network.option(
+    form.DummyValue,
+    "_kill_switch_status",
+    _("VPN kill-switch"),
+    _(
+      "Enable it per Connection section. While Forkop or the VPN is down, protected traffic is rejected instead of leaving directly; other traffic is not affected.",
+    ),
+  );
+  o.rawhtml = true;
+  o.write = function () {};
+  o.remove = function () {};
+  o.renderWidget = function () {
+    return killswitch.createGlobalStatus(
+      Boolean(this.map && this.map.readonly),
+    );
+  };
+
+  o = sections.network.option(
     widgets.DeviceSelect,
     "source_network_interfaces",
     _("Source Network Interface"),
@@ -592,15 +610,6 @@ function createSettingsContent(sections, capabilities) {
     }
     return true;
   };
-
-  o = sections.network.option(
-    form.Flag,
-    "vpn_fail_closed",
-    _("VPN kill-switch"),
-    _("Keep VPN destinations blocked when Forkop or sing-box stops. DPI and bypass rules are excluded. Requires dnsmasq-full; disables flow offload. Disable this option and explicitly release the guard to restore direct access."),
-  );
-  o.default = "0";
-  o.rmempty = false;
 
   o = sections.network.option(
     form.Flag,

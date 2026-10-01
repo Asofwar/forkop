@@ -135,8 +135,12 @@ const ZAPRET_UC = LIB_DIR + "/providers/zapret/runtime.uc";
 const ZAPRET2_UC = LIB_DIR + "/providers/zapret2/runtime.uc";
 const BYEDPI_UC = LIB_DIR + "/providers/byedpi/runtime.uc";
 const PACKAGES_UC = LIB_DIR + "/core/packages.uc";
+const KILLSWITCH_UC = LIB_DIR + "/killswitch/runtime.uc";
 
 let start_subscription_update_lock_held = false;
+// Whether the last start_main applied the complete list generation; the
+// kill-switch is only refreshed from a runtime that has it.
+let start_lists_complete = true;
 // Set once start_impl runs: an explicit start or restart has ended an earlier
 // explicit stop before, so a stop request seen after that was made during
 // this start (UC-012).
@@ -1010,6 +1014,13 @@ function start_sing_box_and_wait() {
     ]);
 }
 
+// Only a fully applied runtime may refresh the persistent VPN kill-switch;
+// every failure path keeps the previously applied protection untouched.
+function killswitch_sync(reason) {
+    if (module_status(KILLSWITCH_UC, [ "sync", reason ]) != 0)
+        log_message("Kill-switch policy was not refreshed; the previously applied protection stays in place", "warn");
+}
+
 function start_phase_failed(phase, status) {
     if (status != 0)
         log_message("Startup phase '" + phase + "' failed with exit status " + as_string(status), "fatal");
@@ -1091,6 +1102,7 @@ function start_main() {
     // cached generation to both rule-set files and the freshly-created nft
     // table before sing-box validates/starts. A corrupt cache is fatal here;
     // silently starting with a partial routing policy is less safe.
+    start_lists_complete = !has_list_sources;
     if (has_list_sources && (module_success(UPDATES_UC, [ "runtime-list-cache-active" ]) ||
         module_success(UPDATES_UC, [ "list-cache-valid" ]))) {
         status = module_status(UPDATES_UC, [ "apply-list-cache" ]);
@@ -1099,6 +1111,7 @@ function start_main() {
             log_message("Persistent list cache could not be applied. Aborted.", "fatal");
             return start_phase_failed("active-list-generation", status);
         }
+        start_lists_complete = true;
     }
     status = nft_populate_runtime_sets();
     if (status != 0) {
@@ -1113,13 +1126,6 @@ function start_main() {
     status = singbox_init_config();
     if (status != 0)
         return start_phase_failed("sing-box-config", status);
-
-    if (setting_bool("vpn_fail_closed", false) || fs.stat("/etc/forkop/vpn-guard/policy.json") != null) {
-        if (!module_success(LIB_DIR + "/nft/fail_closed.uc", [ "refresh" ]) ||
-            !command_success_from_args([ "/etc/init.d/forkop-guard", "enable" ]) ||
-            !command_success_from_args([ "/etc/init.d/forkop-guard", "start" ]))
-            return start_phase_failed("vpn-guard", 1);
-    }
 
     status = refresh_cron();
     if (status != 0)
@@ -1153,10 +1159,6 @@ function start_main() {
     release_start_subscription_update_lock();
     module_success(ZAPRET_UC, [ "start-runtime" ]);
     module_success(ZAPRET2_UC, [ "start-runtime" ]);
-
-    if ((setting_bool("vpn_fail_closed", false) || fs.stat("/etc/forkop/vpn-guard/policy.json") != null) &&
-        !command_success_from_args([ "/etc/init.d/forkop-guard", "online" ]))
-        return 1;
 
     return 0;
 }
@@ -1228,6 +1230,14 @@ function start_impl() {
         log_message("Failed to start DNS failover runtime", "fatal");
         return status;
     }
+
+    // A start without its list generation runs with empty list sets until
+    // the list update's own "list-content" reload; refreshing the
+    // kill-switch from it would replace a complete saved policy.
+    if (start_lists_complete)
+        killswitch_sync("start");
+    else
+        log_message("Kill-switch refresh deferred until the list generation is applied", "info");
 
     if (module_success(STATE_UC, [ "has-list-update-sources" ])) {
         // Serialize the two network workers. The rule-set refresh may reload
@@ -1733,10 +1743,6 @@ function start() {
 function stop_impl(allow_process_conflict) {
     let status = 0;
 
-    if ((setting_bool("vpn_fail_closed", false) || fs.stat("/etc/forkop/vpn-guard/policy.json") != null) &&
-        !command_success_from_args([ "/etc/init.d/forkop-guard", "offline" ]))
-        return 1;
-
     if (!setting_bool("dont_touch_dhcp", false)) {
         let dns_status = dnsmasq_restore(false);
         if (dns_status != 0)
@@ -2181,8 +2187,11 @@ function reload(reason) {
             "1",
             "1"
         ]);
-        if (status == 0)
+        if (status == 0) {
             log_message("Reload skipped: runtime-relevant configuration is unchanged", "info");
+            // The kill-switch option itself is not part of the runtime plan.
+            killswitch_sync("reload");
+        }
         return finish_reload_status(status, reload_config_fingerprint);
     }
 
@@ -2394,13 +2403,6 @@ function reload(reason) {
             return abort_reload(status, false);
     }
 
-    if (setting_bool("vpn_fail_closed", false) || fs.stat("/etc/forkop/vpn-guard/policy.json") != null) {
-        if (!module_success(LIB_DIR + "/nft/fail_closed.uc", [ "refresh" ]) ||
-            !command_success_from_args([ "/etc/init.d/forkop-guard", "start" ]) ||
-            !command_success_from_args([ "/etc/init.d/forkop-guard", "online" ]))
-            return abort_reload(1, true);
-    }
-
     status = finish_reload_status(module_status(STATE_UC, [
         "write-captured-reload-state",
         RELOAD_STATE_FILE,
@@ -2416,6 +2418,7 @@ function reload(reason) {
         remove_file(dpi_singbox_backup);
     discard_dpi_snapshot();
     discard_dnsmasq_reload_config();
+    killswitch_sync(reason == "" ? "reload" : "reload " + reason);
 
     // Clear the durable retry request only after the complete local apply
     // committed its reload state. A failed candidate/guarded transition
@@ -2551,6 +2554,7 @@ function uninstall() {
         command_success_from_args([ SERVICE_INIT, "disable" ]);
     }
 
+    module_success(KILLSWITCH_UC, [ "disable", "uninstall" ]);
     dnsmasq_restore_fail_safe();
 
     if (fs.stat("/etc/init.d/forkop") != null) {
@@ -2570,6 +2574,7 @@ function uninstall() {
     command_success_from_args([ "rm", "-rf", "/usr/lib/forkop" ]);
     command_success_from_args([ "rm", "-rf", LUCI_VIEW_DIR ]);
     remove_file(SERVICE_INIT);
+    remove_file("/etc/init.d/forkop-killswitch");
     remove_file(BIN_PATH);
     remove_file("/usr/share/luci/menu.d/luci-app-forkop.json");
     remove_file("/usr/share/rpcd/acl.d/luci-app-forkop.json");

@@ -6,6 +6,7 @@
 "require ui";
 "require uci";
 "require view.forkop.local_devices as localDevices";
+"require view.forkop.killswitch as killswitch";
 "require view.forkop.main as main";
 
 const UCI_PACKAGE = main.FORKOP_UCI_PACKAGE;
@@ -4220,7 +4221,14 @@ function getRuleDevicesSummary(section_id) {
 }
 
 function getRuleActionDisplayMarkup(section_id) {
-  return getRuleActionDisplayValue(section_id);
+  const label = getRuleActionDisplayValue(section_id);
+  if (
+    killswitch.isKillSwitchAction(getRuleResolvedAction(section_id)) &&
+    uci.get(UCI_PACKAGE, section_id, "kill_switch") === "1"
+  ) {
+    return `${label} <span title="${_("VPN kill-switch")}">🛡</span>`;
+  }
+  return label;
 }
 
 function populateActionOptionValues(option, section_id) {
@@ -9035,6 +9043,39 @@ function createSectionContent(section) {
   o.depends("action", "__internal_hidden__");
   o.retain = true;
   o.modalonly = true;
+
+  o = section.taboption(
+    "advanced",
+    form.Flag,
+    "kill_switch",
+    _("VPN kill-switch"),
+    _(
+      "Block this section's traffic instead of sending it directly when the VPN, sing-box or Forkop itself is not running. Applies to forwarded client traffic, survives a Forkop stop, firewall reloads and reboots. Earlier Zapret and Bypass sections keep working.",
+    ),
+  );
+  // Unchecked means absent: saving an untouched rule must not write "0".
+  o.default = "0";
+  killswitch.KILL_SWITCH_ACTIONS.forEach((action) =>
+    o.depends("action", action),
+  );
+  o.modalonly = true;
+
+  o = section.taboption(
+    "advanced",
+    form.DummyValue,
+    "_kill_switch_status",
+    _("Kill-switch status"),
+  );
+  killswitch.KILL_SWITCH_ACTIONS.forEach((action) =>
+    o.depends("action", action),
+  );
+  o.modalonly = true;
+  o.rawhtml = true;
+  o.write = function () {};
+  o.remove = function () {};
+  o.renderWidget = function (section_id) {
+    return killswitch.createSectionStatus(section_id);
+  };
 
   o = section.taboption(
     "advanced",

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-01 10:58+0300\n"
-"PO-Revision-Date: 2026-10-01 10:58+0300\n"
+"POT-Creation-Date: 2026-10-01 00:31+0300\n"
+"PO-Revision-Date: 2026-10-01 00:31+0300\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -199,6 +199,9 @@ msgstr "Активные соединения всех устройств буд
 
 msgid "Active Main DNS"
 msgstr "Активный основной DNS"
+
+msgid "Active until the next firewall reload"
+msgstr "Действует до следующей перезагрузки файрвола"
 
 msgid "Active: a change is being applied"
 msgstr "Активна: применяется изменение"
@@ -404,6 +407,12 @@ msgstr "Применение…"
 msgid "Apps reconnect on their own; downloads and calls may drop"
 msgstr "Приложения переподключатся сами; загрузки и звонки могут оборваться"
 
+msgid "Armed"
+msgstr "Готова"
+
+msgid "Armed: DNS currently goes through Forkop"
+msgstr "Готова: сейчас DNS идёт через Forkop"
+
 msgid "At least one valid domain must be specified."
 msgstr "Нужно указать хотя бы один корректный домен."
 
@@ -526,6 +535,15 @@ msgstr "Блокировка"
 
 msgid "Block list"
 msgstr "Список блокировки"
+
+msgid "Block this section's traffic instead of sending it directly when the VPN, sing-box or Forkop itself is not running. Applies to forwarded client traffic, survives a Forkop stop, firewall reloads and reboots. Earlier Zapret and Bypass sections keep working."
+msgstr "Блокировать трафик этого раздела, а не пускать его напрямую, когда VPN, sing-box или сам Forkop не работают. Действует для трафика клиентов, сохраняется при остановке Forkop, перезагрузке файрвола и роутера. Разделы Zapret и Bypass, стоящие выше, продолжают работать."
+
+msgid "Blocked connections"
+msgstr "Заблокировано соединений"
+
+msgid "Blocking protected domains now"
+msgstr "Сейчас блокирует защищённые домены"
 
 msgid "Bootstrap DNS"
 msgstr "Bootstrap DNS"
@@ -805,6 +823,9 @@ msgstr "закрыто"
 
 msgid "Closed"
 msgstr "Закрытые"
+
+msgid "Command failed"
+msgstr "Команда завершилась с ошибкой"
 
 msgid "Component update available"
 msgstr "Доступно обновление компонента"
@@ -1127,6 +1148,9 @@ msgstr "DNS через HTTPS (DoH)"
 msgid "DNS over TLS (DoT)"
 msgstr "DNS через TLS (DoT)"
 
+msgid "DNS protection"
+msgstr "Защита DNS"
+
 msgid "DNS protocol"
 msgstr "Протокол DNS"
 
@@ -1214,8 +1238,14 @@ msgstr "Резолвер доменов"
 msgid "Domains"
 msgstr "Домены"
 
+msgid "Domains blocked while Forkop is stopped"
+msgstr "Доменов блокируется при остановленном Forkop"
+
 msgid "Domains in rules may not resolve, or resolve past Forkop, so their rules do not apply."
 msgstr "Домены из правил могут не разрешаться или разрешаться в обход Forkop — тогда правила к ним не применяются."
+
+msgid "Domains of device-limited rules not blocked through DNS (shared by all devices)"
+msgstr "Доменов правил для отдельных устройств, не блокируемых через DNS (DNS общий для всех устройств)"
 
 msgid "Domains of the list"
 msgstr "Домены списка"
@@ -1322,6 +1352,9 @@ msgstr "Изменить URLTest"
 msgid "Edit…"
 msgstr "Изменить…"
 
+msgid "Empty response"
+msgstr "Пустой ответ"
+
 msgid "Enable"
 msgstr "Включить"
 
@@ -1333,6 +1366,9 @@ msgstr "Включить автостарт"
 
 msgid "Enable built-in DNS resolver for domains handled by this section"
 msgstr "Включить встроенный DNS-резолвер для доменов, обрабатываемых этой секцией"
+
+msgid "Enable it per Connection section. While Forkop or the VPN is down, protected traffic is rejected instead of leaving directly; other traffic is not affected."
+msgstr "Включается в каждом разделе Connection. Пока Forkop или VPN не работают, защищённый трафик отклоняется, а не уходит напрямую; остальной трафик не затрагивается."
 
 msgid "Enable list updates"
 msgstr "Включить обновление списков"
@@ -1405,6 +1441,9 @@ msgstr "Все изменения, сделанные после последн�
 
 msgid "Except: %d"
 msgstr "Кроме: %d"
+
+msgid "exceptions"
+msgstr "исключений"
 
 msgid "Exclude by proxy parameters"
 msgstr "Исключить по параметрам прокси"
@@ -1487,6 +1526,9 @@ msgstr "FakeIP и контрольная проверка используют �
 msgid "FakeIP checks"
 msgstr "Проверки FakeIP"
 
+msgid "FakeIP connections rejected"
+msgstr "Отклонено соединений на FakeIP"
+
 msgid "FakeIP works; only the comparison with the control address did not give an answer."
 msgstr "FakeIP работает; не удалось только сравнение с контрольным адресом."
 
@@ -1543,6 +1585,9 @@ msgstr "Forkop сам управляет жизненным циклом nfqws, 
 
 msgid "Forkop manages the nfqws2 process lifecycle itself, so daemon mode is not allowed here."
 msgstr "Forkop сам управляет жизненным циклом nfqws2, поэтому режим daemon здесь запрещён."
+
+msgid "Forkop runtime"
+msgstr "Работа Forkop"
 
 msgid "Forkop service is stopped. Start the service to display connections."
 msgstr "Служба Forkop остановлена. Запустите сервис для отображения соединений."
@@ -1768,6 +1813,9 @@ msgstr "Выполняется"
 
 msgid "In snapshot"
 msgstr "В снимке"
+
+msgid "In use: sing-box does not answer; other names use the regular DNS"
+msgstr "Используется: sing-box не отвечает, остальные имена идут через обычный DNS"
 
 msgid "Inactive"
 msgstr "Неактивна"
@@ -2069,6 +2117,15 @@ msgstr "Держать URLTest перед серверами, отсортиро
 msgid "Keyword must not contain spaces or commas"
 msgstr "Ключевое слово не должно содержать пробелы или запятые"
 
+msgid "Keyword/regex matchers without DNS protection"
+msgstr "Правил keyword/regex без защиты DNS"
+
+msgid "Kill-switch status"
+msgstr "Состояние kill-switch"
+
+msgid "Kill-switch status is unavailable: %s"
+msgstr "Состояние kill-switch недоступно: %s"
+
 msgid "Last change"
 msgstr "Последнее изменение"
 
@@ -2087,6 +2144,9 @@ msgstr "Последняя проверка отложена"
 msgid "Last diagnostics: %s"
 msgstr "Последняя диагностика: %s"
 
+msgid "Last error"
+msgstr "Последняя ошибка"
+
 msgid "Last important event"
 msgstr "Последнее важное событие"
 
@@ -2104,6 +2164,9 @@ msgstr "Последняя перезагрузка"
 
 msgid "Last reload: %s"
 msgstr "Последняя перезагрузка: %s"
+
+msgid "Last update"
+msgstr "Последнее обновление"
 
 msgid "Latency test failed"
 msgstr "Проверка задержки не удалась"
@@ -2155,6 +2218,9 @@ msgstr "Загрузка доступных версий…"
 
 msgid "Loading connections"
 msgstr "Загрузка соединений"
+
+msgid "Loading kill-switch status…"
+msgstr "Загрузка состояния kill-switch…"
 
 msgid "Loading..."
 msgstr "Загрузка..."
@@ -2272,6 +2338,9 @@ msgstr "Сетевой интерфейс"
 
 msgid "Network interface settings"
 msgstr "Настройки сетевого интерфейса"
+
+msgid "never"
+msgstr "никогда"
 
 msgid "New version %s is available for %s"
 msgstr "Доступна новая версия %s для %s"
@@ -2426,11 +2495,17 @@ msgstr "Узлы"
 msgid "Nodes and groups"
 msgstr "Узлы и группы"
 
+msgid "none"
+msgstr "нет"
+
 msgid "Normal mode"
 msgstr "Обычный режим"
 
 msgid "Not applied"
 msgstr "Не применено"
+
+msgid "Not attached: dnsmasq uses another servers file"
+msgstr "Не подключена: dnsmasq использует другой servers-файл"
 
 msgid "Not available for checking"
 msgstr "Недоступно для проверки"
@@ -2449,6 +2524,9 @@ msgstr "нет в списке"
 
 msgid "Not installed"
 msgstr "Не установлено"
+
+msgid "Not managed (Dont Touch My DHCP)"
+msgstr "Не управляется (Dont Touch My DHCP)"
 
 msgid "Not needed"
 msgstr "Не требовалось"
@@ -2738,6 +2816,12 @@ msgstr "пробы: %d из %d"
 msgid "Profile"
 msgstr "Профиль"
 
+msgid "Protected sections"
+msgstr "Защищённые разделы"
+
+msgid "Protection active"
+msgstr "Защита активна"
+
 msgid "Protection and recovery"
 msgstr "Защита и восстановление"
 
@@ -2756,8 +2840,14 @@ msgstr "Прокси"
 msgid "RAM"
 msgstr "ОЗУ"
 
+msgid "Re-apply now"
+msgstr "Применить заново"
+
 msgid "Reachable"
 msgstr "Доступно"
+
+msgid "Ready"
+msgstr "Готов"
 
 msgid "Recommendation confirmed"
 msgstr "Рекомендация подтверждена"
@@ -2816,6 +2906,9 @@ msgstr "Удалить Forkop X, sing-box, их настройки и кэш и 
 msgid "Remove permanently"
 msgstr "Удалить безвозвратно"
 
+msgid "Remove protection now"
+msgstr "Снять защиту сейчас"
+
 msgid "Remove servers from the specified countries from this level."
 msgstr "Исключить из уровня серверы из указанных стран."
 
@@ -2824,6 +2917,9 @@ msgstr "Исключить из уровня серверы, имена кото
 
 msgid "Remove target?"
 msgstr "Удалить цель?"
+
+msgid "Remove the kill-switch now? Protected traffic will be able to leave directly until Forkop applies it again on the next successful start or reload."
+msgstr "Снять kill-switch сейчас? Защищённый трафик сможет уходить напрямую, пока Forkop не применит защиту снова при следующем успешном запуске или перезагрузке."
 
 msgid "Remove the specified servers from this level."
 msgstr "Исключить из уровня указанные серверы."
@@ -3059,6 +3155,9 @@ msgstr "Правила с этим провайдером перестанут �
 msgid "Run full diagnostics"
 msgstr "Запустить полную диагностику"
 
+msgid "running: traffic goes through the VPN"
+msgstr "работает: трафик идёт через VPN"
+
 msgid "Russia: blocked from outside"
 msgstr "Россия: блокируют извне"
 
@@ -3067,6 +3166,9 @@ msgstr "Россия: заблокировано внутри"
 
 msgid "Save"
 msgstr "Сохранить"
+
+msgid "Save and apply with the kill-switch enabled. It is installed after the next successful Forkop start or reload."
+msgstr "Сохраните и примените настройки с включённым kill-switch. Защита устанавливается после следующего успешного запуска или перезагрузки Forkop."
 
 msgid "Saved, service stopped"
 msgstr "Сохранено, служба остановлена"
@@ -3332,6 +3434,9 @@ msgstr "Отдельная служба Zapret2 активна"
 msgid "Standalone Zapret2 service is inactive"
 msgstr "Отдельная служба Zapret2 неактивна"
 
+msgid "Standby DNS for a failed sing-box"
+msgstr "Резервный DNS при сбое sing-box"
+
 msgid "Start Forkop X"
 msgstr "Запустить Forkop X"
 
@@ -3356,6 +3461,9 @@ msgstr "Состояние недоступно"
 msgid "Status"
 msgstr "Состояние"
 
+msgid "Still enforced until the next successful reload"
+msgstr "Действует до следующей успешной перезагрузки"
+
 msgid "Stop"
 msgstr "Остановить"
 
@@ -3370,6 +3478,9 @@ msgstr "Остановить Forkop X…"
 
 msgid "Stopped by user"
 msgstr "Остановлено пользователем"
+
+msgid "stopped: protected traffic is blocked"
+msgstr "остановлен: защищённый трафик блокируется"
 
 msgid "Strategy"
 msgstr "Стратегия"
@@ -3917,6 +4028,9 @@ msgstr "Это правило хранит настройки в устарев�
 msgid "This rule keeps settings in a legacy form, from an earlier version, the podkop migration or the command line. The fields show what the rule matches; the legacy options stay as they are until you convert or remove them."
 msgstr "Это правило хранит настройки в устаревшем виде — из прежней версии, после миграции из podkop или из командной строки. Поля показывают, что сопоставляет правило; устаревшие опции остаются как есть, пока вы их не конвертируете или не удалите."
 
+msgid "This section has no IP lists, so it is protected through FakeIP and DNS only."
+msgstr "У раздела нет IP-списков, поэтому он защищён только через FakeIP и DNS."
+
 msgid "This strategy is already active; nothing was changed."
 msgstr "Эта стратегия уже активна; ничего не изменено."
 
@@ -4175,8 +4289,14 @@ msgstr "Видимое имя этой секции"
 msgid "vless://, vmess://, ss://, trojan://, socks4/5://, hy2/hysteria2:// links"
 msgstr "ссылки vless://, vmess://, ss://, trojan://, socks4/5://, hy2/hysteria2://"
 
+msgid "VPN kill-switch"
+msgstr "VPN kill-switch"
+
 msgid "Waiting"
 msgstr "В очереди"
+
+msgid "Waiting for a successful Forkop start or reload"
+msgstr "Ожидает успешного запуска или перезагрузки Forkop"
 
 msgid "waiting for probe connections to close: %d s (up to %d s)"
 msgstr "ожидание закрытия соединений проб: %d с (до %d с)"
@@ -4294,9 +4414,3 @@ msgstr "sing-box outbound для Zapret2 настроен"
 
 msgid "Zapret2 sing-box outbound is not configured"
 msgstr "sing-box outbound для Zapret2 не настроен"
-
-msgid "VPN kill-switch"
-msgstr "Защита от прямого выхода VPN-трафика"
-
-msgid "Keep VPN destinations blocked when Forkop or sing-box stops. DPI and bypass rules are excluded. Requires dnsmasq-full; disables flow offload. Disable this option and explicitly release the guard to restore direct access."
-msgstr "Запрещать прямой выход для VPN-направлений при остановке Форкоп или sing-box. Правила DPI и bypass исключены. Требуется dnsmasq-full; ускорение потока отключается. Для снятия защиты отключите опцию и выполните forkop-guard release."

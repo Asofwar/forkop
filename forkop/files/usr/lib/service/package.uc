@@ -20,6 +20,7 @@ const BIN_PATH = env("FORKOP_BIN", "/usr/bin/forkop");
 const INIT_PATH = env("FORKOP_INIT", "/etc/init.d/forkop");
 const LIB_DIR = env("FORKOP_LIB", "/usr/lib/forkop");
 const DNS_APPLY_UC = env("FORKOP_DNS_APPLY_UC", "/usr/lib/forkop/dns/apply.uc");
+const KILLSWITCH_UC = env("FORKOP_KILLSWITCH_UC", "/usr/lib/forkop/killswitch/runtime.uc");
 const SING_BOX_INIT = env("FORKOP_SING_BOX_INIT", "/etc/init.d/sing-box");
 const SING_BOX_BIN = env("FORKOP_SING_BOX_BIN", "/usr/bin/sing-box");
 const SING_BOX_CRONET = env("FORKOP_SING_BOX_CRONET", "/usr/lib/libcronet.so");
@@ -35,6 +36,12 @@ const PROC_DIR = env("FORKOP_PROC_DIR", "/proc");
 const COMPONENT_UPDATE_CHECK_CACHE_DIR = env("FORKOP_COMPONENT_UPDATE_CHECK_CACHE_DIR", "/var/run/forkop/component-update-checks");
 const COMPONENT_UPDATE_CHECK_STATE_FILE = env("FORKOP_COMPONENT_UPDATE_CHECK_STATE_FILE", "/var/run/forkop/component-update-check.timestamp");
 const PACKAGE_TEST_MODE = env("FORKOP_PACKAGE_TEST_MODE", "") != "";
+// Root prefix for the retired VPN fail-closed guard's paths (tests only).
+const LEGACY_GUARD_ROOT = env("FORKOP_LEGACY_GUARD_ROOT", "");
+const LEGACY_GUARD_TABLE = "ForkopVpnGuard";
+const LEGACY_GUARD_SERVICE = "forkop-guard";
+const LEGACY_GUARD_FIREWALL_INCLUDE = "firewall.forkop_vpn_guard";
+const LEGACY_GUARD_OFFLOAD_KEYS = [ "flow_offloading", "flow_offloading_hw" ];
 
 function shell_quote(value) {
     return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
@@ -212,10 +219,93 @@ function prerm_cleanup(action) {
         // D-15(a)).
         if (as_string(action) == "remove")
             command_success_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/service/initd.uc", "clear-explicit-start" ]);
+        // An upgrade keeps the kill-switch: protected traffic must stay
+        // blocked while the old runtime is down. Only a removal lifts it,
+        // since nothing would be left to manage the persistent policy.
+        if (as_string(action) == "remove" && path_exists(KILLSWITCH_UC))
+            command_success_from_args([ "ucode", "-L", LIB_DIR, KILLSWITCH_UC, "disable", "package removal" ]);
         restore_dnsmasq_if_needed();
         remove_managed_sing_box();
     }
     return remove_rt_tables_entry();
+}
+
+function read_json_or_null(path) {
+    let data = fs.readfile(path);
+    if (data == null)
+        return null;
+    try {
+        return json(data);
+    }
+    catch (e) {
+        return null;
+    }
+}
+
+// The per-section kill-switch replaced the global VPN fail-closed guard
+// (ForkopVpnGuard, /etc/init.d/forkop-guard). An upgrade removes the guard's
+// files, but not what it left running or changed: its procd service with the
+// standby dnsmasq instances and watcher, the DNS redirect in its nft table
+// (after the old prerm's stop all client DNS goes to those instances), the
+// firewall include and the disabled flow offload. Undo all of it here, before
+// Forkop is started again. config/migration.uc carries its protection over to
+// the sections.
+function legacy_vpn_guard_cleanup() {
+    let root = LEGACY_GUARD_ROOT;
+    let state_dir = root + "/etc/forkop/vpn-guard";
+    let runtime_dir = root + "/tmp/forkop-vpn-guard";
+    let init_script = root + "/etc/init.d/" + LEGACY_GUARD_SERVICE;
+    let has_table = command_success_from_args([ "sh", "-c", "nft list table inet " + LEGACY_GUARD_TABLE + " >/dev/null 2>&1" ]);
+    let has_include = uci_core.exists(LEGACY_GUARD_FIREWALL_INCLUDE);
+    if (!has_table && !has_include && !path_exists(state_dir) && !path_exists(runtime_dir) && !path_exists(init_script))
+        return true;
+
+    // Saved offload values live only in the guard's policy snapshot; old
+    // versions kept them in the firewall include section.
+    let saved = {};
+    let policy = read_json_or_null(state_dir + "/policy.json");
+    if (type(policy) == "object" && type(policy.saved_offload) == "object")
+        saved = policy.saved_offload;
+    for (let key in LEGACY_GUARD_OFFLOAD_KEYS)
+        if (saved[key] == null && has_include)
+            saved[key] = uci_core.get(LEGACY_GUARD_FIREWALL_INCLUDE + ".saved_" + key);
+
+    command_success_from_args([ "ubus", "call", "service", "delete", sprintf("%J", { name: LEGACY_GUARD_SERVICE }) ]);
+    let rc_dir = root + "/etc/rc.d";
+    for (let name in (fs.lsdir(rc_dir) || []))
+        if (match(name, /^[SK][0-9]+forkop-guard$/) != null)
+            fs.unlink(rc_dir + "/" + name);
+
+    // The guard's forward rejects stay until the first successful kill-switch
+    // sync replaces them (killswitch/runtime.uc), so an upgrade never leaves
+    // a window without protection. Only its client DNS redirect goes now:
+    // the standby resolvers it pointed to were just stopped.
+    if (has_table)
+        command_success_from_args([ "sh", "-c", "nft flush chain inet " + LEGACY_GUARD_TABLE + " dns >/dev/null 2>&1; true" ]);
+    // DNS flows already redirected to the stopped standby keep their NAT.
+    command_success_from_args([ "sh", "-c", "conntrack -D -p udp --dport 53 >/dev/null 2>&1; conntrack -D -p tcp --dport 53 >/dev/null 2>&1; true" ]);
+
+    let firewall_changed = false;
+    for (let key in LEGACY_GUARD_OFFLOAD_KEYS) {
+        if (as_string(saved[key]) == "1" && as_string(uci_core.get("firewall.@defaults[0]." + key)) != "1") {
+            uci_core.set("firewall.@defaults[0]." + key, "1");
+            firewall_changed = true;
+        }
+    }
+    if (has_include) {
+        uci_core.delete(LEGACY_GUARD_FIREWALL_INCLUDE);
+        firewall_changed = true;
+    }
+    if (firewall_changed) {
+        uci_core.commit("firewall");
+        command_success_from_args([ "sh", "-c", "[ ! -x /etc/init.d/firewall ] || /etc/init.d/firewall reload >/dev/null 2>&1" ]);
+    }
+
+    command_success_from_args([ "rm", "-rf", state_dir, runtime_dir ]);
+    for (let path in [ init_script, root + "/etc/hotplug.d/iface/95-forkop-guard",
+        root + "/lib/upgrade/keep.d/forkop-guard", root + "/usr/share/forkop/vpn-guard-firewall.sh" ])
+        unlink_if_exists(path);
+    return true;
 }
 
 function postinst_restore() {
@@ -223,6 +313,7 @@ function postinst_restore() {
         return true;
 
     clear_component_update_check_cache();
+    legacy_vpn_guard_cleanup();
 
     let config = fs.readfile(CONFIG_PATH);
     if (config == null || trim(as_string(config)) == "") {
@@ -322,6 +413,8 @@ else if (mode == "remove-rt-tables-entry")
     exit(remove_rt_tables_entry() ? 0 : 1);
 else if (mode == "luci-postinst")
     exit(luci_postinst() ? 0 : 1);
+else if (mode == "legacy-vpn-guard-cleanup")
+    exit(legacy_vpn_guard_cleanup() ? 0 : 1);
 else if (mode == "sing-box-exe-path-fixture")
     exit(sing_box_exe_path(ARGV[1]) ? 0 : 1);
 else {

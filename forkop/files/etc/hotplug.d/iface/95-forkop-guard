@@ -1,7 +1,0 @@
-#!/bin/sh
-case "$ACTION" in
-    ifup|ifupdate)
-        [ -f /etc/forkop/vpn-guard/policy.json ] || exit 0
-        /etc/init.d/forkop-guard restore
-        ;;
-esac

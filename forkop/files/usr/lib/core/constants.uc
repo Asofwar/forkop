@@ -66,6 +66,13 @@ function constants_map() {
     c.NFT_INTERFACE_SET_NAME = env("NFT_INTERFACE_SET_NAME", "forkop_interfaces");
     c.NFT_FAKEIP_MARK = env("NFT_FAKEIP_MARK", "0x04000000");
     c.NFT_OUTBOUND_MARK = env("NFT_OUTBOUND_MARK", "0x08000000");
+    // The VPN kill-switch outlives ForkopTable: fw4 loads its ruleset-post
+    // include on every firewall start/reload, independent of Forkop itself.
+    c.KILLSWITCH_NFT_TABLE = env("KILLSWITCH_NFT_TABLE", "ForkopKillswitch");
+    c.KILLSWITCH_STATE_DIR = env("KILLSWITCH_STATE_DIR", "/etc/forkop/killswitch");
+    c.KILLSWITCH_NFT_INCLUDE = env("KILLSWITCH_NFT_INCLUDE", "/usr/share/nftables.d/ruleset-post/90-forkop-killswitch.nft");
+    c.KILLSWITCH_CACHE_DIR = env("KILLSWITCH_CACHE_DIR", "/tmp/forkop-killswitch");
+    c.KILLSWITCH_STANDBY_PORT = env("KILLSWITCH_STANDBY_PORT", "18054");
 
     c.SB_REQUIRED_VERSION = env("SB_REQUIRED_VERSION", "1.12.0");
     c.SB_MANAGED_SERVICE_MARKER = env("SB_MANAGED_SERVICE_MARKER", "Forkop managed sing-box service for binary variants");

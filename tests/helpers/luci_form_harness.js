@@ -1067,6 +1067,11 @@ function createEnvironment({
   };
   const rpc = { declare: () => () => Promise.resolve({}) };
   const main = loadModule("main.js", { baseclass, fs: fsStub, uci, ui, rpc }, globals);
+  const killswitch = loadModule(
+    "killswitch.js",
+    { baseclass, dom: { content() {} }, fs: fsStub, ui },
+    globals,
+  );
   const section = loadModule(
     "section.js",
     {
@@ -1077,6 +1082,7 @@ function createEnvironment({
       ui,
       uci,
       localDevices: { createLocalDeviceDynamicListWidget: () => E("div") },
+      killswitch,
       main,
     },
     globals,
@@ -1150,6 +1156,7 @@ function createEnvironment({
           form,
           uci,
           baseclass,
+          killswitch,
           main,
           widgets: { DeviceSelect: form.DynamicList, NetworkSelect: form.ListValue },
         },

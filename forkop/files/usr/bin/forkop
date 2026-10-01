@@ -140,6 +140,9 @@ function show_help() {
     print("                            Validate an NFQWS strategy and print JSON result\n");
     print("    validate_nfqws2_strategy_json\n");
     print("                            Validate an NFQWS2 strategy and print JSON result\n");
+    print("    killswitch_status       Show the VPN kill-switch state in JSON format\n");
+    print("    killswitch_sync         Re-apply the VPN kill-switch from the running Forkop policy\n");
+    print("    killswitch_disable      Remove the VPN kill-switch until the next successful start or reload\n");
     print("    validate_byedpi_strategy_json\n");
     print("                            Validate a ByeDPI ciadpi strategy and print JSON result\n");
 }
@@ -237,7 +240,10 @@ function command_spec(command) {
         autotune_apply: [ "autotune/manager.uc", "apply", 1 ],
         autotune_apply_async: [ "autotune/manager.uc", "apply-async", 1 ],
         autotune_rollback: [ "autotune/manager.uc", "rollback", 0 ],
-        autotune_if_due: [ "autotune/manager.uc", "if-due", 0 ]
+        autotune_if_due: [ "autotune/manager.uc", "if-due", 0 ],
+        killswitch_status: [ "killswitch/runtime.uc", "status", 0 ],
+        killswitch_sync: [ "killswitch/runtime.uc", "sync", 0 ],
+        killswitch_disable: [ "killswitch/runtime.uc", "disable", 0 ]
     };
 
     return commands[as_string(command)];

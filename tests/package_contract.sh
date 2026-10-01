@@ -105,9 +105,6 @@ if grep -Fq 'coreutils-sort' "$FORKOP_MAKEFILE" "$BUILD_SCRIPT"; then
 fi
 
 require_package_dependency "nftables-json"
-require_package_dependency "ucode-mod-ubus"
-require_package_dependency "ucode-mod-uloop"
-require_package_dependency "conntrack"
 if grep -Eq '(^|[[:space:],+])nftables([[:space:],]|$)' "$FORKOP_MAKEFILE" "$BUILD_SCRIPT"; then
   fail "Forkop must depend on the concrete nftables-json provider, not the nftables virtual package"
 fi

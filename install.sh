@@ -4,7 +4,8 @@
 REPO_OWNER="slayer326"
 REPO_NAME="forkop"
 RELEASE_BASE_URL="${FORKOP_RELEASE_BASE_URL:-https://fold8.ru/forkop}"
-MIRROR_BASE_URL="${FORKOP_MIRROR_BASE_URL:-https://mirror.infotechtg.ru}"
+DEFAULT_MIRROR_BASE_URL="https://mirror.infotechtg.ru"
+MIRROR_BASE_URL="${FORKOP_MIRROR_BASE_URL:-$DEFAULT_MIRROR_BASE_URL}"
 
 FLASH_RESERVE_KB=1024
 PACKAGE_INSTALL_OVERHEAD_KB=512
@@ -1877,6 +1878,12 @@ check_root() {
     fi
 }
 
+mirror_host_name() {
+    forkop_mirror_host="${MIRROR_BASE_URL#*://}"
+    forkop_mirror_host="${forkop_mirror_host%%/*}"
+    printf '%s\n' "${forkop_mirror_host%%:*}"
+}
+
 check_mirror_platform_support() {
     platform_index="$TMP_DIR/forkop-platforms.tsv"
     platform_format="ipk"
@@ -1888,14 +1895,28 @@ check_mirror_platform_support() {
     esac
     MIRROR_BASE_URL="${MIRROR_BASE_URL%/}"
 
-    if ! download_file_once "$MIRROR_BASE_URL/openwrt/forkop-platforms.tsv" "$platform_index"; then
+    platform_index_url="$MIRROR_BASE_URL/openwrt/forkop-platforms.tsv"
+    platform_index_error="$TMP_DIR/forkop-platforms.err"
+
+    # A failed download says nothing about what the mirror holds, so report what
+    # the downloader reported instead of guessing that synchronization is behind.
+    if ! download_file_once "$platform_index_url" "$platform_index" 2>"$platform_index_error"; then
         rm -f "$platform_index"
-        if [ "$MIRROR_BASE_URL" = "https://mirror.infotechtg.ru" ]; then
-            fail "The mirror platform index is unavailable; try again after synchronization completes"
+        platform_index_reason="$(sed -n 's/^[[:space:]]*\([^[:space:]].*\)$/\1/p' "$platform_index_error" 2>/dev/null | tail -n 1)"
+        rm -f "$platform_index_error"
+        # The deadline helper kills a stalled fetch without a message of its own.
+        [ -n "$platform_index_reason" ] || platform_index_reason="$FETCHER produced no output; the request timed out or was interrupted"
+
+        if [ "$MIRROR_BASE_URL" = "$DEFAULT_MIRROR_BASE_URL" ]; then
+            fail "Could not download $platform_index_url: $platform_index_reason
+Check that this router resolves $(mirror_host_name) and can reach it over HTTPS. If your mirror answers with a private address, DNS rebind protection drops that answer: allow it with
+    uci add_list dhcp.@dnsmasq[0].rebind_domain='$(mirror_host_name)' && uci commit dhcp && /etc/init.d/dnsmasq restart"
         fi
-        warn "The mirror platform index is unavailable; package feeds will be verified before installation"
+        warn "Could not download $platform_index_url: $platform_index_reason; package feeds will be verified before installation"
         return 0
     fi
+
+    rm -f "$platform_index_error"
 
     if awk -v target="$OPENWRT_TARGET" -v architecture="$OPENWRT_ARCHITECTURE" \
         -v release="$OPENWRT_RELEASE" -v format="$platform_format" '

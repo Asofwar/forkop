@@ -7,7 +7,11 @@ CONFIG="$ROOT_DIR/forkop/files/etc/config/forkop"
 
 sh -n "$INSTALLER"
 
-grep -Fq 'MIRROR_BASE_URL="${FORKOP_MIRROR_BASE_URL:-https://mirror.infotechtg.ru}"' "$INSTALLER" || {
+grep -Fq 'DEFAULT_MIRROR_BASE_URL="https://mirror.infotechtg.ru"' "$INSTALLER" || {
+    echo "installer does not name the Forkop mirror as its default" >&2
+    exit 1
+}
+grep -Fq 'MIRROR_BASE_URL="${FORKOP_MIRROR_BASE_URL:-$DEFAULT_MIRROR_BASE_URL}"' "$INSTALLER" || {
     echo "installer does not default to the Forkop mirror" >&2
     exit 1
 }
@@ -53,6 +57,22 @@ grep -Fq 'SING_BOX_INSTALL_VARIANT="tiny"' "$INSTALLER" || {
 }
 grep -Fq "option mirror_base_url 'https://mirror.infotechtg.ru'" "$CONFIG" || {
     echo "packaged Forkop config does not enable the mirror" >&2
+    exit 1
+}
+grep -Fq 'platform_index_reason' "$INSTALLER" || {
+    echo "installer does not report why the platform index download failed" >&2
+    exit 1
+}
+grep -Eq 'download_file_once "\$platform_index_url" "\$platform_index" 2>"\$platform_index_error"' "$INSTALLER" || {
+    echo "installer does not capture the downloader error for the platform index" >&2
+    exit 1
+}
+grep -Fq 'Could not download $platform_index_url: $platform_index_reason' "$INSTALLER" || {
+    echo "installer does not surface the downloader error to the user" >&2
+    exit 1
+}
+grep -Fq 'rebind_domain' "$INSTALLER" || {
+    echo "installer does not hint at DNS rebind protection for private mirrors" >&2
     exit 1
 }
 

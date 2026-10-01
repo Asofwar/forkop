@@ -948,6 +948,14 @@ function restore_guarded_singbox_runtime(backup_path, guard_active) {
     ]);
 }
 
+// Autotune keeps its own cron line; it never blocks the service. It reports by
+// printing a JSON result, which must not reach the output of an init.d action:
+// an operator who runs restart would read autotune's "enabled": false as a
+// verdict on the service. Capture discards it; module_success would not.
+function sync_autotune_cron(mode) {
+    module_capture(AUTOTUNE_MANAGER_UC, [ mode ]);
+}
+
 function refresh_cron() {
     let status = module_status(UPDATES_UC, [
         "refresh-cron-from-uci",
@@ -956,8 +964,7 @@ function refresh_cron() {
         SUBSCRIPTION_UPDATE_CRON_MARKER,
         COMPONENT_UPDATE_CHECK_CRON_MARKER
     ]);
-    // Autotune keeps its own cron line; it never blocks the service.
-    module_success(AUTOTUNE_MANAGER_UC, [ "cron-sync" ]);
+    sync_autotune_cron("cron-sync");
     return status;
 }
 
@@ -968,7 +975,7 @@ function remove_cron_jobs() {
         SUBSCRIPTION_UPDATE_CRON_MARKER,
         COMPONENT_UPDATE_CHECK_CRON_MARKER
     ]);
-    module_success(AUTOTUNE_MANAGER_UC, [ "cron-remove" ]);
+    sync_autotune_cron("cron-remove");
     return status;
 }
 

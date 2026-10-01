@@ -1114,6 +1114,13 @@ function start_main() {
     if (status != 0)
         return start_phase_failed("sing-box-config", status);
 
+    if (setting_bool("vpn_fail_closed", false) || fs.stat("/etc/forkop/vpn-guard/policy.json") != null) {
+        if (!module_success(LIB_DIR + "/nft/fail_closed.uc", [ "refresh" ]) ||
+            !command_success_from_args([ "/etc/init.d/forkop-guard", "enable" ]) ||
+            !command_success_from_args([ "/etc/init.d/forkop-guard", "start" ]))
+            return start_phase_failed("vpn-guard", 1);
+    }
+
     status = refresh_cron();
     if (status != 0)
         return start_phase_failed("cron-refresh", status);
@@ -1146,6 +1153,10 @@ function start_main() {
     release_start_subscription_update_lock();
     module_success(ZAPRET_UC, [ "start-runtime" ]);
     module_success(ZAPRET2_UC, [ "start-runtime" ]);
+
+    if ((setting_bool("vpn_fail_closed", false) || fs.stat("/etc/forkop/vpn-guard/policy.json") != null) &&
+        !command_success_from_args([ "/etc/init.d/forkop-guard", "online" ]))
+        return 1;
 
     return 0;
 }
@@ -1721,6 +1732,10 @@ function start() {
 
 function stop_impl(allow_process_conflict) {
     let status = 0;
+
+    if ((setting_bool("vpn_fail_closed", false) || fs.stat("/etc/forkop/vpn-guard/policy.json") != null) &&
+        !command_success_from_args([ "/etc/init.d/forkop-guard", "offline" ]))
+        return 1;
 
     if (!setting_bool("dont_touch_dhcp", false)) {
         let dns_status = dnsmasq_restore(false);
@@ -2377,6 +2392,13 @@ function reload(reason) {
         status = refresh_cron();
         if (status != 0)
             return abort_reload(status, false);
+    }
+
+    if (setting_bool("vpn_fail_closed", false) || fs.stat("/etc/forkop/vpn-guard/policy.json") != null) {
+        if (!module_success(LIB_DIR + "/nft/fail_closed.uc", [ "refresh" ]) ||
+            !command_success_from_args([ "/etc/init.d/forkop-guard", "start" ]) ||
+            !command_success_from_args([ "/etc/init.d/forkop-guard", "online" ]))
+            return abort_reload(1, true);
     }
 
     status = finish_reload_status(module_status(STATE_UC, [

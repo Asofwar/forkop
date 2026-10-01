@@ -898,6 +898,13 @@ function init_config(populate_nft, caches_prepared, no_refresh, prepared_deferre
         exit(1);
     }
 
+    if ((bool_option(settings, "vpn_fail_closed", false) || file_exists("/etc/forkop/vpn-guard/policy.json")) &&
+        !module_success([ LIB_DIR + "/nft/fail_closed.uc", "validate-config", temp_config ])) {
+        log_message("VPN guard cannot represent the generated routing policy. Aborted.", "fatal");
+        remove_files([ temp_config, runtime_log ]);
+        exit(1);
+    }
+
     let check_result = SINGBOX_CONFIG_FAIL_PHASE == "check"
         ? { status: 1, reason: "injected sing-box configuration check failure" }
         : sing_box_check(temp_config, runtime_log);

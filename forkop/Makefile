@@ -22,7 +22,7 @@ include $(INCLUDE_DIR)/package.mk
 define Package/forkop
 	SECTION:=net
 	CATEGORY:=Network
-	DEPENDS:=+ca-bundle +kmod-inet-diag +kmod-tun +curl +ucode +ucode-mod-fs +ucode-mod-uci +kmod-nft-tproxy +coreutils-base64 +bind-dig +nftables-json +kmod-nft-nat +ip-full
+	DEPENDS:=+ca-bundle +kmod-inet-diag +kmod-tun +curl +ucode +ucode-mod-fs +ucode-mod-uci +ucode-mod-ubus +ucode-mod-uloop +conntrack +kmod-nft-tproxy +coreutils-base64 +bind-dig +nftables-json +kmod-nft-nat +ip-full
 	CONFLICTS:=https-dns-proxy nextdns luci-app-passwall luci-app-passwall2
 	TITLE:=Forkop backend service
 	URL:=https://github.com/slayer326/forkop
@@ -64,6 +64,11 @@ endef
 define Package/forkop/install
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./files/etc/init.d/forkop $(1)/etc/init.d/forkop
+	$(INSTALL_BIN) ./files/etc/init.d/forkop-guard $(1)/etc/init.d/forkop-guard
+	$(INSTALL_DIR) $(1)/etc/hotplug.d/iface
+	$(INSTALL_BIN) ./files/etc/hotplug.d/iface/95-forkop-guard $(1)/etc/hotplug.d/iface/95-forkop-guard
+	$(INSTALL_DIR) $(1)/lib/upgrade/keep.d
+	$(INSTALL_DATA) ./files/lib/upgrade/keep.d/forkop-guard $(1)/lib/upgrade/keep.d/forkop-guard
 
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) ./files/etc/config/forkop $(1)/etc/config/forkop
@@ -80,6 +85,7 @@ define Package/forkop/install
 	$(INSTALL_DIR) $(1)/usr/share/forkop/defaults
 	$(INSTALL_CONF) ./files/etc/config/forkop $(1)/usr/share/forkop/defaults/forkop
 	$(INSTALL_BIN) ./files/usr/share/forkop/mirror-migration.sh $(1)/usr/share/forkop/mirror-migration.sh
+	$(INSTALL_BIN) ./files/usr/share/forkop/vpn-guard-firewall.sh $(1)/usr/share/forkop/vpn-guard-firewall.sh
 
 	sed -i -e 's/__COMPILED_VERSION_VARIABLE__/$(FORKOP_COMPILED_VERSION)/g' $(1)/usr/lib/forkop/core/constants.uc
 endef

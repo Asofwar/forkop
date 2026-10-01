@@ -595,6 +595,15 @@ function createSettingsContent(sections, capabilities) {
 
   o = sections.network.option(
     form.Flag,
+    "vpn_fail_closed",
+    _("VPN kill-switch"),
+    _("Keep VPN destinations blocked when Forkop or sing-box stops. DPI and bypass rules are excluded. Requires dnsmasq-full; disables flow offload. Disable this option and explicitly release the guard to restore direct access."),
+  );
+  o.default = "0";
+  o.rmempty = false;
+
+  o = sections.network.option(
+    form.Flag,
     "disable_quic",
     _("Disable QUIC"),
     _(

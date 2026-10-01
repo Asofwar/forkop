@@ -85,6 +85,11 @@ run() {
         "$ROOT/etc/init.d/sing-box" stop
         "$ROOT/etc/init.d/sing-box" disable
     fi
+    if [ -x "$ROOT/etc/init.d/forkop-guard" ]; then
+        uci set forkop.settings.vpn_fail_closed=0
+        uci commit forkop
+        "$ROOT/etc/init.d/forkop-guard" release
+    fi
 
     PHASE=repositories
     state running

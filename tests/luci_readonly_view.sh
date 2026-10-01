@@ -27,9 +27,13 @@ function load(file, modules) {
     names.push(name);
     values.push(modules[name]);
   }
-  return new Function(...names, '_', 'E', 'window', 'CustomEvent', source)(
+  return new Function(...names, '_', 'E', 'window', 'CustomEvent', 'L', source)(
     ...values, value => value, (tag, attrs, children) => ({ tag, attrs, children }),
-    { dispatchEvent() {}, setTimeout() {} }, class {});
+    { dispatchEvent() {}, setTimeout() {} }, class {},
+    // LuCI globals a view may use: the dispatch path of the page under test and
+    // the URL builder that honours the configured LuCI prefix.
+    { env: { dispatchpath: ['admin', 'services', 'forkop', 'overview'] },
+      url: (...parts) => `/cgi-bin/luci/${parts.join('/')}` });
 }
 
 function stubs(canReadUci, calls, { stale = false } = {}) {
@@ -57,10 +61,26 @@ function stubs(canReadUci, calls, { stale = false } = {}) {
   }
   const uci = { load: async () => { if (!canReadUci) throw Error('Permission denied'); } };
   const baseclass = { extend: value => value };
-  const shell = load('shell.js', { baseclass, uci, main });
+  // LuCI serves a session the menu subtree already filtered by the ACL each
+  // entry depends on (luci-app-forkop.json): Rules and Settings require
+  // luci-app-forkop-admin, so a read-only session never sees them.
+  const names = canReadUci
+    ? ['overview', 'rules', 'monitoring', 'diagnostics', 'autotune', 'history', 'settings']
+    : ['overview', 'monitoring', 'diagnostics', 'autotune', 'history'];
+  const forkop = { name: 'forkop', title: 'Forkop X', children: {} };
+  for (const name of names) forkop.children[name] = { name, title: name };
+  const tree = { children: { admin: { children: { services: { children: { forkop } } } } } };
+  const ui = {
+    menu: {
+      load: async () => tree,
+      getChildren: node => Object.values(node.children || {}),
+    },
+  };
+  const shell = load('shell.js', { baseclass, uci, main, ui });
   return {
-    view: { extend: value => value }, baseclass, uci, main, shell,
+    view: { extend: value => value }, baseclass, uci, main, shell, ui,
     localDevices: { loadLocalDeviceChoices() {} },
+    forkopPageNames: names,
   };
 }
 
@@ -72,13 +92,27 @@ function stubs(canReadUci, calls, { stale = false } = {}) {
     'page/autotune.js': 'AutotuneTab',
     'page/history.js': 'HistoryTab',
   };
+  // The page navigation shell.js renders: the sibling pages, named by the last
+  // segment of each tab's href, in the order the menu gives them.
+  const navNames = rendered => {
+    const bar = rendered.children.find(
+      child => child && child.attrs && child.attrs.class === 'cbi-tabmenu');
+    assert(bar, 'the page renders no navigation');
+    return bar.children.map(item => item.children[0].attrs.href.split('/').pop());
+  };
+
   for (const [file, tab] of Object.entries(pages)) {
     for (const stale of [false, true]) {
       const calls = [];
-      const page = load(file, stubs(false, calls, { stale }));
+      const context = stubs(false, calls, { stale });
+      const page = load(file, context);
       assert.equal(await page.load(), true, `${file}: read-only session not detected`);
       const rendered = page.render();
-      assert.equal(rendered.children[1], tab, `${file}: page content not rendered`);
+      assert(rendered.children.includes(tab), `${file}: page content not rendered`);
+      // A read-only session is offered every page it may reach and no tab it
+      // would be refused: Rules and Settings depend on luci-app-forkop-admin.
+      assert.deepEqual(navNames(rendered), context.forkopPageNames,
+        `${file}: read-only navigation must offer exactly the permitted pages`);
       if (!stale) {
         assert.equal(calls.filter(call => call === 'readonly:true').length, 1,
           `${file}: read-only mode not set exactly once`);
@@ -90,9 +124,12 @@ function stubs(canReadUci, calls, { stale = false } = {}) {
       assert.equal(page.handleReset, null, `${file}: status page must not offer Reset`);
     }
     const calls = [];
-    const page = load(file, stubs(true, calls));
+    const context = stubs(true, calls);
+    const page = load(file, context);
     assert.equal(await page.load(), false, `${file}: administrator detected as read-only`);
-    page.render();
+    const adminRendered = page.render();
+    assert.deepEqual(navNames(adminRendered), context.forkopPageNames,
+      `${file}: an administrator must be offered every page`);
     assert(!calls.some(call => call.startsWith('readonly:')), `${file}: administrator switched to read-only`);
     assert(calls.includes(`init:${tab}`), `${file}: controller not initialised`);
   }

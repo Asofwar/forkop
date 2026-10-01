@@ -1023,13 +1023,47 @@ function createEnvironment({
     hideModal() {},
     addNotification() {},
     tabs: { updateTabs() {} },
+    // The menu subtree LuCI serves a session, which shell.js turns into the
+    // navigation of every Forkop page. Served subtrees are already filtered by
+    // the ACL each entry depends on; this one is an administrator's.
+    menu: {
+      load: async () => ({
+        children: {
+          admin: {
+            children: {
+              services: {
+                children: {
+                  forkop: {
+                    name: "forkop",
+                    title: "Forkop X",
+                    children: Object.fromEntries(
+                      [
+                        "overview",
+                        "rules",
+                        "monitoring",
+                        "diagnostics",
+                        "autotune",
+                        "history",
+                        "settings",
+                      ].map((name) => [name, { name, title: name }]),
+                    ),
+                  },
+                },
+              },
+            },
+          },
+        },
+      }),
+      getChildren: (node) => Object.values(node.children || {}),
+    },
   };
   const jsonMaps = [];
   const form = createForm({ version, baseclass, uci, jsonMaps });
   const L = {
     bind: (fn, self, ...args) => fn.bind(self, ...args),
     toArray,
-    env: { sessionid: "test" },
+    env: { sessionid: "test", dispatchpath: ["admin", "services", "forkop", "settings"] },
+    url: (...parts) => `/cgi-bin/luci/${parts.join("/")}`,
     resource: (...parts) => `/luci-static/resources/${parts.join("/")}`,
     isObject: (value) => value != null && typeof value === "object",
   };
@@ -1137,7 +1171,7 @@ function createEnvironment({
     ui,
     // view/forkop/shell.js sharing this environment's main.js and window.
     shell() {
-      shellModule ??= loadModule("shell.js", { baseclass, uci, main }, moduleGlobals);
+      shellModule ??= loadModule("shell.js", { baseclass, uci, main, ui }, moduleGlobals);
       return shellModule;
     },
     // The Settings page of page/settings.js: the rules grid and the Settings

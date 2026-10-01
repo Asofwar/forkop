@@ -1102,6 +1102,7 @@ var FORKOP_CLI = "/usr/bin/forkop";
 var FORKOP_READONLY_CLI = "/usr/libexec/forkop-ro";
 var READONLY_EXEC_PATTERNS = [
   "/usr/libexec/forkop-ro get_status",
+  "/usr/libexec/forkop-ro killswitch_status",
   "/usr/libexec/forkop-ro get_sing_box_status",
   "/usr/libexec/forkop-ro get_zapret_status",
   "/usr/libexec/forkop-ro get_zapret2_status",

@@ -60,8 +60,8 @@ APP_DESCRIPTION="Rule-based Forkop LuCI app with hybrid sing-box + zapret orches
 I18N_DESCRIPTION="Translation for luci-app-forkop - Русский (Russian)"
 MAINTAINER="slayer326 <34569426+slayer326@users.noreply.github.com>"
 PROJECT_URL="https://github.com/slayer326/forkop"
-BACKEND_DEPENDS_IPK="libc, ca-bundle, kmod-inet-diag, kmod-tun, curl, ucode, ucode-mod-fs, ucode-mod-uci, kmod-nft-tproxy, coreutils-base64, bind-dig, nftables-json, kmod-nft-nat, ip-full"
-BACKEND_DEPENDS_APK="bind-dig ca-bundle coreutils-base64 curl ip-full kmod-inet-diag kmod-nft-nat kmod-nft-tproxy kmod-tun libc nftables-json ucode ucode-mod-fs ucode-mod-uci !https-dns-proxy !nextdns !luci-app-passwall !luci-app-passwall2"
+BACKEND_DEPENDS_IPK="libc, ca-bundle, kmod-inet-diag, kmod-tun, curl, ucode, ucode-mod-fs, ucode-mod-uci, conntrack, kmod-nft-tproxy, coreutils-base64, bind-dig, nftables-json, kmod-nft-nat, ip-full"
+BACKEND_DEPENDS_APK="bind-dig ca-bundle coreutils-base64 curl ip-full kmod-inet-diag kmod-nft-nat kmod-nft-tproxy kmod-tun libc nftables-json ucode ucode-mod-fs ucode-mod-uci conntrack !https-dns-proxy !nextdns !luci-app-passwall !luci-app-passwall2"
 BACKEND_CONFLICTS_IPK="https-dns-proxy, nextdns, luci-app-passwall, luci-app-passwall2"
 APP_DEPENDS_IPK="libc, luci-base, forkop"
 APP_DEPENDS_APK="libc luci-base forkop"
@@ -192,6 +192,9 @@ build_backend_root() {
 
   install -m 0755 "$ROOT_DIR/forkop/files/etc/init.d/forkop" "$output_root/etc/init.d/forkop"
   install -m 0755 "$ROOT_DIR/forkop/files/etc/init.d/forkop-torrserver-direct" "$output_root/etc/init.d/forkop-torrserver-direct"
+  install -m 0755 "$ROOT_DIR/forkop/files/etc/init.d/forkop-killswitch" "$output_root/etc/init.d/forkop-killswitch"
+  install -d "$output_root/lib/upgrade/keep.d"
+  install -m 0644 "$ROOT_DIR/forkop/files/lib/upgrade/keep.d/forkop-killswitch" "$output_root/lib/upgrade/keep.d/forkop-killswitch"
   install -m 0644 "$ROOT_DIR/forkop/files/etc/config/forkop" "$output_root/etc/config/forkop"
   install -m 0644 "$ROOT_DIR/forkop/files/etc/config/forkop" "$output_root/usr/share/forkop/defaults/forkop"
   install -m 0755 "$ROOT_DIR/forkop/files/usr/share/forkop/mirror-migration.sh" "$output_root/usr/share/forkop/mirror-migration.sh"
@@ -206,6 +209,7 @@ build_backend_root() {
   chmod 0755 \
     "$output_root/etc/init.d/forkop" \
     "$output_root/etc/init.d/forkop-torrserver-direct" \
+    "$output_root/etc/init.d/forkop-killswitch" \
     "$output_root/usr/bin/forkop" \
     "$output_root/usr/libexec/forkop-ro" \
     "$output_root/usr/share/forkop/mirror-migration.sh"

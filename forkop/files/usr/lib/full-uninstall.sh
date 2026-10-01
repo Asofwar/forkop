@@ -80,6 +80,13 @@ run() {
         "$ROOT/etc/init.d/forkop" stop
         "$ROOT/etc/init.d/forkop" disable
     fi
+    # The VPN kill-switch outlives a stopped Forkop by design; removing the
+    # product must lift it, or protected traffic would stay blocked forever.
+    if [ -x "$BIN" ]; then "$BIN" killswitch_disable || true; fi
+    if [ -x "$ROOT/etc/init.d/forkop-killswitch" ]; then
+        "$ROOT/etc/init.d/forkop-killswitch" stop || true
+        "$ROOT/etc/init.d/forkop-killswitch" disable || true
+    fi
     if [ -x "$BIN" ]; then "$BIN" dnsmasq_restore; fi
     if [ -x "$ROOT/etc/init.d/sing-box" ]; then
         "$ROOT/etc/init.d/sing-box" stop
@@ -123,10 +130,17 @@ run() {
         /etc/config/sing-box.apk-old /etc/config/sing-box-opkg /etc/config/sing-box.opkg-new \
         /etc/config/sing-box.opkg-old /etc/config/sing-box.opkg-dist \
         /usr/bin/forkop /usr/libexec/forkop-ro /usr/bin/sing-box /usr/lib/libcronet.so \
-        /etc/init.d/forkop /etc/init.d/sing-box /etc/uci-defaults/50_luci-forkop \
-        /usr/share/luci/menu.d/luci-app-forkop.json /usr/share/rpcd/acl.d/luci-app-forkop.json; do
+        /etc/init.d/forkop /etc/init.d/forkop-killswitch /etc/init.d/sing-box /etc/uci-defaults/50_luci-forkop \
+        /usr/share/luci/menu.d/luci-app-forkop.json /usr/share/rpcd/acl.d/luci-app-forkop.json \
+        /usr/share/nftables.d/ruleset-post/90-forkop-killswitch.nft; do
         rm -f "$ROOT$file"
     done
+    if [ -z "$ROOT" ]; then
+        nft delete table inet ForkopKillswitch 2>/dev/null || true
+        if [ "$(uci -q get dhcp.@dnsmasq[0].serversfile 2>/dev/null || true)" = /etc/forkop/killswitch/dnsmasq.servers ]; then
+            uci -q delete dhcp.@dnsmasq[0].serversfile && uci -q commit dhcp && /etc/init.d/dnsmasq restart || true
+        fi
+    fi
     for file in "$ROOT"/usr/lib/lua/luci/i18n/forkop.* \
         "$ROOT"/tmp/luci-indexcache* "$ROOT"/tmp/luci-modulecache/*; do
         [ ! -f "$file" ] || rm -f "$file"

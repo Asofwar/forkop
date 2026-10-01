@@ -3,6 +3,7 @@
 "require uci";
 "require baseclass";
 "require tools.widgets as widgets";
+"require view.forkop.killswitch as killswitch";
 "require view.forkop.main as main";
 
 const UCI_PACKAGE = main.FORKOP_UCI_PACKAGE;
@@ -406,6 +407,23 @@ function createSettingsContent(sections, capabilities) {
   );
   o.depends("dns_detour_enabled", "1");
   configureDownloadSectionOption(o, "dns_detour_section", capabilities);
+
+  o = sections.network.option(
+    form.DummyValue,
+    "_kill_switch_status",
+    _("VPN kill-switch"),
+    _(
+      "Enable it per Connection section. While Forkop or the VPN is down, protected traffic is rejected instead of leaving directly; other traffic is not affected.",
+    ),
+  );
+  o.rawhtml = true;
+  o.write = function () {};
+  o.remove = function () {};
+  o.renderWidget = function () {
+    return killswitch.createGlobalStatus(
+      Boolean(this.map && this.map.readonly),
+    );
+  };
 
   o = sections.network.option(
     widgets.DeviceSelect,

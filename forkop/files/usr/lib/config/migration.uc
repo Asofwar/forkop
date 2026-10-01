@@ -1499,6 +1499,29 @@ function migrate_urltest_section_names(ctx) {
     }
 }
 
+// The global VPN fail-closed guard (settings.vpn_fail_closed) protected every
+// enabled connection section. The per-section kill-switch replaces it; carry
+// the protection over section by section, so nothing loses its fail-closed
+// behaviour on upgrade, and drop the retired option. The guard's runtime
+// leftovers are removed by service/package.uc at postinst.
+const VPN_GUARD_ACTIONS = { connection: true, proxy: true, outbound: true, vpn: true };
+
+function migrate_vpn_guard_to_kill_switch(ctx) {
+    let value = option(ctx.model.settings, "vpn_fail_closed", "");
+    if (value == "1" || value == "true" || value == "yes" || value == "on") {
+        for (let section in ctx.model.sections) {
+            let enabled = option(section, "enabled", "1");
+            if (enabled == "0" || enabled == "false" || enabled == "no" || enabled == "off")
+                continue;
+            if (!VPN_GUARD_ACTIONS[option(section, "action", "connection")])
+                continue;
+            set_option(ctx, section, "kill_switch", "1");
+        }
+    }
+    delete_option(ctx, ctx.model.settings, "vpn_fail_closed");
+    return true;
+}
+
 const MIGRATIONS = [
     { id: "interface_sections", run: migrate_interface_sections },
     { id: "enable_component_checks", run: migrate_enable_component_checks },
@@ -1509,7 +1532,8 @@ const MIGRATIONS = [
     { id: "secondary_rulesets_mirror_v1", run: migrate_secondary_rulesets_to_mirror },
     { id: "own_dependency_mirror_v1", run: migrate_own_dependency_mirror },
     { id: "clash_api_secret_v1", run: migrate_clash_api_secret },
-    { id: "urltest_section_names_v1", run: migrate_urltest_section_names }
+    { id: "urltest_section_names_v1", run: migrate_urltest_section_names },
+    { id: "vpn_guard_kill_switch_v1", run: migrate_vpn_guard_to_kill_switch }
 ];
 
 function apply_migrations(ctx) {

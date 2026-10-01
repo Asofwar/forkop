@@ -13,6 +13,7 @@ export const FORKOP_READONLY_CLI = '/usr/libexec/forkop-ro';
 // commands, so rendering a page cannot start a mutation or trip the ACL.
 export const READONLY_EXEC_PATTERNS = [
   '/usr/libexec/forkop-ro get_status',
+  '/usr/libexec/forkop-ro killswitch_status',
   '/usr/libexec/forkop-ro get_sing_box_status',
   '/usr/libexec/forkop-ro get_zapret_status',
   '/usr/libexec/forkop-ro get_zapret2_status',

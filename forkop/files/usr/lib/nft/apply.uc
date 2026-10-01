@@ -26,6 +26,18 @@ const NFT_CANDIDATE_FAIL_PHASE = getenv("FORKOP_NFT_CANDIDATE_FAIL_PHASE") || ""
 // point it into their work directory.
 const RT_TABLES_FILE = getenv("FORKOP_RT_TABLES") || "/etc/iproute2/rt_tables";
 const NFT_TRANSITION_GUARD_CHAIN = "forkop_transition_guard";
+const KILLSWITCH_INTERFACE_SET = "ks_interfaces";
+const KILLSWITCH_POLICY_CHAIN = "priority_rules";
+const KILLSWITCH_FORWARD_CHAIN = "ks_forward";
+const KILLSWITCH_REJECT_CHAIN = "ks_reject";
+const KILLSWITCH_FAKEIP_COUNTER = "ks_fakeip";
+const KILLSWITCH_DNS_CHAIN = "ks_dns";
+
+// Kill-switch rendering reuses the priority-rule builders below, but records
+// their mutations as text for a separate persistent table instead of running
+// nft. Both stay null for every other operation.
+let nft_render_lines = null;
+let nft_priority_verdict_override = null;
 
 let common_read_json_file = common.read_json_file;
 let list_option = common.list_option;
@@ -117,6 +129,11 @@ function command_from_args(args) {
 }
 
 function run_args(args) {
+    if (nft_render_lines != null && length(args) > 2 && args[0] == "nft" &&
+        (args[1] == "add" || args[1] == "insert" || args[1] == "delete" || args[1] == "flush")) {
+        push(nft_render_lines, join(" ", slice(args, 1)));
+        return true;
+    }
     // nft -f submits a complete file as one netlink transaction. Candidate
     // preparation records mutations instead of exposing partial live state.
     if (NFT_BATCH_FILE != "" && length(args) > 2 && args[0] == "nft" &&
@@ -709,6 +726,8 @@ function nft_create_priority_sets(table, sets) {
 }
 
 function nft_priority_verdict_args(priority_action, mark) {
+    if (nft_priority_verdict_override != null)
+        return nft_priority_verdict_override;
     if (priority_action == "bypass")
         return [ "counter", "accept" ];
     return [ "meta", "mark", "set", mark, "counter", "accept" ];
@@ -1823,6 +1842,172 @@ function nft_dpi_transition_guard_ensure(table) {
     return state == "valid";
 }
 
+function killswitch_section_enabled(section) {
+    section = object_or_empty(section);
+    return bool_option(section, "enabled", true) &&
+        connections.is_connections_action(section_action(section)) &&
+        bool_option(section, "kill_switch", false);
+}
+
+function killswitch_counter_name(section) {
+    return "ks_" + as_string(section[".name"]);
+}
+
+function nft_set_elements_from_table(table, set_name) {
+    // A missing set is an error (null). An existing empty set has no
+    // "elements" clause and yields "".
+    let output = command_output_quiet_from_args([ "nft", "list", "set", "inet", table, set_name ]);
+    if (output == "")
+        return null;
+    let found = match(output, /elements = \{([^}]*)\}/);
+    return found == null ? "" : trim(replace(found[1], /[[:space:]]+/g, " "));
+}
+
+function killswitch_interface_elements(settings) {
+    let result = [];
+    for (let name in whitespace_values(option(settings, "source_network_interfaces", "br-lan")))
+        if (match(name, /^[A-Za-z0-9_.@*-]+$/) != null)
+            push(result, sprintf("%J", name));
+    return result;
+}
+
+// Renders the persistent kill-switch table. The policy mirrors Forkop's own
+// ordered priority chain, built by the same rule builders, on the forward
+// hook: a packet reaching forward to a protected destination was by
+// definition not TPROXY'd into sing-box, so it would leave directly. Sections
+// before the last protected one keep their first-match verdict: bypass, DPI
+// and unprotected connection sections return, protected ones reject. Set
+// contents are copied from the live ForkopTable, which already holds the
+// complete list generation.
+function nft_killswitch_render_sections(sections, settings, live_table, ks_table, out_path, fakeip_range, fakeip6_range) {
+    fakeip_range = default_arg(fakeip_range, "198.18.0.0/15");
+    fakeip6_range = default_arg(fakeip6_range, "fc00::/18");
+    ks_table = as_string(ks_table);
+
+    let result = { ok: false, sections: [], rule_sections: [], set_elements: 0, error: "" };
+    if (match(ks_table, /^[A-Za-z][A-Za-z0-9_]*$/) == null) {
+        result.error = "invalid kill-switch table name";
+        return result;
+    }
+
+    let last_index = -1;
+    for (let i = 0; i < length(sections); i++) {
+        if (killswitch_section_enabled(sections[i])) {
+            push(result.sections, as_string(sections[i][".name"]));
+            last_index = i;
+        }
+    }
+    if (last_index < 0) {
+        result.error = "no protected sections";
+        return result;
+    }
+
+    let interfaces = killswitch_interface_elements(settings);
+    if (length(interfaces) == 0) {
+        result.error = "no source network interfaces";
+        return result;
+    }
+
+    let t = "inet " + ks_table;
+    let lines = [
+        "# Forkop VPN kill-switch. Generated; do not edit.",
+        "add table " + t,
+        "delete table " + t,
+        "add table " + t,
+        "add set " + t + " " + KILLSWITCH_INTERFACE_SET + " { type ifname; flags interval; }",
+        "add element " + t + " " + KILLSWITCH_INTERFACE_SET + " { " + join(", ", interfaces) + " }",
+        "add set " + t + " localv4 { type ipv4_addr; flags interval; auto-merge; }",
+        "add element " + t + " localv4 { " + join(", ", LOCALV4_RANGES) + " }",
+        "add set " + t + " localv6 { type ipv6_addr; flags interval; auto-merge; }",
+        "add element " + t + " localv6 { " + join(", ", LOCALV6_RANGES) + " }",
+        "add counter " + t + " " + KILLSWITCH_FAKEIP_COUNTER
+    ];
+    for (let i = 0; i <= last_index; i++)
+        if (killswitch_section_enabled(sections[i]))
+            push(lines, "add counter " + t + " " + killswitch_counter_name(sections[i]));
+    push(lines,
+        "add chain " + t + " " + KILLSWITCH_REJECT_CHAIN,
+        "add rule " + t + " " + KILLSWITCH_REJECT_CHAIN + " meta l4proto tcp reject with tcp reset",
+        "add rule " + t + " " + KILLSWITCH_REJECT_CHAIN + " reject with icmpx admin-prohibited",
+        "add chain " + t + " " + KILLSWITCH_POLICY_CHAIN,
+        // Empty unless sing-box died while dnsmasq still forwards to it; the
+        // kill-switch watcher then redirects client DNS to its standby
+        // resolver. It runs before Forkop's own DNS redirect (-101).
+        "add chain " + t + " " + KILLSWITCH_DNS_CHAIN + " { type nat hook prerouting priority -102; policy accept; }",
+        "add chain " + t + " " + KILLSWITCH_FORWARD_CHAIN + " { type filter hook forward priority -5; policy accept; }",
+        "add rule " + t + " " + KILLSWITCH_FORWARD_CHAIN + " meta l4proto != { tcp, udp } return",
+        ...(bool_option(settings, "exclude_ntp", false)
+            ? [ "add rule " + t + " " + KILLSWITCH_FORWARD_CHAIN + " udp dport 123 return" ] : []),
+        "add rule " + t + " " + KILLSWITCH_FORWARD_CHAIN + " ct direction reply return",
+        "add rule " + t + " " + KILLSWITCH_FORWARD_CHAIN + " ct status dnat return",
+        "add rule " + t + " " + KILLSWITCH_FORWARD_CHAIN + " iifname != @" + KILLSWITCH_INTERFACE_SET + " return",
+        // FakeIP answers are only meaningful to sing-box. A client that still
+        // holds one after Forkop stopped must fail fast, never leave via WAN.
+        "add rule " + t + " " + KILLSWITCH_FORWARD_CHAIN + " ip daddr " + fakeip_range + " counter name " + KILLSWITCH_FAKEIP_COUNTER + " jump " + KILLSWITCH_REJECT_CHAIN,
+        "add rule " + t + " " + KILLSWITCH_FORWARD_CHAIN + " ip6 daddr " + fakeip6_range + " counter name " + KILLSWITCH_FAKEIP_COUNTER + " jump " + KILLSWITCH_REJECT_CHAIN,
+        "add rule " + t + " " + KILLSWITCH_FORWARD_CHAIN + " ip daddr @localv4 return",
+        "add rule " + t + " " + KILLSWITCH_FORWARD_CHAIN + " ip6 daddr @localv6 return",
+        "add rule " + t + " " + KILLSWITCH_FORWARD_CHAIN + " jump " + KILLSWITCH_POLICY_CHAIN
+    );
+
+    let element_lines = [];
+    let ok = true;
+    for (let i = 0; i <= last_index && ok; i++) {
+        let section = object_or_empty(sections[i]);
+        if (!bool_option(section, "enabled", true) || !section_needs_priority_sets(section))
+            continue;
+
+        let protected = killswitch_section_enabled(section);
+        nft_render_lines = [];
+        nft_priority_verdict_override = protected
+            ? [ "counter", "name", killswitch_counter_name(section), "jump", KILLSWITCH_REJECT_CHAIN ]
+            : [ "return" ];
+        let built = nft_add_section_priority_rules(ks_table, section, KILLSWITCH_INTERFACE_SET, "localv4", "localv6", "0", fakeip_range, fakeip6_range);
+        let recorded = nft_render_lines;
+        nft_render_lines = null;
+        nft_priority_verdict_override = null;
+        if (!built) {
+            result.error = "could not build rules for section " + as_string(section[".name"]);
+            ok = false;
+            break;
+        }
+
+        // Router-originated traffic belongs to Forkop's own bootstrap and
+        // list downloads; the kill-switch protects forwarded client traffic.
+        let output_prefix = "add rule inet " + ks_table + " priority_output_rules ";
+        for (let line in recorded)
+            if (substr(line, 0, length(output_prefix)) != output_prefix)
+                push(lines, line);
+        if (protected)
+            push(result.rule_sections, as_string(section[".name"]));
+
+        for (let set_name in values(section_priority_sets(section))) {
+            let elements = nft_set_elements_from_table(live_table, set_name);
+            if (elements == null) {
+                result.error = "live set " + set_name + " is missing from table " + as_string(live_table);
+                ok = false;
+                break;
+            }
+            if (elements != "") {
+                push(element_lines, "add element " + t + " " + set_name + " { " + elements + " }");
+                result.set_elements++;
+            }
+        }
+    }
+    if (!ok)
+        return result;
+
+    for (let line in element_lines)
+        push(lines, line);
+
+    if (!write_text_file(out_path, join("\n", lines) + "\n")) {
+        result.error = "could not write " + as_string(out_path);
+        return result;
+    }
+    result.ok = true;
+    return result;
+}
+
 function nft_rebuild_runtime_from_uci(rt_table, table, localv4_set, common_set, port_set, ip_port_set, interface_set, fakeip_mark, outbound_mark, fakeip_range, tproxy_port, zapret_bin, zapret_route_mark_base, zapret_queue_base, zapret_desync_mark, zapret_desync_mark_postnat, zapret2_bin, zapret2_route_mark_base, zapret2_queue_base, zapret2_desync_mark, zapret2_desync_mark_postnat, localv6_set, common6_set, ip_port6_set, fakeip6_range, tproxy6_address) {
     log_debug("Applying nftables runtime rules");
 
@@ -2200,6 +2385,20 @@ function nft_populate_runtime_sets_fixture(path, populate_enabled, deferred_sect
     return nft_populate_runtime_sets_from_sections(fixture_section_list(data, "section"), populate_enabled, deferred_section_names, table, common_set, port_set, ip_port_set, interface_set, localv4_set, mark, common6_set, ip_port6_set, localv6_set);
 }
 
+function nft_killswitch_render_from_uci(live_table, ks_table, out_path, fakeip_range, fakeip6_range) {
+    let result = nft_killswitch_render_sections(uci_sections("section"), uci_settings(), live_table, ks_table, out_path, fakeip_range, fakeip6_range);
+    print(sprintf("%J", result), "\n");
+    return result.ok;
+}
+
+function nft_killswitch_render_fixture(path, live_table, ks_table, out_path, fakeip_range, fakeip6_range) {
+    let data = object_or_empty(common_read_json_file(path));
+    connections.set_item_sections_from_data(data);
+    let result = nft_killswitch_render_sections(fixture_section_list(data, "section"), fixture_settings(data), live_table, ks_table, out_path, fakeip_range, fakeip6_range);
+    print(sprintf("%J", result), "\n");
+    return result.ok;
+}
+
 let mode = ARGV[0] || "";
 
 if (mode == "text-list-to-csv")
@@ -2310,6 +2509,10 @@ else if (mode == "dpi-transition-guard-state") {
     print(nft_dpi_transition_guard_state(ARGV[1]), "\n");
     exit(0);
 }
+else if (mode == "killswitch-render")
+    exit(nft_killswitch_render_from_uci(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5]) ? 0 : 1);
+else if (mode == "killswitch-render-fixture")
+    exit(nft_killswitch_render_fixture(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6]) ? 0 : 1);
 else if (mode == "ensure-bridge-netfilter-disabled")
     exit(ensure_bridge_netfilter_disabled() ? 0 : 1);
 else {

@@ -4,6 +4,7 @@
     "read": {
       "file": {
         "/usr/libexec/forkop-ro get_status": ["exec"],
+        "/usr/libexec/forkop-ro killswitch_status": ["exec"],
         "/usr/libexec/forkop-ro get_sing_box_status": ["exec"],
         "/usr/libexec/forkop-ro get_zapret_status": ["exec"],
         "/usr/libexec/forkop-ro get_zapret2_status": ["exec"],

@@ -1143,6 +1143,12 @@ function validate_priority_level_order(value, section, group_id, level_id) {
     fail_validation("Invalid priority level order '" + value + "' in rule '" + section + "', priority '" + group_id + "', level '" + level_id + "'. Use a non-negative integer. Aborted.");
 }
 
+function section_kill_switch_enabled(section) {
+    let raw = type(section) == "object" ? section.kill_switch : null;
+    let value = lc(raw == null ? "" : "" + raw);
+    return value == "1" || value == "true" || value == "yes" || value == "on";
+}
+
 function validate_priority_group(section, group_id) {
     let name = section_name(section);
     validate_priority_identifier_value(group_id, name);
@@ -1163,8 +1169,13 @@ function validate_priority_group(section, group_id) {
             fail_validation("Priority level '" + level_id + "' in rule '" + name + "', priority '" + group_id + "' has no display name. Aborted.");
 
         validate_priority_level_order(connections.priority_level_order(group_id, level_id), name, group_id, level_id);
-        if (connections.priority_level_direct(group_id, level_id))
+        if (connections.priority_level_direct(group_id, level_id)) {
+            // A direct level is a deliberate fallback past the VPN, exactly
+            // what the kill-switch exists to prevent.
+            if (section_kill_switch_enabled(section))
+                fail_validation("Rule '" + name + "' enables the VPN kill-switch, but priority '" + group_id + "' level '" + level_id + "' sends traffic directly. Remove the direct level or disable the kill-switch. Aborted.");
             continue;
+        }
 
         let filter_mode = connections.priority_level_filter_mode(group_id, level_id);
         validate_priority_filter_mode_value(filter_mode, name, group_id, level_id);

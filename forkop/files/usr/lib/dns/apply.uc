@@ -6,6 +6,10 @@ let uci = require("core.uci");
 const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || "forkop";
 const SB_DNS_INBOUND_ADDRESS = getenv("SB_DNS_INBOUND_ADDRESS") || "127.0.0.42";
 const DNSMASQ_INIT = getenv("DNSMASQ_INIT") || "/etc/init.d/dnsmasq";
+const KILLSWITCH_STATE_DIR = getenv("KILLSWITCH_STATE_DIR") || "/etc/forkop/killswitch";
+const KILLSWITCH_DNS_BLOCKED_FILE = KILLSWITCH_STATE_DIR + "/dns-blocked.servers";
+const KILLSWITCH_DNS_SERVERS_FILE = KILLSWITCH_STATE_DIR + "/dnsmasq.servers";
+const DNSMASQ_SERVERSFILE_OPTION = "dhcp.@dnsmasq[0].serversfile";
 
 function as_string(value) {
     return value == null ? "" : "" + value;
@@ -103,6 +107,76 @@ function dnsmasq_has_forkop_managed_state() {
 
 function dnsmasq_management_disabled() {
     return truthy(uci_get(CONFIG_NAME + ".settings.dont_touch_dhcp"));
+}
+
+// The VPN kill-switch must keep protected domains from resolving through the
+// ordinary upstream whenever dnsmasq does not forward to sing-box: after a
+// stop, a failed start, or a reboot with Forkop disabled. dnsmasq reads its
+// servers file at start, so the file is empty while sing-box answers DNS and
+// holds the local-only "server=/domain/" entries prepared by the kill-switch
+// otherwise. Returns true when dnsmasq must be restarted to pick up a change.
+function killswitch_dns_apply(blocking) {
+    let armed = fs.stat(KILLSWITCH_DNS_BLOCKED_FILE) != null && !dnsmasq_management_disabled();
+    let present = fs.stat(KILLSWITCH_DNS_SERVERS_FILE) != null;
+    if (!armed && !present)
+        return false;
+
+    let current = uci_get(DNSMASQ_SERVERSFILE_OPTION);
+    if (!armed) {
+        let changed = false;
+        if (current == KILLSWITCH_DNS_SERVERS_FILE) {
+            uci_delete(DNSMASQ_SERVERSFILE_OPTION);
+            changed = true;
+        }
+        fs.unlink(KILLSWITCH_DNS_SERVERS_FILE);
+        return changed;
+    }
+
+    if (current != "" && current != KILLSWITCH_DNS_SERVERS_FILE) {
+        log("Kill-switch DNS protection is unavailable: dnsmasq already uses servers file " + current, "warn");
+        return false;
+    }
+
+    let content = blocking ? as_string(fs.readfile(KILLSWITCH_DNS_BLOCKED_FILE)) : "";
+    let changed = false;
+    if (!present || as_string(fs.readfile(KILLSWITCH_DNS_SERVERS_FILE)) != content) {
+        let tmp = KILLSWITCH_DNS_SERVERS_FILE + ".tmp";
+        if (fs.writefile(tmp, content) == null || !fs.rename(tmp, KILLSWITCH_DNS_SERVERS_FILE)) {
+            fs.unlink(tmp);
+            log("Could not write the kill-switch dnsmasq servers file", "error");
+            return false;
+        }
+        changed = true;
+    }
+    if (current != KILLSWITCH_DNS_SERVERS_FILE) {
+        uci_set(DNSMASQ_SERVERSFILE_OPTION, KILLSWITCH_DNS_SERVERS_FILE);
+        changed = true;
+    }
+    return changed;
+}
+
+function killswitch_dns_refresh() {
+    if (!uci_available())
+        return true;
+    if (!killswitch_dns_apply(!dnsmasq_has_forkop_dns()))
+        return true;
+    uci_commit("dhcp");
+    return restart_dnsmasq();
+}
+
+function killswitch_dns_status() {
+    let current = uci_available() ? uci_get(DNSMASQ_SERVERSFILE_OPTION) : "";
+    let active = as_string(fs.readfile(KILLSWITCH_DNS_SERVERS_FILE));
+    print(sprintf("%J", {
+        armed: fs.stat(KILLSWITCH_DNS_BLOCKED_FILE) != null,
+        managed: !dnsmasq_management_disabled(),
+        serversfile: current,
+        attached: current == KILLSWITCH_DNS_SERVERS_FILE,
+        conflict: current != "" && current != KILLSWITCH_DNS_SERVERS_FILE,
+        forkop_dns: dnsmasq_has_forkop_dns(),
+        blocking: current == KILLSWITCH_DNS_SERVERS_FILE && length(active) > 0
+    }), "\n");
+    return true;
 }
 
 function dnsmasq_default_config_is_complete() {
@@ -233,6 +307,10 @@ function dnsmasq_configure(force) {
     if (as_string(force) != "force" && uci_get(CONFIG_NAME + ".settings.shutdown_correctly") == "0") {
         if (dnsmasq_default_config_is_complete()) {
             log("Previous Forkop shutdown was unclean; dnsmasq already points to sing-box", "info");
+            if (killswitch_dns_apply(false)) {
+                uci_commit("dhcp");
+                return restart_dnsmasq();
+            }
             return true;
         }
         log("Previous Forkop shutdown was unclean and dnsmasq is not ready; applying Forkop DNS settings", "info");
@@ -241,6 +319,7 @@ function dnsmasq_configure(force) {
     log("Configuring dnsmasq to forward DNS to sing-box", "info");
     dnsmasq_cleanup_legacy_instance();
     dnsmasq_configure_default_instance();
+    killswitch_dns_apply(false);
     uci_commit("dhcp");
 
     return restart_dnsmasq();
@@ -255,6 +334,10 @@ function dnsmasq_restore(force, quiet) {
     if (as_string(force) != "force" && uci_get(CONFIG_NAME + ".settings.shutdown_correctly") == "1") {
         if (!dnsmasq_has_forkop_dns()) {
             log("dnsmasq already uses non-Forkop DNS settings; restore is not required", "info");
+            if (killswitch_dns_apply(true)) {
+                uci_commit("dhcp");
+                return restart_dnsmasq();
+            }
             return true;
         }
         log("Forkop DNS settings are still present after a clean shutdown; restoring DNS settings in dnsmasq", "info");
@@ -262,6 +345,7 @@ function dnsmasq_restore(force, quiet) {
 
     dnsmasq_cleanup_legacy_instance();
     dnsmasq_restore_default_instance();
+    killswitch_dns_apply(true);
     uci_commit("dhcp");
 
     return restart_dnsmasq();
@@ -301,6 +385,10 @@ else if (mode == "has-managed-state")
     exit(dnsmasq_has_forkop_managed_state() ? 0 : 1);
 else if (mode == "default-config-complete")
     exit(dnsmasq_default_config_is_complete() ? 0 : 1);
+else if (mode == "killswitch-refresh")
+    exit(killswitch_dns_refresh() ? 0 : 1);
+else if (mode == "killswitch-status")
+    exit(killswitch_dns_status() ? 0 : 1);
 
-warn("Usage: dns/apply.uc <configure|restore|failsafe-restore|has-forkop-dns|has-managed-state|default-config-complete>\n");
+warn("Usage: dns/apply.uc <configure|restore|failsafe-restore|has-forkop-dns|has-managed-state|default-config-complete|killswitch-refresh|killswitch-status>\n");
 exit(1);

@@ -87,6 +87,7 @@ vm.runInNewContext(`${helper[0]}\n${source.slice(start, end)}`, {
   E: () => null,
   form: { AbstractValue, DummyValue: AbstractValue, Flag: AbstractValue, ListValue: AbstractValue,
     Value: AbstractValue },
+  killswitch: { KILL_SWITCH_ACTIONS: ['connection', 'proxy', 'outbound', 'vpn'], createSectionStatus: () => null },
   section,
   uci,
   UCI_PACKAGE,

@@ -1,10 +1,10 @@
 import {
-  getClashWsUrl,
+  canUseDirectClashApi,
+  getClashWsStreamUrl,
   onMount,
   preserveScrollForPage,
 } from '../../../helpers';
 import { showToast } from '../../../helpers/showToast';
-import { prettyBytes } from '../../../helpers/prettyBytes';
 import { CustomForkopMethods, ForkopShellMethods } from '../../methods';
 import {
   logger,
@@ -20,7 +20,6 @@ import {
   getLatencyTestLabel,
   renderFlagEmojis,
   renderSections,
-  renderWidget,
 } from './partials';
 import { fetchServicesInfo } from '../../fetchers/fetchServicesInfo';
 import { getClashApiSecret } from '../../methods/custom/getClashApiSecret';
@@ -35,12 +34,196 @@ import { isTransientRpcError } from '../../helpers/isTransientRpcError';
 import { shouldShowLoadingForRestoredAction } from '../../helpers/restoredActionLoading';
 import { getServiceAvailability } from '../../helpers/serviceAvailability';
 import { createPriorityMembersState } from './priorityMembersState';
+import {
+  overviewLastEvent,
+  overviewRecovery,
+  overviewRouting,
+  overviewState,
+  overviewWarning,
+  type OverviewInput,
+} from './overview';
+import { renderOverview } from './overviewCards';
+import { runOverviewServiceAction } from './serviceActionFlow';
+import {
+  serviceReloadOutcome,
+  urlTestChangeToast,
+  type ServiceReloadOutcome,
+} from './serviceReload';
+import { readLastRun } from '../diagnostic/partials/renderRunAction';
+import { serviceActionErrorText } from '../diagnostic/serviceTransition';
+import {
+  confirmStopForkop,
+  runForkopServiceAction,
+  setForkopAutostart,
+  type ForkopServiceAction,
+} from '../shared/serviceControl';
+import {
+  ConnectionsSample,
+  sampleFromConnections,
+  trafficSpeed,
+} from './clashTraffic';
+import { isReadonlyMode } from '../../services/accessMode.service';
 
 const SECTIONS_REFRESH_INTERVAL_MS = 10000;
+const CLASH_RPC_POLL_INTERVAL_MS = 2000;
 const LATENCY_TEST_BUTTON_CLASS = 'dashboard-sections-grid-item-test-latency';
 const LATENCY_TEST_BUTTON_LABEL_CLASS =
   'dashboard-sections-grid-item-test-latency__label';
 let sectionsRefreshTimer: ReturnType<typeof setInterval> | null = null;
+let healthRefreshTimer: ReturnType<typeof setInterval> | null = null;
+
+let overviewHealth: Forkop.HealthStatus | null = null;
+let overviewHealthStale = false;
+let overviewRuleCount: number | null = null;
+let overviewSnapshotCount: number | null = null;
+let overviewServiceBusy = false;
+// The controller runs on two pages: Overview (summary cards, live traffic)
+// and Monitoring → Nodes (node selection only). Summary data, the health
+// poll and the Clash traffic stream are loaded only where they are shown.
+let overviewHost = false;
+let clashUpdatesStarted = false;
+
+async function refreshHealth(mountId: number) {
+  const response = await ForkopShellMethods.getHealthStatus();
+  if (!dashboardMounted || mountId !== dashboardMountId) return;
+  // A failed poll keeps the last known health, so a DPI guard it showed
+  // stays visible, and marks it stale: it proves nothing healthy (UC-021).
+  if (response.success && response.data) {
+    overviewHealth = response.data;
+    overviewHealthStale = false;
+  } else {
+    overviewHealthStale = true;
+  }
+  renderOverviewCards();
+}
+
+// Rule and snapshot counts change rarely; read them once per visit.
+async function loadOverviewCounts(mountId: number) {
+  const [sections, snapshots] = await Promise.allSettled([
+    CustomForkopMethods.getConfigSections(),
+    ForkopShellMethods.snapshotList(),
+  ]);
+  if (!dashboardMounted || mountId !== dashboardMountId) return;
+
+  overviewRuleCount =
+    sections.status === 'fulfilled'
+      ? sections.value.filter(
+          (section) =>
+            section['.type'] === 'section' && section.enabled !== '0',
+        ).length
+      : null;
+  overviewSnapshotCount =
+    snapshots.status === 'fulfilled' &&
+    snapshots.value.success &&
+    Array.isArray(snapshots.value.data)
+      ? snapshots.value.data.length
+      : null;
+  renderOverviewCards();
+}
+
+function overviewInput(): OverviewInput {
+  const state = store.get();
+  const services = state.servicesInfoWidget;
+  const bandwidth = state.bandwidthWidget;
+  const systemInfo = state.systemInfoWidget;
+
+  return {
+    health: overviewHealth,
+    healthStale: overviewHealthStale,
+    availability: getDashboardServiceAvailability(),
+    forkopEnabled: Boolean(services.data.forkopEnabled),
+    forkopStoppedByUser: Boolean(services.data.forkopStoppedByUser),
+    forkopNotStarted:
+      services.data.forkopNotStarted === null
+        ? null
+        : Boolean(services.data.forkopNotStarted),
+    forkopStatus: services.data.forkopStatus || '',
+    singBoxRunning: Boolean(services.data.singbox),
+    groups: state.sectionsWidget.data,
+    ruleCount: overviewRuleCount,
+    traffic:
+      !bandwidth.loading && !bandwidth.failed
+        ? { up: bandwidth.data.up, down: bandwidth.data.down }
+        : null,
+    connections:
+      !systemInfo.loading && !systemInfo.failed
+        ? systemInfo.data.connections
+        : null,
+    snapshotCount: overviewSnapshotCount,
+    lastDiagnosticRun: readLastRun(localStorage),
+    nowMs: Date.now(),
+  };
+}
+
+async function handleServiceAction(action: ForkopServiceAction) {
+  if (overviewServiceBusy) return;
+  if (action === 'stop' && !(await confirmStopForkop())) return;
+
+  const mountId = dashboardMountId;
+  await runOverviewServiceAction({
+    run: () => runForkopServiceAction(action),
+    onError: (error) => showToast(serviceActionErrorText(error), 'error', 6000),
+    refreshRuntime: () => refreshRuntimeUiState({ force: true }),
+    refreshHealth: () => refreshHealth(mountId),
+    setBusy: (busy) => {
+      overviewServiceBusy = busy;
+      renderOverviewCards();
+    },
+  });
+}
+
+async function handleToggleAutostart() {
+  if (overviewServiceBusy) return;
+  const wanted = !store.get().servicesInfoWidget.data.forkopEnabled;
+
+  overviewServiceBusy = true;
+  renderOverviewCards();
+  try {
+    if ((await setForkopAutostart(wanted)) !== wanted) {
+      showToast(_('Could not change autostart'), 'error', 6000);
+    }
+  } catch (_error) {
+    showToast(_('Could not change autostart'), 'error', 6000);
+  } finally {
+    overviewServiceBusy = false;
+    renderOverviewCards();
+  }
+}
+
+function renderOverviewCards() {
+  const container = document.getElementById('dashboard-overview');
+  if (!container || !dashboardMounted) return;
+
+  const input = overviewInput();
+  const view = renderOverview(
+    {
+      warning: overviewWarning(input.health),
+      state: overviewState(input),
+      routing: overviewRouting(input),
+      recovery: overviewRecovery(input),
+      event: overviewLastEvent(input),
+    },
+    {
+      readonly: isReadonlyMode(),
+      serviceBusy: overviewServiceBusy,
+      autostart: input.forkopEnabled,
+      restartBlocked: Boolean(
+        store.get().servicesInfoWidget.data.forkopRestartBlocked,
+      ),
+      stopAvailable: Boolean(
+        store.get().servicesInfoWidget.data.forkopStopAvailable,
+      ),
+      onStart: () => void handleServiceAction('start'),
+      onRestart: () => void handleServiceAction('restart'),
+      onStop: () => void handleServiceAction('stop'),
+      onToggleAutostart: () => void handleToggleAutostart(),
+    },
+  );
+
+  // Keep an open service menu open across data refreshes.
+  if (container.querySelector('.fkp-menu[open]')) return;
+  preserveScrollForPage(() => container.replaceChildren(view));
+}
 let sectionsRefreshPromise: Promise<boolean> | null = null;
 let sectionsRefreshQueued = false;
 let actionStateUnsubscribe: (() => void) | null = null;
@@ -49,6 +232,9 @@ let dashboardMountId = 0;
 let dashboardDataUpdatesStarted = false;
 let dashboardDataUpdatesId = 0;
 let pageUnloading = false;
+let clashRpcPollTimer: ReturnType<typeof setInterval> | null = null;
+let clashRpcPolling = false;
+let lastConnectionsSample: ConnectionsSample | null = null;
 const followedSubscriptionJobs = new Set<string>();
 const followedLatencyJobs = new Set<string>();
 const handledSubscriptionJobs = new Set<string>();
@@ -479,8 +665,13 @@ async function connectToClashSockets(dataUpdatesId: number) {
     return;
   }
 
+  if (!canUseDirectClashApi(clashApiSecret)) {
+    startClashRpcPolling(dataUpdatesId);
+    return;
+  }
+
   socket.subscribe(
-    `${getClashWsUrl()}/traffic?token=${clashApiSecret}`,
+    getClashWsStreamUrl('/traffic', clashApiSecret),
     (msg) => {
       if (
         dataUpdatesId !== dashboardDataUpdatesId ||
@@ -507,23 +698,16 @@ async function connectToClashSockets(dataUpdatesId: number) {
         return;
       }
 
-      logger.error(
+      logger.warn(
         '[DASHBOARD]',
-        'connectToClashSockets - traffic: failed to connect to',
-        getClashWsUrl(),
+        'connectToClashSockets - traffic: socket unavailable, polling instead',
       );
-      store.set({
-        bandwidthWidget: {
-          loading: false,
-          failed: true,
-          data: { up: 0, down: 0 },
-        },
-      });
+      fallBackToClashRpcPolling(dataUpdatesId);
     },
   );
 
   socket.subscribe(
-    `${getClashWsUrl()}/connections?token=${clashApiSecret}`,
+    getClashWsStreamUrl('/connections', clashApiSecret),
     (msg) => {
       if (
         dataUpdatesId !== dashboardDataUpdatesId ||
@@ -561,28 +745,115 @@ async function connectToClashSockets(dataUpdatesId: number) {
         return;
       }
 
-      logger.error(
+      logger.warn(
         '[DASHBOARD]',
-        'connectToClashSockets - connections: failed to connect to',
-        getClashWsUrl(),
+        'connectToClashSockets - connections: socket unavailable, polling instead',
       );
-      store.set({
-        trafficTotalWidget: {
-          loading: false,
-          failed: true,
-          data: { downloadTotal: 0, uploadTotal: 0 },
-        },
-        systemInfoWidget: {
-          loading: false,
-          failed: true,
-          data: {
-            connections: 0,
-            memory: 0,
-          },
-        },
-      });
+      fallBackToClashRpcPolling(dataUpdatesId);
     },
   );
+}
+
+function setClashWidgetsFailed() {
+  store.set({
+    bandwidthWidget: { loading: false, failed: true, data: { up: 0, down: 0 } },
+    trafficTotalWidget: {
+      loading: false,
+      failed: true,
+      data: { downloadTotal: 0, uploadTotal: 0 },
+    },
+    systemInfoWidget: {
+      loading: false,
+      failed: true,
+      data: { connections: 0, memory: 0 },
+    },
+  });
+}
+
+async function pollClashConnections(dataUpdatesId: number) {
+  if (
+    clashRpcPolling ||
+    dataUpdatesId !== dashboardDataUpdatesId ||
+    getDashboardServiceAvailability() === 'stopped'
+  ) {
+    return;
+  }
+
+  clashRpcPolling = true;
+
+  try {
+    const response = await ForkopShellMethods.getClashApiConnections();
+    if (dataUpdatesId !== dashboardDataUpdatesId) {
+      return;
+    }
+
+    const sample = response.success
+      ? sampleFromConnections(response.data, Date.now())
+      : null;
+    if (!sample) {
+      lastConnectionsSample = null;
+      setClashWidgetsFailed();
+      return;
+    }
+
+    const speed = trafficSpeed(lastConnectionsSample, sample);
+    lastConnectionsSample = sample;
+    store.set({
+      ...(speed
+        ? { bandwidthWidget: { loading: false, failed: false, data: speed } }
+        : {}),
+      trafficTotalWidget: {
+        loading: false,
+        failed: false,
+        data: {
+          downloadTotal: sample.downloadTotal,
+          uploadTotal: sample.uploadTotal,
+        },
+      },
+      systemInfoWidget: {
+        loading: false,
+        failed: false,
+        data: { connections: sample.connections, memory: sample.memory },
+      },
+    });
+  } catch (error) {
+    logger.error('[DASHBOARD]', 'pollClashConnections: failed', error);
+    lastConnectionsSample = null;
+    setClashWidgetsFailed();
+  } finally {
+    clashRpcPolling = false;
+  }
+}
+
+// HTTPS pages cannot open the ws:// controller socket, and a socket can
+// drop; the widgets then keep working through rpcd.
+function startClashRpcPolling(dataUpdatesId: number) {
+  if (clashRpcPollTimer) {
+    return;
+  }
+
+  lastConnectionsSample = null;
+  void pollClashConnections(dataUpdatesId);
+  clashRpcPollTimer = setInterval(() => {
+    void pollClashConnections(dataUpdatesId);
+  }, CLASH_RPC_POLL_INTERVAL_MS);
+}
+
+function stopClashRpcPolling() {
+  if (clashRpcPollTimer) {
+    clearInterval(clashRpcPollTimer);
+    clashRpcPollTimer = null;
+  }
+  lastConnectionsSample = null;
+}
+
+function fallBackToClashRpcPolling(dataUpdatesId: number) {
+  if (dataUpdatesId !== dashboardDataUpdatesId) {
+    return;
+  }
+
+  socket.resetAll();
+  startClashRpcPolling(dataUpdatesId);
 }
 
 function getDashboardServiceAvailability() {
@@ -605,7 +876,11 @@ function stopDashboardDataUpdates() {
   }
 
   sectionsRefreshQueued = false;
-  socket.resetAll();
+  stopClashRpcPolling();
+  // Never close sockets this controller did not open (Monitoring owns its
+  // connections stream when it hosts the Nodes view).
+  if (clashUpdatesStarted) socket.resetAll();
+  clashUpdatesStarted = false;
 }
 
 function startDashboardDataUpdates() {
@@ -620,7 +895,12 @@ function startDashboardDataUpdates() {
   dashboardDataUpdatesStarted = true;
   const dataUpdatesId = ++dashboardDataUpdatesId;
   void fetchDashboardSections({ force: true });
-  void connectToClashSockets(dataUpdatesId);
+  if (overviewHost) {
+    clashUpdatesStarted = true;
+    // Direct sockets need the secret; without it (read-only, HTTPS) the
+    // widgets poll through rpcd.
+    void connectToClashSockets(dataUpdatesId);
+  }
   sectionsRefreshTimer = setInterval(() => {
     void fetchDashboardSections();
   }, SECTIONS_REFRESH_INTERVAL_MS);
@@ -666,8 +946,17 @@ async function handleChooseOutbound(
   setSelectorSwitching(sectionName, tag);
 
   try {
-    await ForkopShellMethods.setClashApiGroupProxy(selector, tag);
+    const response = await ForkopShellMethods.setClashApiGroupProxy(
+      selector,
+      tag,
+    );
+    if (!response.success) {
+      showToast(_('Failed to switch the node'), 'error');
+    }
     await fetchDashboardSections({ force: true });
+  } catch (error) {
+    logger.error('[DASHBOARD]', 'handleChooseOutbound: failed', error);
+    showToast(_('Failed to switch the node'), 'error');
   } finally {
     setSelectorSwitching(sectionName);
   }
@@ -789,7 +1078,7 @@ function getUrlTestLatencyClass(latency: number) {
 }
 
 function formatUrlTestLatency(latency: number) {
-  return latency ? `${latency}ms` : 'N/A';
+  return latency ? _('%d ms').replace('%d', String(latency)) : '—';
 }
 
 function renderDetailsUrl(value: unknown) {
@@ -992,15 +1281,19 @@ function renderUrlTestInfoModal(outbound: Forkop.Outbound) {
       ),
     ]),
     E('div', { class: 'fkp_dashboard-page__urltest-details__footer' }, [
-      E(
-        'button',
-        {
-          type: 'button',
-          class: 'btn cbi-button cbi-button-action',
-          click: () => renderUrlTestEditorModal(outbound),
-        },
-        _('Edit'),
-      ),
+      ...(isReadonlyMode()
+        ? []
+        : [
+            E(
+              'button',
+              {
+                type: 'button',
+                class: 'btn cbi-button cbi-button-action',
+                click: () => renderUrlTestEditorModal(outbound),
+              },
+              _('Edit'),
+            ),
+          ]),
       E(
         'button',
         {
@@ -1055,6 +1348,8 @@ function renderUrlTestEditorModal(outbound: Forkop.Outbound) {
       control,
     ]);
 
+  // A reload that init.d only queued, or skipped for a stopped Forkop X, is
+  // not reported as applied (UC-061).
   const reload = async () => {
     setBusy(true, _('Applying Forkop configuration…'));
     const response = await ForkopShellMethods.serviceActionStart('reload');
@@ -1066,6 +1361,11 @@ function renderUrlTestEditorModal(outbound: Forkop.Outbound) {
     if (!result.success) throw new Error('reload failed');
     setBusy(true, _('Refreshing Dashboard…'));
     await fetchDashboardSections({ force: true });
+    return serviceReloadOutcome(result.data);
+  };
+  const toast = (outcome: ServiceReloadOutcome, reset: boolean) => {
+    const { text, type, duration } = urlTestChangeToast(outcome, reset);
+    showToast(text, type, duration);
   };
   const save = async () => {
     setBusy(true, _('Saving URLTest settings…'));
@@ -1080,9 +1380,9 @@ function renderUrlTestEditorModal(outbound: Forkop.Outbound) {
     );
     if ((response.code ?? 0) !== 0)
       throw new Error(response.stderr || 'save failed');
-    await reload();
+    const outcome = await reload();
     ui.hideModal();
-    showToast(_('URLTest settings saved'), 'success');
+    toast(outcome, false);
   };
   const reset = async () => {
     setBusy(true, _('Removing user settings…'));
@@ -1092,9 +1392,9 @@ function renderUrlTestEditorModal(outbound: Forkop.Outbound) {
     );
     if ((response.code ?? 0) !== 0)
       throw new Error(response.stderr || 'reset failed');
-    await reload();
+    const outcome = await reload();
     ui.hideModal();
-    showToast(_('URLTest settings reset'), 'success');
+    toast(outcome, true);
   };
   const action = (fn: () => Promise<void>) => async (event: MouseEvent) => {
     activeButton = event.currentTarget as HTMLButtonElement;
@@ -1592,6 +1892,7 @@ async function renderSectionsWidget() {
       ),
       selectorSwitchingTag:
         sectionsWidget.selectorSwitchingSections[section.sectionName],
+      readonly: isReadonlyMode(),
       isPriorityMembersExpanded: (outbound) =>
         priorityMembersState.isExpanded(section.sectionName, outbound.code),
       onPriorityMembersToggle: (outbound, open) => {
@@ -1641,174 +1942,6 @@ async function renderSectionsWidget() {
   });
 }
 
-async function renderBandwidthWidget() {
-  logger.debug('[DASHBOARD]', 'renderBandwidthWidget');
-  const traffic = store.get().bandwidthWidget;
-
-  const container = document.getElementById('dashboard-widget-traffic');
-
-  if (!container) {
-    return;
-  }
-
-  if (traffic.loading || traffic.failed) {
-    const renderedWidget = renderWidget({
-      loading: traffic.loading,
-      failed: traffic.failed,
-      title: '',
-      items: [],
-    });
-
-    return container.replaceChildren(renderedWidget);
-  }
-
-  const renderedWidget = renderWidget({
-    loading: traffic.loading,
-    failed: traffic.failed,
-    title: _('Traffic'),
-    items: [
-      { key: _('Uplink'), value: `${prettyBytes(traffic.data.up)}/s` },
-      { key: _('Downlink'), value: `${prettyBytes(traffic.data.down)}/s` },
-    ],
-  });
-
-  container.replaceChildren(renderedWidget);
-}
-
-async function renderTrafficTotalWidget() {
-  logger.debug('[DASHBOARD]', 'renderTrafficTotalWidget');
-  const trafficTotalWidget = store.get().trafficTotalWidget;
-
-  const container = document.getElementById('dashboard-widget-traffic-total');
-
-  if (!container) {
-    return;
-  }
-
-  if (trafficTotalWidget.loading || trafficTotalWidget.failed) {
-    const renderedWidget = renderWidget({
-      loading: trafficTotalWidget.loading,
-      failed: trafficTotalWidget.failed,
-      title: '',
-      items: [],
-    });
-
-    return container.replaceChildren(renderedWidget);
-  }
-
-  const renderedWidget = renderWidget({
-    loading: trafficTotalWidget.loading,
-    failed: trafficTotalWidget.failed,
-    title: _('Traffic Total'),
-    items: [
-      {
-        key: _('Uplink'),
-        value: String(prettyBytes(trafficTotalWidget.data.uploadTotal)),
-      },
-      {
-        key: _('Downlink'),
-        value: String(prettyBytes(trafficTotalWidget.data.downloadTotal)),
-      },
-    ],
-  });
-
-  container.replaceChildren(renderedWidget);
-}
-
-async function renderSystemInfoWidget() {
-  logger.debug('[DASHBOARD]', 'renderSystemInfoWidget');
-  const systemInfoWidget = store.get().systemInfoWidget;
-
-  const container = document.getElementById('dashboard-widget-system-info');
-
-  if (!container) {
-    return;
-  }
-
-  if (systemInfoWidget.loading || systemInfoWidget.failed) {
-    const renderedWidget = renderWidget({
-      loading: systemInfoWidget.loading,
-      failed: systemInfoWidget.failed,
-      title: '',
-      items: [],
-    });
-
-    return container.replaceChildren(renderedWidget);
-  }
-
-  const renderedWidget = renderWidget({
-    loading: systemInfoWidget.loading,
-    failed: systemInfoWidget.failed,
-    title: _('System info'),
-    items: [
-      {
-        key: _('Active Connections'),
-        value: String(systemInfoWidget.data.connections),
-      },
-      {
-        key: _('Memory Usage'),
-        value: String(prettyBytes(systemInfoWidget.data.memory)),
-      },
-    ],
-  });
-
-  container.replaceChildren(renderedWidget);
-}
-
-async function renderServicesInfoWidget() {
-  logger.debug('[DASHBOARD]', 'renderServicesInfoWidget');
-  const servicesInfoWidget = store.get().servicesInfoWidget;
-
-  const container = document.getElementById('dashboard-widget-service-info');
-
-  if (!container) {
-    return;
-  }
-
-  if (servicesInfoWidget.loading || servicesInfoWidget.failed) {
-    const renderedWidget = renderWidget({
-      loading: servicesInfoWidget.loading,
-      failed: servicesInfoWidget.failed,
-      title: '',
-      items: [],
-    });
-
-    return container.replaceChildren(renderedWidget);
-  }
-
-  const renderedWidget = renderWidget({
-    loading: servicesInfoWidget.loading,
-    failed: servicesInfoWidget.failed,
-    title: _('Services info'),
-    items: [
-      {
-        key: 'Forkop',
-        value: servicesInfoWidget.data.forkopRunning
-          ? _('✔ Running')
-          : _('✘ Stopped'),
-        attributes: {
-          class: servicesInfoWidget.data.forkopRunning
-            ? 'fkp_dashboard-page__widgets-section__item__row--success'
-            : 'fkp_dashboard-page__widgets-section__item__row--error',
-        },
-      },
-      {
-        key: 'Sing-box',
-        value: servicesInfoWidget.data.singbox
-          ? _('✔ Running')
-          : _('✘ Stopped'),
-        attributes: {
-          class: servicesInfoWidget.data.singbox
-            ? 'fkp_dashboard-page__widgets-section__item__row--success'
-            : 'fkp_dashboard-page__widgets-section__item__row--error',
-        },
-      },
-    ],
-  });
-
-  container.replaceChildren(renderedWidget);
-}
-
 async function onStoreUpdate(
   next: StoreType,
   prev: StoreType,
@@ -1826,21 +1959,17 @@ async function onStoreUpdate(
     }
   }
 
-  if (diff.bandwidthWidget) {
-    renderBandwidthWidget();
-  }
-
-  if (diff.trafficTotalWidget) {
-    renderTrafficTotalWidget();
-  }
-
-  if (diff.systemInfoWidget) {
-    renderSystemInfoWidget();
-  }
-
   if (diff.servicesInfoWidget) {
     syncDashboardServiceAvailability();
-    renderServicesInfoWidget();
+  }
+
+  if (
+    diff.bandwidthWidget ||
+    diff.systemInfoWidget ||
+    diff.servicesInfoWidget ||
+    diff.sectionsWidget
+  ) {
+    renderOverviewCards();
   }
 }
 
@@ -1851,6 +1980,11 @@ async function onPageMount() {
   dashboardMounted = true;
   dashboardMountId += 1;
   const mountId = dashboardMountId;
+  overviewHost = Boolean(document.getElementById('dashboard-overview'));
+  if (overviewHost) {
+    void refreshHealth(mountId);
+    healthRefreshTimer = setInterval(() => void refreshHealth(mountId), 10000);
+  }
   const hasRuntimeSnapshot = Boolean(getCachedRuntimeUiState());
 
   if (!hasRuntimeSnapshot) {
@@ -1869,11 +2003,9 @@ async function onPageMount() {
   store.subscribe(onStoreUpdate);
   startActionStateWatcher();
   void renderSectionsWidget();
-  void renderBandwidthWidget();
-  void renderTrafficTotalWidget();
-  void renderSystemInfoWidget();
-  void renderServicesInfoWidget();
+  if (overviewHost) void loadOverviewCounts(mountId);
   syncDashboardServiceAvailability();
+  renderOverviewCards();
 
   if (hasRuntimeSnapshot) {
     void refreshRuntimeUiState({ force: true });
@@ -1883,6 +2015,8 @@ async function onPageMount() {
 function onPageUnmount() {
   dashboardMounted = false;
   dashboardMountId += 1;
+  if (healthRefreshTimer) clearInterval(healthRefreshTimer);
+  healthRefreshTimer = null;
 
   stopDashboardDataUpdates();
   stopActionStateWatcher();

@@ -5,6 +5,8 @@ ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 LIFECYCLE="$ROOT_DIR/forkop/files/usr/lib/service/lifecycle.uc"
 STATE_DIR="$(mktemp -d)"
 trap 'rm -rf "$STATE_DIR"' EXIT HUP INT TERM
+# shellcheck source=tests/helpers/source_checks.sh
+. "$ROOT_DIR/tests/helpers/source_checks.sh"
 
 cat > "$STATE_DIR/fault.uc" <<'UCODE'
 let fs = require("fs");
@@ -39,6 +41,10 @@ function log_message(message, level) {}
 function module_success(path, args) { return true; }
 function cleanup_failed_runtime() { cleaned++; }
 function restore_dnsmasq_reload_config() { return dns_restore_ok; }
+// No stop is requested while these rollbacks run
+// (tests/reload_overtaken_by_stop.sh covers the reload that gives way to one).
+let reload_stop_abandoned = false;
+function reload_gives_way_to_stop(step) { return false; }
 function remove_file(path) { removed_state++; }
 function module_status(path, args) {
     if (args[0] == "snapshot-runtime") {
@@ -68,7 +74,8 @@ function module_status(path, args) {
 UCODE
 
 # Exercise the real production rollback functions with faulting provider calls.
-awk '/^function discard_dpi_snapshot\(\)/ { copy=1 } /^function start_inner\(\)/ { copy=0 } copy { print }' "$LIFECYCLE" >> "$STATE_DIR/fault.uc"
+rollback_source="$(source_between "$LIFECYCLE" '^function discard_dpi_snapshot\(\)' '^function start_inner\(\)')" || exit 1
+printf '%s\n' "$rollback_source" >> "$STATE_DIR/fault.uc"
 
 cat >> "$STATE_DIR/fault.uc" <<'UCODE'
 let plan = { needs_zapret_restart: 1, needs_zapret2_restart: 1, needs_byedpi_restart: 1 };

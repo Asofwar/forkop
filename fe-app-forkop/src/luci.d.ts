@@ -9,7 +9,9 @@ type HtmlAttributes<T extends HtmlTag = 'div'> = Partial<
     'aria-busy'?: string;
     'aria-disabled'?: string;
     'aria-label'?: string;
+    'aria-pressed'?: string;
     'data-latency-section'?: string;
+    'data-view'?: string;
     click?: (event: MouseEvent) => void;
     onclick?: (event: MouseEvent) => void;
   }
@@ -40,6 +42,8 @@ declare global {
   const uci: {
     load: (packages: string | string[]) => Promise<string>;
     unload?: (packages: string | string[]) => void;
+    // Saved but not applied changes of this session, by package.
+    changes?: () => Promise<Record<string, unknown>>;
     sections: (conf: string, type?: string, cb?: () => void) => Promise<T>;
   };
 

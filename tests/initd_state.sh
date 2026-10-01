@@ -7,6 +7,12 @@ INITD_UC="$FORKOP_LIB/service/initd.uc"
 STATE_UC="$FORKOP_LIB/service/state.uc"
 INITD="$ROOT_DIR/forkop/files/etc/init.d/forkop"
 WORK_DIR="$(mktemp -d)"
+# Not the host's explicit stop: it holds reloads off (UC-056).
+export FORKOP_STOP_REQUESTED_FILE="$WORK_DIR/stop.requested"
+# Nor the host's explicit start: a Forkop not started since boot holds them
+# off too (D-15(a)). Here it was started, as by the start in progress below.
+export FORKOP_EXPLICIT_START_FILE="$WORK_DIR/start.explicit"
+: >"$FORKOP_EXPLICIT_START_FILE"
 
 cleanup() {
   rm -rf "$WORK_DIR"
@@ -21,6 +27,9 @@ fail() {
 initd_ucode() {
   ucode -L "$FORKOP_LIB" "$INITD_UC" "$@"
 }
+
+# shellcheck source=tests/helpers/wait.sh
+source "$ROOT_DIR/tests/helpers/wait.sh"
 
 config_file="$WORK_DIR/forkop"
 guard_file="$WORK_DIR/internal-config-change"
@@ -146,10 +155,7 @@ FORKOP_SERVICE_INIT="$retry_service" \
   fail "failed start should schedule an automatic retry"
 [ -s "$retry_pid_file" ] ||
   fail "scheduled automatic retry should record its worker pid"
-for _ in 1 2 3 4 5; do
-  [ -s "$retry_call_file" ] && break
-  sleep 1
-done
+wait_until 30 file_nonempty "$retry_call_file" || true
 grep -Fxq 'retry_start_on_wan_up' "$retry_call_file" ||
   fail "scheduled automatic retry should call the marker-gated retry action"
 [ ! -e "$retry_pid_file" ] ||

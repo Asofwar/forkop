@@ -40,6 +40,14 @@ function isDownloadSectionAction(action, capabilities) {
   }
 }
 
+function isDownloadSection(sec, capabilities) {
+  return (
+    sec?.[".type"] === "section" &&
+    sec.enabled !== "0" &&
+    isDownloadSectionAction(sec.action, capabilities)
+  );
+}
+
 function refreshDownloadSectionChoices(option, capabilities) {
   const sections = option.map?.data?.state?.values?.[UCI_PACKAGE] ?? {};
 
@@ -48,14 +56,87 @@ function refreshDownloadSectionChoices(option, capabilities) {
 
   for (const secName in sections) {
     const sec = sections[secName];
-    if (
-      sec[".type"] === "section" &&
-      sec.enabled !== "0" &&
-      isDownloadSectionAction(sec.action, capabilities)
-    ) {
+    if (isDownloadSection(sec, capabilities)) {
       option.value(secName, sec.label || secName);
     }
   }
+}
+
+// The saved section stays selected when it is disabled, its DPI provider is
+// not installed or it no longer exists: LuCI would otherwise show the first
+// eligible rule and the next Save would re-point DNS or downloads to it. The
+// kept choice is labelled and refused until the user picks another section
+// (UC-008).
+function describeUnavailableSection(sec, name) {
+  if (!sec || sec[".type"] !== "section") {
+    return {
+      label: _("%s (unavailable)").format(name),
+      message: _(
+        "The selected section no longer exists. Choose another section.",
+      ),
+    };
+  }
+
+  const label = sec.label || name;
+  if (sec.enabled === "0") {
+    return {
+      label: _("%s (disabled)").format(label),
+      message: _(
+        "The selected section is disabled. Enable it or choose another section.",
+      ),
+    };
+  }
+
+  // An enabled DPI section is left out only while its provider is missing.
+  if (["zapret", "zapret2", "byedpi"].includes(sec.action)) {
+    return {
+      label: _("%s (provider not installed)").format(label),
+      message: _(
+        "The DPI provider of the selected section is not installed. Install it in Components or choose another section.",
+      ),
+    };
+  }
+
+  return {
+    label: _("%s (unavailable)").format(label),
+    message: _(
+      "The selected section cannot be used here. Choose another section.",
+    ),
+  };
+}
+
+function keepUnavailableSectionChoice(option, value) {
+  const sections = option.map?.data?.state?.values?.[UCI_PACKAGE] ?? {};
+
+  if (!value || option.keylist.includes(value)) {
+    return;
+  }
+
+  option.value(value, describeUnavailableSection(sections[value], value).label);
+}
+
+// The section as this save leaves it. uci.state.values is the config as
+// loaded; uci.get adds the edits staged on this page (a rule removed from
+// the grid), and the Enable checkbox of a grid row is parsed by the same
+// save only after the Settings fields were validated.
+function currentSection(option, name) {
+  const type = uci.get(UCI_PACKAGE, name, ".type");
+  if (type == null) {
+    return null;
+  }
+
+  // Map.lookupOption() needs the rendered page.
+  const enabled = option.map?.root
+    ? option.map.lookupOption("enabled", name)
+    : null;
+  return {
+    ".type": type,
+    label: uci.get(UCI_PACKAGE, name, "label"),
+    action: uci.get(UCI_PACKAGE, name, "action"),
+    enabled: enabled
+      ? enabled[0].formvalue(enabled[1])
+      : uci.get(UCI_PACKAGE, name, "enabled"),
+  };
 }
 
 function configureDownloadSectionOption(option, sectionOption, capabilities) {
@@ -65,8 +146,10 @@ function configureDownloadSectionOption(option, sectionOption, capabilities) {
     return uci.get(UCI_PACKAGE, section_id, sectionOption) || "";
   };
   option.load = function (section_id) {
+    const value = this.cfgvalue(section_id);
     refreshDownloadSectionChoices(this, capabilities);
-    return this.cfgvalue(section_id);
+    keepUnavailableSectionChoice(this, value);
+    return value;
   };
   option.write = function (section_id, value) {
     const normalized = value ? `${value}`.trim() : "";
@@ -81,7 +164,17 @@ function configureDownloadSectionOption(option, sectionOption, capabilities) {
     uci.unset(UCI_PACKAGE, section_id, sectionOption);
   };
   option.validate = function (_section_id, value) {
-    return value ? true : _("Select a section");
+    if (!value) {
+      return _("Select a section");
+    }
+    // Every choice is checked as the page is now, not as it was when the
+    // choices were built: Components, a tab of the same page, can install or
+    // remove the provider (capabilities follow it, UC-152), and the rules
+    // grid can enable, disable or remove the section (UC-008).
+    const sec = currentSection(this, value);
+    return isDownloadSection(sec, capabilities)
+      ? true
+      : describeUnavailableSection(sec, value).message;
   };
 }
 
@@ -105,7 +198,12 @@ function optionListValues(option, section_id) {
     .filter(Boolean);
 }
 
-function configureDnsList(option, choices, defaultValue, validate = main.validateDNS) {
+function configureDnsList(
+  option,
+  choices,
+  defaultValue,
+  validate = main.validateDNS,
+) {
   Object.entries(choices).forEach(([key, label]) => {
     option.value(key, _(label));
   });
@@ -154,9 +252,12 @@ function configureDnsDuration(
   configureDnsFailoverVisibility(option, dnsOption, bootstrapOption);
 }
 
-function createSettingsContent(section, capabilities) {
-  const renderSettings = section.render;
-  section.render = function () {
+// One tab per group of the "settings" UCI section: DNS, Network, Lists and
+// updates, Service. sections: { dns, network, lists, service }.
+function createSettingsContent(sections, capabilities) {
+  const renderSettings = sections.dns.render;
+  // Rarely changed DNS options fold under "Advanced settings".
+  sections.dns.render = function () {
     return Promise.resolve(renderSettings.apply(this, arguments)).then(
       (node) => {
         const first = node.querySelector('[id$="-dns_rewrite_ttl"]');
@@ -198,7 +299,7 @@ function createSettingsContent(section, capabilities) {
       },
     );
   };
-  let o = section.option(
+  let o = sections.dns.option(
     form.ListValue,
     "dns_type",
     _("DNS Protocol Type"),
@@ -210,7 +311,7 @@ function createSettingsContent(section, capabilities) {
   o.default = "udp";
   o.rmempty = false;
 
-  const dnsOption = section.option(
+  const dnsOption = sections.dns.option(
     form.DynamicList,
     "dns_server",
     _("DNS Servers"),
@@ -220,7 +321,7 @@ function createSettingsContent(section, capabilities) {
   );
   configureDnsList(dnsOption, main.DNS_SERVER_OPTIONS, "77.88.8.8");
 
-  const bootstrapOption = section.option(
+  const bootstrapOption = sections.dns.option(
     form.DynamicList,
     "bootstrap_dns_server",
     _("Bootstrap DNS Servers"),
@@ -235,7 +336,7 @@ function createSettingsContent(section, capabilities) {
     main.validateBootstrapDNS,
   );
 
-  o = section.option(
+  o = sections.dns.option(
     form.Value,
     "dns_check_interval",
     _("DNS Check Interval"),
@@ -243,7 +344,7 @@ function createSettingsContent(section, capabilities) {
   );
   configureDnsDuration(o, "10s", dnsOption, bootstrapOption);
 
-  o = section.option(
+  o = sections.dns.option(
     form.Value,
     "dns_recovery_check_interval",
     _("Higher-priority DNS Check"),
@@ -251,7 +352,7 @@ function createSettingsContent(section, capabilities) {
   );
   configureDnsDuration(o, "60s", dnsOption, bootstrapOption);
 
-  o = section.option(
+  o = sections.dns.option(
     form.Value,
     "dns_check_timeout",
     _("DNS Unavailability Timeout"),
@@ -261,7 +362,7 @@ function createSettingsContent(section, capabilities) {
   );
   configureDnsDuration(o, "2s", dnsOption, bootstrapOption);
 
-  o = section.option(
+  o = sections.dns.option(
     form.Value,
     "dns_rewrite_ttl",
     _("DNS Rewrite TTL"),
@@ -282,7 +383,7 @@ function createSettingsContent(section, capabilities) {
     return true;
   };
 
-  o = section.option(form.ListValue, "dns_strategy", _("DNS Strategy"));
+  o = sections.dns.option(form.ListValue, "dns_strategy", _("DNS Strategy"));
   o.value("prefer_ipv4", _("Prefer IPv4"));
   o.value("ipv4_only", _("IPv4 only"));
   o.value("prefer_ipv6", _("Prefer IPv6"));
@@ -290,7 +391,7 @@ function createSettingsContent(section, capabilities) {
   o.default = "prefer_ipv4";
   o.rmempty = false;
 
-  o = section.option(
+  o = sections.dns.option(
     form.Flag,
     "dns_detour_enabled",
     _("DNS through proxy"),
@@ -298,7 +399,7 @@ function createSettingsContent(section, capabilities) {
   );
   configureDownloadViaProxyFlag(o, "dns_detour_section");
 
-  o = section.option(
+  o = sections.dns.option(
     form.ListValue,
     "dns_detour_section",
     _("DNS requests through section"),
@@ -306,7 +407,7 @@ function createSettingsContent(section, capabilities) {
   o.depends("dns_detour_enabled", "1");
   configureDownloadSectionOption(o, "dns_detour_section", capabilities);
 
-  o = section.option(
+  o = sections.network.option(
     widgets.DeviceSelect,
     "source_network_interfaces",
     _("Source Network Interface"),
@@ -343,7 +444,7 @@ function createSettingsContent(section, capabilities) {
     return !isWireless;
   };
 
-  o = section.option(
+  o = sections.network.option(
     form.Flag,
     "enable_output_network_interface",
     _("Enable Output Network Interface"),
@@ -352,7 +453,7 @@ function createSettingsContent(section, capabilities) {
   o.default = "0";
   o.rmempty = false;
 
-  o = section.option(
+  o = sections.network.option(
     widgets.DeviceSelect,
     "output_network_interface",
     _("Output Network Interface"),
@@ -404,7 +505,7 @@ function createSettingsContent(section, capabilities) {
     return !isWireless;
   };
 
-  o = section.option(
+  o = sections.network.option(
     form.Flag,
     "enable_badwan_interface_monitoring",
     _("Interface Monitoring"),
@@ -413,7 +514,7 @@ function createSettingsContent(section, capabilities) {
   o.default = "0";
   o.rmempty = false;
 
-  o = section.option(
+  o = sections.network.option(
     widgets.NetworkSelect,
     "badwan_monitored_interfaces",
     _("Monitored Interfaces"),
@@ -436,7 +537,7 @@ function createSettingsContent(section, capabilities) {
     return true;
   };
 
-  o = section.option(
+  o = sections.network.option(
     form.Value,
     "badwan_reload_delay",
     _("Interface Monitoring Delay"),
@@ -452,7 +553,7 @@ function createSettingsContent(section, capabilities) {
     return true;
   };
 
-  o = section.option(
+  o = sections.service.option(
     form.Flag,
     "enable_yacd",
     _("Enable YACD"),
@@ -461,7 +562,7 @@ function createSettingsContent(section, capabilities) {
   o.default = "0";
   o.rmempty = false;
 
-  o = section.option(
+  o = sections.service.option(
     form.Flag,
     "enable_yacd_wan_access",
     _("Enable YACD WAN Access"),
@@ -473,18 +574,26 @@ function createSettingsContent(section, capabilities) {
   o.default = "0";
   o.rmempty = false;
 
-  o = section.option(
+  o = sections.service.option(
     form.Value,
     "yacd_secret_key",
     _("YACD Secret Key"),
     _(
-      "Secret key for authenticating remote access to YACD when WAN access is enabled.",
+      "Secret of the Clash API controller used by YACD and the Forkop pages. Required: it is generated on installation and protects the controller with or without WAN access.",
     ),
   );
-  o.depends("enable_yacd_wan_access", "1");
+  // Not tied to WAN access: an inactive option would be removed on save,
+  // while sing-box keeps requiring the secret on the LAN (UC-035).
+  o.password = true;
   o.rmempty = false;
+  o.validate = function (section_id, value) {
+    if (!value || !String(value).trim()) {
+      return _("Clash API secret cannot be empty");
+    }
+    return true;
+  };
 
-  o = section.option(
+  o = sections.network.option(
     form.Flag,
     "disable_quic",
     _("Disable QUIC"),
@@ -495,7 +604,7 @@ function createSettingsContent(section, capabilities) {
   o.default = "1";
   o.rmempty = false;
 
-  o = section.option(
+  o = sections.lists.option(
     form.Flag,
     "list_update_enabled",
     _("Enable list updates"),
@@ -504,7 +613,7 @@ function createSettingsContent(section, capabilities) {
   o.default = "1";
   o.rmempty = false;
 
-  o = section.option(
+  o = sections.lists.option(
     form.Value,
     "update_interval",
     _("List Update Frequency"),
@@ -540,7 +649,7 @@ function createSettingsContent(section, capabilities) {
     return _("Use sing-box duration format like 1d, 12h or 30m");
   };
 
-  o = section.option(
+  o = sections.lists.option(
     form.Flag,
     "component_update_check_enabled",
     _("Automatic component update checks"),
@@ -549,7 +658,7 @@ function createSettingsContent(section, capabilities) {
   o.default = "0";
   o.rmempty = false;
 
-  o = section.option(
+  o = sections.lists.option(
     form.Value,
     "component_update_check_interval",
     _("Component update check interval"),
@@ -584,7 +693,7 @@ function createSettingsContent(section, capabilities) {
     return _("Use sing-box duration format like 1d, 12h or 30m");
   };
 
-  o = section.option(
+  o = sections.lists.option(
     form.Value,
     "latency_test_url",
     _("Latency test URL"),
@@ -600,7 +709,7 @@ function createSettingsContent(section, capabilities) {
     return validateLatencyTestUrl(value);
   };
 
-  o = section.option(
+  o = sections.lists.option(
     form.Flag,
     "download_lists_via_proxy",
     _("Download lists through a section"),
@@ -608,7 +717,7 @@ function createSettingsContent(section, capabilities) {
   );
   configureDownloadViaProxyFlag(o, "download_lists_via_proxy_section");
 
-  o = section.option(
+  o = sections.lists.option(
     form.ListValue,
     "download_lists_via_proxy_section",
     _("Download lists through"),
@@ -620,7 +729,7 @@ function createSettingsContent(section, capabilities) {
     capabilities,
   );
 
-  o = section.option(
+  o = sections.lists.option(
     form.Flag,
     "download_components_via_proxy",
     _("Download components through a section"),
@@ -628,7 +737,7 @@ function createSettingsContent(section, capabilities) {
   );
   configureDownloadViaProxyFlag(o, "download_components_via_proxy_section");
 
-  o = section.option(
+  o = sections.lists.option(
     form.ListValue,
     "download_components_via_proxy_section",
     _("Download components through"),
@@ -640,7 +749,7 @@ function createSettingsContent(section, capabilities) {
     capabilities,
   );
 
-  o = section.option(
+  o = sections.network.option(
     form.Flag,
     "dont_touch_dhcp",
     _("Dont Touch My DHCP!"),
@@ -649,7 +758,7 @@ function createSettingsContent(section, capabilities) {
   o.default = "0";
   o.rmempty = false;
 
-  o = section.option(
+  o = sections.service.option(
     form.ListValue,
     "config_path",
     _("Config File Path"),
@@ -657,12 +766,18 @@ function createSettingsContent(section, capabilities) {
       "Select path for sing-box config file. Change this ONLY if you know what you are doing",
     ),
   );
-  o.value("/etc/sing-box/config.json", "Flash (/etc/sing-box/config.json)");
-  o.value("/tmp/sing-box/config.json", "RAM (/tmp/sing-box/config.json)");
+  o.value(
+    "/etc/sing-box/config.json",
+    _("Flash") + " (/etc/sing-box/config.json)",
+  );
+  o.value(
+    "/tmp/sing-box/config.json",
+    _("RAM") + " (/tmp/sing-box/config.json)",
+  );
   o.default = "/etc/sing-box/config.json";
   o.rmempty = false;
 
-  o = section.option(
+  o = sections.service.option(
     form.Value,
     "cache_path",
     _("Cache File Path"),
@@ -670,10 +785,10 @@ function createSettingsContent(section, capabilities) {
       "Select or enter path for sing-box cache file. Change this ONLY if you know what you are doing",
     ),
   );
-  o.value("/tmp/sing-box/cache.db", "RAM (/tmp/sing-box/cache.db)");
+  o.value("/tmp/sing-box/cache.db", _("RAM") + " (/tmp/sing-box/cache.db)");
   o.value(
     "/usr/share/sing-box/cache.db",
-    "Flash (/usr/share/sing-box/cache.db)",
+    _("Flash") + " (/usr/share/sing-box/cache.db)",
   );
   o.default = "/tmp/sing-box/cache.db";
   o.rmempty = false;
@@ -698,23 +813,23 @@ function createSettingsContent(section, capabilities) {
     return true;
   };
 
-  o = section.option(
+  o = sections.service.option(
     form.ListValue,
     "log_level",
     _("Log Level"),
     _("Select the log level for sing-box"),
   );
-  o.value("trace", "Trace");
-  o.value("debug", "Debug");
-  o.value("info", "Info");
-  o.value("warn", "Warn");
-  o.value("error", "Error");
-  o.value("fatal", "Fatal");
-  o.value("panic", "Panic");
+  o.value("trace", _("Trace"));
+  o.value("debug", _("Debug"));
+  o.value("info", _("Info"));
+  o.value("warn", _("Warning"));
+  o.value("error", _("Error"));
+  o.value("fatal", _("Fatal"));
+  o.value("panic", _("Panic"));
   o.default = "warn";
   o.rmempty = false;
 
-  o = section.option(
+  o = sections.network.option(
     form.Flag,
     "exclude_ntp",
     _("Exclude NTP"),

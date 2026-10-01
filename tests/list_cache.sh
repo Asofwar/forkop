@@ -7,6 +7,8 @@ UPDATES_UC="$FORKOP_LIB/components/updates.uc"
 STATE_UC="$FORKOP_LIB/service/state.uc"
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
+# Keep every runtime path, including the free-space probe, inside WORK_DIR.
+export TMP_SING_BOX_FOLDER="$WORK_DIR/tmp-sing-box"
 
 fail() {
   printf 'FAIL: %s\n' "$1" >&2
@@ -277,10 +279,25 @@ for phase in runtime-stage-create runtime-file-write runtime-manifest-write runt
   [ ! -e "$WORK_DIR/quota-generation.stage" ] || fail "runtime failure '$phase' retained stage"
 done
 
-if FORKOP_LIST_DOWNLOAD_MIN_FREE_BYTES=999999999999 quota_cmd commit-runtime-list-generation; then
+# Simulate the /tmp capacity instead of depending on the host disk size.
+mkdir -p "$WORK_DIR/df-bin"
+cat >"$WORK_DIR/df-bin/df" <<'EOF_DF'
+#!/bin/sh
+[ "$1" = "-Pk" ] && [ "$2" = "$TMP_SING_BOX_FOLDER" ] || exit 1
+printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\n'
+printf 'tmpfs 8192 4096 4096 50%% /tmp\n'
+EOF_DF
+chmod +x "$WORK_DIR/df-bin/df"
+if PATH="$WORK_DIR/df-bin:$PATH" FORKOP_LIST_DOWNLOAD_MIN_FREE_BYTES=4194304 \
+  quota_cmd commit-runtime-list-generation; then
   fail "runtime generation committed despite insufficient /tmp capacity"
 fi
 quota_cmd runtime-list-cache-active || fail "runtime active generation was lost after /tmp capacity failure"
+[ "$runtime_before" = "$(md5sum "$WORK_DIR/quota-generation/manifest.json" | cut -d' ' -f1)" ] ||
+  fail "/tmp capacity failure changed active generation"
+PATH="$WORK_DIR/df-bin:$PATH" FORKOP_LIST_DOWNLOAD_MIN_FREE_BYTES=0 \
+  quota_cmd commit-runtime-list-generation ||
+  fail "runtime generation was rejected although simulated /tmp capacity is sufficient"
 
 # Interruption after active -> .previous recovers the old complete generation;
 # the fully written but unpublished stage is discarded.

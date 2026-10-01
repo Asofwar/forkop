@@ -12,12 +12,13 @@ fail() {
   exit 1
 }
 
+# shellcheck source=tests/helpers/source_checks.sh
+source "$ROOT_DIR/tests/helpers/source_checks.sh"
+
 grep -Fq '/forkop/sing-box-extended/latest.json' "$ACTION_UC" ||
   fail "sing-box Extended metadata must come from the Forkop mirror"
-if grep -A12 'function resolve_sing_box_extended_release' "$ACTION_UC" |
-  grep -Fq 'fetch_github'; then
-  fail "sing-box Extended resolver must not fall back to GitHub"
-fi
+source_refute_text "sing-box Extended resolver must not fall back to GitHub" \
+  -F 'fetch_github' "$(source_function "$ACTION_UC" resolve_sing_box_extended_release)"
 
 grep -Fq '"slayer326/forkop"' "$CONSTANTS_UC" ||
   fail "Forkop releases must default to slayer326/forkop"
@@ -30,8 +31,8 @@ grep -Fq 'return fetch_github_release_json(parts[0], parts[1]);' "$ACTION_UC" ||
 grep -Fq 'asset_url: forkop_mirror_url(asset_url)' "$ACTION_UC" ||
   fail "sing-box Extended relative assets must stay on the dependency mirror"
 
-grep -Fq "text: 'Tiny'" "$UPDATES_TS" || fail "Tiny switch is missing"
-grep -Fq "text: 'Extended'" "$UPDATES_TS" || fail "Extended switch is missing"
+grep -Fq "text: _('Install Tiny build')" "$UPDATES_TS" || fail "Tiny switch is missing"
+grep -Fq "text: _('Install Extended build')" "$UPDATES_TS" || fail "Extended switch is missing"
 if grep -Fq "text: 'Stable'" "$UPDATES_TS"; then
   fail "Stable sing-box must not be offered in LuCI"
 fi

@@ -1,14 +1,8 @@
 import { renderButton } from '../../../../partials';
 import {
   renderCircleCheckBigIcon24,
-  renderCircleXIcon24,
-  renderCirclePlayIcon24,
-  renderCircleStopIcon24,
   renderCogIcon24,
   renderDownloadIcon24,
-  renderPauseIcon24,
-  renderPlayIcon24,
-  renderRotateCcwIcon24,
   renderSquareChartGanttIcon24,
 } from '../../../../icons';
 import { insertIf } from '../../../../helpers';
@@ -21,104 +15,21 @@ interface ActionProps {
 }
 
 interface IRenderAvailableActionsProps {
-  restartBlocked: boolean;
-  restart: ActionProps;
-  start: ActionProps;
-  stop: ActionProps;
-  enable: ActionProps;
-  disable: ActionProps;
   globalCheck: ActionProps;
   viewLogs: ActionProps;
   showSingBoxConfig: ActionProps;
   supportReport: ActionProps;
 }
 
+// Engineering evidence under "Technical data". Service control lives on the
+// Overview page.
 export function renderAvailableActions({
-  restartBlocked,
-  restart,
-  start,
-  stop,
-  enable,
-  disable,
   globalCheck,
   viewLogs,
   showSingBoxConfig,
   supportReport,
 }: IRenderAvailableActionsProps) {
   return E('div', { class: 'fkp_diagnostic-page__right-bar__actions' }, [
-    E('b', {}, _('Available actions')),
-    // Restart is hidden in this state, so say why and what to do instead.
-    ...insertIf(restartBlocked, [
-      E('div', { class: 'fkp_diagnostic_alert fkp_diagnostic_alert--error' }, [
-        E('span', { class: 'fkp_diagnostic_alert__icon' }, [
-          renderCircleXIcon24(),
-        ]),
-        E('div', { class: 'fkp_diagnostic_alert__content' }, [
-          E(
-            'b',
-            { class: 'fkp_diagnostic_alert__title' },
-            _('Cannot restart Forkop X'),
-          ),
-          E(
-            'div',
-            { class: 'fkp_diagnostic_alert__description' },
-            _(
-              'Multiple sing-box processes were found or their ownership is unclear. Restart is unavailable; traffic routing was not changed. To stop all sing-box processes, use Stop Forkop X, then start Forkop X again.',
-            ),
-          ),
-        ]),
-      ]),
-    ]),
-    ...insertIf(restart.visible, [
-      renderButton({
-        classNames: ['cbi-button-apply'],
-        onClick: restart.onClick,
-        icon: renderRotateCcwIcon24,
-        text: _('Restart Forkop X'),
-        loading: restart.loading,
-        disabled: restart.disabled,
-      }),
-    ]),
-    ...insertIf(stop.visible, [
-      renderButton({
-        classNames: ['cbi-button-remove'],
-        onClick: stop.onClick,
-        icon: renderCircleStopIcon24,
-        text: _('Stop Forkop X'),
-        loading: stop.loading,
-        disabled: stop.disabled,
-      }),
-    ]),
-    ...insertIf(start.visible, [
-      renderButton({
-        classNames: ['cbi-button-save'],
-        onClick: start.onClick,
-        icon: renderCirclePlayIcon24,
-        text: _('Start Forkop'),
-        loading: start.loading,
-        disabled: start.disabled,
-      }),
-    ]),
-    ...insertIf(disable.visible, [
-      renderButton({
-        classNames: ['cbi-button-remove'],
-        onClick: disable.onClick,
-        icon: renderPauseIcon24,
-        text: _('Disable autostart'),
-        loading: disable.loading,
-        disabled: disable.disabled,
-      }),
-    ]),
-    ...insertIf(enable.visible, [
-      renderButton({
-        classNames: ['cbi-button-save'],
-        onClick: enable.onClick,
-        icon: renderPlayIcon24,
-        text: _('Enable autostart'),
-        loading: enable.loading,
-        disabled: enable.disabled,
-      }),
-    ]),
     ...insertIf(globalCheck.visible, [
       renderButton({
         onClick: globalCheck.onClick,

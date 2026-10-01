@@ -49,6 +49,7 @@ import {
 } from '../../services/runtimeUiState.service';
 import { Forkop } from '../../types';
 import { renderFullUninstall } from './fullUninstall';
+import { confirmAction } from '../../ui/confirmAction';
 
 type UpdateStatus = StoreType['updatesChecks'][Forkop.ComponentName]['status'];
 
@@ -694,7 +695,38 @@ function stopComponentActionStateWatcher() {
   componentActionStateUnsubscribe = null;
 }
 
+const REMOVABLE_COMPONENT_TITLES: Partial<
+  Record<Forkop.ComponentName, string>
+> = {
+  zapret: 'Zapret',
+  zapret2: 'Zapret2',
+  byedpi: 'ByeDPI',
+  zapret_manager: 'Zapret-Manager-Stressozz',
+};
+
+function confirmComponentRemoval(button: ComponentActionButton) {
+  const title =
+    REMOVABLE_COMPONENT_TITLES[button.component] || button.component;
+  const isDpiProvider = ['zapret', 'zapret2', 'byedpi'].includes(
+    button.component,
+  );
+
+  return confirmAction({
+    title: _('Remove %s?').replace('%s', title),
+    message: _('The package is removed from the router.'),
+    consequences: isDpiProvider
+      ? [_('Rules that use this provider stop bypassing DPI')]
+      : undefined,
+    confirmLabel: _('Remove'),
+    danger: true,
+  });
+}
+
 async function handleComponentAction(button: ComponentActionButton) {
+  if (button.action === 'remove' && !(await confirmComponentRemoval(button))) {
+    return;
+  }
+
   if (!beginComponentAction(button)) {
     return;
   }
@@ -877,7 +909,7 @@ function getComponentCards(): ComponentCard[] {
   if (!singBoxTiny) {
     singBoxActions.push({
       key: 'singBoxInstallTiny',
-      text: 'Tiny',
+      text: _('Install Tiny build'),
       icon: renderDownloadIcon24,
       component: 'sing_box',
       action: 'install_tiny',
@@ -886,7 +918,7 @@ function getComponentCards(): ComponentCard[] {
   if (!singBoxExtended) {
     singBoxActions.push({
       key: 'singBoxInstallExtended',
-      text: 'Extended',
+      text: _('Install Extended build'),
       icon: renderDownloadIcon24,
       component: 'sing_box',
       action: 'install_extended',

@@ -85,6 +85,68 @@ function isOutboundDetourTargetSection(section, currentSectionId) {
   );
 }
 
+// Cascade is only valid on Connection rules (config/validator.uc aborts
+// otherwise). The cascade options are hidden in the modal and kept via
+// `retain`, so they are dropped explicitly once the rule stops being one:
+// when the modal changes its action from a Connection action to another.
+// A save that keeps the action keeps them whatever it is (D-22 b); the
+// _hidden_cascade notice says why they fail and offers Clear.
+function isOutboundDetourRuleAction(action) {
+  return ["connection", "proxy", "outbound", "vpn"].includes(
+    `${action || "connection"}`,
+  );
+}
+
+// The action the rule had when the modal loaded it: when these options
+// parse, the action option has already written the chosen one.
+function loadOutboundDetourOption(parentLoad) {
+  return function (section_id) {
+    this.loadedRuleActions = Object.assign({}, this.loadedRuleActions, {
+      [section_id]: uci.get(UCI_PACKAGE, section_id, "action"),
+    });
+    return parentLoad.apply(this, arguments);
+  };
+}
+
+function parseOutboundDetourOption(parentParse) {
+  return function (section_id) {
+    const loaded = this.loadedRuleActions?.[section_id];
+    const action = this.section.formvalue(section_id, "action");
+
+    if (
+      loaded !== undefined &&
+      isOutboundDetourRuleAction(loaded) &&
+      !isOutboundDetourRuleAction(action)
+    ) {
+      return Promise.resolve(this.remove(section_id));
+    }
+
+    return parentParse.apply(this, arguments);
+  };
+}
+
+// DNS rules do not match destination IPs and ports, so these fields are
+// hidden for them. A DNS rule saved as it is keeps what it stores (the Legacy
+// settings notice names it and removes it on request); a rule switched to
+// DNS in the modal drops it.
+function keepHiddenForDnsRule(option) {
+  const remove = option.remove;
+
+  option.load = loadOutboundDetourOption(option.load);
+  option.remove = function (section_id) {
+    if (
+      !this.isActive(section_id) &&
+      this.loadedRuleActions?.[section_id] === "dns" &&
+      this.section.formvalue(section_id, "action") === "dns"
+    ) {
+      return;
+    }
+
+    return remove.apply(this, arguments);
+  };
+  return option;
+}
+
 function getOutboundDetourTargetSections(currentSectionId) {
   return (uci.sections(UCI_PACKAGE, "section") || []).filter((section) =>
     isOutboundDetourTargetSection(section, currentSectionId),
@@ -107,6 +169,207 @@ function refreshOutboundDetourSectionOptionValues(option, sectionId) {
       getUciSectionLabel(targetSection),
     );
   });
+}
+
+// Hidden cascade settings (UC-041, D-22 b). The Cascade editor is gone, but
+// a rule may still keep outbound_detour_enabled/outbound_detour_section from
+// an earlier version or the CLI: the generator still applies them and the
+// validator refuses them when they cannot work
+// (config/validator.uc validate_outbound_detours_rows()).
+const CONNECTION_RULE_ACTIONS = ["connection", "proxy", "outbound", "vpn"];
+
+function ruleSectionFlag(section, key, fallback) {
+  const value =
+    section && section[key] !== undefined && section[key] !== null
+      ? backendOptionText(section[key])
+      : fallback
+        ? "1"
+        : "0";
+
+  return ["1", "true", "yes", "on"].includes(value);
+}
+
+function isConnectionRuleSection(section) {
+  return CONNECTION_RULE_ACTIONS.includes(
+    backendOptionText(section && section.action),
+  );
+}
+
+// Why the validator refuses the cascade of a rule, in its order of checks,
+// or "" when it accepts it.
+function hiddenCascadeProblem(section_id, target) {
+  const rules = {};
+  (uci.sections(UCI_PACKAGE, "section") || []).forEach((item) => {
+    rules[getUciSectionName(item)] = item;
+  });
+  const label = (name) => getUciSectionLabel(rules[name]) || name;
+
+  if (!isConnectionRuleSection(rules[section_id])) {
+    return _("this rule is not a Connection rule");
+  }
+  if (!target) {
+    return _("no transit rule is selected");
+  }
+  if (target === section_id) {
+    return _("the rule cannot use itself");
+  }
+  if (!rules[target]) {
+    return _("the transit rule “%s” no longer exists").format(target);
+  }
+  if (!ruleSectionFlag(rules[target], "enabled", true)) {
+    return _("the transit rule “%s” is disabled").format(label(target));
+  }
+  if (!isConnectionRuleSection(rules[target])) {
+    return _("the transit rule “%s” is not a Connection rule").format(
+      label(target),
+    );
+  }
+
+  const seen = new Set();
+  for (let current = target; current; ) {
+    if (current === section_id) {
+      return _("the rules connect through each other in a loop");
+    }
+    const row = rules[current];
+    if (
+      seen.has(current) ||
+      !row ||
+      !ruleSectionFlag(row, "enabled", true) ||
+      !isConnectionRuleSection(row) ||
+      !ruleSectionFlag(row, "outbound_detour_enabled", false)
+    ) {
+      break;
+    }
+    seen.add(current);
+    current = backendOptionText(row.outbound_detour_section);
+  }
+
+  return "";
+}
+
+// The stored cascade of a rule, or null. The old editor stored
+// outbound_detour_enabled '0' on every Connection rule: that alone is not a
+// setting.
+function hiddenCascadeState(section_id) {
+  const enabled = backendFlag(section_id, "outbound_detour_enabled");
+  const target = backendOptionText(
+    uci.get(UCI_PACKAGE, section_id, "outbound_detour_section"),
+  );
+
+  if (!enabled && !target) {
+    return null;
+  }
+
+  return {
+    enabled,
+    target,
+    targetLabel:
+      getUciSectionLabel(uci.get(UCI_PACKAGE, target)) || target || "—",
+    problem: enabled ? hiddenCascadeProblem(section_id, target) : "",
+  };
+}
+
+function renderHiddenCascadeNotice(option, section_id) {
+  const state = option.cascadeStates ? option.cascadeStates[section_id] : null;
+  const node = E("div", { class: "alert-message warning fkp-legacy-settings" });
+
+  if (!state) {
+    return node;
+  }
+
+  // A role that may not change the configuration learns only that the
+  // setting exists (D-22 b).
+  if (option.map.readonly) {
+    node.append(
+      E(
+        "p",
+        {},
+        _(
+          "This rule has a hidden cascade setting from an earlier version. An administrator can clear it.",
+        ),
+      ),
+    );
+    return node;
+  }
+
+  let description;
+  if (!state.enabled) {
+    description = _(
+      "This rule keeps a switched-off cascade setting from an earlier version (transit rule “%s”). It has no effect.",
+    ).format(state.targetLabel);
+  } else if (state.problem) {
+    description = _(
+      "This rule has a cascade setting from an earlier version, which the editor no longer shows. Applying the configuration fails while it is set: %s.",
+    ).format(state.problem);
+  } else {
+    description = _(
+      "This rule has a cascade setting from an earlier version, which the editor no longer shows: servers of this rule connect through the rule “%s”.",
+    ).format(state.targetLabel);
+  }
+
+  const actions = E("div", { class: "fkp-legacy-settings__actions" });
+  const clear = () => {
+    // Staged like any other edit of the rule: Save keeps it, Dismiss
+    // restores the options (the hidden fields retain what uci holds).
+    uci.unset(UCI_PACKAGE, section_id, "outbound_detour_enabled");
+    uci.unset(UCI_PACKAGE, section_id, "outbound_detour_section");
+    node.textContent = "";
+    node.append(
+      E(
+        "p",
+        {},
+        _("The cascade setting is cleared. Save the rule to keep the change."),
+      ),
+    );
+  };
+  const showActions = () => {
+    actions.textContent = "";
+    actions.append(
+      E(
+        "button",
+        {
+          type: "button",
+          class: "btn cbi-button cbi-button-negative",
+          click: confirm,
+        },
+        _("Clear…"),
+      ),
+    );
+  };
+  const confirm = () => {
+    actions.textContent = "";
+    actions.append(
+      E(
+        "p",
+        {},
+        _(
+          "Clear the cascade setting of this rule? When you save the rule, %s and %s are removed and its servers connect without a transit rule. Nothing else in the rule changes.",
+        ).format("outbound_detour_enabled", "outbound_detour_section"),
+      ),
+      E("div", { class: "fkp-legacy-settings__buttons" }, [
+        E(
+          "button",
+          { type: "button", class: "btn cbi-button", click: showActions },
+          _("Cancel"),
+        ),
+        " ",
+        E(
+          "button",
+          {
+            type: "button",
+            class: "btn cbi-button cbi-button-negative",
+            click: clear,
+          },
+          _("Clear"),
+        ),
+      ]),
+    );
+  };
+
+  showActions();
+  // In an array LuCI adds the text as a text node: the label is a UCI value.
+  node.append(E("p", {}, [description]), actions);
+  return node;
 }
 
 function isDnsDetourTargetSection(section, currentSectionId) {
@@ -147,6 +410,84 @@ function refreshDnsDetourSectionOptionValues(option, sectionId) {
     });
 }
 
+// A select keeps its saved value even when that value is no longer offered:
+// LuCI would show the first choice instead and the next Save would write it
+// without the user noticing. The kept choice is labelled, and validation
+// refuses it until the user picks another value (UC-008).
+function keepUnavailableChoice(option, value, describe) {
+  const key = value == null ? "" : `${value}`;
+
+  option.unavailableChoices = {};
+  if (!key || (option.keylist || []).includes(key)) {
+    return;
+  }
+
+  const unavailable = describe(key);
+  option.value(key, unavailable.label);
+  option.unavailableChoices[key] = unavailable.message;
+}
+
+function unavailableChoiceError(option, value) {
+  const choices = option.unavailableChoices || {};
+  const key = value == null ? "" : `${value}`;
+
+  return Object.prototype.hasOwnProperty.call(choices, key)
+    ? choices[key]
+    : null;
+}
+
+function isActionProviderInstalledForUi(action) {
+  switch (action) {
+    case "zapret":
+      return isZapretInstalledForUi();
+    case "zapret2":
+      return isZapret2InstalledForUi();
+    case "byedpi":
+      return isByedpiInstalledForUi();
+    default:
+      return true;
+  }
+}
+
+function describeUnavailableSection(name) {
+  const target = uci.get(UCI_PACKAGE, name);
+
+  if (!target || target[".type"] !== "section") {
+    return {
+      label: _("%s (unavailable)").format(name),
+      message: _(
+        "The selected section no longer exists. Choose another section.",
+      ),
+    };
+  }
+
+  const label = getUciSectionLabel(target);
+  if (target.enabled === "0") {
+    return {
+      label: _("%s (disabled)").format(label),
+      message: _(
+        "The selected section is disabled. Enable it or choose another section.",
+      ),
+    };
+  }
+
+  if (!isActionProviderInstalledForUi(target.action)) {
+    return {
+      label: _("%s (provider not installed)").format(label),
+      message: _(
+        "The DPI provider of the selected section is not installed. Install it in Components or choose another section.",
+      ),
+    };
+  }
+
+  return {
+    label: _("%s (unavailable)").format(label),
+    message: _(
+      "The selected section cannot be used here. Choose another section.",
+    ),
+  };
+}
+
 function dependsOnRoutingAction(option) {
   ROUTING_ACTIONS.forEach((action) => option.depends("action", action));
   return option;
@@ -158,6 +499,7 @@ function dependsOnRuleConditions(option) {
     "ip_cidr",
     "community_lists",
     "rule_set",
+    "secondary_rule_sets",
     "domain_ip_lists",
     "ports",
   ];
@@ -193,10 +535,13 @@ const NFQWS_REMOTE_VALIDATION_DEBOUNCE_MS = 500;
 const NFQWS_VALIDATION_COMMAND = "/usr/bin/forkop";
 const nfqwsRemoteValidationCache = new Map();
 const nfqwsRemoteValidationInflight = new Map();
+const nfqwsRemoteValidationUnavailable = new Map();
 const nfqws2RemoteValidationCache = new Map();
 const nfqws2RemoteValidationInflight = new Map();
+const nfqws2RemoteValidationUnavailable = new Map();
 const byedpiRemoteValidationCache = new Map();
 const byedpiRemoteValidationInflight = new Map();
+const byedpiRemoteValidationUnavailable = new Map();
 const BYEDPI_LONG_VALUE_OPTIONS = new Set([
   "--max-conn",
   "--conn-ip",
@@ -1362,24 +1707,26 @@ const SettingsDynamicList = form.DynamicList.extend({
     return node;
   },
 
+  // What parse refuses for the items of an active list; the rule modal asks
+  // before anything is written (refuseInvalidModalSave).
+  checkBeforeSave(section_id) {
+    if (typeof this.validateItemsOnSave !== "function") {
+      return true;
+    }
+
+    return this.validateItemsOnSave(
+      this.childType ? this.childOwner(section_id) : section_id,
+      this.formvalue(section_id),
+      this,
+      section_id,
+    );
+  },
+
   parse(section_id) {
-    if (
-      this.isActive(section_id) &&
-      typeof this.validateItemsOnSave === "function"
-    ) {
-      const result = this.validateItemsOnSave(
-        this.childType ? this.childOwner(section_id) : section_id,
-        this.formvalue(section_id),
-        this,
-        section_id,
-      );
+    if (this.isActive(section_id)) {
+      const result = this.checkBeforeSave(section_id);
       if (result !== true) {
-        const title = this.stripTags(this.title).trim();
-        return Promise.reject(
-          new TypeError(
-            `${_('Option "%s" contains an invalid input value.').format(title || this.option)} ${result}`,
-          ),
-        );
+        return rejectInvalidOption(this, section_id, result);
       }
     }
 
@@ -1877,6 +2224,21 @@ const InterfaceSettingsDynamicList = SettingsDynamicList.extend({
       value || text,
     );
   },
+
+  // The backend uses the legacy `list interfaces` only while the rule has
+  // no interface items (config/connections.uc interfaces()). The widget
+  // shows the items only, so an empty widget keeps a legacy list it never
+  // showed; a list the removed items shadowed goes with them.
+  remove(section_id) {
+    const ownerId = this.childOwner(section_id);
+    const hadItems =
+      getChildItemIds(ownerId, this.childType, this.ownerOption).length > 0;
+
+    cleanupRemovedChildItems(ownerId, this.childType, [], this.ownerOption);
+    if (hadItems) {
+      uci.unset(UCI_PACKAGE, section_id, this.option);
+    }
+  },
 });
 
 function urlTestFilterModeChoices() {
@@ -2240,19 +2602,31 @@ function defaultPriorityLevelSettings() {
   };
 }
 
-function randomPriorityGroupId() {
+// A named section for a group: sing-box tags it after the section name, and
+// libuci names an anonymous section after its position in the file, so the
+// tag (and the choice sing-box keeps for it) would change whenever a section
+// before it is added or removed (UC-044).
+function randomChildItemId(prefix) {
   for (let i = 0; i < 100; i += 1) {
     const value = Math.floor(Math.random() * 0xffffffff)
       .toString(16)
       .padStart(8, "0");
-    const id = `pg_${value}`;
+    const id = `${prefix}_${value}`;
 
     if (!uci.get(UCI_PACKAGE, id)) {
       return id;
     }
   }
 
-  return `pg_${Date.now().toString(16)}`;
+  return `${prefix}_${Date.now().toString(16)}`;
+}
+
+function randomPriorityGroupId() {
+  return randomChildItemId("pg");
+}
+
+function randomUrlTestId() {
+  return randomChildItemId("ut");
 }
 
 function addSubscriptionUrlItemOptions(itemSection, options = {}) {
@@ -2301,8 +2675,13 @@ function addSubscriptionUrlItemOptions(itemSection, options = {}) {
   o.depends("download_via_proxy_enabled", "1");
   o.load = function (itemId) {
     const sectionId = parentSectionForItem(itemId);
-    refreshOptionChoices(this, subscriptionDownloadTargetChoices(sectionId));
-    return optionMapValue(this, itemId, "download_via_proxy_section") || "";
+    const value =
+      optionMapValue(this, itemId, "download_via_proxy_section") || "";
+    return ensureActionProvidersAvailabilityLoaded().then(() => {
+      refreshOptionChoices(this, subscriptionDownloadTargetChoices(sectionId));
+      keepUnavailableChoice(this, value, describeUnavailableSection);
+      return value;
+    });
   };
   o.validate = function (itemId, value) {
     const sectionId = parentSectionForItem(itemId);
@@ -2315,7 +2694,7 @@ function addSubscriptionUrlItemOptions(itemSection, options = {}) {
     if (value === sectionId) {
       return _("Current section cannot download its own subscription");
     }
-    return true;
+    return unavailableChoiceError(this, value) || true;
   };
 
   o = itemSection.option(
@@ -3624,9 +4003,11 @@ function showRuleSetSettingsModal(section_id, itemValue, option, widget) {
           ? widget.getValue()
           : getCustomRulesetReferences(section_id),
       );
+      // Built-in rule sets #2 share rule_set_with_subnets but are not part
+      // of this widget: keep them.
       const subnets = new Set(
-        getConfigListValues(section_id, "rule_set_with_subnets").filter((ref) =>
-          refs.includes(ref),
+        getConfigListValues(section_id, "rule_set_with_subnets").filter(
+          (ref) => secondaryRulesetId(ref) || refs.includes(ref),
         ),
       );
 
@@ -3752,11 +4133,11 @@ function getRuleResolvedAction(section_id) {
 function getActionOptionLabel(action) {
   switch (`${action}`) {
     case "block":
-      return "Block";
+      return _("Block");
     case "bypass":
-      return "Bypass";
+      return _("Bypass");
     case "connection":
-      return "Connection";
+      return _("Connection");
     case "dns":
       return "DNS";
     case "vpn":
@@ -3771,39 +4152,84 @@ function getActionOptionLabel(action) {
       return _("JSON outbound");
     case "proxy":
     default:
-      return "Proxy";
+      return _("Proxy");
   }
 }
 
+// DPI providers read as "DPI · <provider>", the same words Monitoring and
+// Diagnostics use for the path of a connection.
 function getRuleActionDisplayValue(section_id) {
   const action = getRuleResolvedAction(section_id);
 
-  if (action === "zapret") {
-    return "Zapret";
-  }
-
-  if (action === "zapret2") {
-    return "Zapret2";
-  }
-
-  if (action === "byedpi") {
-    return "ByeDPI";
+  if (action === "zapret" || action === "zapret2" || action === "byedpi") {
+    return `${_("DPI")} · ${getActionOptionLabel(action)}`;
   }
 
   return getActionOptionLabel(action);
+}
+
+function countConfigValues(section_id, keys) {
+  return keys.reduce((total, key) => {
+    const value = uci.get(UCI_PACKAGE, section_id, key);
+    if (Array.isArray(value)) return total + value.length;
+    return value ? total + main.parseValueList(`${value}`).length : total;
+  }, 0);
+}
+
+// Grid summary: how much the rule matches, without opening the editor. It
+// counts what the backend matches, legacy options included (UC-042).
+function getRuleConditionsSummary(section_id) {
+  const parts = [
+    [
+      _("Lists: %d"),
+      countConfigValues(section_id, [
+        "community_lists",
+        "rule_set",
+        "rule_set_with_subnets",
+        "domain_ip_lists",
+        "remote_domain_lists",
+        "remote_subnet_lists",
+      ]),
+    ],
+    [
+      _("Domains: %d"),
+      main.parseValueList(loadCombinedDomainText(section_id)).length,
+    ],
+    [_("IPs: %d"), backendConditionValues(section_id, "ip_cidr").values.length],
+    [_("Ports: %d"), backendPortValues(section_id).length],
+  ]
+    .filter(([, count]) => count > 0)
+    .map(([label, count]) => label.format(count));
+
+  return parts.length ? parts.join(" · ") : "—";
+}
+
+function getRuleDevicesSummary(section_id) {
+  const only = backendConditionValues(section_id, "source_ip_cidr").values
+    .length;
+  const except = backendConditionValues(section_id, "excluded_source_ip_cidr")
+    .values.length;
+  const forced = countConfigValues(section_id, ["fully_routed_ips"]);
+  const parts = [
+    only ? _("Only: %d").format(only) : "",
+    except ? _("Except: %d").format(except) : "",
+    forced ? _("All traffic: %d").format(forced) : "",
+  ].filter(Boolean);
+
+  return parts.length ? parts.join(" · ") : _("All devices");
 }
 
 function getRuleActionDisplayMarkup(section_id) {
   return getRuleActionDisplayValue(section_id);
 }
 
-function populateActionOptionValues(option) {
+function populateActionOptionValues(option, section_id) {
   delete option.keylist;
   delete option.vallist;
 
   option.value("connection", getActionOptionLabel("connection"));
-  option.value("bypass", "Bypass");
-  option.value("block", "Block");
+  option.value("bypass", getActionOptionLabel("bypass"));
+  option.value("block", getActionOptionLabel("block"));
   option.value("dns", "DNS");
   if (isZapretInstalledForUi()) {
     option.value("zapret", getActionOptionLabel("zapret"));
@@ -3814,10 +4240,903 @@ function populateActionOptionValues(option) {
   if (isByedpiInstalledForUi()) {
     option.value("byedpi", getActionOptionLabel("byedpi"));
   }
+
+  // A DPI rule whose provider is missing keeps its action (UC-008).
+  const configured = section_id ? getRuleConfiguredAction(section_id) : null;
+  keepUnavailableChoice(
+    option,
+    ["zapret", "zapret2", "byedpi"].includes(configured) ? configured : null,
+    (action) => ({
+      label: _("%s (not installed)").format(getActionOptionLabel(action)),
+      message: _(
+        "%s is not installed. Install it in Components or choose another action.",
+      ).format(getActionOptionLabel(action)),
+    }),
+  );
 }
 
 function getConfigListValues(section_id, key) {
   return normalizeOptionValues(uci.get(UCI_PACKAGE, section_id, key));
+}
+
+// Rule conditions read the way the backend reads them for sing-box and nft
+// (core/common.uc, config/rule.uc, routing/rule_conditions.uc), so the
+// editor shows and keeps what the rule actually matches (UC-043).
+
+// core/common.uc option(): a list reads as its items joined by a space.
+function backendOptionText(value) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  return Array.isArray(value) ? value.join(" ") : `${value}`;
+}
+
+// core/common.uc bool_option().
+function backendFlag(section_id, key) {
+  return ["1", "true", "yes", "on"].includes(
+    backendOptionText(uci.get(UCI_PACKAGE, section_id, key)),
+  );
+}
+
+// config/rule.uc text_list_values(value, "comma-space"): comments cut at
+// // or #, items separated by spaces, commas and line breaks.
+function backendTextListValues(value) {
+  const result = [];
+
+  backendOptionText(value)
+    .split("\n")
+    .forEach((line) => {
+      line
+        .replace(/\s*\/\/[^\n]*$/, "")
+        .replace(/\s*#[^\n]*$/, "")
+        .replace(/[ ,]/g, "\n")
+        .split("\n")
+        .forEach((item) => {
+          const normalized = item.replace(/\r/g, "").trim();
+          if (normalized) {
+            result.push(normalized);
+          }
+        });
+    });
+
+  return result;
+}
+
+// Text mode: the rule reads <key> from <key>_text and ignores the list.
+function conditionTextMode(section_id, key) {
+  return (
+    backendFlag(section_id, `${key}_text_mode`) ||
+    backendFlag(section_id, "conditions_text_mode")
+  );
+}
+
+// routing/rule_conditions.uc legacy_condition_values(): where the backend
+// takes the values of a condition from, and the values. `domain` as an
+// option is the combined domain text, not a legacy exact domain.
+function backendConditionValues(section_id, key) {
+  const raw = uci.get(UCI_PACKAGE, section_id, key);
+  const textValues = backendTextListValues(
+    uci.get(UCI_PACKAGE, section_id, `${key}_text`),
+  );
+
+  if (conditionTextMode(section_id, key)) {
+    return { source: "text", values: textValues };
+  }
+  if (Array.isArray(raw) && raw.length) {
+    return { source: "list", values: raw.map((item) => `${item}`) };
+  }
+
+  const optionValues =
+    Array.isArray(raw) || key === "domain" ? [] : backendTextListValues(raw);
+  if (optionValues.length) {
+    return { source: "option", values: optionValues };
+  }
+
+  return { source: textValues.length ? "text" : "none", values: textValues };
+}
+
+// config/rule.uc normalize_port_condition_value() accepts it.
+function backendPortValue(value) {
+  const number = (text) =>
+    /^[0-9]+$/.test(text) && Number(text) >= 1 && Number(text) <= 65535
+      ? Number(text)
+      : null;
+  const trimmed = `${value || ""}`.trim();
+  const dash = trimmed.indexOf("-");
+
+  if (dash < 0) {
+    return number(trimmed) !== null;
+  }
+
+  const start = number(trimmed.slice(0, dash));
+  const end = number(trimmed.slice(dash + 1));
+  return start !== null && end !== null && start <= end;
+}
+
+// The generator and nft match `ports` and the port values of the legacy
+// ports_text together.
+function backendPortValues(section_id) {
+  const seen = new Set();
+  const result = [];
+  const add = (value) => {
+    const trimmed = `${value}`.trim();
+    if (trimmed && !seen.has(trimmed)) {
+      seen.add(trimmed);
+      result.push(trimmed);
+    }
+  };
+
+  getConfigListValues(section_id, "ports").forEach(add);
+  backendTextListValues(uci.get(UCI_PACKAGE, section_id, "ports_text"))
+    .filter(backendPortValue)
+    .forEach(add);
+  return result;
+}
+
+// Legacy rule settings (UC-042, UC-043, D-6 a). Earlier versions, the podkop
+// migration and the CLI can leave conditions in forms the editor does not
+// write: lists and *_text options the backend still reads, text mode
+// switches, a legacy interface list, downloaded lists and podkop matchers the
+// generator refuses. The rule modal lists them with what the backend does
+// with them. On request it converts what has an exact equivalent into the
+// options the editor writes, so that the generated sing-box configuration
+// and the firewall sets stay the same; nothing is migrated silently.
+
+// routing/rule_conditions.uc legacy_condition_values() keys, with their
+// prefix in the combined domain text.
+const LEGACY_TEXT_CONDITIONS = [
+  ["domain", "full"],
+  ["domain_keyword", "keyword"],
+  ["domain_regex", "regex"],
+  ["ip_cidr", ""],
+  ["source_ip_cidr", ""],
+  ["excluded_source_ip_cidr", ""],
+];
+// singbox/generator.uc unsupported_matcher_key().
+const UNSUPPORTED_LEGACY_MATCHERS = [
+  "subnet",
+  "subnet_text",
+  "local_domain_lists",
+  "local_subnet_lists",
+];
+// config/connections.uc interfaces() and interface_domain_resolver_*().
+const LEGACY_INTERFACE_OPTIONS = [
+  "interfaces",
+  "interface",
+  "interface_settings",
+  "domain_resolver_enabled",
+  "domain_resolver_dns_type",
+  "domain_resolver_dns_server",
+];
+
+// Downloaded lists match destinations the editor has no field for.
+function hasRemoteRuleLists(section_id) {
+  return ["remote_domain_lists", "remote_subnet_lists"].some(
+    (key) =>
+      normalizeOptionValues(uci.get(UCI_PACKAGE, section_id, key)).length,
+  );
+}
+
+// The Device filter field is shown only with a destination condition; while
+// it is hidden, a save of the rule drops what it holds (sourceIpOption.remove).
+function hiddenDeviceFilterDropped(option, section_id) {
+  const field = option.section.children.find(
+    (child) => child.option === "source_ip_cidr",
+  );
+
+  return (
+    Boolean(field) &&
+    !field.isActive(section_id) &&
+    !hasRemoteRuleLists(section_id)
+  );
+}
+
+function hasStoredOption(section_id, key) {
+  const value = uci.get(UCI_PACKAGE, section_id, key);
+  return Array.isArray(value)
+    ? value.length > 0
+    : value !== null && value !== undefined && `${value}` !== "";
+}
+
+function displayOptionValue(value) {
+  return (Array.isArray(value) ? value : `${value ?? ""}`.split("\n"))
+    .map((item) => `${item}`.trim())
+    .filter(Boolean)
+    .join(", ");
+}
+
+// An item the combined text reads back as it is (config/rule.uc
+// text_list_values(): spaces and commas separate items, // and # start a
+// comment).
+function isTextListItem(value) {
+  const text = `${value}`;
+  return /^[^\s,#]+$/.test(text) && !text.includes("//");
+}
+
+// nft reads a text mode switch with int() (config/rule.uc
+// legacy_condition_csv_value()), sing-box with bool_option().
+function textModeSwitchAgrees(section_id, key) {
+  const text = backendOptionText(uci.get(UCI_PACKAGE, section_id, key));
+  return backendFlag(section_id, key) === (Number.parseInt(text, 10) === 1);
+}
+
+// config/connections.uc bool_value(): ucode compares null, "", false and 0
+// equal to "", so they read as unset; a list or an object is never true.
+function connectionsBoolValue(value, fallback) {
+  if ([null, undefined, "", false, 0].includes(value)) {
+    return Boolean(fallback);
+  }
+
+  return (
+    typeof value !== "object" && ["1", "true", "yes", "on"].includes(`${value}`)
+  );
+}
+
+// config/connections.uc interface_domain_resolver_*() for an interface of the
+// legacy list: its interface_settings entry, else the rule options. Null when
+// an interface item cannot hold the same values.
+function legacyInterfaceSettings(section_id, name) {
+  let settings = {};
+  try {
+    const parsed = JSON.parse(
+      backendOptionText(uci.get(UCI_PACKAGE, section_id, "interface_settings")),
+    );
+    const entry = parsed && !Array.isArray(parsed) ? parsed[name] : null;
+    if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+      settings = entry;
+    }
+  } catch (_error) {
+    settings = {};
+  }
+
+  const value = (key, fallback) => {
+    const item = settings[key];
+    return item === null || item === undefined ? fallback : item;
+  };
+  const enabled = value("domain_resolver_enabled", "");
+  const result = {
+    domain_resolver_enabled: connectionsBoolValue(
+      enabled,
+      connectionsBoolValue(
+        uci.get(UCI_PACKAGE, section_id, "domain_resolver_enabled"),
+        false,
+      ),
+    )
+      ? "1"
+      : "0",
+    domain_resolver_dns_type: value(
+      "domain_resolver_dns_type",
+      backendOptionText(
+        uci.get(UCI_PACKAGE, section_id, "domain_resolver_dns_type"),
+      ) || "udp",
+    ),
+    domain_resolver_dns_server: value(
+      "domain_resolver_dns_server",
+      backendOptionText(
+        uci.get(UCI_PACKAGE, section_id, "domain_resolver_dns_server"),
+      ) || "8.8.8.8",
+    ),
+  };
+
+  return [
+    enabled,
+    result.domain_resolver_dns_type,
+    result.domain_resolver_dns_server,
+  ].some((item) => typeof item === "object") ||
+    result.domain_resolver_dns_type === "" ||
+    result.domain_resolver_dns_server === ""
+    ? null
+    : Object.fromEntries(
+        Object.entries(result).map(([key, item]) => [key, `${item}`]),
+      );
+}
+
+// What the rule keeps in a legacy form, what the backend does with it, and
+// the conversion: { changes: { option: value or null to remove }, items:
+// interface items to add, unusedDevices: device options removed because the
+// rule does not use them }. Null when the rule has nothing legacy.
+// `devicesUnused`: the Device filter field is hidden, so a save drops what it
+// holds (hiddenDeviceFilterDropped()).
+function legacyRuleConditions(section_id, devicesUnused) {
+  const findings = [];
+  const blockers = [];
+  const changes = {};
+  const items = [];
+  const unusedDevices = [];
+  const raw = (key) => uci.get(UCI_PACKAGE, section_id, key);
+  const has = (key) => hasStoredOption(section_id, key);
+  const found = (key, effect) => {
+    if (has(key)) {
+      findings.push({ key, value: displayOptionValue(raw(key)), effect });
+    }
+  };
+  const drop = (key) => {
+    if (has(key)) {
+      changes[key] = null;
+    }
+  };
+  const cannotConvert = (key, value) =>
+    blockers.push(
+      _("%s: “%s” cannot be written in the current form unchanged").format(
+        key,
+        value,
+      ),
+    );
+  const dns = backendOptionText(raw("action")) === "dns";
+  const used = _("used by the rule");
+  const noEffect = _("has no effect");
+  const domainsAndDevicesOnly = _(
+    "ignored: DNS rules match domains and devices only",
+  );
+  const domainItems = [];
+  let domainLegacy = false;
+
+  ["conditions_text_mode"]
+    .concat(LEGACY_TEXT_CONDITIONS.map(([key]) => `${key}_text_mode`))
+    .forEach((key) => {
+      if (has(key) && !textModeSwitchAgrees(section_id, key)) {
+        blockers.push(
+          _("%s is “%s”: sing-box and the firewall read it differently").format(
+            key,
+            backendOptionText(raw(key)),
+          ),
+        );
+      }
+    });
+
+  found(
+    "conditions_text_mode",
+    backendFlag(section_id, "conditions_text_mode")
+      ? _("turns text mode on for domains, IPs and devices")
+      : noEffect,
+  );
+  drop("conditions_text_mode");
+
+  LEGACY_TEXT_CONDITIONS.forEach(([key, prefix]) => {
+    const textKey = `${key}_text`;
+    const modeKey = `${key}_text_mode`;
+    const value = raw(key);
+    // `option domain` (the combined text), `option ip_cidr` and the device
+    // lists are what the editor writes.
+    const legacyValue =
+      key === "domain" || key === "ip_cidr"
+        ? Array.isArray(value) && value.length > 0
+        : Boolean(prefix) && has(key);
+    const textMode = conditionTextMode(section_id, key);
+    const valueIgnored =
+      textMode && (key === "domain" ? legacyValue : has(key));
+
+    // A DNS rule keeps destination IPs in any form, unused.
+    if (dns && key === "ip_cidr") {
+      [key, textKey, modeKey].forEach((item) => {
+        found(item, domainsAndDevicesOnly);
+        drop(item);
+      });
+      return;
+    }
+
+    if (!legacyValue && !valueIgnored && !has(textKey) && !has(modeKey)) {
+      return;
+    }
+
+    const current = backendConditionValues(section_id, key);
+    if (textMode) {
+      found(textKey, _("used by the rule: text mode is on"));
+      if (valueIgnored) {
+        found(key, _("ignored: text mode reads %s instead").format(textKey));
+      }
+    } else {
+      if (legacyValue) {
+        found(key, used);
+      }
+      found(
+        textKey,
+        ["list", "option"].includes(current.source)
+          ? _("ignored: %s is used instead").format(key)
+          : used,
+      );
+    }
+    found(
+      modeKey,
+      backendFlag(section_id, modeKey) ? _("turns text mode on") : noEffect,
+    );
+    if (key === "source_ip_cidr" && devicesUnused) {
+      // sing-box and nft match devices only together with a destination
+      // condition; the rule has none, so its devices go instead of moving
+      // to a field the save would clear.
+      [key, textKey, modeKey].filter(has).forEach((item) => {
+        unusedDevices.push(item);
+        drop(item);
+      });
+      return;
+    }
+    drop(textKey);
+    drop(modeKey);
+
+    const values = current.values.map((item) => `${item}`);
+    const source = current.source === "text" ? textKey : key;
+    if (prefix) {
+      // Legacy exact, keyword and regex conditions become full:, keyword:
+      // and regex: items of the combined text, in the generator's order.
+      domainLegacy = true;
+      values.forEach((item) => {
+        if (
+          !isTextListItem(item) ||
+          item.toLowerCase().startsWith(`${prefix}:`)
+        ) {
+          cannotConvert(source, item);
+        }
+        domainItems.push(`${prefix}:${item}`);
+      });
+      drop(key);
+      return;
+    }
+
+    if (key === "ip_cidr") {
+      let text = "";
+      if (current.source === "text") {
+        text = backendOptionText(raw(textKey));
+      } else if (current.source === "list") {
+        values
+          .filter((item) => !isTextListItem(item))
+          .forEach((item) => {
+            cannotConvert(key, item);
+          });
+        text = values.join("\n");
+      } else if (current.source === "option") {
+        text = `${value}`;
+      }
+
+      if (Array.isArray(value) || text !== backendOptionText(value)) {
+        const analysis = analyzeIpCidrText(text);
+        if (!analysis.valid) {
+          blockers.push(`${key}: ${analysis.message.replace(/\n/g, "; ")}`);
+        }
+        changes[key] = text || null;
+      }
+      return;
+    }
+
+    // Device lists: the editor keeps them as lists.
+    if (["text", "none"].includes(current.source)) {
+      if (values.length) {
+        changes[key] = values;
+      } else {
+        drop(key);
+      }
+    }
+  });
+
+  ["domain_suffix", "domain_suffix_text"].forEach((key) => {
+    domainLegacy = domainLegacy || has(key);
+    found(key, used);
+  });
+  domainLegacy = domainLegacy || has("domain_suffix_text_mode");
+  found("domain_suffix_text_mode", noEffect);
+
+  if (domainLegacy) {
+    // routing/rule_conditions.uc combined_domain_source_values(): the
+    // combined text, domain_suffix_text, then the domain_suffix items.
+    const suffixValue = raw("domain_suffix");
+    const suffixItems = (
+      Array.isArray(suffixValue)
+        ? suffixValue.map((item) => `${item}`)
+        : `${suffixValue ?? ""}`.trim().split(" ")
+    ).filter((item) => item !== "");
+    suffixItems
+      .filter((item) => !isTextListItem(item))
+      .forEach((item) => cannotConvert("domain_suffix", item));
+
+    const domainValue = raw("domain");
+    const text = [
+      ...domainItems,
+      ...(typeof domainValue === "string" && domainValue ? [domainValue] : []),
+      ...(has("domain_suffix_text")
+        ? [backendOptionText(raw("domain_suffix_text"))]
+        : []),
+      ...suffixItems,
+    ].join("\n");
+    const analysis = analyzeDomainSuffixText(text);
+    if (!analysis.valid) {
+      blockers.push(`domain: ${analysis.message.replace(/\n/g, "; ")}`);
+    }
+    if (Array.isArray(domainValue) || text !== `${domainValue ?? ""}`) {
+      changes.domain = text || null;
+    } else {
+      delete changes.domain;
+    }
+    ["domain_suffix", "domain_suffix_text", "domain_suffix_text_mode"].forEach(
+      drop,
+    );
+  }
+
+  if (dns) {
+    ["ports", "ports_text"].forEach((key) => {
+      found(key, domainsAndDevicesOnly);
+      drop(key);
+    });
+  } else if (has("ports_text")) {
+    found("ports_text", _("used by the rule together with %s").format("ports"));
+    // singbox/generator.uc add_port_matchers(): the ports items, then the
+    // ports of ports_text, each value once.
+    const portsValue = raw("ports");
+    const listItems = Array.isArray(portsValue)
+      ? portsValue.map((item) => `${item}`)
+      : `${portsValue ?? ""}`.trim().split(" ");
+    const seen = new Set();
+    const ports = [];
+    listItems
+      .concat(backendTextListValues(raw("ports_text")).filter(backendPortValue))
+      .forEach((item) => {
+        const trimmed = item.trim();
+        if (trimmed && !seen.has(trimmed)) {
+          seen.add(trimmed);
+          ports.push(trimmed);
+        }
+      });
+    if (!ports.length) {
+      drop("ports");
+    } else if (
+      !Array.isArray(portsValue) ||
+      !stringArraysEqual(portsValue, ports)
+    ) {
+      changes.ports = ports;
+    }
+    drop("ports_text");
+  }
+
+  found("fully_routed_ips_text", _("ignored: the backend does not read it"));
+  drop("fully_routed_ips_text");
+
+  if (has("interfaces") || has("interface")) {
+    const interfacesValue = raw("interfaces");
+    const names = Array.isArray(interfacesValue)
+      ? interfacesValue.map((item) => `${item}`)
+      : [`${has("interfaces") ? interfacesValue : raw("interface")}`];
+    const connection = isConnectionRuleSection(
+      uci.get(UCI_PACKAGE, section_id),
+    );
+    const withItems =
+      getChildItemIds(section_id, "section_interface").length > 0;
+    let effect = _(
+      "used by the rule; the Network Interface field does not show it",
+    );
+    if (!connection) {
+      effect = _("ignored: only Connection rules use interfaces");
+    } else if (withItems) {
+      effect = _("ignored: the rule has interface items");
+    }
+
+    LEGACY_INTERFACE_OPTIONS.forEach((key) =>
+      found(
+        key,
+        key === "interface" && has("interfaces")
+          ? _("ignored: %s is used instead").format("interfaces")
+          : effect,
+      ),
+    );
+    if (connection && !withItems) {
+      const seen = new Set();
+      names.forEach((name) => {
+        const settings = legacyInterfaceSettings(section_id, name);
+        if (!name.trim() || seen.has(name) || !settings) {
+          cannotConvert("interfaces", name);
+        }
+        seen.add(name);
+        items.push({ name, settings });
+      });
+    }
+    LEGACY_INTERFACE_OPTIONS.forEach(drop);
+  }
+
+  found(
+    "remote_domain_lists",
+    _("downloaded by the list update; the rule matches the domains in them"),
+  );
+  found(
+    "remote_subnet_lists",
+    dns
+      ? _("ignored: DNS rules match domains only")
+      : _(
+          "downloaded by the list update; the rule matches the addresses in them",
+        ),
+  );
+
+  const unsupported = UNSUPPORTED_LEGACY_MATCHERS.filter(has);
+  unsupported.forEach((key) =>
+    found(
+      key,
+      _(
+        "no longer supported: the configuration cannot be applied while the rule is enabled",
+      ),
+    ),
+  );
+
+  if (!findings.length) {
+    return null;
+  }
+
+  const conversion =
+    Object.keys(changes).length || items.length
+      ? { changes, items, unusedDevices }
+      : null;
+  return {
+    findings,
+    blockers: conversion ? blockers : [],
+    conversion,
+    unsupported,
+    remote: ["remote_domain_lists", "remote_subnet_lists"].some(has),
+  };
+}
+
+// What a conversion sets, adds and removes, as the preview lists it.
+function legacyConversionPreview(conversion) {
+  const lines = [];
+  const removed = [];
+
+  Object.entries(conversion.changes).forEach(([key, value]) => {
+    if (value === null) {
+      removed.push(key);
+    } else {
+      lines.push(_("set %s: %s").format(key, displayOptionValue(value)));
+    }
+  });
+  conversion.items.forEach(({ name, settings }) => {
+    lines.push(
+      settings.domain_resolver_enabled === "1"
+        ? _("add the interface item %s with the DNS resolver %s %s").format(
+            name,
+            settings.domain_resolver_dns_type,
+            settings.domain_resolver_dns_server,
+          )
+        : _("add the interface item %s").format(name),
+    );
+  });
+  if (conversion.unusedDevices.length) {
+    lines.push(
+      _(
+        "%s: not moved to the Device filter, the rule has no destination condition and does not use it",
+      ).format(conversion.unusedDevices.join(", ")),
+    );
+  }
+  if (removed.length) {
+    lines.push(_("remove %s").format(removed.join(", ")));
+  }
+
+  return lines;
+}
+
+// Staged like any other edit of the rule: Save keeps it, Dismiss restores
+// the rule and drops the added items. Returns the ids of the added items.
+function applyLegacyConditionConversion(section_id, conversion) {
+  Object.entries(conversion.changes).forEach(([key, value]) => {
+    if (value === null) {
+      uci.unset(UCI_PACKAGE, section_id, key);
+    } else {
+      uci.set(UCI_PACKAGE, section_id, key, value);
+    }
+  });
+  return conversion.items.map(({ name, settings }) => {
+    const itemId = uci.add(UCI_PACKAGE, "section_interface");
+    uci.set(UCI_PACKAGE, itemId, "section", section_id);
+    uci.set(UCI_PACKAGE, itemId, "name", name);
+    Object.entries(settings).forEach(([key, value]) => {
+      uci.set(UCI_PACKAGE, itemId, key, value);
+    });
+    return itemId;
+  });
+}
+
+function renderLegacyConditionsNotice(option, section_id) {
+  const node = E("div", { class: "alert-message warning fkp-legacy-settings" });
+
+  // A role that may not change the configuration learns only that legacy
+  // settings exist: downloaded list URLs may carry credentials.
+  if (option.map.readonly) {
+    node.append(
+      E(
+        "p",
+        {},
+        _(
+          "This rule keeps settings in a legacy form from an earlier version. An administrator can review and convert them.",
+        ),
+      ),
+    );
+    return node;
+  }
+
+  // In an array LuCI adds a line as a text node, not as HTML: the lines
+  // carry UCI values.
+  const listItems = (lines) =>
+    E(
+      "ul",
+      {},
+      lines.map((line) => E("li", {}, [line])),
+    );
+  const actionButton = (label, className, click) =>
+    E(
+      "button",
+      {
+        type: "button",
+        class: ["btn", "cbi-button", className].filter(Boolean).join(" "),
+        click,
+      },
+      label,
+    );
+
+  const render = (message) => {
+    const state = legacyRuleConditions(section_id);
+    const actions = E("div", { class: "fkp-legacy-settings__actions" });
+    const confirm = (question, lines, note, label, className, apply) => {
+      actions.textContent = "";
+      actions.append(
+        E("p", {}, question),
+        lines.length ? listItems(lines) : "",
+        note ? E("p", {}, note) : "",
+        E("div", { class: "fkp-legacy-settings__buttons" }, [
+          actionButton(_("Cancel"), "", () => render(message)),
+          " ",
+          actionButton(label, className, apply),
+        ]),
+      );
+    };
+
+    node.textContent = "";
+    if (message) {
+      node.append(E("p", {}, message));
+    }
+    if (!state) {
+      return;
+    }
+
+    node.append(
+      E(
+        "p",
+        {},
+        _(
+          "This rule keeps settings in a legacy form, from an earlier version, the podkop migration or the command line. The fields show what the rule matches; the legacy options stay as they are until you convert or remove them.",
+        ),
+      ),
+      E(
+        "ul",
+        {},
+        state.findings.map(({ key, value, effect }) =>
+          E("li", {}, [
+            E("code", {}, key),
+            value ? ` = ${value}` : "",
+            ` — ${effect}`,
+          ]),
+        ),
+      ),
+    );
+    if (state.remote) {
+      node.append(
+        E(
+          "p",
+          {},
+          _(
+            "The editor has no field for downloaded lists: they cannot be converted and stay as they are.",
+          ),
+        ),
+      );
+    }
+    if (state.blockers.length) {
+      node.append(
+        E(
+          "p",
+          {},
+          _(
+            "The legacy conditions cannot be converted without changing what the rule matches:",
+          ),
+        ),
+        listItems(state.blockers),
+      );
+    }
+
+    if (state.conversion && !state.blockers.length) {
+      actions.append(
+        actionButton(_("Convert…"), "cbi-button-action", () => {
+          // What the save keeps depends on the form as it is now (a field
+          // hidden by its dependencies drops its option).
+          const current = legacyRuleConditions(
+            section_id,
+            hiddenDeviceFilterDropped(option, section_id),
+          );
+          if (!current || !current.conversion || current.blockers.length) {
+            render(message);
+            return;
+          }
+
+          const { conversion } = current;
+          confirm(
+            _(
+              "Convert the legacy settings of this rule? When you save the rule:",
+            ),
+            legacyConversionPreview(conversion),
+            _(
+              "The rule matches the same traffic as before. Closing the window without saving discards the conversion.",
+            ),
+            _("Convert"),
+            "cbi-button-action",
+            () => {
+              const itemIds = applyLegacyConditionConversion(
+                section_id,
+                conversion,
+              );
+              // The Network Interface field lists the items the legacy
+              // list became, so that saving or editing it keeps them, and
+              // after them what was added there in this window; an
+              // interface added there again is the converted item.
+              const interfaces = option.section.children.find(
+                (child) => child.option === "interfaces",
+              );
+              const widget =
+                itemIds.length && interfaces
+                  ? interfaces.getUIElement(section_id)
+                  : null;
+              if (widget) {
+                const converted = new Set(
+                  conversion.items.map(({ name }) => name),
+                );
+                widget.setValue(
+                  itemIds.concat(
+                    normalizeDynamicListItems(widget.getValue()).filter(
+                      (value) =>
+                        !converted.has(
+                          childItemInputValue(
+                            section_id,
+                            value,
+                            "section_interface",
+                            "name",
+                          ).trim(),
+                        ),
+                    ),
+                  ),
+                );
+              }
+              render(
+                _(
+                  "The legacy settings are converted. Save the rule to keep the change.",
+                ),
+              );
+            },
+          );
+        }),
+        " ",
+      );
+    }
+    if (state.unsupported.length) {
+      const { unsupported } = state;
+      actions.append(
+        actionButton(_("Remove…"), "cbi-button-negative", () =>
+          confirm(
+            _(
+              "Remove %s from this rule? When you save the rule, it matches without them and the configuration can be applied again. Nothing else in the rule changes.",
+            ).format(unsupported.join(", ")),
+            [],
+            "",
+            _("Remove"),
+            "cbi-button-negative",
+            () => {
+              unsupported.forEach((key) =>
+                uci.unset(UCI_PACKAGE, section_id, key),
+              );
+              render(
+                _(
+                  "The unsupported settings are removed. Save the rule to keep the change.",
+                ),
+              );
+            },
+          ),
+        ),
+      );
+    }
+    node.append(actions);
+  };
+
+  render("");
+  return node;
 }
 
 function stringArraysEqual(left, right) {
@@ -4119,6 +5438,17 @@ function cleanupRemovedChildItems(
         cleanupPriorityLevelsForGroup(itemId);
       }
       uci.remove(UCI_PACKAGE, itemId);
+    }
+  });
+}
+
+// The dashboard keeps its URLTest settings for a rule in urltest_override
+// sections (rule, tag). They live and die with the rule: a later rule with
+// the same name must not inherit them (UC-151).
+function cleanupRuleUrlTestOverrides(section_id) {
+  uci.sections(UCI_PACKAGE, "urltest_override").forEach((item) => {
+    if (`${item.rule || ""}` === section_id) {
+      uci.remove(UCI_PACKAGE, item[".name"]);
     }
   });
 }
@@ -4890,18 +6220,33 @@ function appendUniqueDomainTextValues(textValue, values) {
   return [base, ...additions].filter(Boolean).join("\n");
 }
 
+// The legacy exact (`list domain` or domain_text), keyword and regex
+// conditions the backend uses (routing/rule_conditions.uc: text mode reads
+// the *_text option, otherwise a list shadows it); in the combined text they
+// are full:, keyword: and regex:.
+function legacyDomainConditionValues(section_id, key, prefix) {
+  return normalizeOptionValues(
+    backendConditionValues(section_id, key).values,
+  ).map((item) =>
+    /^(full|keyword|regex):/.test(item) ? item : `${prefix}:${item}`,
+  );
+}
+
+function legacyExactDomainValues(section_id) {
+  return legacyDomainConditionValues(section_id, "domain", "full");
+}
+
 function loadCombinedDomainText(section_id) {
+  const domainValue = uci.get(UCI_PACKAGE, section_id, "domain");
   const textValue =
-    uci.get(UCI_PACKAGE, section_id, "domain") ||
+    (typeof domainValue === "string" ? domainValue : "") ||
     uci.get(UCI_PACKAGE, section_id, "domain_suffix_text");
   const values = [
+    ...legacyExactDomainValues(section_id),
     ...domainValuesWithPrefix(section_id, "domain_suffix", ""),
-    ...domainValuesWithPrefix(section_id, "domain_keyword", "keyword"),
-    ...domainValuesWithPrefix(section_id, "domain_regex", "regex"),
+    ...legacyDomainConditionValues(section_id, "domain_keyword", "keyword"),
+    ...legacyDomainConditionValues(section_id, "domain_regex", "regex"),
     ...domainTextValuesWithPrefix(section_id, "domain_suffix", ""),
-    ...domainTextValuesWithPrefix(section_id, "domain", "full"),
-    ...domainTextValuesWithPrefix(section_id, "domain_keyword", "keyword"),
-    ...domainTextValuesWithPrefix(section_id, "domain_regex", "regex"),
   ];
 
   return appendUniqueDomainTextValues(textValue, values);
@@ -5010,7 +6355,9 @@ function normalizeNfqwsStrategyValue(value) {
 function getCachedNfqwsRemoteValidation(value) {
   const normalized = normalizeNfqwsStrategyValue(value);
   return normalized.length
-    ? nfqwsRemoteValidationCache.get(normalized) || null
+    ? nfqwsRemoteValidationCache.get(normalized) ||
+        nfqwsRemoteValidationUnavailable.get(normalized) ||
+        null
     : null;
 }
 
@@ -5044,7 +6391,9 @@ function buildNfqwsRemoteValidationFallback(error) {
 
   return {
     valid: false,
-    message: _("Backend validation failed: %s").format(message),
+    message: _(
+      "Backend validation unavailable: %s. Save again to retry.",
+    ).format(message.replace(/[.\s]+$/, "")),
     needle: "",
     needles: [],
   };
@@ -5079,6 +6428,10 @@ function validateNfqwsStrategyRemotely(value) {
       const payload = JSON.parse(
         (result && result.stdout ? result.stdout : "{}").trim() || "{}",
       );
+      if (typeof payload.valid !== "boolean") {
+        throw new Error();
+      }
+      nfqwsRemoteValidationUnavailable.delete(normalized);
       return cacheNfqwsRemoteValidation(normalized, {
         valid: payload.valid === true,
         message: payload.message || "",
@@ -5090,12 +6443,14 @@ function validateNfqwsStrategyRemotely(value) {
             : [],
       });
     })
-    .catch((error) =>
-      cacheNfqwsRemoteValidation(
-        normalized,
-        buildNfqwsRemoteValidationFallback(error),
-      ),
-    )
+    // A failed call is not a verdict: it is not cached, so the next
+    // validation or Save asks the backend again (UC-040). Until then the
+    // field says the check is unavailable.
+    .catch((error) => {
+      const fallback = buildNfqwsRemoteValidationFallback(error);
+      nfqwsRemoteValidationUnavailable.set(normalized, fallback);
+      return fallback;
+    })
     .finally(() => {
       nfqwsRemoteValidationInflight.delete(normalized);
     });
@@ -5455,7 +6810,9 @@ function normalizeNfqws2StrategyValue(value) {
 function getCachedNfqws2RemoteValidation(value) {
   const normalized = normalizeNfqws2StrategyValue(value);
   return normalized.length
-    ? nfqws2RemoteValidationCache.get(normalized) || null
+    ? nfqws2RemoteValidationCache.get(normalized) ||
+        nfqws2RemoteValidationUnavailable.get(normalized) ||
+        null
     : null;
 }
 
@@ -5489,7 +6846,9 @@ function buildNfqws2RemoteValidationFallback(error) {
 
   return {
     valid: false,
-    message: _("Backend validation failed: %s").format(message),
+    message: _(
+      "Backend validation unavailable: %s. Save again to retry.",
+    ).format(message.replace(/[.\s]+$/, "")),
     needle: "",
     needles: [],
   };
@@ -5524,6 +6883,10 @@ function validateNfqws2StrategyRemotely(value) {
       const payload = JSON.parse(
         (result && result.stdout ? result.stdout : "{}").trim() || "{}",
       );
+      if (typeof payload.valid !== "boolean") {
+        throw new Error();
+      }
+      nfqws2RemoteValidationUnavailable.delete(normalized);
       return cacheNfqws2RemoteValidation(normalized, {
         valid: payload.valid === true,
         message: payload.message || "",
@@ -5535,12 +6898,14 @@ function validateNfqws2StrategyRemotely(value) {
             : [],
       });
     })
-    .catch((error) =>
-      cacheNfqws2RemoteValidation(
-        normalized,
-        buildNfqws2RemoteValidationFallback(error),
-      ),
-    )
+    // A failed call is not a verdict: it is not cached, so the next
+    // validation or Save asks the backend again (UC-040). Until then the
+    // field says the check is unavailable.
+    .catch((error) => {
+      const fallback = buildNfqws2RemoteValidationFallback(error);
+      nfqws2RemoteValidationUnavailable.set(normalized, fallback);
+      return fallback;
+    })
     .finally(() => {
       nfqws2RemoteValidationInflight.delete(normalized);
     });
@@ -5867,7 +7232,9 @@ function normalizeByedpiStrategyValue(value) {
 function getCachedByedpiRemoteValidation(value) {
   const normalized = normalizeByedpiStrategyValue(value);
   return normalized.length
-    ? byedpiRemoteValidationCache.get(normalized) || null
+    ? byedpiRemoteValidationCache.get(normalized) ||
+        byedpiRemoteValidationUnavailable.get(normalized) ||
+        null
     : null;
 }
 
@@ -5901,7 +7268,9 @@ function buildByedpiRemoteValidationFallback(error) {
 
   return {
     valid: false,
-    message: _("Backend validation failed: %s").format(message),
+    message: _(
+      "Backend validation unavailable: %s. Save again to retry.",
+    ).format(message.replace(/[.\s]+$/, "")),
     needle: "",
     needles: [],
   };
@@ -5936,6 +7305,10 @@ function validateByedpiStrategyRemotely(value) {
       const payload = JSON.parse(
         (result && result.stdout ? result.stdout : "{}").trim() || "{}",
       );
+      if (typeof payload.valid !== "boolean") {
+        throw new Error();
+      }
+      byedpiRemoteValidationUnavailable.delete(normalized);
       return cacheByedpiRemoteValidation(normalized, {
         valid: payload.valid === true,
         message: payload.message || "",
@@ -5947,12 +7320,14 @@ function validateByedpiStrategyRemotely(value) {
             : [],
       });
     })
-    .catch((error) =>
-      cacheByedpiRemoteValidation(
-        normalized,
-        buildByedpiRemoteValidationFallback(error),
-      ),
-    )
+    // A failed call is not a verdict: it is not cached, so the next
+    // validation or Save asks the backend again (UC-040). Until then the
+    // field says the check is unavailable.
+    .catch((error) => {
+      const fallback = buildByedpiRemoteValidationFallback(error);
+      byedpiRemoteValidationUnavailable.set(normalized, fallback);
+      return fallback;
+    })
     .finally(() => {
       byedpiRemoteValidationInflight.delete(normalized);
     });
@@ -6274,7 +7649,13 @@ function configureTextareaOption(option, analyzer, remoteValidationAttacher) {
       if (typeof analyzer === "function") {
         attachAnnotatedTextarea(textarea, analyzer);
       }
-      if (typeof remoteValidationAttacher === "function") {
+      // The ACL grants the backend parser only with write access: for a
+      // read-only session, which cannot save, the call fails and the field
+      // would ask to save again.
+      if (
+        typeof remoteValidationAttacher === "function" &&
+        !(this.readonly != null ? this.readonly : this.map.readonly)
+      ) {
         remoteValidationAttacher(this, section_id, textarea);
       }
     }
@@ -6308,15 +7689,17 @@ function getOptionTextarea(option, section_id) {
     : null;
 }
 
-function rejectStrategyValidation(option, section_id, message) {
+function invalidOptionError(option, section_id, message) {
   const title = option.stripTags(option.title).trim();
   const error = message || option.getValidationError(section_id) || "";
 
-  return Promise.reject(
-    new TypeError(
-      `${_('Option "%s" contains an invalid input value.').format(title || option.option)} ${error}`,
-    ),
+  return new TypeError(
+    `${_('Option "%s" contains an invalid input value.').format(title || option.option)} ${error}`,
   );
+}
+
+function rejectInvalidOption(option, section_id, message) {
+  return Promise.reject(invalidOptionError(option, section_id, message));
 }
 
 function parseStrategyWithRemoteValidation(section_id, config) {
@@ -6328,7 +7711,7 @@ function parseStrategyWithRemoteValidation(section_id, config) {
     }
 
     if (!this.isValid(section_id)) {
-      return rejectStrategyValidation(
+      return rejectInvalidOption(
         this,
         section_id,
         this.getValidationError(section_id),
@@ -6357,7 +7740,7 @@ function parseStrategyWithRemoteValidation(section_id, config) {
       }
 
       if (!result || result.valid !== true) {
-        return rejectStrategyValidation(
+        return rejectInvalidOption(
           this,
           section_id,
           result && result.message ? result.message : config.invalidMessage,
@@ -6375,27 +7758,81 @@ function parseStrategyWithRemoteValidation(section_id, config) {
   return Promise.resolve();
 }
 
-function parseNfqwsStrategyOnSave(section_id) {
-  return parseStrategyWithRemoteValidation.call(this, section_id, {
+// A failed backend check is shown on the strategy field until the next Save,
+// which asks the backend again instead of refusing on the old failure.
+function forgetUnavailableStrategyValidations() {
+  nfqwsRemoteValidationUnavailable.clear();
+  nfqws2RemoteValidationUnavailable.clear();
+  byedpiRemoteValidationUnavailable.clear();
+}
+
+// The backend check of a changed strategy runs inside parse, after the other
+// options of the rule have been written or removed; the rule modal runs it
+// before anything is written (refuseInvalidModalSave). A passed check is
+// cached, so parse does not ask the backend again.
+function checkStrategyBeforeSave(section_id, config) {
+  const cval = this.cfgvalue(section_id);
+  const fval = this.formvalue(section_id);
+  const fvalString = fval == null ? "" : `${fval}`;
+
+  if (!this.forcewrite && (cval == null ? "" : `${cval}`) === fvalString) {
+    return true;
+  }
+
+  return config.remoteValidate(fvalString).then((result) => {
+    const textarea = getOptionTextarea(this, section_id);
+
+    if (textarea) {
+      refreshAnnotatedTextareaValidation(this, section_id, textarea);
+    }
+
+    if (typeof this.triggerValidation === "function") {
+      this.triggerValidation(section_id);
+    }
+
+    return result && result.valid === true
+      ? true
+      : (result && result.message) || config.invalidMessage;
+  });
+}
+
+function nfqwsStrategyValidation() {
+  return {
     remoteValidate: validateNfqwsStrategyRemotely,
     invalidMessage: _(
       "Unable to validate the NFQWS strategy through the backend parser.",
     ),
-  });
+  };
 }
 
-function parseNfqws2StrategyOnSave(section_id) {
-  return parseStrategyWithRemoteValidation.call(this, section_id, {
+function nfqws2StrategyValidation() {
+  return {
     remoteValidate: validateNfqws2StrategyRemotely,
     invalidMessage: _(
       "Unable to validate the NFQWS2 strategy through the backend parser.",
     ),
-  });
+  };
+}
+
+function parseNfqwsStrategyOnSave(section_id) {
+  return parseStrategyWithRemoteValidation.call(
+    this,
+    section_id,
+    nfqwsStrategyValidation(),
+  );
+}
+
+function parseNfqws2StrategyOnSave(section_id) {
+  return parseStrategyWithRemoteValidation.call(
+    this,
+    section_id,
+    nfqws2StrategyValidation(),
+  );
 }
 
 function addDynamicConditionField(section, config) {
   const o = section.taboption(
-    "conditions",
+    "match",
     form.DynamicList,
     config.key,
     config.label,
@@ -6411,6 +7848,10 @@ function addDynamicConditionField(section, config) {
   }
 
   o.load = function (section_id) {
+    if (typeof config.load === "function") {
+      return config.load(section_id);
+    }
+
     const values = getConfigListValues(section_id, config.key);
     if (values.length) {
       return values;
@@ -6426,12 +7867,22 @@ function addDynamicConditionField(section, config) {
     uci.unset(UCI_PACKAGE, section_id, `${config.key}_text_mode`);
   };
 
+  // A field the user cleared drops the values it showed, the legacy text
+  // included; a hidden field drops the list only.
+  o.remove = function (section_id) {
+    if (!this.isActive(section_id)) {
+      uci.unset(UCI_PACKAGE, section_id, config.key);
+    } else if (normalizeOptionValues(this.cfgvalue(section_id)).length) {
+      this.write(section_id, []);
+    }
+  };
+
   return o;
 }
 
 function addLocalDeviceSubnetDynamicField(section, config) {
   const o = section.taboption(
-    "conditions",
+    "devices",
     form.DynamicList,
     config.key,
     config.label,
@@ -6449,18 +7900,45 @@ function addLocalDeviceSubnetDynamicField(section, config) {
     return validation.valid ? true : validation.message;
   };
   o.load = function (section_id) {
-    const values = getConfigListValues(section_id, config.key);
-    if (values.length) {
-      return values;
+    // fully_routed_ips has no legacy text form: the backend reads the list only.
+    if (!config.legacyText) {
+      return getConfigListValues(section_id, config.key);
     }
 
-    const legacyText = uci.get(UCI_PACKAGE, section_id, `${config.key}_text`);
-    return legacyText ? main.parseValueList(legacyText) : [];
+    // conditions_text_mode also keeps the other conditions in *_text
+    // options, so a list written here would not be read: read-only until
+    // the rule is converted.
+    this.readonly = backendFlag(section_id, "conditions_text_mode")
+      ? true
+      : null;
+
+    const current = backendConditionValues(section_id, config.key);
+    return current.source === "list"
+      ? getConfigListValues(section_id, config.key)
+      : current.values;
   };
   o.write = function (section_id, value) {
     writeListOption(section_id, config.key, value);
     uci.unset(UCI_PACKAGE, section_id, `${config.key}_text`);
     uci.unset(UCI_PACKAGE, section_id, `${config.key}_text_mode`);
+  };
+  // A field the user cleared drops the values it showed wherever they are
+  // stored; a field that showed nothing, or a read-only one, changes
+  // nothing. A hidden field drops the list only.
+  o.remove = function (section_id) {
+    if (!this.isActive(section_id)) {
+      uci.unset(UCI_PACKAGE, section_id, config.key);
+      return;
+    }
+
+    if (
+      this.readonly === true ||
+      !normalizeOptionValues(this.cfgvalue(section_id)).length
+    ) {
+      return;
+    }
+
+    this.write(section_id, []);
   };
   o.renderWidget = function (section_id, _option_index, cfgvalue) {
     return localDevices.createLocalDeviceDynamicListWidget(
@@ -6478,7 +7956,7 @@ function addTextConditionField(section, config) {
   const legacyTextOptionName =
     config.legacyTextOptionName || `${config.key}_text`;
   const o = section.taboption(
-    "conditions",
+    "match",
     form.TextValue,
     optionName,
     config.label,
@@ -6489,19 +7967,49 @@ function addTextConditionField(section, config) {
   o.wrap = "soft";
   o.textarea = true;
   o.modalonly = true;
-  if (config.textAnalyze) {
-    o.validate = function (_section_id, value) {
-      const analysis = config.textAnalyze(value);
-      return analysis.valid ? true : analysis.message;
+  const validateText = config.textAnalyze
+    ? function (_section_id, value) {
+        const analysis = config.textAnalyze(value);
+        return analysis.valid ? true : analysis.message;
+      }
+    : config.textValidate;
+  if (validateText) {
+    // The field may show legacy values it cannot hold as they are (a
+    // keyword with a space, a regex with a comma, a value the backend
+    // ignores). Left unchanged it is not written (form.js parse()), so it
+    // does not refuse the save of the rule; editing it asks to fix them.
+    o.validate = function (section_id, value) {
+      if (
+        this.showsLegacyText?.[section_id] &&
+        `${value ?? ""}` === `${this.cfgvalue(section_id) ?? ""}`
+      ) {
+        return true;
+      }
+
+      return validateText.apply(this, arguments);
     };
-  } else if (config.textValidate) {
-    o.validate = config.textValidate;
   }
   configureTextareaOption(o, config.textAnalyze);
 
-  o.load = function (section_id) {
+  const loadTextConditionValue = function (section_id) {
     if (typeof config.loadText === "function") {
       return config.loadText(section_id);
+    }
+
+    // conditions_text_mode also keeps the other conditions in *_text
+    // options, so this option would not be read: read-only until the rule
+    // is converted.
+    this.readonly =
+      config.lockedByConditionsTextMode &&
+      backendFlag(section_id, "conditions_text_mode")
+        ? true
+        : null;
+
+    // Text mode reads the legacy text and ignores the option.
+    if (conditionTextMode(section_id, config.key)) {
+      return valuesToText(
+        uci.get(UCI_PACKAGE, section_id, legacyTextOptionName),
+      );
     }
 
     const textValue =
@@ -6512,6 +8020,16 @@ function addTextConditionField(section, config) {
     }
 
     return valuesToText(uci.get(UCI_PACKAGE, section_id, config.key));
+  };
+
+  o.load = function (section_id) {
+    const text = loadTextConditionValue.call(this, section_id);
+    const stored = uci.get(UCI_PACKAGE, section_id, optionName);
+
+    this.showsLegacyText = Object.assign({}, this.showsLegacyText, {
+      [section_id]: text !== (typeof stored === "string" ? stored : ""),
+    });
+    return text;
   };
 
   o.write = function (section_id, value) {
@@ -6536,6 +8054,20 @@ function addTextConditionField(section, config) {
     }
   };
 
+  // A field the user cleared drops the values it showed wherever they are
+  // stored; a field that showed nothing, or a read-only one, changes
+  // nothing. A hidden field drops its option only.
+  o.remove = function (section_id) {
+    if (!this.isActive(section_id)) {
+      uci.unset(UCI_PACKAGE, section_id, optionName);
+    } else if (
+      this.readonly !== true &&
+      `${this.cfgvalue(section_id) || ""}`.trim()
+    ) {
+      this.write(section_id, "");
+    }
+  };
+
   return o;
 }
 
@@ -6543,8 +8075,8 @@ function loadRulesetValues(option) {
   delete option.keylist;
   delete option.vallist;
 
-  Object.entries(main.DOMAIN_LIST_OPTIONS).forEach(([key, label]) => {
-    option.value(key, _(label));
+  Object.keys(main.DOMAIN_LIST_OPTIONS).forEach((key) => {
+    option.value(key, main.domainListLabel(key));
   });
 }
 
@@ -6624,6 +8156,24 @@ function getSecondaryRulesetReferences(section_id) {
       .map(secondaryRulesetId)
       .filter(Boolean),
   );
+}
+
+// Built-in rule sets #2 match IP addresses, which a DNS rule cannot use, and
+// the backend rejects such a rule. Values the rule already has stay visible
+// for DNS and block that action until the user removes them, so they are
+// neither dropped nor kept silently (UC-046).
+function hasSecondaryRulesetsForDns(option, section_id) {
+  if (!getSecondaryRulesetReferences(section_id).length) {
+    return false;
+  }
+
+  const found =
+    option.map && typeof option.map.lookupOption === "function"
+      ? option.map.lookupOption("secondary_rule_sets", section_id)
+      : null;
+  const value = found ? found[0].formvalue(found[1]) : null;
+
+  return value == null || normalizeDynamicListItems(value).length > 0;
 }
 
 function normalizeReferenceForExtensionCheck(value) {
@@ -6765,24 +8315,36 @@ function writeCustomRulesetReferences(section_id, values) {
 
 function writeDnsRulesetReferences(section_id, values) {
   writeListOption(section_id, "rule_set", uniqueDynamicListItems(values));
-  uci.unset(UCI_PACKAGE, section_id, "rule_set_with_subnets");
+  // Hidden Built-in rule sets #2 are not the DNS widget's to drop (UC-046).
+  writeListOption(
+    section_id,
+    "rule_set_with_subnets",
+    getConfigListValues(section_id, "rule_set_with_subnets").filter((value) =>
+      secondaryRulesetId(value),
+    ),
+  );
   uci.unset(UCI_PACKAGE, section_id, RULE_SET_ITEM_SETTINGS_KEY);
 }
 
 function createSectionContent(section) {
   let o;
 
-  section.tab("settings", _("Settings"));
-  section.tab("conditions", _("Conditions"));
+  // The rule editor walks through steps: what the rule is, where traffic
+  // goes, what it matches, which devices it covers, and rare options.
+  section.tab("basic", _("Basics"));
+  section.tab("target", _("Where to"));
+  section.tab("match", _("What"));
+  section.tab("devices", _("For whom"));
+  section.tab("advanced", _("Advanced"));
 
-  o = section.taboption("settings", form.Flag, "enabled", _("Enable"));
+  o = section.taboption("basic", form.Flag, "enabled", _("Enable"));
   o.default = "1";
   o.rmempty = false;
   o.editable = true;
   o.width = "6rem";
 
   o = section.taboption(
-    "settings",
+    "basic",
     form.DummyValue,
     "_action_display",
     _("Action"),
@@ -6795,10 +8357,34 @@ function createSectionContent(section) {
   o.textvalue = function (section_id) {
     return getRuleActionDisplayValue(section_id);
   };
-  o.width = "7rem";
+  o.width = "8rem";
 
   o = section.taboption(
-    "settings",
+    "basic",
+    form.DummyValue,
+    "_conditions_summary",
+    _("Conditions"),
+  );
+  o.modalonly = false;
+  o.cfgvalue = function (section_id) {
+    return getRuleConditionsSummary(section_id);
+  };
+  o.textvalue = o.cfgvalue;
+
+  o = section.taboption(
+    "basic",
+    form.DummyValue,
+    "_devices_summary",
+    _("Devices"),
+  );
+  o.modalonly = false;
+  o.cfgvalue = function (section_id) {
+    return getRuleDevicesSummary(section_id);
+  };
+  o.textvalue = o.cfgvalue;
+
+  o = section.taboption(
+    "basic",
     form.Value,
     "label",
     _("Section name"),
@@ -6811,7 +8397,7 @@ function createSectionContent(section) {
   };
 
   o = section.taboption(
-    "settings",
+    "basic",
     form.ListValue,
     "action",
     _("Action"),
@@ -6826,13 +8412,25 @@ function createSectionContent(section) {
   };
   o.load = function (section_id) {
     return ensureActionProvidersAvailabilityLoaded().then(() => {
-      populateActionOptionValues(this);
+      populateActionOptionValues(this, section_id);
       return this.cfgvalue(section_id);
     });
   };
+  o.validate = function (section_id, value) {
+    const unavailable = unavailableChoiceError(this, value);
+    if (unavailable) {
+      return unavailable;
+    }
+    if (value === "dns" && hasSecondaryRulesetsForDns(this, section_id)) {
+      return _(
+        "Built-in rule sets #2 are not supported for DNS rules. Remove them on the What tab or choose another action.",
+      );
+    }
+    return true;
+  };
 
   o = section.taboption(
-    "settings",
+    "target",
     form.ListValue,
     "dns_type",
     _("DNS protocol"),
@@ -6845,7 +8443,7 @@ function createSectionContent(section) {
   o.modalonly = true;
 
   o = section.taboption(
-    "settings",
+    "target",
     form.Value,
     "dns_server",
     _("DNS server"),
@@ -6864,7 +8462,7 @@ function createSectionContent(section) {
   };
 
   o = section.taboption(
-    "settings",
+    "target",
     form.Flag,
     "dns_detour_enabled",
     _("DNS through section"),
@@ -6876,7 +8474,7 @@ function createSectionContent(section) {
   o.modalonly = true;
 
   o = section.taboption(
-    "settings",
+    "target",
     form.ListValue,
     "dns_detour_section",
     _("DNS requests through section"),
@@ -6885,15 +8483,24 @@ function createSectionContent(section) {
   o.rmempty = false;
   o.modalonly = true;
   o.load = function (section_id) {
-    refreshDnsDetourSectionOptionValues(this, section_id);
-    return uci.get(UCI_PACKAGE, section_id, "dns_detour_section") || "";
+    const value = uci.get(UCI_PACKAGE, section_id, "dns_detour_section") || "";
+    // DPI sections are offered while their provider is installed: build the
+    // list once availability is known, as the action list does.
+    return ensureActionProvidersAvailabilityLoaded().then(() => {
+      refreshDnsDetourSectionOptionValues(this, section_id);
+      keepUnavailableChoice(this, value, describeUnavailableSection);
+      return value;
+    });
   };
   o.validate = function (_section_id, value) {
-    return value ? true : _("Select a section");
+    if (!value) {
+      return _("Select a section");
+    }
+    return unavailableChoiceError(this, value) || true;
   };
 
   o = section.taboption(
-    "settings",
+    "target",
     form.TextValue,
     "nfqws_opt",
     _("NFQWS Strategy"),
@@ -6937,10 +8544,17 @@ function createSectionContent(section) {
     return analysis.valid ? true : analysis.message;
   };
   o.parse = parseNfqwsStrategyOnSave;
+  o.checkBeforeSave = function (section_id) {
+    return checkStrategyBeforeSave.call(
+      this,
+      section_id,
+      nfqwsStrategyValidation(),
+    );
+  };
   configureTextareaOption(o, analyzeNfqwsStrategy, attachNfqwsRemoteValidation);
 
   o = section.taboption(
-    "settings",
+    "target",
     form.TextValue,
     "nfqws2_opt",
     _("NFQWS2 Strategy"),
@@ -6976,6 +8590,13 @@ function createSectionContent(section) {
     return analysis.valid ? true : analysis.message;
   };
   o.parse = parseNfqws2StrategyOnSave;
+  o.checkBeforeSave = function (section_id) {
+    return checkStrategyBeforeSave.call(
+      this,
+      section_id,
+      nfqws2StrategyValidation(),
+    );
+  };
   configureTextareaOption(
     o,
     analyzeNfqws2Strategy,
@@ -6983,7 +8604,7 @@ function createSectionContent(section) {
   );
 
   o = section.taboption(
-    "settings",
+    "target",
     form.TextValue,
     "byedpi_cmd_opts",
     _("ByeDPI Strategy"),
@@ -7018,10 +8639,16 @@ function createSectionContent(section) {
     const analysis = analyzeByedpiStrategy(value);
     return analysis.valid ? true : analysis.message;
   };
+  o.checkBeforeSave = function (section_id) {
+    return checkStrategyBeforeSave.call(this, section_id, {
+      remoteValidate: validateByedpiStrategyRemotely,
+      invalidMessage: _("Invalid ByeDPI strategy"),
+    });
+  };
   configureTextareaOption(o, analyzeByedpiStrategy);
 
   o = section.taboption(
-    "settings",
+    "target",
     form.DynamicList,
     "selector_proxy_links",
     _("Connection URL"),
@@ -7046,7 +8673,7 @@ function createSectionContent(section) {
   outboundNameSourceOptions.set("selector_proxy_links", o);
 
   o = section.taboption(
-    "settings",
+    "target",
     SettingsDynamicList,
     "subscription_url",
     _("Subscription URL"),
@@ -7094,7 +8721,7 @@ function createSectionContent(section) {
   };
 
   o = section.taboption(
-    "settings",
+    "target",
     InterfaceSettingsDynamicList,
     "interfaces",
     _("Network Interface"),
@@ -7135,7 +8762,7 @@ function createSectionContent(section) {
   outboundNameSourceOptions.set("interfaces", o);
 
   o = section.taboption(
-    "settings",
+    "target",
     ButtonAddSettingsDynamicList,
     "outbound_jsons",
     _("JSON outbound"),
@@ -7162,7 +8789,7 @@ function createSectionContent(section) {
   outboundNameSourceOptions.set("outbound_jsons", o);
 
   o = section.taboption(
-    "settings",
+    "target",
     ButtonAddSettingsDynamicList,
     "urltest",
     _("URLTest"),
@@ -7175,6 +8802,7 @@ function createSectionContent(section) {
   o.childType = "urltest";
   o.childValueOption = "name";
   o.childDefaults = urlTestChildDefaults();
+  o.createId = () => randomUrlTestId();
   o.renderItemSettingsModal = showUrlTestSettingsModal;
   o.validateItemsOnSave = function (section_id, values) {
     return validateUrlTestItemsBeforeSave(section_id, values, this);
@@ -7221,7 +8849,7 @@ function createSectionContent(section) {
   sectionGroupSourceOptions.set("urltest", o);
 
   o = section.taboption(
-    "settings",
+    "target",
     ButtonAddSettingsDynamicList,
     "priority_group",
     _("Priority"),
@@ -7260,7 +8888,7 @@ function createSectionContent(section) {
   sectionGroupSourceOptions.set("priority_group", o);
 
   o = section.taboption(
-    "settings",
+    "target",
     form.Flag,
     "outbound_detour_enabled",
     _("Cascade connection"),
@@ -7271,7 +8899,12 @@ function createSectionContent(section) {
   o.default = "0";
   o.rmempty = false;
   o.depends("action", "__internal_hidden__");
+  // Never shown, but still read by the backend: keep the stored value when
+  // the rule is saved (LuCI removes inactive options without retain).
+  o.retain = true;
   o.modalonly = true;
+  o.parse = parseOutboundDetourOption(o.parse);
+  o.load = loadOutboundDetourOption(o.load);
   o.write = function (section_id, value) {
     if (value === "1") {
       const currentValue =
@@ -7298,7 +8931,7 @@ function createSectionContent(section) {
   };
 
   o = section.taboption(
-    "settings",
+    "target",
     form.ListValue,
     "outbound_detour_section",
     _("Connect through"),
@@ -7306,13 +8939,15 @@ function createSectionContent(section) {
   );
   o.rmempty = false;
   o.depends({ action: "__internal_hidden__", outbound_detour_enabled: "1" });
+  o.retain = true;
   o.modalonly = true;
-  o.load = function (section_id) {
+  o.parse = parseOutboundDetourOption(o.parse);
+  o.load = loadOutboundDetourOption(function (section_id) {
     refreshOutboundDetourSectionOptionValues(this, section_id);
     return Promise.resolve(
       uci.get(UCI_PACKAGE, section_id, "outbound_detour_section") || "",
     );
-  };
+  });
   o.validate = function (section_id, value) {
     if (!value) {
       return _("Select an intermediate section");
@@ -7323,8 +8958,73 @@ function createSectionContent(section) {
     return true;
   };
 
+  // What the two hidden options above hold, and a way to clear them.
   o = section.taboption(
-    "settings",
+    "basic",
+    form.DummyValue,
+    "_hidden_cascade",
+    _("Cascade connection"),
+  );
+  o.modalonly = true;
+  o.load = function (section_id) {
+    this.cascadeStates = this.cascadeStates || {};
+    this.cascadeStates[section_id] = hiddenCascadeState(section_id);
+    return Promise.resolve(null);
+  };
+  o.checkDepends = function (section_id) {
+    return Boolean(this.cascadeStates && this.cascadeStates[section_id]);
+  };
+  o.renderWidget = function (section_id) {
+    return renderHiddenCascadeNotice(this, section_id);
+  };
+
+  // Saving a Connection rule with another action drops its cascade
+  // (parseOutboundDetourOption): the modal says so before Save (D-22 b).
+  o = section.taboption(
+    "basic",
+    form.DummyValue,
+    "_cascade_action_warning",
+    _("Cascade connection"),
+  );
+  o.modalonly = true;
+  o.load = loadOutboundDetourOption(function () {
+    return Promise.resolve(null);
+  });
+  o.checkDepends = function (section_id) {
+    const loaded = this.loadedRuleActions?.[section_id];
+
+    return (
+      !this.map.readonly &&
+      loaded !== undefined &&
+      isOutboundDetourRuleAction(loaded) &&
+      !isOutboundDetourRuleAction(
+        this.section.formvalue(section_id, "action"),
+      ) &&
+      hiddenCascadeState(section_id) !== null
+    );
+  };
+  o.renderWidget = function (section_id) {
+    const state = hiddenCascadeState(section_id);
+
+    // In an array LuCI adds the text as a text node: the label is a UCI
+    // value.
+    return E(
+      "div",
+      { class: "alert-message warning fkp-legacy-settings" },
+      E("p", {}, [
+        state && state.enabled
+          ? _(
+              "With another action the rule cannot use its cascade setting: saving the rule removes it, and its servers no longer connect through the rule “%s”.",
+            ).format(state.targetLabel)
+          : _(
+              "With another action the rule cannot use its cascade setting: saving the rule removes the switched-off cascade setting.",
+            ),
+      ]),
+    );
+  };
+
+  o = section.taboption(
+    "target",
     form.Flag,
     "sort_by_latency",
     _("Sort by latency"),
@@ -7333,10 +9033,11 @@ function createSectionContent(section) {
   o.default = "0";
   o.rmempty = false;
   o.depends("action", "__internal_hidden__");
+  o.retain = true;
   o.modalonly = true;
 
   o = section.taboption(
-    "settings",
+    "advanced",
     form.Flag,
     "mixed_proxy_enabled",
     _("Enable Mixed Proxy"),
@@ -7354,7 +9055,7 @@ function createSectionContent(section) {
   o.modalonly = true;
 
   o = section.taboption(
-    "settings",
+    "advanced",
     form.Value,
     "mixed_proxy_port",
     _("Mixed Proxy Port"),
@@ -7383,7 +9084,7 @@ function createSectionContent(section) {
   };
 
   o = section.taboption(
-    "settings",
+    "advanced",
     form.Flag,
     "mixed_proxy_auth_enabled",
     _("Enable Mixed Proxy Authentication"),
@@ -7401,7 +9102,7 @@ function createSectionContent(section) {
   o.modalonly = true;
 
   o = section.taboption(
-    "settings",
+    "advanced",
     form.Value,
     "mixed_proxy_username",
     _("Mixed Proxy Username"),
@@ -7452,7 +9153,7 @@ function createSectionContent(section) {
   };
 
   o = section.taboption(
-    "settings",
+    "advanced",
     form.Value,
     "mixed_proxy_password",
     _("Mixed Proxy Password"),
@@ -7504,7 +9205,7 @@ function createSectionContent(section) {
   };
 
   o = section.taboption(
-    "settings",
+    "advanced",
     form.Flag,
     "resolve_real_ip_for_routing",
     _("Resolve real IP for routing"),
@@ -7515,6 +9216,7 @@ function createSectionContent(section) {
   o.default = "0";
   o.rmempty = false;
   o.depends("action", "__internal_hidden__");
+  o.retain = true;
   o.modalonly = true;
   o.cfgvalue = function (section_id) {
     const value = uci.get(
@@ -7562,14 +9264,16 @@ function createSectionContent(section) {
     key: "ip_cidr",
     optionName: "ip_cidr",
     legacyTextOptionName: "ip_cidr_text",
+    lockedByConditionsTextMode: true,
     label: _("IPs"),
     description: _("Match destination IPs or subnets"),
     textAnalyze: analyzeIpCidrText,
   });
   dependsOnRoutingAction(ipConditionOption);
+  keepHiddenForDnsRule(ipConditionOption);
 
   const builtInRulesetOption = section.taboption(
-    "conditions",
+    "match",
     form.DynamicList,
     "community_lists",
     _("Built-in rule sets"),
@@ -7589,13 +9293,30 @@ function createSectionContent(section) {
   };
 
   const secondaryRulesetOption = section.taboption(
-    "conditions",
+    "match",
     form.DynamicList,
     "secondary_rule_sets",
     `${_("Built-in rule sets")} #2`,
     _("Select a predefined IP rule set from b4geoip-forkop"),
   );
   secondaryRulesetOption.modalonly = true;
+  // DNS rules match domains only: the widget is hidden for them. Values the
+  // rule already has stay visible for DNS so they can be removed, and the
+  // action refuses DNS until they are (UC-046).
+  secondaryRulesetOption.retain = true;
+  dependsOnRoutingAction(secondaryRulesetOption);
+  const secondaryRulesetRoutingDepends = secondaryRulesetOption.checkDepends;
+  secondaryRulesetOption.checkDepends = function (section_id) {
+    return (
+      secondaryRulesetRoutingDepends.call(this, section_id) ||
+      (getSecondaryRulesetReferences(section_id).length > 0 &&
+        this.map.isDependencySatisfied(
+          [{ action: "dns" }],
+          this.map.config,
+          section_id,
+        ))
+    );
+  };
   secondaryRulesetOption.placeholder = _("Service list");
   secondaryRulesetOption.load = function (section_id) {
     refreshOptionChoices(
@@ -7628,7 +9349,7 @@ function createSectionContent(section) {
   );
 
   const ruleSetOption = section.taboption(
-    "conditions",
+    "match",
     SettingsDynamicList,
     "rule_set",
     _("Rule sets"),
@@ -7663,7 +9384,7 @@ function createSectionContent(section) {
   };
 
   const dnsRuleSetOption = section.taboption(
-    "conditions",
+    "match",
     form.DynamicList,
     "_dns_rule_set",
     _("Rule sets"),
@@ -7688,7 +9409,7 @@ function createSectionContent(section) {
   };
 
   const domainIpListsOption = section.taboption(
-    "conditions",
+    "match",
     form.DynamicList,
     "domain_ip_lists",
     _("Domain and IP lists"),
@@ -7709,7 +9430,7 @@ function createSectionContent(section) {
   };
 
   const dnsDomainListsOption = section.taboption(
-    "conditions",
+    "match",
     form.DynamicList,
     "_dns_domain_ip_lists",
     _("Domain lists"),
@@ -7735,12 +9456,24 @@ function createSectionContent(section) {
 
   const sourceIpOption = addLocalDeviceSubnetDynamicField(section, {
     key: "source_ip_cidr",
+    legacyText: true,
     label: _("Device filter"),
     description: _(
       "Apply section rules only to the specified local IP addresses",
     ),
   });
   dependsOnRuleConditions(sourceIpOption);
+  // The backend also matches legacy remote_domain_lists/remote_subnet_lists,
+  // which have no widget: while they are set, a hidden device filter must not
+  // be erased on save, or a per-device rule would silently apply to every
+  // device. Without any destination condition the filter is dropped.
+  const removeSourceIp = sourceIpOption.remove;
+  sourceIpOption.remove = function (section_id) {
+    if (!this.isActive(section_id) && hasRemoteRuleLists(section_id)) {
+      return;
+    }
+    removeSourceIp.call(this, section_id);
+  };
 
   const fullyRoutedOption = addLocalDeviceSubnetDynamicField(section, {
     key: "fully_routed_ips",
@@ -7754,6 +9487,7 @@ function createSectionContent(section) {
 
   const excludedSourcesOption = addLocalDeviceSubnetDynamicField(section, {
     key: "excluded_source_ip_cidr",
+    legacyText: true,
     label: _("Exclude devices"),
     description: _(
       "Do not apply this section to the specified local IP addresses; matching continues with the next section.",
@@ -7772,8 +9506,32 @@ function createSectionContent(section) {
     label: _("Ports"),
     description: _("Match destination ports. Use a single port or a range"),
     dynamicValidate: validatePortCondition,
+    load: backendPortValues,
   });
   dependsOnRoutingAction(portsOption);
+  keepHiddenForDnsRule(portsOption);
+
+  // Legacy forms of the rule's settings, what they do, and their explicit
+  // conversion or removal (D-6 a). Last of the Basics step.
+  o = section.taboption(
+    "basic",
+    form.DummyValue,
+    "_legacy_conditions",
+    _("Legacy settings"),
+  );
+  o.modalonly = true;
+  o.load = function (section_id) {
+    this.legacyStates = Object.assign({}, this.legacyStates, {
+      [section_id]: legacyRuleConditions(section_id),
+    });
+    return Promise.resolve(null);
+  };
+  o.checkDepends = function (section_id) {
+    return Boolean(this.legacyStates && this.legacyStates[section_id]);
+  };
+  o.renderWidget = function (section_id) {
+    return renderLegacyConditionsNotice(this, section_id);
+  };
 }
 
 function loadSectionTableOptions(sectionRef) {
@@ -7801,16 +9559,271 @@ function loadSectionTableOptions(sectionRef) {
   return Promise.all(tasks);
 }
 
+// LuCI parses every option of the rule modal even when one of them is
+// invalid, and a refused save keeps what the other options wrote or removed:
+// a rule switched to DNS and back would lose its ports and links, and after
+// Dismiss the next Save & Apply would send them. Refuse the save before
+// anything is written while an active option is invalid, and while a check
+// that parse would run only after other writes refuses: the items of a list
+// (checkBeforeSave of SettingsDynamicList) or the backend check of a changed
+// DPI strategy.
+function inspectModalBeforeSave(modalMap) {
+  const checks = [];
+
+  for (const modalSection of modalMap.children) {
+    for (const section_id of modalSection.cfgsections()) {
+      for (const option of modalSection.children) {
+        if (!option.isActive(section_id)) {
+          continue;
+        }
+
+        if (
+          typeof option.checkBeforeSave === "function" &&
+          typeof option.triggerValidation === "function"
+        ) {
+          option.triggerValidation(section_id);
+        }
+
+        if (!option.isValid(section_id)) {
+          return { invalid: { option, section_id }, checks };
+        }
+
+        if (typeof option.checkBeforeSave === "function") {
+          checks.push({ option, section_id });
+        }
+      }
+    }
+  }
+
+  return { invalid: null, checks };
+}
+
+// What the checks were run on: the value and the active state of every
+// option of the modal.
+function modalFormState(modalMap) {
+  const state = [];
+
+  for (const modalSection of modalMap.children) {
+    for (const section_id of modalSection.cfgsections()) {
+      for (const option of modalSection.children) {
+        state.push([
+          option.option,
+          section_id,
+          option.isActive(section_id),
+          option.formvalue(section_id),
+        ]);
+      }
+    }
+  }
+
+  return JSON.stringify(state);
+}
+
+// LuCI drops the refusal of a modal Save, and the items of a list are
+// checked only on Save: no field shows such a refusal, so the modal does.
+function clearModalSaveRefusal(modalMap) {
+  const node = modalMap.forkopSaveRefusal;
+
+  if (node && node.parentNode) {
+    node.parentNode.removeChild(node);
+  }
+  delete modalMap.forkopSaveRefusal;
+}
+
+function showModalSaveRefusal(modalMap, error) {
+  clearModalSaveRefusal(modalMap);
+
+  if (!modalMap.root || typeof modalMap.root.appendChild !== "function") {
+    return;
+  }
+
+  modalMap.forkopSaveRefusal = E(
+    "div",
+    { class: "alert-message warning fkp-rule-save-refusal" },
+    [
+      E("strong", {}, [_("Cannot save the rule")]),
+      E("div", {}, [error.message]),
+    ],
+  );
+  modalMap.root.appendChild(modalMap.forkopSaveRefusal);
+}
+
+function refuseInvalidModalSave(modalMap) {
+  const parse = modalMap.parse;
+
+  modalMap.parse = function (...args) {
+    clearModalSaveRefusal(this);
+    forgetUnavailableStrategyValidations();
+
+    const { invalid, checks } = inspectModalBeforeSave(this);
+
+    if (invalid) {
+      return rejectInvalidOption(invalid.option, invalid.section_id);
+    }
+
+    const checkedState = modalFormState(this);
+
+    return Promise.all(
+      checks.map(({ option, section_id }) =>
+        option.checkBeforeSave(section_id),
+      ),
+    ).then((results) => {
+      // LuCI keeps the modal editable, and Dismiss working, while the
+      // checks run. A dismissed modal saves nothing, and a form edited
+      // meanwhile is checked again as it is now: parse writes what it holds.
+      // Only an edit changes the state, so without one this runs once more.
+      if (this.forkopModalDismissed) {
+        return Promise.reject(
+          new Error(
+            _(
+              "The rule window was closed before the save finished. Nothing was saved.",
+            ),
+          ),
+        );
+      }
+
+      this.checkDepends();
+
+      if (modalFormState(this) !== checkedState) {
+        return this.parse(...args);
+      }
+
+      const index = results.findIndex((result) => result !== true);
+
+      if (index >= 0) {
+        const { option, section_id } = checks[index];
+        const error = invalidOptionError(option, section_id, results[index]);
+
+        // A strategy field shows its backend verdict itself.
+        if (option.isValid(section_id)) {
+          showModalSaveRefusal(this, error);
+        }
+
+        return Promise.reject(error);
+      }
+
+      const recheck = inspectModalBeforeSave(this);
+
+      if (recheck.invalid) {
+        return rejectInvalidOption(
+          recheck.invalid.option,
+          recheck.invalid.section_id,
+        );
+      }
+
+      return parse.apply(this, args);
+    });
+  };
+}
+
+// The item settings modals stacked on the rule modal (subscription source,
+// interface, URLTest, priority and its levels, rule set) write their Save
+// into uci at once, and the rule modal map shares the page's uci state.
+// LuCI's Dismiss only removes a rule that Add created, so these edits stayed
+// staged for the next Save & Apply although the rule was never saved. The
+// rule modal keeps the staged state it was opened on, and Dismiss puts it
+// back (UC-045). uci.js stages edits in creates/changes/deletes and merges
+// them into values in place on a whole-section uci.get(), so all are kept.
+const STAGED_UCI_STATE_KEYS = [
+  "values",
+  "creates",
+  "changes",
+  "deletes",
+  "reorder",
+];
+
+function captureStagedUciState() {
+  const state = uci.state;
+
+  if (
+    !state ||
+    STAGED_UCI_STATE_KEYS.some(
+      (key) => !state[key] || typeof state[key] !== "object",
+    ) ||
+    !state.values[UCI_PACKAGE]
+  ) {
+    return null;
+  }
+
+  const snapshot = {};
+  STAGED_UCI_STATE_KEYS.forEach((key) => {
+    const value = state[key][UCI_PACKAGE];
+    snapshot[key] =
+      value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+  });
+  return snapshot;
+}
+
+function restoreStagedUciState(snapshot) {
+  if (!snapshot) {
+    return;
+  }
+
+  STAGED_UCI_STATE_KEYS.forEach((key) => {
+    if (snapshot[key] === undefined) {
+      delete uci.state[key][UCI_PACKAGE];
+    } else {
+      uci.state[key][UCI_PACKAGE] = snapshot[key];
+    }
+  });
+}
+
 function configureSectionSection(sectionRef, options = {}) {
   setActionProvidersAvailabilityLoader(options.loadActionProvidersAvailability);
 
+  const addModalOptions = sectionRef.addModalOptions;
+  sectionRef.addModalOptions = function (modalSection) {
+    modalSection.map.forkopStagedUciState = captureStagedUciState();
+    refuseInvalidModalSave(modalSection.map);
+    return addModalOptions.apply(this, arguments);
+  };
+
+  // handleModalSave() closes the modal through handleModalCancel(..., true)
+  // after uci.save() sent the edits; only Dismiss restores.
+  const handleModalCancel = sectionRef.handleModalCancel;
+  sectionRef.handleModalCancel = function (modalMap, _ev, isSaving) {
+    if (modalMap) {
+      if (!isSaving) {
+        // A Save still waiting for its checks must not write afterwards.
+        modalMap.forkopModalDismissed = true;
+        restoreStagedUciState(modalMap.forkopStagedUciState);
+      }
+      delete modalMap.forkopStagedUciState;
+    }
+    return handleModalCancel.apply(this, arguments);
+  };
+
   const handleRemove = sectionRef.handleRemove;
   sectionRef.handleRemove = function (section_id) {
+    // LuCI saves the whole page silently after a removal. When another field
+    // refuses that save (e.g. a Settings select on this rule or on an
+    // unavailable section), the row stays, but the removal and the cleanup
+    // of its child items would stay staged: the next rule modal Save sends
+    // the whole package through uci.save(), past that check. Put the staged
+    // state back and say why instead of doing nothing visible.
+    const staged = captureStagedUciState();
+
     cleanupRemovedChildItems(section_id, "subscription_url", []);
     cleanupRemovedChildItems(section_id, "section_interface", []);
     cleanupRemovedChildItems(section_id, "urltest", []);
     cleanupRemovedChildItems(section_id, "priority_group", []);
-    return handleRemove.apply(this, arguments);
+    cleanupRuleUrlTestOverrides(section_id);
+    return Promise.resolve(handleRemove.apply(this, arguments)).catch(
+      (error) => {
+        restoreStagedUciState(staged);
+        ui.addNotification(
+          null,
+          E(
+            "p",
+            {},
+            _(
+              "The rule was not removed because the page could not be saved: %s",
+            ).format(error?.message || error),
+          ),
+          "error",
+        );
+      },
+    );
   };
 
   sectionRef.load = function () {

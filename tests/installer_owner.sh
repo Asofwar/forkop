@@ -30,6 +30,42 @@ fail() {
   exit 1
 }
 
+# shellcheck source=tests/helpers/source_checks.sh
+source "$ROOT_DIR/tests/helpers/source_checks.sh"
+
+# A killed process whose parent is gone is reparented to PID 1. Where PID 1
+# does not reap children (some container inits), it stays a zombie for a while
+# and kill -0 still succeeds although it runs no code: process_running counts
+# zombies as dead.
+# shellcheck source=tests/helpers/wait.sh
+source "$ROOT_DIR/tests/helpers/wait.sh"
+
+# Self-check: an unreaped child of a live parent is dead, the parent is alive.
+# The child exits only after its parent has exec'd sleep, which never reaps:
+# sh reaps a child that exits before the exec (under load the child can run
+# first), and no zombie would be left to observe.
+sh -c 'parent=$$
+  (i=0
+    until [ "$(cat "/proc/$parent/comm" 2>/dev/null)" = sleep ] || [ "$i" -ge 200 ]; do
+      i=$((i + 1))
+      sleep 0.05
+    done) &
+  printf "%s\n" "$!" >"$1"
+  exec sleep 30' sh "$WORK_DIR/zombie.pid" &
+zombie_parent=$!
+fixture_is_zombie() {
+  local stat
+  [ -s "$WORK_DIR/zombie.pid" ] &&
+    IFS= read -r stat 2>/dev/null <"/proc/$(cat "$WORK_DIR/zombie.pid")/stat" &&
+    stat="${stat##*) }" && [ "${stat%% *}" = Z ]
+}
+wait_until 10 fixture_is_zombie || fail "zombie fixture did not produce a zombie process"
+kill -0 "$(cat "$WORK_DIR/zombie.pid")" 2>/dev/null || fail "zombie fixture: kill -0 must still see the zombie"
+process_running "$(cat "$WORK_DIR/zombie.pid")" && fail "process_running must treat a zombie as dead"
+process_running "$zombie_parent" || fail "process_running must report a running process as alive"
+kill -KILL "$zombie_parent" 2>/dev/null || true
+wait "$zombie_parent" 2>/dev/null || true
+
 [ -r "$INSTALLER" ] || fail "install.sh is missing"
 
 grep -Fq 'REPO_OWNER="slayer326"' "$INSTALLER" ||
@@ -72,7 +108,8 @@ grep -Fq 'run_with_deadline "$DOWNLOAD_TIMEOUT_SECONDS" wget -T "$CONNECT_TIMEOU
 if grep -n -E 'wget.*[[:space:]]-t([[:space:]]|$)' "$INSTALLER" >/dev/null; then
   fail "installer wget commands must not use the unsupported OpenWrt -t option"
 fi
-eval "$(sed -n '/^run_with_deadline()/,/^}/p' "$INSTALLER")"
+run_with_deadline_source="$(source_function "$INSTALLER" run_with_deadline)" || exit 1
+eval "$run_with_deadline_source"
 deadline_started="$(date +%s)"
 if run_with_deadline 1 sh -c 'sleep 5'; then
   fail "installer deadline watchdog must fail a command that exceeds its deadline"
@@ -93,7 +130,7 @@ if run_with_deadline 1 sh -c '
   fail "installer deadline watchdog must fail a stubborn process tree"
 fi
 [ -s "$deadline_child_pid" ] || fail "deadline process-tree fixture did not record its child"
-if kill -0 "$(cat "$deadline_child_pid")" 2>/dev/null; then
+if process_running "$(cat "$deadline_child_pid")"; then
   fail "installer deadline watchdog left a descendant running"
 fi
 grep -Fq 'curl --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --max-time "$METADATA_TIMEOUT_SECONDS"' "$INSTALLER" ||
@@ -319,7 +356,9 @@ done
 sh -c 'trap "" TERM; while :; do sleep 30; done' \
   "$WORK_DIR/hanging-init" retry_start_on_wan_up &
 RETRY_PID=$!
-printf '%s\n' "$RETRY_PID" > "$WORK_DIR/start-retry.pid"
+# The retry's record: pid and start ticks (core/process_identity.uc).
+RETRY_TICKS="$(sed 's/.*) //' "/proc/$RETRY_PID/stat" | cut -d' ' -f20)"
+printf '%s\n%s\n' "$RETRY_PID" "$RETRY_TICKS" > "$WORK_DIR/start-retry.pid"
 printf '%s\n' pending > "$WORK_DIR/start.retry"
 
 hanging_started="$(date +%s)"
@@ -361,14 +400,15 @@ done
 if [ -e "$WORK_DIR/start.retry" ] || [ -e "$WORK_DIR/start-retry.pid" ]; then
   fail "installer cleanup left scheduled retry state behind"
 fi
+wait_until 10 process_gone "$RETRY_PID" || fail "installer cleanup left the scheduled retry running"
 wait "$RETRY_PID" 2>/dev/null || true
 RETRY_PID=""
-if kill -0 "$ORPHAN_PROBE_PID" 2>/dev/null; then
+if process_running "$ORPHAN_PROBE_PID"; then
   fail "installer cleanup left an orphaned init.d probe running"
 fi
 ORPHAN_PROBE_PID=""
 while IFS= read -r pid; do
-  if kill -0 "$pid" 2>/dev/null; then
+  if process_running "$pid"; then
     fail "installer cleanup left a timed-out service process running: $pid"
   fi
 done < "$HANG_PID_LOG"

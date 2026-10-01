@@ -40,8 +40,8 @@ function pidfiles(path) {
 function running(pid) {
     if (match(as_string(pid), /^[0-9]+$/) == null || !command_success([ "kill", "-0", pid ]))
         return false;
-    let stat = fs.readfile("/proc/" + pid + "/stat");
-    return stat != null && !match(stat, /\) Z /);
+    let fields = process_identity.stat_fields(fs.readfile("/proc/" + pid + "/stat"));
+    return fields != null && fields[0] != "Z";
 }
 
 function snapshot(pid_dir, child_pid_dir, runtime_path, library_path, output_path) {

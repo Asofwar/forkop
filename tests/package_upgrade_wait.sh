@@ -17,12 +17,22 @@ fail() {
 # refuses an ambiguous runtime by design, which would leave Forkop stopped after
 # an ordinary package upgrade.
 
+# init.d under procd accepts the start at once; its detached worker reports
+# the outcome to the waiting postinst (service/initd.uc start-and-wait).
 cat >"$WORK_DIR/init" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$1" >>"${FORKOP_TEST_INIT_LOG:?}"
+if [ "$1" = start ] && [ -n "${FORKOP_START_REQUEST:-}" ]; then
+  printf 'status=0\n' >"$FORKOP_RUNTIME_STATE_DIR/start-result.$FORKOP_START_REQUEST"
+fi
 exit 0
 SH
-chmod 0755 "$WORK_DIR/init"
+cat >"$WORK_DIR/forkop" <<'SH'
+#!/bin/sh
+[ "$1" != get_status ] || printf '{"running":1}\n'
+SH
+chmod 0755 "$WORK_DIR/init" "$WORK_DIR/forkop"
+mkdir -p "$WORK_DIR/run"
 
 printf "config settings 'settings'\n" >"$WORK_DIR/forkop.conf"
 printf 'forkop.settings=settings\n' >"$WORK_DIR/uci.state"
@@ -37,6 +47,10 @@ run_postinst() {
   : >"$WORK_DIR/init.log"
   printf '1\n' >"$WORK_DIR/was-running"
   FORKOP_INIT="$WORK_DIR/init" \
+  FORKOP_LIB="$FORKOP_LIB" \
+  FORKOP_BIN="$WORK_DIR/forkop" \
+  FORKOP_RUNTIME_STATE_DIR="$WORK_DIR/run" \
+  FORKOP_START_WAIT_TIMEOUT_SECONDS=5 \
   FORKOP_TEST_INIT_LOG="$WORK_DIR/init.log" \
   FORKOP_CONFIG_PATH="$WORK_DIR/forkop.conf" \
   FORKOP_DEFAULT_CONFIG_PATH="$WORK_DIR/forkop.conf" \

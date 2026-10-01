@@ -31,6 +31,7 @@ const input = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 input.settings ??= { '.name': 'settings', '.type': 'settings' };
 if (input.settings.dns_server === undefined) input.settings.dns_server = ['77.88.8.8'];
 if (input.settings.bootstrap_dns_server === undefined) input.settings.bootstrap_dns_server = ['77.88.8.8'];
+if (input.settings.yacd_secret_key === undefined) input.settings.yacd_secret_key = 'test-clash-secret';
 fs.writeFileSync(process.argv[3], JSON.stringify(input));
 JS
   FORKOP_LIB="$FORKOP_LIB" ucode -L "$FORKOP_LIB" "$VALIDATOR" validate-runtime-fixture "$normalized" "$context"
@@ -449,7 +450,8 @@ assert_rejects "bad country" "$WORK_DIR/bad-country.json" "Invalid country code 
 provider_context="$(node -e 'const fs=require("fs"); const c=JSON.parse(fs.readFileSync(process.argv[1], "utf8")); c.byedpi_installed=true; process.stdout.write(JSON.stringify(c));' "$WORK_DIR/context.json")"
 cat >"$WORK_DIR/bad-byedpi.json" <<'JSON'
 {
-  "settings": { ".name": "settings", ".type": "settings", "dns_server": [ "77.88.8.8" ], "bootstrap_dns_server": [ "77.88.8.8" ] },
+  "settings": { ".name": "settings", ".type": "settings", "dns_server": [ "77.88.8.8" ], "bootstrap_dns_server": [ "77.88.8.8" ],
+    "yacd_secret_key": "test-clash-secret" },
   "section": [
     { ".name": "bye", ".type": "section", "enabled": "1", "action": "byedpi", "byedpi_cmd_opts": "--port 1080 --disorder 3" }
   ]
@@ -465,12 +467,14 @@ runtime_lib="$WORK_DIR/runtime-lib"
 mkdir -p "$runtime_lib"
 ln -s "$FORKOP_LIB/core" "$runtime_lib/core"
 ln -s "$FORKOP_LIB/config" "$runtime_lib/config"
+ln -s "$FORKOP_LIB/routing" "$runtime_lib/routing"
 ln -s "$FORKOP_LIB/subscription" "$runtime_lib/subscription"
 ln -s "$FORKOP_LIB/providers" "$runtime_lib/providers"
 touch "$WORK_DIR/ciadpi-provider"
 cat >"$WORK_DIR/bad-byedpi-runtime-state.json" <<'JSON'
 {
-  "settings": { ".name": "settings", ".type": "settings", "dns_server": [ "77.88.8.8" ], "bootstrap_dns_server": [ "77.88.8.8" ] },
+  "settings": { ".name": "settings", ".type": "settings", "dns_server": [ "77.88.8.8" ], "bootstrap_dns_server": [ "77.88.8.8" ],
+    "yacd_secret_key": "test-clash-secret" },
   "section": [
     { ".name": "bye", ".type": "section", "enabled": "1", "action": "byedpi", "byedpi_cmd_opts": "--port 1080 --disorder 3" }
   ]

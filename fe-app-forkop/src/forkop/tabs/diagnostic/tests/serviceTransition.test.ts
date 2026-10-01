@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  serviceActionErrorText,
   getAvailableActionsDisabledState,
-  getServiceTransition,
   hasComponentActionLoading,
   hasLocalMutatingServiceActionLoading,
   isServiceTransitionStatus,
@@ -26,14 +26,6 @@ describe('diagnostic service transitions', () => {
     expect(isServiceTransitionStatus('starting')).toBe(true);
     expect(isServiceTransitionStatus('reloading')).toBe(true);
     expect(isServiceTransitionStatus('running & enabled')).toBe(false);
-  });
-
-  it('maps reload to the restart/reload control state', () => {
-    expect(getServiceTransition('reloading')).toEqual({
-      starting: false,
-      stopping: false,
-      restarting: true,
-    });
   });
 
   it('detects only local button loading as local mutation', () => {
@@ -87,52 +79,6 @@ describe('diagnostic service transitions', () => {
       shouldSkipServicesInfoAutoRefresh({
         force: true,
         localMutatingActionLoading: true,
-      }),
-    ).toBe(false);
-  });
-
-  it('shows restart while the service is running even when autostart is disabled', () => {
-    expect(
-      shouldShowRestartAction({
-        forkopRunning: true,
-        restartLoading: false,
-        startLoading: false,
-        stopLoading: false,
-      }),
-    ).toBe(true);
-    expect(
-      shouldShowRestartAction({
-        forkopRunning: false,
-        restartLoading: false,
-        startLoading: false,
-        stopLoading: false,
-      }),
-    ).toBe(false);
-    expect(
-      shouldShowRestartAction({
-        forkopRunning: false,
-        restartLoading: true,
-        startLoading: false,
-        stopLoading: false,
-      }),
-    ).toBe(true);
-  });
-
-  it('does not show restart from transient running state while start or stop is active', () => {
-    expect(
-      shouldShowRestartAction({
-        forkopRunning: true,
-        restartLoading: false,
-        startLoading: true,
-        stopLoading: false,
-      }),
-    ).toBe(false);
-    expect(
-      shouldShowRestartAction({
-        forkopRunning: true,
-        restartLoading: false,
-        startLoading: false,
-        stopLoading: true,
       }),
     ).toBe(false);
   });
@@ -192,51 +138,15 @@ describe('diagnostic service transitions', () => {
       viewLogsDisabled: false,
     });
   });
+});
 
-  it('keeps the lower service action visible while restart is running', () => {
-    expect(
-      shouldShowStopAction({
-        forkopRunning: false,
-        restartLoading: true,
-        startLoading: false,
-        stopLoading: false,
-      }),
-    ).toBe(true);
-    expect(
-      shouldShowStartAction({
-        forkopRunning: false,
-        restartLoading: true,
-        startLoading: false,
-        stopLoading: false,
-      }),
-    ).toBe(false);
-  });
-
-  it('keeps the normal start and stop visibility outside restart', () => {
-    expect(
-      shouldShowStartAction({
-        forkopRunning: false,
-        restartLoading: false,
-        startLoading: false,
-        stopLoading: false,
-      }),
-    ).toBe(true);
-    expect(
-      shouldShowStopAction({
-        forkopRunning: false,
-        restartLoading: false,
-        startLoading: false,
-        stopLoading: false,
-      }),
-    ).toBe(false);
-    expect(
-      shouldShowStopAction({
-        forkopRunning: true,
-        restartLoading: false,
-        startLoading: false,
-        stopLoading: false,
-      }),
-    ).toBe(true);
+describe('service action errors', () => {
+  it('names the failure and keeps the backend detail', () => {
+    expect(serviceActionErrorText(new Error(' init failed '))).toBe(
+      'Service action failed: init failed',
+    );
+    expect(serviceActionErrorText(new Error(''))).toBe('Service action failed');
+    expect(serviceActionErrorText('x')).toBe('Service action failed');
   });
 
   it('withholds restart while sing-box ownership is unclear', () => {

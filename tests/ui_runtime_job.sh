@@ -19,9 +19,15 @@ fail() {
   exit 1
 }
 
+# shellcheck source=tests/helpers/source_checks.sh
+source "$ROOT_DIR/tests/helpers/source_checks.sh"
+
 ui_ucode() {
   ucode -L "$FORKOP_FILES/usr/lib" "$UI_UC" "$@"
 }
+
+# shellcheck source=tests/helpers/wait.sh
+source "$ROOT_DIR/tests/helpers/wait.sh"
 
 assert_eq() {
   local expected="$1"
@@ -47,9 +53,8 @@ if grep -R -n "ui_runtime.sh" "$FORKOP_FILES" >/dev/null 2>&1; then
 fi
 
 ui_runtime_shell_symbols='ui_runtime_|forkop_fast_get_ui_state|FORKOP_UI_RUNTIME|load_ui_runtime'
-if grep -R -n -E "$ui_runtime_shell_symbols" "$FORKOP_BIN" "$FORKOP_INIT" "$FORKOP_FILES/usr/lib" --include='*.sh' >/dev/null 2>&1; then
-  fail "ui_runtime shell symbols must not remain in runtime shell"
-fi
+source_refute_shell "ui_runtime shell symbols must not remain in runtime shell" \
+  -E "$ui_runtime_shell_symbols" "$FORKOP_BIN" "$FORKOP_INIT" "$FORKOP_FILES/usr/lib"
 
 if grep -R -n '^get_ui_capabilities()' "$FORKOP_FILES/usr/lib" --include='*.sh' >/dev/null 2>&1; then
   fail "UI capabilities must be owned by service/ui.uc, not shell"
@@ -63,12 +68,10 @@ grep -Fq '"forkop-stably-running"' "$UI_UC" ||
   fail "UI Forkop status must use stable runtime state to avoid crash-loop flicker"
 grep -Fq '"sing-box-service-stable"' "$UI_UC" ||
   fail "UI sing-box status must use stable runtime state to avoid crash-loop flicker"
-if sed -n '/^function ensure_dir(/,/^}/p' "$UI_UC" | grep -Fq 'mkdir", "-p'; then
-  fail "UI state refresh must not spawn mkdir for existing directories"
-fi
-if sed -n '/^function cleanup_dir(/,/^}/p' "$UI_UC" | grep -Fq '"find"'; then
-  fail "UI state refresh must clean action files without spawning find"
-fi
+source_refute_text "UI state refresh must not spawn mkdir for existing directories" \
+  -F 'mkdir", "-p' "$(source_function "$UI_UC" ensure_dir)"
+source_refute_text "UI state refresh must clean action files without spawning find" \
+  -F '"find"' "$(source_function "$UI_UC" cleanup_dir)"
 grep -Fq 'run_pending_reload_after_service_action(action, success)' "$UI_UC" ||
   fail "UI service actions must run pending reload after the current action finishes"
 grep -Fq 'service_action_wait_for_expected_state(action, SERVICE_ACTION_TIMEOUT_SECONDS, SERVICE_ACTION_SETTLE_SECONDS)' "$UI_UC" ||
@@ -285,10 +288,9 @@ FORKOP_LIB="$FORKOP_FILES/usr/lib" \
   ui_ucode service-action-finish-after-command reload "$job_id" 0 >/dev/null ||
   fail "service-action-finish-after-command should spawn waiter without ucode declaration-order failure"
 
-sleep 2
-if grep -q '"running"[[:space:]]*:[[:space:]]*true' "$service_state"; then
+service_action_settled() { ! grep -q '"running"[[:space:]]*:[[:space:]]*true' "$service_state"; }
+wait_until 30 service_action_settled ||
   fail "service-action-finish-after-command waiter should finish the running service action"
-fi
 
 ui_ucode service-action-finish "$job_id" true done 0 >/dev/null ||
   fail "service-action-finish should finish running job"

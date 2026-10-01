@@ -23,101 +23,14 @@ fail() {
   exit 1
 }
 
-mkdir -p "$WORK_DIR/bin"
-cat >"$WORK_DIR/bin/uci" <<'UCI'
-#!/usr/bin/env bash
-set -eo pipefail
-
-while [ "${1:-}" = "-q" ]; do
-  shift
-done
-
-cmd="${1:-}"
-shift || true
-
-state="${UCI_STATE:?}"
-log="${UCI_LOG:?}"
-
-get_value() {
-  awk -F= -v key="$1" '$1 == key { print substr($0, length($1) + 2); found = 1 } END { exit found ? 0 : 1 }' "$state"
-}
-
-key_exists() {
-  awk -F= -v key="$1" -v prefix="$1." '$1 == key || index($1, prefix) == 1 { found = 1 } END { exit found ? 0 : 1 }' "$state"
-}
-
-delete_key() {
-  local key="$1"
-  local tmp
-  tmp="$(mktemp)"
-  awk -F= -v key="$key" -v prefix="$key." '$1 != key && index($1, prefix) != 1' "$state" > "$tmp"
-  mv "$tmp" "$state"
-}
-
-set_key() {
-  local key="$1"
-  local value="$2"
-  delete_key "$key"
-  printf '%s=%s\n' "$key" "$value" >> "$state"
-}
-
-case "$cmd" in
-  get)
-    get_value "$1"
-    ;;
-  show)
-    key_exists "$1"
-    ;;
-  delete)
-    delete_key "$1"
-    ;;
-  set)
-    item="$1"
-    set_key "${item%%=*}" "${item#*=}"
-    ;;
-  add_list)
-    item="$1"
-    key="${item%%=*}"
-    value="${item#*=}"
-    current="$(get_value "$key" 2>/dev/null || true)"
-    if [ -n "$current" ]; then
-      set_key "$key" "$current $value"
-    else
-      set_key "$key" "$value"
-    fi
-    ;;
-  del_list)
-    item="$1"
-    key="${item%%=*}"
-    value="${item#*=}"
-    current="$(get_value "$key" 2>/dev/null || true)"
-    [ -n "$current" ] || exit 1
-    new=""
-    removed=0
-    for entry in $current; do
-      if [ "$entry" = "$value" ]; then
-        removed=1
-        continue
-      fi
-      new="${new:+$new }$entry"
-    done
-    [ "$removed" -eq 1 ] || exit 1
-    if [ -n "$new" ]; then
-      set_key "$key" "$new"
-    else
-      delete_key "$key"
-    fi
-    ;;
-  commit)
-    printf 'commit %s\n' "$1" >> "$log"
-    ;;
-  *)
-    printf 'unsupported uci command: %s\n' "$cmd" >&2
-    exit 2
-    ;;
-esac
-UCI
-chmod 0755 "$WORK_DIR/bin/uci"
+# The fixture state is read back through core.uci itself, so the test and
+# production share one implementation of the state file format (UC-155).
+cat >"$WORK_DIR/uci-get.uc" <<'UCODE'
+let uci = require("core.uci");
+if (!uci.exists(ARGV[0]))
+    exit(1);
+print(uci.get(ARGV[0]), "\n");
+UCODE
 
 cat >"$WORK_DIR/dnsmasq-init" <<'DNSMASQ'
 #!/usr/bin/env bash
@@ -126,9 +39,8 @@ printf '%s\n' "$*" >> "${DNSMASQ_LOG:?}"
 DNSMASQ
 chmod 0755 "$WORK_DIR/dnsmasq-init"
 
-export PATH="$WORK_DIR/bin:$PATH"
-export UCI_STATE="$STATE"
-export UCI_LOG="$LOG"
+export FORKOP_UCI_STATE_FILE="$STATE"
+export FORKOP_UCI_LOG_FILE="$LOG"
 export DNSMASQ_LOG
 export DNSMASQ_INIT="$WORK_DIR/dnsmasq-init"
 export FORKOP_CONFIG_NAME="forkop"
@@ -144,7 +56,7 @@ run_restore() {
 }
 
 uci_get() {
-  "$WORK_DIR/bin/uci" -q get "$1"
+  ucode -L "$UCODE_LIB" "$WORK_DIR/uci-get.uc" "$1"
 }
 
 assert_value() {

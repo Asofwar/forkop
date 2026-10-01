@@ -61,6 +61,22 @@ function write_json_file(path, value) {
     return fs.writefile(path, sprintf("%J\n", value));
 }
 
+// The generated sing-box config and its copies carry every outbound secret
+// (UC-037): the file is created 0600, and an existing file is narrowed to
+// 0600 before any content is written, whatever the process umask.
+function write_private_json_file(path, value) {
+    let fh = fs.open(path, "w", 0600);
+    if (fh == null)
+        return null;
+    if (!fs.chmod(path, 0600)) {
+        fh.close();
+        return null;
+    }
+    let written = fh.write(sprintf("%J\n", value));
+    fh.close();
+    return written;
+}
+
 function strip_internal_fields(value) {
     if (type(value) == "array") {
         for (let i = 0; i < length(value); i++)
@@ -121,6 +137,26 @@ function bool_option(section, key, fallback) {
     return value == "1" || value == "true" || value == "yes" || value == "on";
 }
 
+// Clash API authentication (UC-035): the one predicate shared by the config
+// generator (controller secret), every backend request to the controller, the
+// validator and the reload signature. A secret is in effect exactly when this
+// value is not empty; YACD and WAN access only change where the controller
+// listens.
+function clash_api_secret(section) {
+    return trim(option(section, "yacd_secret_key", ""));
+}
+
+// A strong Clash API secret (D-1 (b)): 256 random bits as hex, or null when
+// the random source is unavailable. The source is only overridden by tests.
+function random_hex_secret() {
+    let fh = fs.open(getenv("FORKOP_SECRET_RANDOM_SOURCE") || "/dev/urandom", "r");
+    if (fh == null)
+        return null;
+    let bytes = fh.read(32);
+    fh.close();
+    return type(bytes) == "string" && length(bytes) == 32 ? hexenc(bytes) : null;
+}
+
 function int_option(section, key, fallback) {
     let value = option(section, key, fallback);
     if (match(value, /[^0-9]/))
@@ -137,6 +173,7 @@ return {
     write_compact_string_array,
     csv_to_json_array,
     write_json_file,
+    write_private_json_file,
     strip_internal_fields,
     array_or_empty,
     object_or_empty,
@@ -144,5 +181,7 @@ return {
     option,
     list_option,
     bool_option,
-    int_option
+    int_option,
+    clash_api_secret,
+    random_hex_secret
 };

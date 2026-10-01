@@ -4,6 +4,7 @@ import { updateCheckStore } from './updateCheckStore';
 import { getMeta } from '../helpers/getMeta';
 import { getDashboardSections } from '../../../methods/custom/getDashboardSections';
 import { IDiagnosticsChecksItem } from '../../../services';
+import { isReadonlyMode } from '../../../services/accessMode.service';
 
 type SectionCheckState = IDiagnosticsChecksItem['state'];
 
@@ -35,6 +36,22 @@ export async function runSectionsCheck() {
     state: 'loading',
     items: [],
   });
+
+  // Without Forkop UCI access the outbound tags cannot be derived, so probing
+  // would report healthy outbounds as unreachable.
+  if (isReadonlyMode()) {
+    updateCheckStore({
+      order,
+      code,
+      title,
+      description: _(
+        'Outbound checks need access to the Forkop configuration, which this role does not have.',
+      ),
+      state: 'unsupported',
+      items: [],
+    });
+    return;
+  }
 
   const sections = await getDashboardSections();
 

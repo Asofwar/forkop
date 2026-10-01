@@ -19,6 +19,9 @@ fail() {
   exit 1
 }
 
+# shellcheck source=tests/helpers/source_checks.sh
+source "$ROOT_DIR/tests/helpers/source_checks.sh"
+
 cat >"$WORK_DIR/base.json" <<'JSON'
 {"section":[{".name":"alpha","enabled":"1","action":"connection","ports":"80","excluded_source_ip_cidr":["192.0.2.1/32"],"source_network_interfaces":["br-lan"],"remote_domain_lists":["https://lists.test/a.lst"]},{".name":"beta","enabled":"1","action":"block","community_lists":["telegram"]}]}
 JSON
@@ -56,15 +59,10 @@ printf '%s\n' "$plan_output" | awk -F '\t' '$1 == "needs_list_update" && $2 == "
 grep -Fq 'needs.nft_rebuild && context.has_nft_list_update_sources' "$RELOAD_UC" ||
   fail "an nft rebuild must refill downloaded subnet sets"
 
+signature_body="$(source_function "$STATE_UC" append_list_update_signature_body)" || exit 1
 for local_key in '.action"' '.ports"' '.source_ip_cidr"' '.excluded_source_ip_cidr"' '.interfaces"'; do
-  if awk -v needle="$local_key" '
-    /function append_list_update_signature_body/ { active = 1 }
-    active && index($0, needle) { found = 1 }
-    active && /^}/ { exit found ? 0 : 1 }
-    END { if (!active || !found) exit 1 }
-  ' "$STATE_UC"; then
-    fail "local condition $local_key leaked into the list source signature"
-  fi
+  source_refute_text "local condition $local_key leaked into the list source signature" \
+    -F "$local_key" "$signature_body"
 done
 
 for source_key in community_lists remote_domain_lists remote_subnet_lists rule_set rule_set_with_subnets domain_ip_lists; do
@@ -72,14 +70,8 @@ for source_key in community_lists remote_domain_lists remote_subnet_lists rule_s
     fail "list source signature does not track $source_key"
 done
 
-if awk '
-  /function finish_list_update/ { active = 1 }
-  active && /automatic-latency-test/ { found = 1 }
-  active && /^}/ { exit found ? 0 : 1 }
-  END { if (!active || !found) exit 1 }
-' "$UPDATES_UC"; then
-  fail "ordinary list updates must not schedule automatic latency tests"
-fi
+source_refute_text "ordinary list updates must not schedule automatic latency tests" \
+  -F 'automatic-latency-test' "$(source_function "$UPDATES_UC" finish_list_update)"
 
 grep -Fq '[ "cp", "-R", "-p", TMP_RULESET_FOLDER + "/.", list_ruleset_snapshot_dir ]' "$UPDATES_UC" ||
   fail "list updates must preserve metadata for unchanged materialized rule sets"
@@ -116,7 +108,7 @@ grep -Fq 'LIST_UPDATE_RUNTIME_STATE_FILE' "$UPDATES_UC" ||
   fail "a RAM-only successful update must suppress duplicate downloads during the same boot"
 grep -Fq 'runtime-list-cache-active' "$LIFECYCLE_UC" ||
   fail "service reload must preserve a newer RAM-only list generation"
-grep -Fq 'function prepare_list_downloads(sections, proxy_address)' "$UPDATES_UC" ||
+grep -Fq 'function prepare_list_downloads(sections, proxy_address, unlocked)' "$UPDATES_UC" ||
   fail "all remote list sources must pass preflight before active state changes"
 grep -Fq 'function restore_list_nft_snapshot()' "$UPDATES_UC" ||
   fail "an aborted list transaction must restore the active nftables table"

@@ -80,6 +80,8 @@ describe('fetchServicesInfo', () => {
           forkopRunning: 1,
           forkopEnabled: 1,
           forkopStatus: 'running & enabled',
+          forkopStoppedByUser: 0,
+          forkopNotStarted: 0,
           forkopRestartBlocked: 0,
           forkopStopAvailable: 1,
         },
@@ -117,6 +119,8 @@ describe('fetchServicesInfo', () => {
       forkopRunning: 1,
       forkopEnabled: 1,
       forkopStatus: 'running & enabled',
+      forkopStoppedByUser: 0,
+      forkopNotStarted: 0,
       forkopRestartBlocked: 0,
       forkopStopAvailable: 1,
     });

@@ -1,8 +1,11 @@
 #!/usr/bin/env ucode
 
 let fs = require("fs");
+let common = require("core.common");
 let uci_core = require("core.uci");
 let netstat = require("core.netstat");
+let runtime_lock = require("core.runtime_lock");
+let process_identity = require("core.process_identity");
 let rule_config = require("config.rule");
 let connections = require("config.connections");
 let zapret_validator = require("providers.zapret.validator");
@@ -20,6 +23,19 @@ const SB_DNS_INBOUND_ADDRESS = getenv("SB_DNS_INBOUND_ADDRESS") || "127.0.0.42";
 const SB_TPROXY_INBOUND_PORT = getenv("SB_TPROXY_INBOUND_PORT") || "1602";
 const SB_TPROXY_INBOUND6_ADDRESS = getenv("SB_TPROXY_INBOUND6_ADDRESS") || "::1";
 const DIAGNOSTICS_RUNTIME_UC = LIB_DIR + "/diagnostics/runtime.uc";
+// Written by an explicit stop (service/initd.uc before it waits for
+// reload.lock, service/lifecycle.uc `forkop stop`) and removed only by an
+// explicit start or restart (service/initd.uc, service/lifecycle.uc): no
+// reload brings back the runtime it took down (D-15, UC-056). Its second
+// line names who asked for the stop (service/initd.uc stop_request_source).
+// It lives in runtime state (no flash writes) and ends with a reboot. With
+// autostart enabled the start at boot is an explicit start anyway. With
+// autostart disabled no start is recorded after a reboot
+// (service/initd.uc EXPLICIT_START_FILE), and a runtime that was not started
+// since boot is held down like a stopped one: no reload (a manual one, a
+// snapshot restore, a list update) starts it (D-15(a)).
+const STOP_REQUESTED_FILE = getenv("FORKOP_STOP_REQUESTED_FILE") ||
+    (getenv("FORKOP_RUNTIME_STATE_DIR") || "/var/run/forkop") + "/stop.requested";
 
 function as_string(value) {
     return value == null ? "" : "" + value;
@@ -242,6 +258,8 @@ function sync_time_if_needed() {
     ]);
 }
 
+// Unique per write, as in service/initd.uc: a caller comparing markers sees a
+// second request even within the same second.
 function mark_pending_reload(path, reason) {
     path = as_string(path || DEFAULT_PENDING_RELOAD_FILE);
     reason = as_string(reason || "pending");
@@ -249,7 +267,9 @@ function mark_pending_reload(path, reason) {
     if (!ensure_parent_dir(path))
         exit(1);
 
-    if (!write_text_file(path, "reason=" + reason + "\nupdated_at=" + current_epoch() + "\n"))
+    let now = clock();
+    let request = sprintf("%s.%d.%09d", as_string(fs.readlink("/proc/self") || "0"), now[0], now[1]);
+    if (!write_text_file(path, "reason=" + reason + "\nupdated_at=" + current_epoch() + "\nrequest=" + request + "\n"))
         exit(1);
 }
 
@@ -273,7 +293,11 @@ function run_pending_reload_if_requested(path, init_script) {
     // Do not acknowledge the durable request before its replacement owns the
     // reload handoff. A detached init.d invocation leaves a window in which a
     // latency worker can take reload.lock again while the marker is gone.
-    if (system(shell_quote(init_script) + " reload pending </dev/null >/dev/null 2>&1 1000>&-") != 0) {
+    // The nested init.d is waited for, so it keeps the procd service lock of
+    // this process (fd 1000): rc.common then takes it from the inherited
+    // descriptor. Closing fd 1000, as detached workers must, makes the child
+    // open the lock anew and wait for its own waiting ancestor.
+    if (system(shell_quote(init_script) + " reload pending </dev/null >/dev/null 2>&1") != 0) {
         mark_pending_reload(path, "pending_handoff_failed");
         command_success_from_args([ "logger", "-t", "forkop", "[warn] Pending Forkop reload handoff failed; request was retained" ]);
         return false;
@@ -282,60 +306,35 @@ function run_pending_reload_if_requested(path, init_script) {
     return true;
 }
 
-function first_line_value(path) {
-    let data = fs.readfile(path);
-    if (data == null)
-        return "";
-
-    let newline = index(data, "\n");
-    return newline >= 0 ? substr(data, 0, newline) : data;
-}
-
-function pid_alive(pid) {
-    pid = as_string(pid);
-    return match(pid, /^[0-9]+$/) != null && command_success_from_args([ "kill", "-0", pid ]);
-}
-
-function lock_dir_write_owner(lock_dir, owner_pid) {
-    return write_text_file(as_string(lock_dir) + "/pid", as_string(owner_pid) + "\n");
-}
-
-function release_runtime_dir_lock(lock_dir) {
-    lock_dir = as_string(lock_dir);
-    if (lock_dir == "")
-        return;
-
-    command_success_from_args([ "rm", "-f", lock_dir + "/pid" ]);
-    command_success_from_args([ "rmdir", lock_dir ]);
+// Runtime directory locks. Global order: a process that holds more than one
+// takes them in this order and never waits for an earlier one while it holds
+// a later one (UC-054):
+//   1. automatic-latency-test.lock: only ever try-acquired; the automatic
+//      latency test (diagnostics/runtime.uc) holds it while it waits for
+//      reload.lock.
+//   2. reload.lock: start, reload and stop (service/initd.uc, around `forkop
+//      start`, `forkop reload` and `forkop stop`; stop waits for it only for
+//      a bounded time), the list worker and the subscription update
+//      (components/updates.uc), dns_failover_apply (service/lifecycle.uc),
+//      the automatic latency test.
+//   3. subscription-update.lock: start_main (service/lifecycle.uc), inside
+//      reload.lock for a start and for a reload that restarts the runtime,
+//      after it stopped the deferred bootstrap retry (UC-057; the start's
+//      own deferred bootstrap still downloads under both locks, a known
+//      remainder); the subscription update, after reload.lock; the deferred
+//      subscription bootstrap retry (subscription/cache.uc), which holds
+//      nothing else and releases it before it requests a reload. A forced
+//      subscription update does not wait for the retry's download inside
+//      reload.lock (UC-057): it releases reload.lock, waits holding nothing
+//      else (taking the lock and letting go of it at once), and takes both
+//      again in order.
+// The lock protocol and the owner record: core/runtime_lock.uc.
+function release_runtime_dir_lock(lock_dir, owner_pid) {
+    return runtime_lock.release(lock_dir, owner_pid);
 }
 
 function acquire_runtime_dir_lock(lock_dir, owner_pid) {
-    lock_dir = as_string(lock_dir);
-    owner_pid = as_string(owner_pid);
-    if (lock_dir == "" || owner_pid == "")
-        return false;
-
-    if (command_success_from_args([ "mkdir", lock_dir ])) {
-        if (lock_dir_write_owner(lock_dir, owner_pid))
-            return true;
-        release_runtime_dir_lock(lock_dir);
-        return false;
-    }
-
-    if (pid_alive(first_line_value(lock_dir + "/pid")))
-        return false;
-
-    command_success_from_args([ "rm", "-f", lock_dir + "/pid" ]);
-    if (!command_success_from_args([ "rmdir", lock_dir ]))
-        return false;
-    if (!command_success_from_args([ "mkdir", lock_dir ]))
-        return false;
-
-    if (lock_dir_write_owner(lock_dir, owner_pid))
-        return true;
-
-    release_runtime_dir_lock(lock_dir);
-    return false;
+    return runtime_lock.acquire(lock_dir, owner_pid);
 }
 
 function acquire_runtime_dir_lock_wait(lock_dir, owner_pid, timeout) {
@@ -488,24 +487,9 @@ function pid_has_deleted_sing_box_exe(pid) {
     return sing_box_exe_kind(command_trimmed_output_from_args([ "readlink", "/proc/" + pid + "/exe" ])) == "deleted";
 }
 
-function hup_sing_box_runtime() {
-    let pid = sing_box_service_pid_runtime();
-    if (pid <= 0 || !pid_is_sing_box(pid))
-        exit(1);
-
-    command_success_from_args([ "logger", "-t", "forkop", "[info] Applying DNS failover with sing-box SIGHUP reload" ]);
-    if (!command_success_from_args([ "kill", "-HUP", as_string(pid) ]))
-        exit(1);
-}
-
 function process_start_ticks(stat) {
-    stat = as_string(stat);
-    let marker = index(stat, ") ");
-    if (marker < 0)
-        return null;
-
-    let fields = split(trim(substr(stat, marker + 2)), /[ \t\r\n]+/);
-    if (length(fields) < 20)
+    let fields = process_identity.stat_fields(stat);
+    if (fields == null || length(fields) < 20)
         return null;
 
     let start_ticks = fields[19];
@@ -990,6 +974,25 @@ function forkop_stably_running(rt_table, nft_table, mark, min_age) {
     return sing_box_current_owned_service_runtime() && sing_box_service_stable(min_age) &&
         sing_box_runtime_ports_ready() && sing_box_clash_api_ready() &&
         forkop_runtime_network_configured(rt_table, nft_table, mark);
+}
+
+function stop_requested() {
+    return fs.stat(STOP_REQUESTED_FILE) != null;
+}
+
+// Whether work that holds reload.lock (a subscription update, a DNS-failover
+// apply) may still start sing-box and its workers (UC-012). Not after an
+// explicit stop: the stop waits for reload.lock only for a bounded time, and
+// the holder must not bring the runtime back once it is released. Not while
+// Forkop is down either: start and reload hold reload.lock, so under it a
+// missing production nft table means a stopped or failed runtime, and a lone
+// sing-box without it is no Forkop runtime. The listing omits set contents,
+// which can be large. Once the holder has taken sing-box down, only a stop
+// request can take the runtime away under the lock: it checks stop-requested.
+function runtime_apply_allowed(nft_table) {
+    if (stop_requested())
+        return false;
+    return command_success_from_args([ "nft", "-t", "list", "table", "inet", as_string(nft_table || "ForkopTable") ]);
 }
 
 function wait_forkop_stable_start(rt_table, nft_table, mark, min_age, timeout) {
@@ -1713,10 +1716,10 @@ function sing_box_signature_body(settings, sections, mwan3_active) {
 
     let enable_yacd = bool_option_value(settings, "enable_yacd", false);
     body = signature_add_value(body, "settings.enable_yacd", enable_yacd);
-    if (enable_yacd == "1") {
+    if (enable_yacd == "1")
         body = signature_add_value(body, "settings.enable_yacd_wan_access", bool_option_value(settings, "enable_yacd_wan_access", false));
-        body = signature_add_value(body, "settings.yacd_secret_key", option(settings, "yacd_secret_key", ""));
-    }
+    // The controller secret applies with YACD off too (UC-035).
+    body = signature_add_value(body, "settings.yacd_secret_key", common.clash_api_secret(settings));
 
     body = signature_add_value(body, "settings.download_lists_via_proxy", bool_option_value(settings, "download_lists_via_proxy", false));
     body = signature_add_value(body, "settings.download_components_via_proxy", bool_option_value(settings, "download_components_via_proxy", false));
@@ -2093,7 +2096,13 @@ else if (mode == "acquire-runtime-dir-lock")
 else if (mode == "acquire-runtime-dir-lock-wait")
     exit(acquire_runtime_dir_lock_wait(ARGV[1], ARGV[2], ARGV[3]) ? 0 : 1);
 else if (mode == "release-runtime-dir-lock")
-    release_runtime_dir_lock(ARGV[1]);
+    release_runtime_dir_lock(ARGV[1], ARGV[2]);
+else if (mode == "runtime-dir-lock-owner") {
+    let owner = runtime_lock.owner(ARGV[1]);
+    if (owner == "")
+        exit(1);
+    print(owner, "\n");
+}
 else if (mode == "reload-sing-box-runtime")
     reload_sing_box_runtime(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
 else if (mode == "stop-all-sing-box-runtime")
@@ -2104,8 +2113,6 @@ else if (mode == "start-managed-sing-box-runtime")
     exit(start_managed_sing_box_and_verify(ARGV[1]) ? 0 : 1);
 else if (mode == "controlled-replace-managed-sing-box-runtime")
     exit(controlled_replace_managed_sing_box_runtime(ARGV[1]) ? 0 : 1);
-else if (mode == "hup-sing-box-runtime")
-    hup_sing_box_runtime();
 else if (mode == "single-ready-sing-box-runtime")
     exit(single_ready_sing_box_runtime() ? 0 : 1);
 else if (mode == "clear-reload-state")
@@ -2188,6 +2195,10 @@ else if (mode == "forkop-stably-running")
     exit(forkop_stably_running(ARGV[1], ARGV[2], ARGV[3], ARGV[4]) ? 0 : 1);
 else if (mode == "wait-forkop-stable-start")
     exit(wait_forkop_stable_start(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5]) ? 0 : 1);
+else if (mode == "runtime-apply-allowed")
+    exit(runtime_apply_allowed(ARGV[1]) ? 0 : 1);
+else if (mode == "stop-requested")
+    exit(stop_requested() ? 0 : 1);
 else if (mode == "list-has-remote-references" || mode == "list-has-remote-sing-box-rulesets")
     exit(list_has_remote_references(ARGV[1]) ? 0 : 1);
 else if (mode == "community-service-has-subnet-list")

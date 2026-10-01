@@ -6,6 +6,8 @@ let core_ip = require("core.ip");
 let uci_core = require("core.uci");
 let runtime_dns = require("singbox.dns");
 let netstat = require("core.netstat");
+let dpi_strategy = require("core.dpi_strategy");
+let common = require("core.common");
 
 const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || constants.FORKOP_CONFIG_NAME || "forkop";
 const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
@@ -16,6 +18,12 @@ const FORKOP_RELEASE_REPO = getenv("FORKOP_RELEASE_REPO") || constants.FORKOP_RE
 const FORKOP_LUCI_VIEW_DIR = getenv("FORKOP_LUCI_VIEW_DIR") || constants.FORKOP_LUCI_VIEW_DIR || "/www/luci-static/resources/view/forkop";
 const RUNTIME_STATE_DIR = getenv("FORKOP_RUNTIME_STATE_DIR") || "/var/run/forkop";
 const SYSTEM_INFO_CACHE_FILE = getenv("FORKOP_SYSTEM_INFO_CACHE_FILE") || RUNTIME_STATE_DIR + "/system-info.json";
+// An explicit stop (service/initd.uc, service/lifecycle.uc): until an
+// explicit start the runtime stays down (D-15, UC-056).
+const STOP_REQUESTED_FILE = getenv("FORKOP_STOP_REQUESTED_FILE") || RUNTIME_STATE_DIR + "/stop.requested";
+// An explicit start since boot (service/initd.uc): without it a runtime that
+// is down was not started since boot, or the user stopped it (D-15(a)).
+const EXPLICIT_START_FILE = getenv("FORKOP_EXPLICIT_START_FILE") || RUNTIME_STATE_DIR + "/start.explicit";
 const SYSTEM_INFO_CACHE_TTL = int(getenv("FORKOP_SYSTEM_INFO_CACHE_TTL") || "3600");
 const TMP_SING_BOX_FOLDER = getenv("TMP_SING_BOX_FOLDER") || constants.TMP_SING_BOX_FOLDER || "/tmp/sing-box";
 const TMP_RULESET_FOLDER = getenv("TMP_RULESET_FOLDER") || constants.TMP_RULESET_FOLDER || TMP_SING_BOX_FOLDER + "/rulesets";
@@ -53,6 +61,23 @@ const AUTOMATIC_LATENCY_PENDING_FORMAT = "1";
 const AUTOMATIC_LATENCY_RETRY_BASE_SECONDS = int(getenv("FORKOP_AUTOMATIC_LATENCY_RETRY_BASE_SECONDS") || "300");
 const AUTOMATIC_LATENCY_MAX_FAILURES = int(getenv("FORKOP_AUTOMATIC_LATENCY_MAX_FAILURES") || "5");
 const AUTOMATIC_LATENCY_CLASH_READY_ATTEMPTS = int(getenv("FORKOP_AUTOMATIC_LATENCY_CLASH_READY_ATTEMPTS") || "15");
+// Bounds of every request to the Clash API controller (UC-016), in seconds.
+// A controller that accepts connections and never answers (a stopped or
+// wedged sing-box) would otherwise hold UI polls, the readiness probe of
+// start/reload verification (under reload.lock and the transition guard), the
+// Priority worker and latency tests with no time limit. curl waits for a delay
+// request as long as sing-box may take to answer it, plus a margin: the
+// requested timeout, except for the group delay of a URLTest group (see
+// clash_delay_max_time).
+const CLASH_API_CONNECT_TIMEOUT = 2;
+const CLASH_API_MAX_TIME = 5;
+const CLASH_API_DELAY_MARGIN = 2;
+// sing-box answers GET /group/<tag>/delay of a URLTest group only after it has
+// re-tested every member without fresh history, SING_BOX_URLTEST_CONCURRENCY
+// at a time, each with its own C.TCPTimeout, whatever timeout the request
+// asked for (protocol/group/urltest.go, constant/timeout.go).
+const SING_BOX_URLTEST_MEMBER_TIMEOUT = 15;
+const SING_BOX_URLTEST_CONCURRENCY = 10;
 
 const STATUS_UC = LIB_DIR + "/diagnostics/status.uc";
 const HELPERS_UC = LIB_DIR + "/core/helpers.uc";
@@ -76,6 +101,11 @@ function as_string(value) {
 function arg_number(value) {
     value = as_string(value);
     return value == "" || match(value, /[^0-9-]/) != null ? 0 : int(value, 10);
+}
+
+function monotonic_seconds() {
+    let now = clock(true);
+    return now[0] + now[1] / 1000000000.0;
 }
 
 function arg_bool(value) {
@@ -812,12 +842,25 @@ function get_readonly_config_sections() {
     // subscription URLs through a read-only rpcd capability.
     let safe_keys = [ "action", "enabled", "interface", "interfaces", "label",
         "section", "sort_by_latency", "urltest_enabled", "urltests", "priority_groups" ];
+    // Display names of child items (interface names, URLTest and priority
+    // group/level labels) and the owner links of priority levels. Never for
+    // subscription_url or other types (UC-039).
+    let safe_child_keys = {
+        section_interface: [ "name", "display_name" ],
+        urltest: [ "name", "display_name" ],
+        priority_group: [ "name", "display_name" ],
+        priority_level: [ "name", "display_name", "group", "order" ]
+    };
     for (let type_name in config_section_types(FORKOP_CONFIG)) {
         for (let source in uci_core.section_objects(CONFIG_NAME, type_name)) {
             let item = { ".name": source[".name"], ".type": source[".type"] || type_name };
-            for (let key in safe_keys)
+            for (let key in [ ...safe_keys, ...(safe_child_keys[item[".type"]] || []) ])
                 if (source[key] != null)
                     item[key] = source[key];
+            // DPI rules: provider and strategy name, never the raw options.
+            if (dpi_strategy.is_dpi_action(source.action))
+                for (let key, value in dpi_strategy.view(source))
+                    item[key] = value;
             push(result, item);
         }
     }
@@ -1142,12 +1185,13 @@ function service_status_label(running, enabled) {
     return arg_number(enabled) == 1 ? "stopped but enabled" : "stopped & disabled";
 }
 
-function write_service_status(running, enabled, dns_configured) {
+function write_service_status(running, enabled, dns_configured, extra) {
     write_json({
         running,
         enabled,
         status: service_status_label(running, enabled),
-        dns_configured
+        dns_configured,
+        ...(extra || {})
     });
 }
 
@@ -1172,7 +1216,18 @@ function get_status() {
     ]) ? 1 : 0;
     let enabled = file_executable("/etc/rc.d/S99" + FORKOP_SERVICE_NAME) ? 1 : 0;
     let dns_configured = dnsmasq_has_forkop_dns() ? 1 : 0;
-    write_service_status(running, enabled, dns_configured);
+    // Down because the user's explicit stop holds it down, not a failed start
+    // or a crash, nor Forkop's own stop for a package or component change
+    // whose start never came (D-15, UC-056; service/initd.uc
+    // stop_request_source). Or down because nobody started it since boot:
+    // no explicit start is recorded and the user did not stop it (D-15(a)).
+    let request = running == 0 ? fs.readfile(STOP_REQUESTED_FILE) : null;
+    let by = request == null ? null : match(request, /(^|\n)by=([a-z]*)/);
+    let stopped_by_user = request != null && (by == null || by[2] == "user");
+    write_service_status(running, enabled, dns_configured, {
+        stopped_by_user: stopped_by_user ? 1 : 0,
+        not_started: running == 0 && !stopped_by_user && fs.stat(EXPLICIT_START_FILE) == null ? 1 : 0
+    });
     return 0;
 }
 
@@ -1375,6 +1430,7 @@ function check_dns_available() {
         dhcp_config_status = 0;
 
     let display_dns_server = replace(status_output([ "mask-dns-server", dns_server ], null), /[\r\n]+$/g, "");
+    let display_bootstrap_dns_server = replace(status_output([ "mask-dns-server", bootstrap_dns_server ], null), /[\r\n]+$/g, "");
     write_json({
         dns_type,
         dns_server: display_dns_server,
@@ -1382,7 +1438,7 @@ function check_dns_available() {
         dns_server_count: length(active.state.main_servers),
         dns_status,
         dns_on_router,
-        bootstrap_dns_server,
+        bootstrap_dns_server: display_bootstrap_dns_server,
         bootstrap_dns_server_index: active.state.bootstrap_index,
         bootstrap_dns_server_count: length(active.state.bootstrap_servers),
         bootstrap_dns_status,
@@ -1562,9 +1618,36 @@ function check_fakeip() {
     return 0;
 }
 
-function clash_json_output(args) {
-    print(status_output([ "stdin-json" ], command_output(command_from_args(args))));
-    return 0;
+// The curl command of a controller request, bounded (UC-016); max_time
+// defaults to CLASH_API_MAX_TIME.
+function clash_curl(max_time) {
+    return [ "curl", "-s", "--connect-timeout", as_string(CLASH_API_CONNECT_TIMEOUT),
+        "--max-time", as_string(max_time || CLASH_API_MAX_TIME) ];
+}
+
+// --max-time of a delay request that asks sing-box for timeout_ms. A group
+// delay passes the group's entry of GET /proxies: for a URLTest group the
+// answer can take a SING_BOX_URLTEST_MEMBER_TIMEOUT per round of members.
+// (A URLTest tag of a proxy list is tested through its group delay too.)
+function clash_delay_max_time(timeout_ms, group) {
+    let ms = arg_number(timeout_ms);
+    let max_time = ms > 0 ? int((ms + 999) / 1000) + CLASH_API_DELAY_MARGIN : CLASH_API_MAX_TIME;
+    group = object_or_empty(group);
+    if (lc(as_string(group.type)) != "urltest")
+        return max_time;
+    let members = type(group.all) == "array" ? length(group.all) : 0;
+    let rounds = int((members + SING_BOX_URLTEST_CONCURRENCY - 1) / SING_BOX_URLTEST_CONCURRENCY);
+    let group_time = (rounds > 1 ? rounds : 1) * SING_BOX_URLTEST_MEMBER_TIMEOUT + CLASH_API_DELAY_MARGIN;
+    return group_time > max_time ? group_time : max_time;
+}
+
+// Runs a controller request. A request that got no answer (refused, or a
+// bound expired) fails with a reason instead of passing on an empty body.
+function clash_request(args) {
+    let result = command_capture(command_from_args(args));
+    if (result.status == 0)
+        return { ok: true, output: result.output };
+    return { ok: false, error: result.status == 28 ? "clash_api_timeout" : "clash_api_unreachable" };
 }
 
 function clash_api_url() {
@@ -1574,11 +1657,35 @@ function clash_api_url() {
     return address + ":" + SB_CLASH_API_CONTROLLER_PORT;
 }
 
+let clash_auth_files = [];
+
+// curl arguments that authenticate against the controller under the shared
+// predicate (UC-035): whenever a secret is configured, whatever YACD and WAN
+// access say. The header goes through a private file, never the command line,
+// because the process list is part of the support report. Returns null when
+// the file cannot be prepared; clash_auth_close() removes it.
 function clash_auth_args() {
-    let cfg = settings();
-    if (!bool_option(cfg, "enable_yacd_wan_access", false))
+    let secret = common.clash_api_secret(settings());
+    if (secret == "")
         return [];
-    return [ "--header", "Authorization: Bearer " + option(cfg, "yacd_secret_key", "") ];
+    let path = trim(command_output_from_args([ "mktemp" ]));
+    if (path == "")
+        return null;
+    push(clash_auth_files, path);
+    let fh = fs.open(path, "w", 0600);
+    if (fh == null || !fs.chmod(path, 0600) || fh.write("Authorization: Bearer " + secret + "\n") == null) {
+        if (fh != null)
+            fh.close();
+        return null;
+    }
+    fh.close();
+    return [ "-H", "@" + path ];
+}
+
+function clash_auth_close() {
+    for (let path in clash_auth_files)
+        fs.unlink(path);
+    clash_auth_files = [];
 }
 
 function clash_urlencode(value) {
@@ -1592,8 +1699,20 @@ function clash_json_error(message) {
     return 1;
 }
 
-function clash_proxy_type_map(base_url, auth) {
-    let args = [ "curl", "-s" ];
+function clash_json_output(args) {
+    let response = clash_request(args);
+    if (!response.ok)
+        return clash_json_error(response.error);
+    print(status_output([ "stdin-json" ], response.output));
+    return 0;
+}
+
+// The proxies of GET /proxies by tag, or null when the controller did not
+// list them.
+function clash_proxies(base_url, auth) {
+    if (auth == null)
+        return null;
+    let args = clash_curl();
     for (let item in auth) push(args, item);
     push(args, base_url + "/proxies");
 
@@ -1607,15 +1726,25 @@ function clash_proxy_type_map(base_url, auth) {
 
     if (type(value) != "object" || type(value.proxies) != "object")
         return null;
+    return value.proxies;
+}
 
+function clash_proxy_types(proxies) {
     let result = {};
-    for (let tag, proxy in object_or_empty(value.proxies))
+    for (let tag, proxy in object_or_empty(proxies))
         result[tag] = as_string(object_or_empty(proxy).type || "");
     return result;
 }
 
+function clash_proxy_type_map(base_url, auth) {
+    let proxies = clash_proxies(base_url, auth);
+    return proxies == null ? null : clash_proxy_types(proxies);
+}
+
 function clash_api_ready() {
-    return clash_proxy_type_map(clash_api_url(), clash_auth_args()) != null;
+    let ready = clash_proxy_type_map(clash_api_url(), clash_auth_args()) != null;
+    clash_auth_close();
+    return ready;
 }
 
 function latency_testable_proxy_type(proxy_type) {
@@ -1739,20 +1868,19 @@ function latency_test_url() {
     return value == "" ? DEFAULT_LATENCY_TEST_URL : value;
 }
 
-function clash_api(action, arg1, arg2, arg3) {
+function clash_api_request(action, arg1, arg2, arg3, auth) {
     let base_url = clash_api_url();
     let test_url = latency_test_url();
-    let auth = clash_auth_args();
 
     if (action == "get_proxies") {
-        let args = [ "curl", "-s" ];
+        let args = clash_curl();
         for (let item in auth) push(args, item);
         push(args, base_url + "/proxies");
         return clash_json_output(args);
     }
 
     if (action == "get_connections") {
-        let args = [ "curl", "-s" ];
+        let args = clash_curl();
         for (let item in auth) push(args, item);
         push(args, base_url + "/connections");
         return clash_json_output(args);
@@ -1764,12 +1892,14 @@ function clash_api(action, arg1, arg2, arg3) {
         let url = as_string(arg3 || "");
         if (url == "")
             url = test_url;
-        let args = [ "curl", "-G", "-s", base_url + "/proxies/" + clash_urlencode(arg1) + "/delay" ];
+        let timeout = as_string(arg2 || "2000");
+        let args = clash_curl(clash_delay_max_time(timeout));
+        push(args, "-G", base_url + "/proxies/" + clash_urlencode(arg1) + "/delay");
         for (let item in auth) push(args, item);
         push(args, "--data-urlencode");
         push(args, "url=" + url);
         push(args, "--data-urlencode");
-        push(args, "timeout=" + as_string(arg2 || "2000"));
+        push(args, "timeout=" + timeout);
         return clash_json_output(args);
     }
 
@@ -1793,7 +1923,12 @@ function clash_api(action, arg1, arg2, arg3) {
         if (progress_path != "")
             module_success(SERVICE_UI_UC, [ "latency-progress-state", progress_path, count, total, failed ]);
 
-        let proxy_types = clash_proxy_type_map(base_url, auth);
+        // A controller that cannot list its proxies will not answer delay
+        // requests either: fail once instead of waiting out every tag.
+        let proxies = clash_proxies(base_url, auth);
+        if (proxies == null)
+            return clash_json_error("clash_api_unavailable");
+        let proxy_types = clash_proxy_types(proxies);
         let ordered_proxy_tags = [];
         for (let proxy_tag in proxy_tags)
             if (lc(as_string(proxy_types[proxy_tag])) != "urltest")
@@ -1802,13 +1937,15 @@ function clash_api(action, arg1, arg2, arg3) {
             if (lc(as_string(proxy_types[proxy_tag])) == "urltest")
                 push(ordered_proxy_tags, proxy_tag);
 
+        let timeout = as_string(arg2 || "5000");
         for (let proxy_tag in ordered_proxy_tags) {
-            let args = [ "curl", "-G", "-s", clash_latency_endpoint(base_url, proxy_tag, proxy_types[proxy_tag]) ];
+            let args = clash_curl(clash_delay_max_time(timeout, proxies[proxy_tag]));
+            push(args, "-G", clash_latency_endpoint(base_url, proxy_tag, proxy_types[proxy_tag]));
             for (let item in auth) push(args, item);
             push(args, "--data-urlencode");
             push(args, "url=" + test_url);
             push(args, "--data-urlencode");
-            push(args, "timeout=" + as_string(arg2 || "5000"));
+            push(args, "timeout=" + timeout);
             if (status_capture([ "stdin-json" ], command_output(command_from_args(args))).status != 0)
                 failed++;
             count++;
@@ -1824,12 +1961,18 @@ function clash_api(action, arg1, arg2, arg3) {
     if (action == "get_group_latency") {
         if (as_string(arg1) == "")
             return clash_json_error("group_tag required");
-        let args = [ "curl", "-G", "-s", base_url + "/group/" + clash_urlencode(arg1) + "/delay" ];
+        // The bound depends on the group's type and members.
+        let proxies = clash_proxies(base_url, auth);
+        if (proxies == null)
+            return clash_json_error("clash_api_unavailable");
+        let timeout = as_string(arg2 || "5000");
+        let args = clash_curl(clash_delay_max_time(timeout, proxies[arg1]));
+        push(args, "-G", base_url + "/group/" + clash_urlencode(arg1) + "/delay");
         for (let item in auth) push(args, item);
         push(args, "--data-urlencode");
         push(args, "url=" + test_url);
         push(args, "--data-urlencode");
-        push(args, "timeout=" + as_string(arg2 || "5000"));
+        push(args, "timeout=" + timeout);
         return clash_json_output(args);
     }
 
@@ -1837,11 +1980,15 @@ function clash_api(action, arg1, arg2, arg3) {
         if (as_string(arg1) == "" || as_string(arg2) == "")
             return clash_json_error("group_tag and proxy_tag required");
         let payload = status_output([ "clash-set-group-proxy-payload", arg2 ], null);
-        let args = [ "curl", "-X", "PUT", "-s", "-w", "\n%{http_code}", base_url + "/proxies/" + clash_urlencode(arg1) ];
+        let args = clash_curl();
+        push(args, "-X", "PUT", "-w", "\n%{http_code}", base_url + "/proxies/" + clash_urlencode(arg1));
         for (let item in auth) push(args, item);
         push(args, "--data-raw");
         push(args, payload);
-        let result = status_capture([ "clash-set-group-proxy-result", arg1, arg2 ], command_output(command_from_args(args)));
+        let response = clash_request(args);
+        if (!response.ok)
+            return clash_json_error(response.error);
+        let result = status_capture([ "clash-set-group-proxy-result", arg1, arg2 ], response.output);
         if (result.output != "")
             print(result.output);
         return result.status;
@@ -1850,18 +1997,26 @@ function clash_api(action, arg1, arg2, arg3) {
     if (action == "close_connection") {
         if (as_string(arg1) == "")
             return clash_json_error("connection_id required");
-        let args = [ "curl", "-X", "DELETE", "-s", "-w", "\n%{http_code}", base_url + "/connections/" + clash_urlencode(arg1) ];
+        let args = clash_curl();
+        push(args, "-X", "DELETE", "-w", "\n%{http_code}", base_url + "/connections/" + clash_urlencode(arg1));
         for (let item in auth) push(args, item);
-        let result = status_capture([ "clash-close-connection-result", arg1 ], command_output(command_from_args(args)));
+        let response = clash_request(args);
+        if (!response.ok)
+            return clash_json_error(response.error);
+        let result = status_capture([ "clash-close-connection-result", arg1 ], response.output);
         if (result.output != "")
             print(result.output);
         return result.status;
     }
 
     if (action == "close_all_connections") {
-        let args = [ "curl", "-X", "DELETE", "-s", "-w", "\n%{http_code}", base_url + "/connections" ];
+        let args = clash_curl();
+        push(args, "-X", "DELETE", "-w", "\n%{http_code}", base_url + "/connections");
         for (let item in auth) push(args, item);
-        let result = status_capture([ "clash-close-all-connections-result" ], command_output(command_from_args(args)));
+        let response = clash_request(args);
+        if (!response.ok)
+            return clash_json_error(response.error);
+        let result = status_capture([ "clash-close-all-connections-result" ], response.output);
         if (result.output != "")
             print(result.output);
         return result.status;
@@ -1871,6 +2026,27 @@ function clash_api(action, arg1, arg2, arg3) {
     if (unknown.output != "")
         print(unknown.output);
     return 1;
+}
+
+function clash_api(action, arg1, arg2, arg3) {
+    let auth = clash_auth_args();
+    let status = auth == null
+        ? clash_json_error("clash_api_auth_unavailable")
+        : clash_api_request(action, arg1, arg2, arg3, auth);
+    clash_auth_close();
+    return status;
+}
+
+// init.d queues every reload that finds reload.lock held (service/initd.uc).
+// Once the automatic latency test has let the lock go for good and settled
+// its own marker, it is the last holder those reloads saw, as the list
+// worker is at its end (components/updates.uc): it applies them, or a reload
+// queued behind the test, a UI reload job's among them, waits for an
+// unrelated later reload or start (UC-061). Between batches the test hands
+// the lock over the same way.
+function apply_reload_queued_behind_latency_test() {
+    if (fs.stat(PENDING_RELOAD_FILE) != null)
+        module_success(SERVICE_STATE_UC, [ "run-pending-reload-if-requested", PENDING_RELOAD_FILE, SERVICE_INIT ]);
 }
 
 function automatic_latency_test(start_kind) {
@@ -1911,7 +2087,7 @@ function automatic_latency_test(start_kind) {
         marker = automatic_latency_pending_marker();
         current_signature = proxy_outbounds_signature_value(config_path);
         if (marker == null || as_string(marker.signature) != pending_signature || current_signature != pending_signature) {
-            module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", AUTOMATIC_LATENCY_TEST_LOCK_DIR ]);
+            module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", AUTOMATIC_LATENCY_TEST_LOCK_DIR, owner_pid ]);
             return 0;
         }
     }
@@ -1919,33 +2095,41 @@ function automatic_latency_test(start_kind) {
     if (!module_success(SERVICE_STATE_UC, [
         "acquire-runtime-dir-lock-wait", RELOAD_LOCK_DIR, owner_pid, "300"
     ])) {
-        module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", AUTOMATIC_LATENCY_TEST_LOCK_DIR ]);
+        module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", AUTOMATIC_LATENCY_TEST_LOCK_DIR, owner_pid ]);
         log_message("Automatic latency test deferred because Forkop did not finish reloading; the pending marker was retained", "warn");
         return 0;
     }
 
     if (!module_success(SERVICE_STATE_UC, [ "single-ready-sing-box-runtime" ])) {
-        module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", AUTOMATIC_LATENCY_TEST_LOCK_DIR ]);
-        module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", RELOAD_LOCK_DIR ]);
+        module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", AUTOMATIC_LATENCY_TEST_LOCK_DIR, owner_pid ]);
+        module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", RELOAD_LOCK_DIR, owner_pid ]);
         log_message("Automatic latency test deferred because sing-box is not ready or multiple processes are running; the pending marker was retained", "info");
+        apply_reload_queued_behind_latency_test();
         return 0;
     }
 
     let sing_box_pid_before = trim(module_output(SERVICE_STATE_UC, [ "sing-box-service-runtime-pid" ]));
     let proxy_types = null;
     let readiness_attempts = AUTOMATIC_LATENCY_CLASH_READY_ATTEMPTS > 0 ? AUTOMATIC_LATENCY_CLASH_READY_ATTEMPTS : 15;
+    // The attempts are a second apart, so the wait lasts about that many
+    // seconds. A probe of a controller that accepts and never answers runs
+    // out its CLASH_API_MAX_TIME, so elapsed time ends the wait as well:
+    // reload.lock is held throughout (UC-016).
+    let readiness_deadline = monotonic_seconds() + readiness_attempts;
     for (let readiness_attempt = 0; readiness_attempt < readiness_attempts; readiness_attempt++) {
         proxy_types = clash_proxy_type_map(clash_api_url(), clash_auth_args());
-        if (proxy_types != null)
+        clash_auth_close();
+        if (proxy_types != null || monotonic_seconds() >= readiness_deadline)
             break;
         if (readiness_attempt + 1 < readiness_attempts)
             command_success_from_args([ "sleep", "1" ]);
     }
     if (proxy_types == null) {
-        module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", AUTOMATIC_LATENCY_TEST_LOCK_DIR ]);
-        module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", RELOAD_LOCK_DIR ]);
+        module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", AUTOMATIC_LATENCY_TEST_LOCK_DIR, owner_pid ]);
+        module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", RELOAD_LOCK_DIR, owner_pid ]);
         automatic_latency_record_failure(pending_signature);
         log_message("Automatic latency test deferred because the Clash API is not ready; the pending marker was retained with a retry pause", "warn");
+        apply_reload_queued_behind_latency_test();
         return 1;
     }
 
@@ -1955,10 +2139,11 @@ function automatic_latency_test(start_kind) {
             push(proxy_tags, proxy_tag);
 
     if (length(proxy_tags) == 0) {
-        module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", AUTOMATIC_LATENCY_TEST_LOCK_DIR ]);
-        module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", RELOAD_LOCK_DIR ]);
+        module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", AUTOMATIC_LATENCY_TEST_LOCK_DIR, owner_pid ]);
+        module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", RELOAD_LOCK_DIR, owner_pid ]);
         automatic_latency_record_failure(pending_signature);
         log_message("Automatic latency test could not find the pending proxy set in the Clash API; the pending marker was retained with a retry pause", "warn");
+        apply_reload_queued_behind_latency_test();
         return 1;
     }
 
@@ -1973,14 +2158,14 @@ function automatic_latency_test(start_kind) {
         completed++;
 
         if (completed < length(proxy_tags) && completed % batch_size == 0) {
-            module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", RELOAD_LOCK_DIR ]);
+            module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", RELOAD_LOCK_DIR, owner_pid ]);
             let pending_handoff = module_success(SERVICE_STATE_UC, [
                 "run-pending-reload-if-requested", PENDING_RELOAD_FILE, SERVICE_INIT
             ]);
             // A failed handoff retains the durable request. Yield instead of
             // reclaiming runtime coordination ahead of it.
             if (!pending_handoff || fs.stat(PENDING_RELOAD_FILE) != null) {
-                module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", AUTOMATIC_LATENCY_TEST_LOCK_DIR ]);
+                module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", AUTOMATIC_LATENCY_TEST_LOCK_DIR, owner_pid ]);
                 log_message("Automatic latency test yielded to a pending Forkop reload handoff", "info");
                 return 0;
             }
@@ -1991,23 +2176,24 @@ function automatic_latency_test(start_kind) {
             if (!reacquired || !module_success(SERVICE_STATE_UC, [ "single-ready-sing-box-runtime" ]) ||
                 sing_box_pid_before != trim(module_output(SERVICE_STATE_UC, [ "sing-box-service-runtime-pid" ]))) {
                 if (reacquired)
-                    module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", RELOAD_LOCK_DIR ]);
-                module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", AUTOMATIC_LATENCY_TEST_LOCK_DIR ]);
+                    module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", RELOAD_LOCK_DIR, owner_pid ]);
+                module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", AUTOMATIC_LATENCY_TEST_LOCK_DIR, owner_pid ]);
                 log_message("Automatic latency test was interrupted by reload; the pending marker was retained for the next start", "info");
+                if (reacquired)
+                    apply_reload_queued_behind_latency_test();
                 return 0;
             }
         }
     }
-    module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", AUTOMATIC_LATENCY_TEST_LOCK_DIR ]);
-    module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", RELOAD_LOCK_DIR ]);
+    module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", AUTOMATIC_LATENCY_TEST_LOCK_DIR, owner_pid ]);
+    module_success(SERVICE_STATE_UC, [ "release-runtime-dir-lock", RELOAD_LOCK_DIR, owner_pid ]);
     // A reload is normally detected between batches through its PID/lock. A
     // non-restarting config change can still replace the proxy set, so never
     // acknowledge the old marker after its semantic generation changed.
-    if (proxy_outbounds_signature_value(config_path) != pending_signature) {
+    let stale = proxy_outbounds_signature_value(config_path) != pending_signature;
+    if (stale)
         log_message("Automatic latency test finished against a stale proxy generation; the pending marker was retained", "info");
-        return 0;
-    }
-    if (status == 0) {
+    else if (status == 0) {
         automatic_latency_remove_marker(pending_signature);
         log_message("Automatic latency test completed successfully; the pending marker was removed", "info");
     }
@@ -2015,7 +2201,8 @@ function automatic_latency_test(start_kind) {
         automatic_latency_record_failure(pending_signature);
         log_message("Automatic latency test completed with errors; the pending marker was retained with a retry pause", "warn");
     }
-    return status;
+    apply_reload_queued_behind_latency_test();
+    return stale ? 0 : status;
 }
 
 function print_global(message) {
@@ -2091,7 +2278,9 @@ function global_check(arg1, arg2) {
     if (validation.status == 0)
         print_global("✅ Forkop configuration is valid");
     else {
-        let message = trim(as_string(validation.output));
+        // Validator messages quote the offending value (a DNS server, URL
+        // or proxy parameter), so the masked view keeps only the verdict.
+        let message = visibility == "raw" ? trim(as_string(validation.output)) : "";
         print_global(message == "" ? "❌ Forkop configuration validation failed" : "❌ " + message);
     }
 
@@ -2231,6 +2420,41 @@ function support_report() {
     return 0;
 }
 
+// D-1: the otherwise unmasked support report keeps the Clash API secret out;
+// support never needs it. The report is collected by a child process and the
+// secret is replaced wherever it appears (config file, raw global check, raw
+// sing-box config, also JSON-escaped), plus the option line itself for very
+// short secrets.
+function support_report_without_clash_secret() {
+    let secret = common.clash_api_secret(settings());
+    if (secret == "")
+        return support_report();
+
+    let path = trim(command_output_from_args([ "mktemp" ]));
+    if (path == "")
+        return 1;
+    let status = command_status(command_from_args([
+        "ucode", "-L", LIB_DIR, LIB_DIR + "/diagnostics/runtime.uc", "support-report-unredacted"
+    ]) + " >" + shell_quote(path) + " 2>&1");
+    let text = as_string(fs.readfile(path) || "");
+    fs.unlink(path);
+
+    text = replace(text, /(yacd_secret_key[^\n]*)/g, function(line) {
+        let key = match(line, /^(yacd_secret_key['"]?[ =]*)/);
+        return (key ? key[1] : "yacd_secret_key ") + "'MASKED'";
+    });
+    if (length(secret) >= 4) {
+        // The raw sing-box config is JSON: a secret with a quote or a
+        // backslash appears there in its escaped form.
+        let escaped = substr(sprintf("%J", secret), 1, -1);
+        if (escaped != secret)
+            text = replace(text, escaped, "MASKED");
+        text = replace(text, secret, "MASKED");
+    }
+    print(text);
+    return status;
+}
+
 let mode = ARGV[0] || "";
 
 if (mode == "check-proxy")
@@ -2300,6 +2524,8 @@ else if (mode == "check-dns-available")
 else if (mode == "global-check")
     exit(global_check(ARGV[1] || "", ARGV[2] || ""));
 else if (mode == "support-report")
+    exit(support_report_without_clash_secret());
+else if (mode == "support-report-unredacted")
     exit(support_report());
 else if (mode == "validate-nfqws-strategy-json")
     exit(validate_nfqws_strategy_json(ARGV[1] || ""));

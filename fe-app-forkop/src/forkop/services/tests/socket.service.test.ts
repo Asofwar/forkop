@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { socket } from '../socket.service';
+import { logger } from '../logger.service';
 
 class FakeWebSocket {
   static CONNECTING = 0;
@@ -48,5 +49,36 @@ describe('socket service', () => {
     FakeWebSocket.instances[0].emit('error');
 
     expect(onError).toHaveBeenCalledOnce();
+  });
+
+  // UC-036: the Clash secret travels as the token query parameter of the
+  // controller WebSocket URL; it must never reach the console or the logger.
+  it('never logs the query string of a socket URL', () => {
+    const spies = [
+      vi.spyOn(console, 'info').mockImplementation(() => undefined),
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined),
+      vi.spyOn(console, 'error').mockImplementation(() => undefined),
+      vi.spyOn(console, 'log').mockImplementation(() => undefined),
+    ];
+    logger.clear();
+
+    const url = 'ws://router.test:9090/traffic?token=TOP-SECRET';
+    socket.subscribe(url, vi.fn(), vi.fn());
+    const ws = FakeWebSocket.instances[0];
+    ws.emit('open');
+    ws.emit('error');
+    ws.emit('close');
+    socket.send(url, 'x');
+
+    const printed = spies
+      .flatMap((spy) => spy.mock.calls)
+      .map((args) => args.join(' '))
+      .join('\n');
+    expect(printed).toContain('ws://router.test:9090/traffic');
+    expect(printed).not.toContain('TOP-SECRET');
+    expect(printed).not.toContain('token=');
+    expect(logger.getLogs()).not.toContain('TOP-SECRET');
+
+    for (const spy of spies) spy.mockRestore();
   });
 });

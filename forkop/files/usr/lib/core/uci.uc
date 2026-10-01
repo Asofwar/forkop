@@ -5,8 +5,11 @@ let common = require("core.common");
 
 let as_string = common.as_string;
 
-const UCI_STATE_FILE = getenv("FORKOP_UCI_STATE_FILE") || getenv("UCI_STATE") || "";
-const UCI_LOG_FILE = getenv("FORKOP_UCI_LOG_FILE") || getenv("UCI_LOG") || "";
+// Test fixture hooks: a flat state file instead of libuci, and a log of
+// commits. Only these Forkop-namespaced names count; the read-only CLI
+// (/usr/libexec/forkop-ro) runs with a clean environment.
+const UCI_STATE_FILE = getenv("FORKOP_UCI_STATE_FILE") || "";
+const UCI_LOG_FILE = getenv("FORKOP_UCI_LOG_FILE") || "";
 
 let runtime_cursor = false;
 let loaded_packages = {};
@@ -181,6 +184,30 @@ function state_del_list(path, value) {
     return state_set(path, join(" ", values));
 }
 
+function state_rename(path, name) {
+    let parts = path_parts(path);
+    name = as_string(name);
+    if (parts == null || parts.option != "" || name == "")
+        return false;
+
+    let from = parts.package + "." + parts.section;
+    let to = parts.package + "." + name;
+    if (state_get(from) == "" || state_exists(to))
+        return false;
+
+    let lines = [];
+    for (let line in state_lines()) {
+        if (line == "")
+            continue;
+        let equals = index(line, "=");
+        let key = equals >= 0 ? substr(line, 0, equals) : line;
+        if (key == from || substr(key, 0, length(from) + 1) == from + ".")
+            line = to + substr(line, length(from));
+        push(lines, line);
+    }
+    return state_write_lines(lines);
+}
+
 function state_commit(package_name) {
     if (UCI_LOG_FILE == "")
         return true;
@@ -205,6 +232,7 @@ function state_add_section(package_name, type_name) {
     return state_set(package_name + "." + section, type_name) ? section : "";
 }
 
+// type_name null: sections of every type.
 function state_sections(package_name, type_name) {
     let result = [];
     let prefix = as_string(package_name) + ".";
@@ -217,7 +245,7 @@ function state_sections(package_name, type_name) {
 
         let key = substr(line, 0, equals);
         let value = substr(line, equals + 1);
-        if (value != type_name || substr(key, 0, length(prefix)) != prefix)
+        if ((type_name != null && value != type_name) || substr(key, 0, length(prefix)) != prefix)
             continue;
 
         let section = substr(key, length(prefix));
@@ -425,6 +453,32 @@ function set_section(path, type_name) {
     }
 }
 
+// Gives the section <package>.<section> the name <name>; an anonymous section
+// becomes a named one in place.
+function rename(path, name) {
+    path = as_string(path);
+    name = as_string(name);
+    if (fixture_enabled())
+        return state_rename(path, name);
+
+    let parts = path_parts(path);
+    let c = cursor();
+    if (c == null || parts == null || parts.option != "" || name == "")
+        return false;
+    if (!load(parts.package))
+        return false;
+    parts = resolve_parts(c, parts);
+    if (parts == null || c.get(parts.package, parts.section) == null || c.get(parts.package, name) != null)
+        return false;
+
+    try {
+        return c.rename(parts.package, parts.section, name) != false;
+    }
+    catch (e) {
+        return false;
+    }
+}
+
 function add(package_name, type_name) {
     if (fixture_enabled())
         return state_add_section(package_name, type_name);
@@ -555,7 +609,8 @@ function section_name(section) {
     return as_string(section);
 }
 
-function sections(package_name, type_name) {
+// Section names in file order; type_name null: sections of every type.
+function section_names(package_name, type_name) {
     if (fixture_enabled())
         return state_sections(package_name, type_name);
 
@@ -566,7 +621,7 @@ function sections(package_name, type_name) {
     let result = [];
     try {
         load(package_name);
-        c.foreach(package_name, as_string(type_name), function(section) {
+        c.foreach(package_name, type_name, function(section) {
             let name = section_name(section);
             if (name != "")
                 push(result, name);
@@ -578,10 +633,19 @@ function sections(package_name, type_name) {
     return result;
 }
 
+function sections(package_name, type_name) {
+    return section_names(package_name, as_string(type_name));
+}
+
+// The names of all sections of the package, whatever their type.
+function all_sections(package_name) {
+    return section_names(package_name, null);
+}
+
 function section_objects(package_name, type_name) {
     if (fixture_enabled()) {
         let result = [];
-        for (let name in state_sections(package_name, type_name)) {
+        for (let name in state_sections(package_name, as_string(type_name))) {
             let section = state_get_all(package_name, name);
             if (type(section) == "object")
                 push(result, section);
@@ -607,6 +671,111 @@ function section_objects(package_name, type_name) {
     return result;
 }
 
+// ---- one option, committed alone ---------------------------------------------
+
+function shell_arg(value) {
+    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
+}
+
+function shell_command(args) {
+    let parts = [];
+    for (let arg in args)
+        push(parts, shell_arg(arg));
+    return join(" ", parts);
+}
+
+function command_ok(args) {
+    return system(shell_command(args) + " >/dev/null 2>&1") == 0;
+}
+
+function command_text(args) {
+    let pipe = fs.popen(shell_command(args) + " 2>/dev/null", "r");
+    if (!pipe)
+        return "";
+    let data = pipe.read("all");
+    return pipe.close() == 0 && data != null ? as_string(data) : "";
+}
+
+// The package name of the private copy commit_option() writes through;
+// nothing is ever staged under it.
+const OWN_OPTION_PACKAGE = "forkop_own_option";
+
+// Sets one option of a package and commits exactly that change. commit()
+// would also commit every change someone staged with `uci set` in
+// /tmp/.uci/<package>, and a cursor with a save directory of its own does not
+// help: libuci merges that directory anyway (and then leaves the changes
+// staged a second time). So the option is set on a private copy of
+// config_file under a package name of its own, staged there in uci's delta
+// format (the value never appears on a command line) and committed by the
+// uci CLI (cli); the copy then replaces config_file while the file is locked
+// (uci commit takes the same lock) and unchanged. Changes staged in /tmp/.uci
+// or in a LuCI session stay staged. keep_existing: a value the committed file
+// already has stays. "written" (the committed copy holds the value), "kept",
+// or "" when nothing was written (e.g. the section does not exist). The
+// fixture sets its state and logs "commit-option <path>", never a commit of
+// the package.
+function commit_option(config_file, path, value, keep_existing, cli) {
+    path = as_string(path);
+    let parts = path_parts(path);
+    if (parts == null || match(parts.section, /^[A-Za-z0-9_]+$/) == null || match(parts.option, /^[A-Za-z0-9_]+$/) == null)
+        return "";
+    if (fixture_enabled()) {
+        if (keep_existing && trim(state_get(path)) != "")
+            return "kept";
+        if (!state_set(path, value))
+            return "";
+        if (UCI_LOG_FILE != "")
+            fs.writefile(UCI_LOG_FILE, as_string(fs.readfile(UCI_LOG_FILE)) + "commit-option " + path + "\n");
+        return "written";
+    }
+
+    let dir = trim(command_text([ "mktemp", "-d" ]));
+    if (dir == "" || fs.stat(dir) == null)
+        return "";
+    let copy = dir + "/" + OWN_OPTION_PACKAGE;
+    let own = OWN_OPTION_PACKAGE + "." + parts.section + "." + parts.option;
+    let base = [ as_string(cli) || "uci", "-q", "-c", dir, "-t", dir + "/save" ];
+    let result = "";
+    let handle = fs.open(as_string(config_file), "r");
+    let locked = handle != null && handle.lock("x");
+    // The lock must be on the file that is replaced, not on one that another
+    // commit renamed away since it was opened.
+    let current = locked ? fs.stat(config_file) : null;
+    let held = locked ? fs.stat("/proc/self/fd/" + handle.fileno()) : null;
+    let before = current != null && held != null && current.inode == held.inode ? fs.readfile(config_file) : null;
+    if (before != null && fs.mkdir(dir + "/save", 0700) && fs.writefile(copy, before) != null) {
+        if (keep_existing && trim(command_text([ ...base, "get", own ])) != "")
+            result = "kept";
+        // uci skips a staged option whose section does not exist, and the
+        // commit still succeeds: only a copy that now holds the value counts.
+        else if (fs.writefile(dir + "/save/" + OWN_OPTION_PACKAGE, own + "=" + shell_arg(value) + "\n") != null &&
+                 command_ok([ ...base, "commit", OWN_OPTION_PACKAGE ]) &&
+                 replace(command_text([ ...base, "get", own ]), /\n$/, "") == as_string(value)) {
+            let after = fs.readfile(copy);
+            let tmp = fs.dirname(config_file) + "/." + fs.basename(config_file) + ".forkop-" + as_string(fs.readlink("/proc/self"));
+            let out = after != null ? fs.open(tmp, "w", 0600) : null;
+            let written = out != null && out.write(after) != null;
+            if (out != null)
+                out.close();
+            if (written && fs.chmod(tmp, current.mode) && fs.rename(tmp, config_file))
+                result = "written";
+            else
+                fs.unlink(tmp);
+        }
+    }
+    if (locked)
+        handle.lock("u");
+    if (handle != null)
+        handle.close();
+    command_ok([ "rm", "-rf", dir ]);
+    // Later reads of this process see the file as it is now.
+    if (result == "written" && runtime_cursor) {
+        try { runtime_cursor.unload(parts.package); } catch (e) {}
+        delete loaded_packages[parts.package];
+    }
+    return result;
+}
+
 return {
     available,
     load,
@@ -615,11 +784,14 @@ return {
     exists,
     delete: delete_path,
     set_section,
+    rename,
     add,
     set,
     add_list,
     del_list,
     commit,
+    commit_option,
     sections,
+    all_sections,
     section_objects
 };

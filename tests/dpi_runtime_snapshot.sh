@@ -11,6 +11,8 @@ CHILD_DIR="$STATE_DIR/child-pid"
 LOG_DIR="$STATE_DIR/log"
 SNAPSHOT="$STATE_DIR/previous.json"
 mkdir -p "$PID_DIR" "$CHILD_DIR" "$LOG_DIR"
+# shellcheck source=tests/helpers/wait.sh
+. "$ROOT_DIR/tests/helpers/wait.sh"
 
 cleanup() {
     for file in "$PID_DIR"/*.pid "$CHILD_DIR"/*.pid; do
@@ -23,15 +25,17 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
+# Only this run's supervisors: other tests start the same fixture in parallel,
+# but their child pidfile ($9) is never under this run's CHILD_DIR.
 live_supervisors() {
-    ps -eo args= 2>/dev/null | awk -v fixture="$SUPERVISOR" '$1 ~ /(^|\/)ucode$/ && $4 == fixture && $5 == "supervisor" { count++ } END { print count+0 }'
+    ps -eo args= 2>/dev/null | awk -v fixture="$SUPERVISOR" -v children="$CHILD_DIR/" \
+        '$1 ~ /(^|\/)ucode$/ && $4 == fixture && $5 == "supervisor" && index($9, children) == 1 { count++ } END { print count+0 }'
 }
 
 ucode -L "$LIB_DIR" "$SUPERVISOR" supervisor example 4000 old "$CHILD_DIR/example.pid" >"$LOG_DIR/example.log" 2>&1 &
 old_pid=$!
 echo "$old_pid" > "$PID_DIR/example.pid"
-sleep 1
-[ -s "$CHILD_DIR/example.pid" ] || exit 1
+wait_until 30 file_nonempty "$CHILD_DIR/example.pid" || { echo 'supervisor fixture did not start its child' >&2; exit 1; }
 
 ucode -L "$LIB_DIR" "$CLI" snapshot "$LIB_DIR" "$SUPERVISOR" "$PID_DIR" "$CHILD_DIR" "$LOG_DIR" "$SNAPSHOT"
 [ -s "$SNAPSHOT" ] || exit 1
@@ -59,8 +63,9 @@ cp "$STATE_DIR/owned.pid" "$PID_DIR/example.pid"
 kill -STOP "$new_pid"
 kill -0 "$new_pid" || exit 1
 ucode -L "$LIB_DIR" "$CLI" kill-restored "$LIB_DIR" "$SUPERVISOR" "$PID_DIR" "$CHILD_DIR" "$LOG_DIR" "$SNAPSHOT"
-kill "$(head -n 1 "$CHILD_DIR/example.pid")"
-sleep 1
+stopped_child="$(head -n 1 "$CHILD_DIR/example.pid")"
+kill "$stopped_child"
+wait_until 30 process_gone "$stopped_child" || { echo 'restored child did not stop' >&2; exit 1; }
 rm -f "$CHILD_DIR/example.pid"
 ucode -L "$LIB_DIR" "$CLI" snapshot "$LIB_DIR" "$SUPERVISOR" "$PID_DIR" "$CHILD_DIR" "$LOG_DIR" "$SNAPSHOT"
 grep -Eq '"stale"[[:space:]]*:[[:space:]]*"example"' "$SNAPSHOT" || exit 1
@@ -233,7 +238,7 @@ fi
 ucode -L "$LIB_DIR" "$SUPERVISOR" supervisor new 4000 new "$CHILD_DIR/new.pid" >"$LOG_DIR/new.log" 2>&1 &
 current_pid=$!
 ucode -L "$LIB_DIR" "$CLI" record-test "$LIB_DIR" "$SUPERVISOR" "$PID_DIR" "$CHILD_DIR" "$LOG_DIR" "$SNAPSHOT" "$current_pid" new
-sleep 1
+wait_until 30 file_nonempty "$CHILD_DIR/new.pid" || { echo 'new supervisor did not start its child' >&2; exit 1; }
 cp "$STATE_DIR/normal.json" "$SNAPSHOT"
 ucode -L "$LIB_DIR" "$CLI" restore "$LIB_DIR" "$SUPERVISOR" "$PID_DIR" "$CHILD_DIR" "$LOG_DIR" "$SNAPSHOT"
 [ ! -e "$PID_DIR/new.pid" ] || { echo 'new runtime pidfile survived replacement' >&2; exit 1; }

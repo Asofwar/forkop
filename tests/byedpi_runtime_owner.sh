@@ -20,6 +20,9 @@ fail() {
   exit 1
 }
 
+# shellcheck source=tests/helpers/source_checks.sh
+source "$ROOT_DIR/tests/helpers/source_checks.sh"
+
 [ ! -e "$BYEDPI_RUNTIME_SH" ] ||
   fail "byedpi.sh shell owner must be removed"
 
@@ -30,10 +33,8 @@ grep -Fq 'service/lifecycle.uc' "$CLI_UC" ||
 grep -Fq 'providers/byedpi/runtime.uc' "$LIFECYCLE_UC" ||
   fail "service/lifecycle.uc must call providers/byedpi/runtime.uc for ByeDPI runtime operations"
 
-if grep -R -n -E 'start_byedpi_runtime|stop_byedpi_runtime|get_byedpi_status_json|check_byedpi_runtime_json|is_byedpi_installed|get_byedpi_package_version|get_byedpi_rule_|run_byedpi_supervisor' \
-  "$FORKOP_BIN" "$FORKOP_LIB" --include='*.sh' >/dev/null 2>&1; then
-  fail "ByeDPI runtime shell symbols must not remain"
-fi
+source_refute_shell "ByeDPI runtime shell symbols must not remain" \
+  -E 'start_byedpi_runtime|stop_byedpi_runtime|get_byedpi_status_json|check_byedpi_runtime_json|is_byedpi_installed|get_byedpi_package_version|get_byedpi_rule_|run_byedpi_supervisor' "$FORKOP_BIN" "$FORKOP_LIB"
 if grep -n -E 'require\("uci"\)\.cursor|uci -q|"uci", "-q"' "$BYEDPI_RUNTIME_UC" >/dev/null 2>&1; then
   fail "providers/byedpi/runtime.uc must use core.uci instead of direct UCI cursor or CLI access"
 fi

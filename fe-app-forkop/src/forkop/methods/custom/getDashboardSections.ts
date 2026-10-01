@@ -5,8 +5,10 @@ import {
   getClashHttpUrl,
   getProxyUrlName,
 } from '../../../helpers';
+import { getClashApiSecretFromSettings } from '../../../helpers/getClashApiUrl';
 import { getOutboundTagBySection } from '../../runtimeTags';
 import { ForkopShellMethods } from '../shell';
+import { isReadonlyMode } from '../../services/accessMode.service';
 
 interface IGetDashboardSectionsResponse {
   success: boolean;
@@ -137,18 +139,18 @@ function getSettingsSection(configSections: Forkop.ConfigSection[]) {
 }
 
 function getClashApiSecret(configSections: Forkop.ConfigSection[]) {
-  return getSettingsSection(configSections)?.yacd_secret_key || '';
+  return getClashApiSecretFromSettings(getSettingsSection(configSections));
 }
 
-function canFetchClashApiDirectly() {
-  return canUseDirectClashApi() && typeof fetch === 'function';
+function canFetchClashApiDirectly(secret: string) {
+  return canUseDirectClashApi(secret) && typeof fetch === 'function';
 }
 
 async function getClashApiProxies(
   configSections: Forkop.ConfigSection[],
 ): Promise<Forkop.MethodResponse<ClashAPI.Proxies>> {
-  if (canFetchClashApiDirectly()) {
-    const secret = getClashApiSecret(configSections);
+  const secret = getClashApiSecret(configSections);
+  if (canFetchClashApiDirectly(secret)) {
     const controller = new AbortController();
     const timeoutId = setTimeout(
       () => controller.abort(),
@@ -157,7 +159,7 @@ async function getClashApiProxies(
 
     try {
       const response = await fetch(`${getClashHttpUrl()}/proxies`, {
-        headers: secret ? { Authorization: `Bearer ${secret}` } : undefined,
+        headers: { Authorization: `Bearer ${secret}` },
         signal: controller.signal,
       });
 
@@ -410,6 +412,14 @@ function shouldUseProxyGroup(section: Forkop.ConfigSection) {
     isUrlTestEnabled(section) ||
     hasConfiguredPriorityList(section)
   );
+}
+
+// Read-only sessions do not receive the link lists (they carry secrets); a
+// runtime selector still shows the group and its nodes.
+function hasRuntimeProxyGroup(sectionName: string, proxies: ClashProxyEntry[]) {
+  const selectorTag = getOutboundTagBySection(sectionName);
+  const selector = proxies.find((proxy) => proxy.code === selectorTag);
+  return Array.isArray(selector?.value?.all) && selector.value.all.length > 0;
 }
 
 function getSectionProxyConfigType(section: Forkop.ConfigSection) {
@@ -786,7 +796,8 @@ function getPriorityConfigs(section: Forkop.ConfigSection): PriorityConfig[] {
 async function readDashboardSectionCache(
   sectionName: string,
 ): Promise<DashboardSectionCache | undefined> {
-  if (!isSafeSectionName(sectionName)) {
+  // The section cache is readable only with the write ACL.
+  if (!isSafeSectionName(sectionName) || isReadonlyMode()) {
     return undefined;
   }
 
@@ -1412,7 +1423,11 @@ export async function getDashboardSections(): Promise<IGetDashboardSectionsRespo
         const sectionAction = section.action;
         const proxyConfigType = getSectionProxyConfigType(section);
 
-        if (isConnectionAction(sectionAction) && shouldUseProxyGroup(section)) {
+        if (
+          isConnectionAction(sectionAction) &&
+          (shouldUseProxyGroup(section) ||
+            hasRuntimeProxyGroup(sectionName, proxies))
+        ) {
           const subscriptionSourceCount = getSubscriptionSourceCount(section);
           const subscriptionEnabled = subscriptionSourceCount > 0;
           const dashboardCache = await readDashboardSectionCache(sectionName);

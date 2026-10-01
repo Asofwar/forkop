@@ -21,6 +21,9 @@ fail() {
   exit 1
 }
 
+# shellcheck source=tests/helpers/source_checks.sh
+source "$ROOT_DIR/tests/helpers/source_checks.sh"
+
 [ ! -e "$SING_BOX_RUNTIME_SH" ] ||
   fail "sing_box_runtime.sh shell owner must be removed"
 grep -Fq '#!/usr/bin/ucode' "$FORKOP_BIN" ||
@@ -29,9 +32,8 @@ grep -Fq 'service/lifecycle.uc' "$CLI_UC" ||
   fail "service/cli.uc must dispatch lifecycle orchestration through service/lifecycle.uc"
 grep -Fq 'singbox/runtime.uc' "$LIFECYCLE_UC" ||
   fail "service/lifecycle.uc must call singbox/runtime.uc for sing-box runtime operations"
-if grep -R -n -E 'sing_box_runtime_ucode|rulesets_ucode|sing_box_configure_service|sing_box_init_config|get_service_listen_address|get_device_ipv4_address|get_download_detour_tag' "$FORKOP_BIN" "$FORKOP_LIB" --include='*.sh' >/dev/null 2>&1; then
-  fail "sing-box runtime shell symbols must not remain"
-fi
+source_refute_shell "sing-box runtime shell symbols must not remain" \
+  -E 'sing_box_runtime_ucode|rulesets_ucode|sing_box_configure_service|sing_box_init_config|get_service_listen_address|get_device_ipv4_address|get_download_detour_tag' "$FORKOP_BIN" "$FORKOP_LIB"
 grep -Fq 'mode == "configure-service"' "$SINGBOX_RUNTIME_UC" ||
   fail "singbox/runtime.uc must own sing-box service configuration"
 grep -Fq 'mode == "init-config"' "$SINGBOX_RUNTIME_UC" ||

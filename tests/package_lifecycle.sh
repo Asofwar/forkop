@@ -10,6 +10,10 @@ LUCI_UCI_DEFAULTS="$ROOT_DIR/luci-app-forkop/root/etc/uci-defaults/50_luci-forko
 BUILD_SCRIPT="$ROOT_DIR/build.sh"
 WORK_DIR="$(mktemp -d)"
 export FORKOP_PACKAGE_UPGRADE_STATE="$WORK_DIR/package-was-running"
+# prerm reads service/initd.uc runtime state (a deferred start); never the
+# host's.
+export FORKOP_RUNTIME_STATE_DIR="$WORK_DIR/run"
+mkdir -p "$FORKOP_RUNTIME_STATE_DIR"
 
 cleanup() {
   rm -rf "$WORK_DIR"
@@ -91,6 +95,7 @@ case "$1" in
   stop)
     grep -Fq '105 forkop' "${FORKOP_RT_TABLES:?}" || exit 1
     printf '%s\n' 'stop-with-route-table' >>"${FORKOP_STOP_LOG:?}"
+    printf 'stop-source=%s\n' "${FORKOP_STOP_SOURCE:-}" >>"${FORKOP_STOP_LOG:?}"
     ;;
 esac
 SH
@@ -116,6 +121,10 @@ grep -Fxq 'stop-with-route-table' "$WORK_DIR/stop-order.log" ||
   fail "package prerm must stop Forkop before removing its routing table name"
 [ ! -s "$WORK_DIR/rt_tables_stop_order" ] ||
   fail "package prerm must remove the routing table name after Forkop stops"
+# Its stop is Forkop's own, for the package change, not the user's
+# (service/initd.uc stop_request_source; UC-056).
+grep -Fxq 'stop-source=package' "$WORK_DIR/stop-order.log" ||
+  fail "package prerm must record its stop as the package's, not the user's"
 
 # The preceding case stops a running Forkop, so prerm correctly records a
 # restart for postinst. The configuration-recovery cases below own no init
@@ -239,14 +248,25 @@ FORKOP_RT_TABLES="$WORK_DIR/rt_tables_restore" \
 grep -Fxq 'restore_dnsmasq' "$WORK_DIR/restore.log" ||
   fail "package prerm must restore dnsmasq when dont_touch_dhcp is disabled"
 
+# init.d under procd accepts the start at once; its detached worker reports
+# the outcome to the waiting postinst (service/initd.uc start-and-wait).
 cat >"$WORK_DIR/upgrade-init" <<'SH'
 #!/usr/bin/env bash
 case "$1" in
   status) exit "${FORKOP_FAKE_STATUS:-0}" ;;
-  start) printf '%s\n' start >>"${FORKOP_START_LOG:?}" ;;
+  start)
+    printf '%s\n' start >>"${FORKOP_START_LOG:?}"
+    [ -z "${FORKOP_START_REQUEST:-}" ] ||
+      printf 'status=0\n' >"$FORKOP_RUNTIME_STATE_DIR/start-result.$FORKOP_START_REQUEST"
+    ;;
 esac
 SH
-chmod 0755 "$WORK_DIR/upgrade-init"
+cat >"$WORK_DIR/upgrade-forkop" <<'SH'
+#!/bin/sh
+[ "$1" != get_status ] || printf '{"running":1}\n'
+SH
+chmod 0755 "$WORK_DIR/upgrade-init" "$WORK_DIR/upgrade-forkop"
+mkdir -p "$WORK_DIR/upgrade-run"
 : >"$WORK_DIR/upgrade-start.log"
 : >"$WORK_DIR/rt_tables_upgrade"
 FORKOP_PACKAGE_TEST_MODE=1 \
@@ -259,6 +279,10 @@ FORKOP_RT_TABLES="$WORK_DIR/rt_tables_upgrade" \
   fail "package pre-upgrade must remember a running service"
 FORKOP_PACKAGE_TEST_MODE=1 \
 FORKOP_INIT="$WORK_DIR/upgrade-init" \
+FORKOP_LIB="$FORKOP_LIB" \
+FORKOP_BIN="$WORK_DIR/upgrade-forkop" \
+FORKOP_RUNTIME_STATE_DIR="$WORK_DIR/upgrade-run" \
+FORKOP_START_WAIT_TIMEOUT_SECONDS=5 \
 FORKOP_START_LOG="$WORK_DIR/upgrade-start.log" \
 FORKOP_CONFIG_PATH="$WORK_DIR/config-forkop" \
 FORKOP_DEFAULT_CONFIG_PATH="$WORK_DIR/default-forkop" \
@@ -267,6 +291,11 @@ FORKOP_UCI_STATE_FILE="$WORK_DIR/config.state" \
     fail "package postinst (case 11) exited non-zero"
 grep -Fxq start "$WORK_DIR/upgrade-start.log" ||
   fail "package postinst must restart a service that was running before upgrade"
+# That restart is an explicit start, also when init.d records none (an older
+# init.d, a start that never comes): reloads may repair the runtime after it
+# (service/initd.uc EXPLICIT_START_FILE; D-15(a)).
+[ -e "$WORK_DIR/upgrade-run/start.explicit" ] ||
+  fail "package postinst must record the restart after an upgrade as an explicit start"
 [ ! -e "$FORKOP_PACKAGE_UPGRADE_STATE" ] ||
   fail "package postinst must clear the consumed upgrade state"
 
@@ -297,6 +326,38 @@ FORKOP_RT_TABLES="$WORK_DIR/rt_tables_upgrade" \
     fail "package prerm (case 14) exited non-zero"
 [ ! -e "$FORKOP_PACKAGE_UPGRADE_STATE" ] ||
   fail "prerm without an action must not mark an already stopped service"
+
+# A start deferred for reload.lock (service/initd.uc) was requested but does
+# not run yet: the package's own stop cancels it, so postinst starts Forkop
+# in its place. A stop requested after that start has won over it (D-15), and
+# the retry of a failed start is no requested start.
+mkdir -p "$WORK_DIR/deferred-run"
+prerm_with_stopped_runtime() {
+  local lib="$FORKOP_LIB"
+  FORKOP_PACKAGE_TEST_MODE=1 \
+  FORKOP_FAKE_STATUS=1 \
+  FORKOP_INIT="$WORK_DIR/upgrade-init" \
+  FORKOP_LIB="$lib" \
+  FORKOP_RUNTIME_STATE_DIR="$WORK_DIR/deferred-run" \
+  FORKOP_RT_TABLES="$WORK_DIR/rt_tables_upgrade" \
+    ucode -L "$lib" "$PACKAGE_UC" prerm upgrade ||
+      fail "package prerm upgrade ($1) exited non-zero"
+}
+printf 'reason=start_deferred\nupdated_at=1\nstop_request=\n' >"$WORK_DIR/deferred-run/start.retry"
+prerm_with_stopped_runtime "deferred start"
+[ -f "$FORKOP_PACKAGE_UPGRADE_STATE" ] ||
+  fail "package pre-upgrade must restart a start deferred for the runtime lock"
+rm -f "$FORKOP_PACKAGE_UPGRADE_STATE"
+printf 'later\nby=user\n' >"$WORK_DIR/deferred-run/stop.requested"
+prerm_with_stopped_runtime "deferred start, later stop"
+[ ! -e "$FORKOP_PACKAGE_UPGRADE_STATE" ] ||
+  fail "package pre-upgrade must not restart a deferred start that a later stop cancelled"
+rm -f "$WORK_DIR/deferred-run/stop.requested"
+printf 'reason=start_failed\nupdated_at=1\n' >"$WORK_DIR/deferred-run/start.retry"
+prerm_with_stopped_runtime "failed start retry"
+[ ! -e "$FORKOP_PACKAGE_UPGRADE_STATE" ] ||
+  fail "package pre-upgrade must not take the retry of a failed start for a requested start"
+rm -f "$WORK_DIR/deferred-run/start.retry"
 
 # An explicit removal stays unambiguous: nothing is restored afterwards.
 FORKOP_PACKAGE_TEST_MODE=1 \

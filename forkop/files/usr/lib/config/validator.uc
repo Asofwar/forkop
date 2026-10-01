@@ -2,6 +2,7 @@
 
 let fs = require("fs");
 let uci_core = require("core.uci");
+let common = require("core.common");
 let fixture_uci_data = null;
 let subscription_parser_module = null;
 let zapret_validator_module = null;
@@ -12,6 +13,7 @@ let core_url = require("core.url");
 let core_ip = require("core.ip");
 let rule_config = require("config.rule");
 let connections = require("config.connections");
+let rule_conditions = require("routing.rule_conditions");
 
 const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || "forkop";
 const DEFAULT_LATENCY_TEST_URL = "https://www.gstatic.com/generate_204";
@@ -241,14 +243,6 @@ function mkdir_p(paths) {
             push(args, path);
 
     return length(args) <= 2 || run_args(args);
-}
-
-function safe_rm_rf(path) {
-    path = as_string(path);
-    if (path == "" || substr(path, 0, length("/var/run/forkop/")) != "/var/run/forkop/")
-        return true;
-
-    return run_args([ "rm", "-rf", path ]);
 }
 
 function first_line_field_from_text(data, field_index) {
@@ -521,6 +515,12 @@ function fail_validation(message) {
     exit(1);
 }
 
+// The Cascade editor is gone; the rule editor only shows a stored cascade
+// and clears it (UC-041), so every refusal names that fix.
+function outbound_detour_fix(section) {
+    return " Clear the cascade setting of rule '" + section + "' in the rule editor. Aborted.";
+}
+
 function validate_outbound_detours_rows(rows) {
     let parsed = outbound_detour_rows_by_section(rows);
 
@@ -528,33 +528,35 @@ function validate_outbound_detours_rows(rows) {
         if (!row.enabled || !row.detour_enabled)
             continue;
 
+        let fix = outbound_detour_fix(row.section);
+
         if (!outbound_detour_source_action(row.action))
             fail_outbound_detour("Outbound cascade is supported only for Connection rules, but rule '" +
-                row.section + "' uses action '" + row.action + "'. Aborted.");
+                row.section + "' uses action '" + row.action + "'." + fix);
 
         if (row.detour_section == "")
             fail_outbound_detour("Outbound cascade is enabled for rule '" + row.section +
-                "', but no intermediate rule is selected. Aborted.");
+                "', but no intermediate rule is selected." + fix);
 
         if (row.detour_section == row.section)
-            fail_outbound_detour("Outbound cascade for rule '" + row.section + "' cannot point to itself. Aborted.");
+            fail_outbound_detour("Outbound cascade for rule '" + row.section + "' cannot point to itself." + fix);
 
         let target = parsed.by_section[row.detour_section];
         if (type(target) != "object")
             fail_outbound_detour("Outbound cascade for rule '" + row.section + "' references missing rule '" +
-                row.detour_section + "'. Select an enabled Connection rule or disable cascade connection. Aborted.");
+                row.detour_section + "'." + fix);
 
         if (!target.enabled)
             fail_outbound_detour("Outbound cascade for rule '" + row.section + "' references disabled rule '" +
-                row.detour_section + "'. Select an enabled Connection rule or disable cascade connection. Aborted.");
+                row.detour_section + "'." + fix);
 
         if (!outbound_detour_target_action(target.action))
             fail_outbound_detour("Outbound cascade for rule '" + row.section + "' references rule '" +
-                row.detour_section + "', but it is not a Connection rule. Select an enabled Connection rule or disable cascade connection. Aborted.");
+                row.detour_section + "', but it is not a Connection rule." + fix);
 
         if (outbound_detour_chain_reaches_source(parsed.by_section, row.section, row.detour_section))
             fail_outbound_detour("Outbound cascade for rule '" + row.section + "' creates a cycle through '" +
-                row.detour_section + "'. Aborted.");
+                row.detour_section + "'." + fix);
 
     }
 }
@@ -1340,14 +1342,33 @@ function validate_provider_strategy(kind, section, context) {
         fail_validation("Invalid ByeDPI strategy for rule '" + name + "': " + result.message);
 }
 
+// The domains a DNS rule matches, read the way the generator reads them
+// (routing/rule_conditions.uc: text mode, legacy lists, normalized values),
+// plus the legacy remote domain lists the generator also uses (UC-042).
 function dns_action_has_domain_matchers(section) {
+    let domains = rule_conditions.domain_conditions(section);
     for (let key in [ "domain", "domain_suffix", "domain_keyword", "domain_regex" ])
-        if (option(section, key, "") != "" || option(section, key + "_text", "") != "" || length(list_option(section, key)) > 0)
+        if (length(domains[key]) > 0)
+            return true;
+
+    for (let reference in list_option(section, "remote_domain_lists"))
+        if (as_string(reference) != "")
             return true;
 
     return length(connections.community_lists(section)) > 0 ||
         length(connections.rule_sets(section)) > 0 ||
         length(list_option(section, "domain_ip_lists")) > 0;
+}
+
+// Podkop-era matchers the generator refuses (singbox/generator.uc
+// unsupported_matcher_key). Refuse them before apply, with the fix.
+const UNSUPPORTED_LEGACY_MATCHERS = [ "subnet", "subnet_text", "local_domain_lists", "local_subnet_lists" ];
+
+function validate_unsupported_legacy_matchers(section) {
+    for (let key in UNSUPPORTED_LEGACY_MATCHERS)
+        if (length(list_option(section, key)) > 0 || option(section, key, "") != "")
+            fail_validation("Rule '" + section_name(section) + "' uses the legacy option '" + key +
+                "', which is no longer supported. Remove it in the rule editor (Legacy settings). Aborted.");
 }
 
 function validate_dns_action(section, sections, context) {
@@ -1395,6 +1416,7 @@ function validate_rule(section, sections, context) {
         fail_validation("Enabled rule '" + name + "' has no action. Aborted.");
     if (!rule_action_supported(action))
         fail_validation("Enabled rule '" + name + "' uses unsupported action '" + action + "'. Aborted.");
+    validate_unsupported_legacy_matchers(section);
 
     if (action != "dns")
         for (let value in list_option(section, "ports"))
@@ -1599,6 +1621,18 @@ function validate_list_update_settings(settings) {
     validate_required_duration_option(update_interval, "settings.update_interval");
 }
 
+// D-1 (b), UC-038: the Clash API controller always listens (on the LAN, or
+// on every address with WAN access), so it always needs a secret. The
+// migration provides one on install and upgrade. The message never quotes the
+// value.
+function validate_clash_api_settings(settings) {
+    let secret = common.clash_api_secret(settings);
+    if (secret == "")
+        fail_validation("Clash API secret (settings.yacd_secret_key) must not be empty: the controller would accept unauthenticated requests. Aborted.");
+    if (match(secret, /[[:cntrl:]]/) != null)
+        fail_validation("Clash API secret (settings.yacd_secret_key) must not contain control characters. Aborted.");
+}
+
 function validate_runtime_mark_ranges_context(context) {
     let fakeip_mark = parse_number(context.nft_fakeip_mark);
     let outbound_mark = parse_number(context.nft_outbound_mark);
@@ -1637,6 +1671,56 @@ function validate_runtime_mark_ranges_context(context) {
     }
 }
 
+// Dashboard URLTest overrides (config/urltest_override.uc) replace the
+// settings of a URLTest group of a rule in the generated config. The
+// dashboard saved them before the validator read them, so an override that
+// started before keeps starting (invariant 17): only a value that
+// urltest_override.apply() turns into a config sing-box does not load
+// refuses the configuration, the rest is a warning. The dashboard took a
+// tolerance up to 65535, which sing-box reads as uint16, and a testing URL
+// without a host, with which sing-box starts but cannot test the servers of
+// the group. An override that no enabled Connection rule uses is never
+// applied and is not checked: rules deleted before their overrides went with
+// them left such sections behind (UC-151).
+function validate_urltest_overrides(sections) {
+    let rules = {};
+    for (let section in sections)
+        rules[section_name(section)] = section;
+
+    for (let override in sections_by_type("urltest_override")) {
+        let rule = rules[option(override, "rule", "")];
+        let tag = option(override, "tag", "");
+        if (type(rule) != "object" || !section_enabled(rule) ||
+            !connections.is_connections_action(rule_action(rule)) || tag == "")
+            continue;
+
+        let label = "URLTest override '" + tag + "' of rule '" + section_name(rule) + "'";
+        // Written as they are: sing-box refuses an empty or unreadable duration.
+        validate_required_duration_option(option(override, "check_interval", ""), label + " (check_interval)");
+        validate_required_duration_option(option(override, "idle_timeout", ""), label + " (idle_timeout)");
+
+        // Written as int(tolerance): NaN for text, which sing-box refuses like
+        // a number outside 0..65535.
+        let tolerance = option(override, "tolerance", "");
+        let tolerance_value = int(tolerance, 10);
+        if (type(tolerance_value) != "int" || tolerance_value < 0 || tolerance_value > 65535)
+            fail_validation("Invalid tolerance '" + tolerance + "' for " + label + ". Use a number from 0 to 65535. Aborted.");
+        if (match(trim(tolerance), /^[0-9]+$/) == null)
+            log_message("Tolerance '" + tolerance + "' for " + label + " is not a plain number; sing-box uses " + tolerance_value + ". Save the URLTest settings on the dashboard again", "warn");
+
+        // Written as it is: sing-box loads any testing URL, uses its own for
+        // an empty one and fails to test the servers with one without a host.
+        let testing_url = option(override, "testing_url", "");
+        if (!valid_http_url(testing_url))
+            log_message("URL value for " + label + " (testing_url) is not an http:// or https:// URL with a host: " + testing_url + ". sing-box starts with it, but may be unable to test the servers of the group. Set the testing URL on the dashboard", "warn");
+
+        // Unset means "1" (urltest_override.get), any other value "0".
+        let interrupt = option(override, "interrupt_exist_connections", "");
+        if (interrupt != "" && interrupt != "0" && interrupt != "1")
+            log_message("Invalid interrupt_exist_connections '" + interrupt + "' for " + label + "; existing connections are not interrupted. Use 0 or 1", "warn");
+    }
+}
+
 function validate_runtime_config(context) {
     let settings = settings_section();
     let sections = sections_by_type("section");
@@ -1670,6 +1754,9 @@ function validate_runtime_config(context) {
 
     for (let section in sections)
         validate_rule(section, sections, context);
+
+    validate_urltest_overrides(sections);
+    validate_clash_api_settings(settings);
 }
 
 function context_from_runtime() {
@@ -1698,7 +1785,6 @@ function context_from_runtime() {
         sing_box_variant_state_file: constant_value(constants, "SB_VARIANT_STATE_FILE"),
         sing_box_version_state_file: constant_value(constants, "SB_VERSION_STATE_FILE"),
         sing_box_managed_service_marker: constant_value(constants, "SB_MANAGED_SERVICE_MARKER"),
-        zapret_legacy_runtime_base_dir: constant_value(constants, "ZAPRET_LEGACY_RUNTIME_BASE_DIR"),
         zapret_state_dir: constant_value(constants, "ZAPRET_STATE_DIR"),
         zapret_pid_dir: constant_value(constants, "ZAPRET_PID_DIR"),
         zapret_child_pid_dir: constant_value(constants, "ZAPRET_CHILD_PID_DIR"),
@@ -1883,25 +1969,6 @@ function has_enabled_rule_action(action) {
     return false;
 }
 
-function cleanup_legacy_zapret_runtime(ctx) {
-    let base = as_string(ctx.zapret_legacy_runtime_base_dir);
-    if (base == "")
-        return;
-
-    let needle = base + "/nfq/nfqws";
-    for (let line in split(command_output_from_args([ "ps", "w" ]), "\n")) {
-        if (index(as_string(line), needle) < 0)
-            continue;
-
-        let fields = split(trim(as_string(line)), /[ \t]+/);
-        let pid = length(fields) > 0 ? as_string(fields[0]) : "";
-        if (match(pid, /^[0-9]+$/) != null)
-            run_args([ "kill", pid ]);
-    }
-
-    safe_rm_rf(base);
-}
-
 function check_provider_requirement(action, display_name, bin_path, dirs, missing_message, prepare_failure_message) {
     if (!has_enabled_rule_action(action))
         return;
@@ -1915,9 +1982,9 @@ function check_provider_requirement(action, display_name, bin_path, dirs, missin
         fail_requirement(prepare_failure_message, "fatal");
 }
 
+// The legacy zapret runtime has one owner: the zapret start-runtime of
+// providers/nfqueue/runtime.uc (UC-058).
 function check_provider_requirements(ctx) {
-    cleanup_legacy_zapret_runtime(ctx);
-
     check_provider_requirement(
         "zapret",
         "Zapret",

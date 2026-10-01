@@ -2,6 +2,9 @@
 
 let fs = require("fs");
 let uci_core = require("core.uci");
+let runtime_lock = require("core.runtime_lock");
+let process_identity = require("core.process_identity");
+let list_worker = require("core.list_worker");
 
 const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || "forkop";
 const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
@@ -12,7 +15,16 @@ const STATE_UC = LIB_DIR + "/service/state.uc";
 const UI_UC = LIB_DIR + "/service/ui.uc";
 const STATE_DIR = getenv("FORKOP_UI_STATE_DIR") || "/var/run/forkop/ui-state";
 const PENDING_RELOAD_FILE = getenv("FORKOP_PENDING_RELOAD_FILE") || "/var/run/forkop/reload.pending";
+const RELOAD_LOCK_DIR = getenv("FORKOP_RELOAD_LOCK_DIR") || "/var/run/forkop.reload.lock";
 const START_IN_PROGRESS_FILE = getenv("FORKOP_START_IN_PROGRESS_FILE") || "/var/run/forkop/start.in-progress";
+// An explicit stop (service/initd.uc, service/lifecycle.uc; UC-012): until an
+// explicit start the runtime stays down (D-15, UC-056).
+const STOP_REQUESTED_FILE = getenv("FORKOP_STOP_REQUESTED_FILE") ||
+    (getenv("FORKOP_RUNTIME_STATE_DIR") || "/var/run/forkop") + "/stop.requested";
+// An explicit start since boot (service/initd.uc): without it a runtime that
+// is down was not started since boot, or the user stopped it (D-15(a)).
+const EXPLICIT_START_FILE = getenv("FORKOP_EXPLICIT_START_FILE") ||
+    (getenv("FORKOP_RUNTIME_STATE_DIR") || "/var/run/forkop") + "/start.explicit";
 const SERVICE_ACTION_DIR = getenv("FORKOP_UI_SERVICE_ACTION_DIR") || STATE_DIR + "/service-actions";
 const SERVICE_ACTION_LOCK_DIR = getenv("FORKOP_UI_SERVICE_ACTION_LOCK_DIR") || STATE_DIR + "/service-actions.lock";
 const LATENCY_ACTION_DIR = getenv("FORKOP_UI_LATENCY_ACTION_DIR") || STATE_DIR + "/latency-actions";
@@ -124,6 +136,16 @@ function command_output_from_args(args) {
 function command_status(command) {
     let status = int(system(command));
     return status > 255 ? int(status / 256) : status;
+}
+
+function command_capture(command) {
+    let pipe = fs.popen(command, "r");
+    if (!pipe)
+        return { status: 1, output: "" };
+
+    let data = pipe.read("all");
+    let status = int(pipe.close());
+    return { status: status > 255 ? int(status / 256) : status, output: data == null ? "" : as_string(data) };
 }
 
 function command_success(command) {
@@ -684,6 +706,7 @@ function set_running_job_pid_file(path, pid) {
     let value = object_or_empty(read_json_file(path));
     if (value.running === true) {
         value.pid = pid;
+        value.pid_ticks = process_identity.start_ticks(pid);
         return write_state_file(path, value);
     }
 
@@ -698,13 +721,25 @@ function write_stale_action_state(path, message) {
     return write_state_file(path, stale_action_state_value(path, message, now_seconds()));
 }
 
-function pid_running(pid) {
-    pid = as_string(pid);
-    return job_pid_valid(pid) && command_success_from_args([ "kill", "-0", pid ]);
+// A job names its worker by pid and start ticks, so a PID that a dead worker
+// left behind and another process now holds does not keep the job running
+// (UC-014). A job written before start ticks were recorded has the pid only.
+function job_worker_running(value) {
+    value = object_or_empty(value);
+    let pid = as_string(value.pid || "");
+    if (!job_pid_valid(pid))
+        return false;
+    if (value.pid_ticks == null)
+        return command_success_from_args([ "kill", "-0", pid ]);
+    let ticks = as_string(value.pid_ticks);
+    return ticks != "" && process_identity.start_ticks(pid) == ticks;
 }
 
+// The lifecycle worker of a start records itself (pid + start ticks) in
+// START_IN_PROGRESS_FILE; a marker it left behind names another process.
 function start_worker_running() {
-    return pid_running(trim(as_string(fs.readfile(START_IN_PROGRESS_FILE))));
+    return process_identity.matches(START_IN_PROGRESS_FILE, "ucode",
+        [ "ucode", "-L", LIB_DIR, LIB_DIR + "/service/lifecycle.uc" ], false, false) != "";
 }
 
 function current_pid() {
@@ -720,9 +755,8 @@ function refresh_pid_job_state(path, stale_message) {
 
     let now = now_seconds();
     let within_grace = job_started_at_within_grace(value.started_at, now, ACTION_STALE_GRACE_SECONDS);
-    let pid = as_string(value.pid || "");
 
-    if (job_pid_valid(pid) && pid_running(pid))
+    if (job_worker_running(value))
         return;
 
     if (!within_grace)
@@ -812,44 +846,13 @@ function action_state_from_dirs() {
     };
 }
 
+// Held by this process for the length of one call: see core/runtime_lock.
 function release_dir_lock(lock_dir) {
-    remove_file(as_string(lock_dir) + "/pid");
-    command_success_from_args([ "rmdir", lock_dir ]);
+    runtime_lock.release(lock_dir, current_pid());
 }
 
 function acquire_dir_lock(lock_dir) {
-    lock_dir = as_string(lock_dir);
-    let owner_pid = current_pid();
-    if (!job_pid_valid(owner_pid))
-        return false;
-
-    if (command_success_from_args([ "mkdir", lock_dir ])) {
-        if (write_file(lock_dir + "/pid", owner_pid + "\n"))
-            return true;
-        release_dir_lock(lock_dir);
-        return false;
-    }
-
-    let current_owner_pid = first_line(lock_dir + "/pid");
-    if (pid_running(current_owner_pid))
-        return false;
-
-    let lock_stat = fs.stat(lock_dir);
-    if (current_owner_pid == "" && lock_stat != null) {
-        let lock_age = now_seconds() - int(lock_stat.mtime || 0);
-        if (lock_age >= 0 && lock_age < 5)
-            return false;
-    }
-
-    remove_file(lock_dir + "/pid");
-    command_success_from_args([ "rmdir", lock_dir ]);
-    if (!command_success_from_args([ "mkdir", lock_dir ]))
-        return false;
-
-    if (write_file(lock_dir + "/pid", owner_pid + "\n"))
-        return true;
-    release_dir_lock(lock_dir);
-    return false;
+    return runtime_lock.acquire(lock_dir, current_pid());
 }
 
 function service_enabled() {
@@ -1088,6 +1091,45 @@ function ui_capabilities_json() {
     write_json(capability_flags());
 }
 
+// An explicit stop by the user that holds the runtime down (D-15, UC-056),
+// told apart from a runtime that is down without one (a failed start, a
+// crash) and from Forkop's own stop for a package or component change whose
+// start never came (service/initd.uc stop_request_source).
+function stopped_by_user(running) {
+    let request = running ? null : fs.readfile(STOP_REQUESTED_FILE);
+    if (request == null)
+        return false;
+    let by = match(request, /(^|\n)by=([a-z]*)/);
+    return by == null || by[2] == "user";
+}
+
+// Down, and nobody started Forkop since boot: no explicit start is recorded
+// and the user did not stop it (D-15(a)). Not a failure either; a runtime
+// that is down after an explicit start is one (its start failed, it went
+// down, or the start that Forkop's own stop was for never came).
+function not_started(running) {
+    return !running && fs.stat(EXPLICIT_START_FILE) == null && !stopped_by_user(running);
+}
+
+// Down after Forkop's own stop for a component change (or a package upgrade
+// run as a component action) while that component action is still at work:
+// the start that follows the stop is still to come
+// (components/action.uc restart_forkop_after_successful_change). Neither
+// a failure yet nor a stop; once the action ended without the start, it is a
+// failure (D-15, UC-056).
+function stopped_for_component_action(running) {
+    let request = running ? null : fs.readfile(STOP_REQUESTED_FILE);
+    let by = request == null ? null : match(request, /(^|\n)by=([a-z]*)/);
+    if (by == null || (by[2] != "component" && by[2] != "package"))
+        return false;
+    for (let path in fs.glob(COMPONENT_ACTION_DIR + "/*.json")) {
+        let value = read_json_file(path);
+        if (type(value) == "object" && value.running === true)
+            return true;
+    }
+    return false;
+}
+
 function current_ui_state_json() {
     refresh_action_dirs();
 
@@ -1111,6 +1153,8 @@ function current_ui_state_json() {
         forkop_status = "restarting";
     else if (active_action == "reload")
         forkop_status = "reloading";
+    else if (stopped_for_component_action(forkop_is_running))
+        forkop_status = "restarting";
 
     let restart_blocked = module_success(STATE_UC, [ "sing-box-process-conflict" ]);
     // Health requires sole procd ownership, but Stop has to stay reachable
@@ -1128,6 +1172,8 @@ function current_ui_state_json() {
                 enabled: forkop_is_enabled,
                 status: forkop_status,
                 dns_configured: dns_configured() ? 1 : 0,
+                stopped_by_user: stopped_by_user(forkop_is_running) ? 1 : 0,
+                not_started: not_started(forkop_is_running) ? 1 : 0,
                 restart_blocked: restart_blocked ? 1 : 0,
                 stop_available: stop_available ? 1 : 0
             },
@@ -1333,7 +1379,20 @@ function write_finished_service_action_state(path, action, success, message, exi
     return written;
 }
 
-function finish_service_action_after_command(action, job_id_value, status, spawn_waiter) {
+// A finished reload job that did not reload: "queued" or "stopped" (the
+// init.d token, service/initd.uc reload_service).
+function write_skipped_reload_state(path, outcome) {
+    let queued = outcome == "queued";
+    let value = finished_action_state_value(path, !queued, queued ?
+        "Service reload queued: it runs after the operation in progress" :
+        "Service reload skipped: Forkop is stopped; the configuration applies when it is started", 0, now_seconds());
+    value.outcome = outcome;
+    return write_state_file(path, value);
+}
+
+// reload_token: what init.d told this UI-tracked reload ("queued",
+// "stopped" or empty; service_action_worker).
+function finish_service_action_after_command(action, job_id_value, status, spawn_waiter, reload_token) {
     status = arg_number(status);
     if (as_string(job_id_value) == "")
         return 0;
@@ -1347,7 +1406,34 @@ function finish_service_action_after_command(action, job_id_value, status, spawn
         return 0;
     }
 
-    if (!service_enabled() && !forkop_running()) {
+    // init.d only queued the reload behind the operation that holds
+    // reload.lock (a list or subscription update, a start, another
+    // reload): not completed (UC-061). While the lock is held, or the list
+    // worker runs, no queued reload is applied on its behalf: the holder
+    // drains the queue when it ends, and this job no longer runs by then.
+    // A holder that ended before this job did drained nothing (init.d
+    // leaves the queue to a running UI job): the queue is applied here.
+    if (action == "reload" && reload_token == "queued") {
+        if (write_skipped_reload_state(path, "queued") &&
+            !runtime_lock.busy(RELOAD_LOCK_DIR) && !list_worker.running(LIB_DIR))
+            run_pending_reload_after_service_action("reload", true);
+        return 0;
+    }
+
+    // A reload after an explicit stop, or of a Forkop not started since
+    // boot, that left the runtime stopped: init.d skipped it, or the
+    // lifecycle did under reload.lock (service/lifecycle.uc). Nothing is
+    // left to wait for, and no queued reload is applied on its behalf
+    // (UC-012, UC-056, D-15(a)). It did not fail, but did not reload.
+    if (action == "reload" && (reload_token == "stopped" ||
+        ((fs.stat(STOP_REQUESTED_FILE) != null || fs.stat(EXPLICIT_START_FILE) == null) && !forkop_running()))) {
+        write_skipped_reload_state(path, "stopped");
+        return 0;
+    }
+
+    // A disabled service may well be stopped, but a start or restart that
+    // left no runtime did not complete (UC-013).
+    if (action != "start" && action != "restart" && !service_enabled() && !forkop_running()) {
         write_finished_service_action_state(path, action, true, "Service " + as_string(action) + " completed", 0);
         return 0;
     }
@@ -1375,14 +1461,58 @@ function update_service_action_pid_mode(job_id_value, pid) {
     exit(path != "" && set_running_job_pid_file(path, pid) ? 0 : 1);
 }
 
+// A start that did not get reload.lock in time is retried once the lock is
+// released (service/initd.uc start-and-wait): its job stays running and says
+// that the start waits, instead of failing.
+function mark_service_action_deferred(job_id_value) {
+    let path = job_state_path_value(SERVICE_ACTION_DIR, job_id_value);
+    if (path == "")
+        return false;
+    let value = read_json_file(path);
+    if (type(value) != "object" || value.kind != "service" || value.running !== true)
+        return false;
+    value.deferred = true;
+    value.message = "Service " + as_string(value.action) + " is deferred until another operation releases the runtime lock";
+    return write_state_file(path, value);
+}
+
 function service_action_worker(path, action, job_id_value, reason) {
     let args = [ SERVICE_INIT, action ];
     reason = as_string(reason || "");
     if (reason != "")
         push(args, reason);
-    let command = "FORKOP_UI_ACTION_TRACKED=1 " + command_from_args(args) + " >/dev/null 2>&1";
-    let status = command_status(command);
-    finish_service_action_after_command(action, job_id_value, status, false);
+    if (action != "start" && action != "restart") {
+        // What init.d tells a reload ("queued", "stopped") is read from a
+        // file next to the job: a process that the command leaves in the
+        // background keeps no pipe of this worker open.
+        let output = action == "reload" ? replace(path, /\.json$/, "") + ".out" : "/dev/null";
+        let status = command_status("FORKOP_UI_ACTION_TRACKED=1 " + command_from_args(args) + " >" + shell_quote(output) + " 2>/dev/null");
+        let token = "";
+        if (action == "reload") {
+            for (let line in split(as_string(fs.readfile(output)), "\n"))
+                if (trim(line) == "queued" || trim(line) == "stopped")
+                    token = trim(line);
+            remove_file(output);
+        }
+        finish_service_action_after_command(action, job_id_value, status, false, token);
+        return;
+    }
+
+    // init.d exits 0 under procd before a detached start has run: wait for
+    // the start's own result through the same init.d call (UC-013). A start
+    // deferred for reload.lock marks this job (mark_service_action_deferred).
+    args = [ "ucode", "-L", LIB_DIR, LIB_DIR + "/service/initd.uc", "start-and-wait", action, reason, SERVICE_ACTION_TIMEOUT_SECONDS,
+        as_string(job_id_value) ];
+    let result = command_capture("FORKOP_UI_ACTION_TRACKED=1 " + command_from_args(args) + " 2>/dev/null");
+    // The start goes on after this job's bound: a start deferred for
+    // reload.lock is retried, a slow one is still at work. It has not failed
+    // (start-and-wait prints "pending"); the log says how it ends.
+    if (result.status != 0 && match(result.output, /(^|\n)pending\n/) != null && fs.stat(path) != null) {
+        write_finished_service_action_state(path, action, false, "Service " + action + " did not finish within " +
+            SERVICE_ACTION_TIMEOUT_SECONDS + " s and is still pending; see the Forkop log for its outcome", result.status);
+        return;
+    }
+    finish_service_action_after_command(action, job_id_value, result.status, false);
 }
 
 function service_action_wait_worker(path, action, job_id_value) {
@@ -1452,7 +1582,7 @@ function latency_worker(path, latency_type, tag, timeout) {
 
     let method = latency_clash_method(latency_type).method;
     let status = command_status(command_from_args([ BIN_PATH, "clash_api", method, tag, timeout, path ]) + " >/dev/null 2>&1");
-    module_success(STATE_UC, [ "release-runtime-dir-lock", LATENCY_TEST_LOCK_DIR ]);
+    module_success(STATE_UC, [ "release-runtime-dir-lock", LATENCY_TEST_LOCK_DIR, owner_pid ]);
     if (status == 0)
         write_finished_action_state(path, true, "Latency test completed", status);
     else
@@ -1473,7 +1603,7 @@ function latency_test_async(latency_type, section, tag, requested_timeout) {
 
     // This is only an early busy hint. The worker still acquires the lock
     // atomically and reclaims dead owners; existence alone is not ownership.
-    if (pid_running(first_line(LATENCY_TEST_LOCK_DIR + "/pid"))) {
+    if (runtime_lock.busy(LATENCY_TEST_LOCK_DIR)) {
         action_start_response(false, "", "Another latency test is already running");
         exit(1);
     }
@@ -1605,6 +1735,8 @@ else if (mode == "service-action-begin-if-idle")
     begin_service_action_mode(ARGV[1], ARGV[2] || "ui");
 else if (mode == "service-action-update-pid")
     update_service_action_pid_mode(ARGV[1], ARGV[2]);
+else if (mode == "service-action-deferred")
+    exit(mark_service_action_deferred(ARGV[1]) ? 0 : 1);
 else if (mode == "service-action-finish")
     finish_service_action_mode(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
 else if (mode == "latency-progress-state")
@@ -1614,7 +1746,7 @@ else if (mode == "service-action-finish-after-command")
 else if (mode == "service-action-wait-worker")
     service_action_wait_worker(ARGV[1], ARGV[2], ARGV[3]);
 else if (mode == "service-action-worker")
-    service_action_worker(ARGV[1], ARGV[2], ARGV[3]);
+    service_action_worker(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
 else if (mode == "service-action-async")
     service_action_async(ARGV[1]);
 else if (mode == "service-action-status")

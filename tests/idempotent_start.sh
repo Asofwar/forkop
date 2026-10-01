@@ -39,10 +39,15 @@ const SERVICE_INIT = "/etc/init.d/forkop";
 const SERVICE_NAME = "forkop";
 const START_RETRY_FILE = "/test/start.retry";
 const START_IN_PROGRESS_FILE = "/test/start.in-progress";
+const STOP_REQUESTED_FILE = "/test/stop.requested";
 let marker_present = false;
 let marker_resolved = true;
 let conflict = false;
 let transition_guard = false;
+// ForkopTableDpiGuard of a failed DPI rollback, ForkopConfigRestoreDpiGuard of
+// a restore that ended needs_attention (UC-019).
+let dpi_guard = false;
+let restore_guard = false;
 let health = [true, true, true, true, true];
 let calls = [];
 let logs = [];
@@ -53,7 +58,10 @@ let retry_status = 0;
 let retry_running = false;
 let retry_enabled = true;
 let retry_pending = true;
+let retry_stop_requested = false;
 let start_marker_present = false;
+let stop_marker_present = false;
+let explicit_start_recorded = false;
 function as_string(value) { return value == null ? "" : "" + value; }
 function bool_text(value) { return value == "1"; }
 function die(message) { warn("FAIL: " + message + "\n"); exit(1); }
@@ -91,11 +99,20 @@ function module_success(path, args) {
 }
 function log_message(message, level) { push(logs, level + ":" + message); }
 function release_start_subscription_update_lock() { released++; }
+// The not-retryable mark of a refused start: tests/runtime_guard_lifecycle.sh.
+function clear_start_failure() { }
+function mark_start_failure_not_retryable(reason) { }
 function start_impl() { cold_starts++; return 23; }
 function cleanup_failed_runtime() { cleanups++; }
 function runtime_is_running() { return retry_running; }
 function service_is_enabled() { return retry_enabled; }
 function start_retry_pending(path) { return retry_pending; }
+function stop_requested() { return retry_stop_requested; }
+// No start deferred for reload.lock is pending in these cases
+// (tests/deferred_start_retry.sh).
+function deferred_start_stop_request() { return null; }
+function start_retry_stop_requested() { return retry_stop_requested; }
+function resolve_deferred_start_results(status) { return true; }
 function clear_start_retry(path) { push(calls, "clear-retry"); }
 function command_status_from_args(args) {
     check(join(" ", args) == SERVICE_INIT + " start triggered", "retry used destructive restart");
@@ -104,7 +121,12 @@ function command_status_from_args(args) {
 }
 function command_success_from_args(args) {
     if (args[0] == "nft") {
-        check(join(" ", args) == "nft list chain inet " + NFT_TABLE_NAME + " forkop_transition_guard",
+        let command = join(" ", args);
+        if (command == "nft list table inet " + NFT_TABLE_NAME + "DpiGuard")
+            return dpi_guard;
+        if (command == "nft list table inet ForkopConfigRestoreDpiGuard")
+            return restore_guard;
+        check(command == "nft list chain inet " + NFT_TABLE_NAME + " forkop_transition_guard",
             "unexpected nft command during duplicate start");
         return transition_guard;
     }
@@ -112,23 +134,38 @@ function command_success_from_args(args) {
     return true;
 }
 function owner_pid() { return 4321; }
-function write_file(path, value) {
-    check(path == START_IN_PROGRESS_FILE, "unexpected file write during start");
-    check(trim(as_string(value)) == "4321", "start marker did not name the lifecycle worker");
+// start() records its lifecycle worker (pid + start ticks) through
+// mark_start_in_progress(); this stands in for that record.
+function mark_start_in_progress() {
+    check(owner_pid() == 4321, "start marker did not name the lifecycle worker");
     start_marker_present = true;
     return true;
 }
+// start() records the explicit start (EXPLICIT_START_FILE, D-15(a)): a
+// runtime that is down after it is repaired by a reload.
+function mark_explicit_start() {
+    explicit_start_recorded = true;
+    return true;
+}
 function remove_file(path) {
+    if (path == STOP_REQUESTED_FILE) {
+        stop_marker_present = false;
+        return true;
+    }
     check(path == START_IN_PROGRESS_FILE, "unexpected file removal during start");
     start_marker_present = false;
     return true;
 }
 function reset_probe() {
     marker_present = false; marker_resolved = true; conflict = false; transition_guard = false;
+    dpi_guard = false; restore_guard = false;
     health = [true, true, true, true, true];
     calls = []; logs = []; released = 0; cold_starts = 0; cleanups = 0;
     retry_status = 0; retry_running = false; retry_enabled = true; retry_pending = true;
+    retry_stop_requested = false;
     start_marker_present = false;
+    stop_marker_present = true;
+    explicit_start_recorded = false;
 }
 '''
 cases = r'''
@@ -141,13 +178,44 @@ check(released == 1 && cold_starts == 0 && cleanups == 0,
 // The UI reads this marker to keep the start button blocked. It must not
 // survive a start that has already returned, on any outcome.
 check(!start_marker_present, "start left its in-progress marker behind");
+// An explicit start ends an explicit stop even when it finds the runtime
+// already running (UC-012), and is recorded as one (D-15(a)).
+check(!stop_marker_present, "duplicate start kept the explicit stop");
+check(explicit_start_recorded, "duplicate start was not recorded as an explicit start");
 
 reset_probe();
 transition_guard = true;
 check(start() == 1, "retained fail-closed guard was reported as successful recovery");
 check(!start_marker_present, "failed start left its in-progress marker behind");
+check(!stop_marker_present, "failed start kept the explicit stop");
+check(explicit_start_recorded, "failed start was not recorded as an explicit start");
 check(released == 1 && cold_starts == 0 && cleanups == 0,
     "duplicate start altered the retained fail-closed runtime");
+
+// The DPI guard of a failed DPI rollback is a table of its own that no start
+// removes: neither a duplicate nor a cold start runs over it (UC-019).
+for (let stable in [ true, false ]) {
+    reset_probe();
+    dpi_guard = true;
+    if (!stable) health[0] = false;
+    check(start() == 1, "a start over the kept DPI guard was reported as successful");
+    check(released == 1 && cold_starts == 0 && cleanups == 0,
+        "a start over the kept DPI guard changed the retained fail-closed runtime");
+    check(index(join("\n", logs), "runtime_guard_active") >= 0, "the kept DPI guard refusal gave no reason");
+}
+
+// The guard of an unfinished restore: a duplicate start starts nothing and
+// does not report the guarded runtime as started; a cold start builds the
+// runtime under it.
+reset_probe();
+restore_guard = true;
+check(start() == 1, "a duplicate start under the restore guard was reported as successful");
+check(released == 1 && cold_starts == 0 && cleanups == 0,
+    "a duplicate start under the restore guard changed the runtime");
+reset_probe();
+restore_guard = true;
+health[0] = false;
+check(start() == 23 && cold_starts == 1, "a cold start under the restore guard did not take the guarded cold-start path");
 
 reset_probe();
 marker_present = true;
@@ -179,16 +247,18 @@ for (let failed_check = 0; failed_check < 5; failed_check++) {
         "partial runtime bypassed original cold-start error handling");
 }
 
+// init.d accepts the detached retry start with 0 before it has run; only the
+// start worker knows whether Forkop recovered (UC-013, tests/start_result_wait.sh).
 reset_probe();
-check(retry_start_on_wan_up("123") == 0, "successful retry lost its status");
-check(index(join("\n", logs), "[info] Forkop recovered automatically after a failed start") >= 0,
-    "successful retry outcome is not logged");
+check(retry_start_on_wan_up("123") == 0, "accepted retry lost its status");
+check(index(join("\n", logs), "recovered automatically") < 0,
+    "an accepted retry was announced as a recovery before the start ran");
 
 reset_probe();
 retry_status = 19;
 check(retry_start_on_wan_up("123") == 19, "failed retry lost its status");
-check(index(join("\n", logs), "[error] Forkop automatic recovery attempt failed") >= 0,
-    "failed retry outcome is not logged");
+check(index(join("\n", logs), "[error] Forkop automatic recovery request failed with status 19") >= 0,
+    "failed retry request is not logged");
 
 for (let skipped in ["running", "disabled", "no-retry"]) {
     reset_probe();
@@ -199,6 +269,13 @@ for (let skipped in ["running", "disabled", "no-retry"]) {
     check(index(join(",", calls), "retry-start") < 0 && length(logs) == 0,
         "skipped retry started a service or falsely announced recovery");
 }
+// A retry of a start that an explicit stop interrupted does not start Forkop
+// again; it is dropped (UC-012).
+reset_probe();
+retry_stop_requested = true;
+check(retry_start_on_wan_up("123") == 0, "a retry skipped for an explicit stop failed");
+check(index(join(",", calls), "retry-start") < 0, "a retry started Forkop after an explicit stop");
+check(index(join(",", calls), "clear-retry") >= 0, "a retry skipped for an explicit stop was kept pending");
 print("idempotent start and retry outcome checks passed\n");
 '''
 pathlib.Path(sys.argv[2]).write_text('\n'.join([

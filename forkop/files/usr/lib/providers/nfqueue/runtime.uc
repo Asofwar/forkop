@@ -328,16 +328,45 @@ function legacy_runtime_path_present(cfg) {
     return fs.stat(cfg.legacy_runtime_base) != null;
 }
 
+// The kernel reports an executable by its resolved path (on OpenWrt /var is
+// a symlink to /tmp), also once its directory is gone: resolve the nearest
+// existing ancestor.
+function resolved_path(path) {
+    let rest = "";
+    while (path != "") {
+        let real = fs.realpath(path);
+        if (real != null)
+            return (real == "/" ? "" : real) + rest;
+        let slash = rindex(path, "/");
+        if (slash < 0)
+            break;
+        rest = substr(path, slash) + rest;
+        path = substr(path, 0, slash);
+    }
+    return path + rest;
+}
+
+// The legacy runtime ran its own copy of nfqws as `<legacy base>/nfq/nfqws
+// --qnum=<queue> ...`. Only a process that executes that very file with that
+// command line is stopped: one whose command line merely mentions the path
+// (a tail of its log, an editor, a support script) is not (UC-058).
 function stop_legacy_runtime_processes(cfg) {
     if (cfg.legacy_runtime_base == "")
         return;
-    let needle = cfg.legacy_runtime_base + "/nfq/nfqws";
-    for (let line in split(command_output_from_args([ "ps", "w" ]), "\n")) {
-        if (index(line, needle) < 0)
+    let binary = cfg.legacy_runtime_base + "/nfq/nfqws";
+    let executable = resolved_path(binary);
+    for (let pid in fs.lsdir("/proc") || []) {
+        if (match(pid, /^[1-9][0-9]*$/) == null)
             continue;
-        let fields = split(trim(as_string(line)), /[ \t\r\n]+/);
-        if (length(fields) > 0)
-            command_success_from_args([ "kill", fields[0] ]);
+        // The legacy runtime directory may already be gone.
+        if (replace(as_string(fs.readlink("/proc/" + pid + "/exe")), / \(deleted\)$/, "") != executable)
+            continue;
+        let argv = split(as_string(fs.readfile("/proc/" + pid + "/cmdline")), "\0");
+        if (argv[0] != binary || match(as_string(argv[1]), /^--qnum=[0-9]+$/) == null)
+            continue;
+        let ticks = process_identity.start_ticks(pid);
+        if (ticks != "")
+            process_identity.signal_record({ pid, ticks }, binary, [ binary, argv[1] ], false, "TERM");
     }
 }
 
@@ -473,6 +502,9 @@ function start_rule(cfg, section, index_value) {
 
 function start_runtime(cfg) {
     stop_runtime(cfg);
+    // Every start, also without rules of this provider or its binary, as the
+    // requirements check of every start did before (UC-058).
+    cleanup_legacy_runtime(cfg);
 
     let sections = enabled_sections(cfg);
     if (length(sections) == 0)
@@ -482,7 +514,6 @@ function start_runtime(cfg) {
         exit(1);
     }
 
-    cleanup_legacy_runtime(cfg);
     if (!ensure_runtime_dirs(cfg)) {
         log_message("Failed to prepare the Forkop " + cfg.status_label + " state directory in " + cfg.state_dir + ". Aborted.", "fatal");
         exit(1);

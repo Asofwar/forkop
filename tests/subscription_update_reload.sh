@@ -73,7 +73,8 @@ if (mode == "acquire-runtime-dir-lock" ||
     mode == "stop-managed-sing-box-runtime" ||
     mode == "start-managed-sing-box-runtime" ||
     mode == "write-current-reload-state-clean" ||
-    mode == "run-pending-reload-if-requested")
+    mode == "run-pending-reload-if-requested" ||
+    mode == "runtime-apply-allowed")
     exit(0);
 exit(64);
 '
@@ -130,7 +131,10 @@ run_update() {
   local log="$2"
 
   : >"$log"
+  # The stubbed discard-config-stage keeps the staged file; keep it in WORK_DIR.
+  mkdir -p "$WORK_DIR/tmp"
   env \
+    TMPDIR="$WORK_DIR/tmp" \
     FORKOP_LIB="$FAKE_LIB" \
     FORKOP_RUNTIME_STATE_DIR="$WORK_DIR/run" \
     FORKOP_SUBSCRIPTION_UPDATE_LOCK_DIR="$WORK_DIR/run/subscription-update.lock" \

@@ -129,7 +129,13 @@ export interface IDiagnosticsChecksStoreItem {
   code: string;
   title: string;
   description: string;
-  state: 'loading' | 'warning' | 'success' | 'error' | 'skipped';
+  state:
+    | 'loading'
+    | 'warning'
+    | 'success'
+    | 'error'
+    | 'skipped'
+    | 'unsupported';
   items: Array<IDiagnosticsChecksItem>;
 }
 
@@ -161,6 +167,11 @@ export interface StoreType {
       forkopRunning: number;
       forkopEnabled: number;
       forkopStatus: string;
+      // Stopped by the user, as opposed to down after a failure (D-15).
+      forkopStoppedByUser: number;
+      // Not started since boot, as opposed to down after a failure (D-15);
+      // null when the backend does not report it.
+      forkopNotStarted: number | null;
       forkopRestartBlocked: number;
       forkopStopAvailable: number;
     };
@@ -284,6 +295,8 @@ const initialStore: StoreType = {
       forkopRunning: 0,
       forkopEnabled: 0,
       forkopStatus: '',
+      forkopStoppedByUser: 0,
+      forkopNotStarted: null,
       forkopRestartBlocked: 0,
       forkopStopAvailable: 0,
     },

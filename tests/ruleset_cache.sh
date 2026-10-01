@@ -80,6 +80,49 @@ if ! ucode -e '
   fail "remote rule sets must be materialized as local validated files"
 fi
 
+# A refresh that downloads the same bytes as the validated cache does not
+# validate them again: for a large binary list that is a sing-box decompile
+# of several seconds on the router.
+cat >"$WORK_DIR/bin/sing-box" <<'EOF'
+#!/bin/sh
+[ "$1" = rule-set ] && [ "$2" = decompile ] || exit 1
+[ -f "$3" ] || exit 1
+echo "$3" >>"$RULESET_TEST_DECOMPILE_LOG"
+cp "$RULESET_TEST_SOURCE_JSON" "$5"
+EOF
+: >"$WORK_DIR/decompile.log"
+PATH="$WORK_DIR/bin:$PATH" \
+RULESET_TEST_SOURCE_JSON="$WORK_DIR/source.json" \
+RULESET_TEST_SOURCE_SRS="$WORK_DIR/source.srs" \
+RULESET_TEST_DECOMPILE_LOG="$WORK_DIR/decompile.log" \
+FORKOP_RULESET_CACHE_DIR="$WORK_DIR/cache" \
+FORKOP_RULESET_CACHE_MANIFEST="$WORK_DIR/cache/manifest.json" \
+  ucode -L "$FORKOP_LIB" "$RULESET_CACHE_UC" refresh >/dev/null 2>&1 && fail "an identical refresh must report no change" || true
+[ ! -s "$WORK_DIR/decompile.log" ] || fail "an identical download was validated again: $(cat "$WORK_DIR/decompile.log")"
+# Changed bytes are still validated before they replace the cache.
+printf 'mock-srs changed\n' >"$WORK_DIR/source.srs"
+PATH="$WORK_DIR/bin:$PATH" \
+RULESET_TEST_SOURCE_JSON="$WORK_DIR/source.json" \
+RULESET_TEST_SOURCE_SRS="$WORK_DIR/source.srs" \
+RULESET_TEST_DECOMPILE_LOG="$WORK_DIR/decompile.log" \
+FORKOP_RULESET_CACHE_DIR="$WORK_DIR/cache" \
+FORKOP_RULESET_CACHE_MANIFEST="$WORK_DIR/cache/manifest.json" \
+  ucode -L "$FORKOP_LIB" "$RULESET_CACHE_UC" refresh >/dev/null 2>&1 || fail "a changed rule set must report a change"
+grep -q . "$WORK_DIR/decompile.log" || fail "a changed download must be validated"
+printf 'mock-srs\n' >"$WORK_DIR/source.srs"
+cat >"$WORK_DIR/bin/sing-box" <<'EOF'
+#!/bin/sh
+[ "$1" = rule-set ] && [ "$2" = decompile ] || exit 1
+[ -f "$3" ] || exit 1
+cp "$RULESET_TEST_SOURCE_JSON" "$5"
+EOF
+PATH="$WORK_DIR/bin:$PATH" \
+RULESET_TEST_SOURCE_JSON="$WORK_DIR/source.json" \
+RULESET_TEST_SOURCE_SRS="$WORK_DIR/source.srs" \
+FORKOP_RULESET_CACHE_DIR="$WORK_DIR/cache" \
+FORKOP_RULESET_CACHE_MANIFEST="$WORK_DIR/cache/manifest.json" \
+  ucode -L "$FORKOP_LIB" "$RULESET_CACHE_UC" refresh >/dev/null 2>&1 || true
+
 printf 'orphan\n' >"$WORK_DIR/cache/aaaaaaaaaaaa.srs"
 printf 'orphan validation\n' >"$WORK_DIR/cache/aaaaaaaaaaaa.srs.validated"
 printf '{"version":1,"rules":[]}\n' >"$WORK_DIR/cache/bbbbbbbbbbbb.json"

@@ -174,7 +174,8 @@ export const styles = `
     color: var(--text-color-high) !important;
 }
 
-.fkp_monitoring-page .btn.fkp_monitoring-page__tab--active {
+.fkp_monitoring-page .btn.fkp_monitoring-page__tab--active,
+.fkp_monitoring-page .btn.fkp_monitoring-page__tab--active:hover {
     background: rgba(25, 118, 210, 0.16) !important;
     color: var(--primary-color-high, #1976d2) !important;
     font-weight: 700;
@@ -270,15 +271,19 @@ export const styles = `
     min-width: 0;
 }
 
+/* width: 0 + min-width: 100% keeps the wide table from widening the page
+   (flex layouts such as OpenWrt2020 size the content to its min-content);
+   the wrapper still fills its parent and scrolls the table inside. */
 .fkp_monitoring-page__table-wrap {
-    width: 100%;
+    width: 0;
+    min-width: 100%;
     overflow-x: auto;
     margin-bottom: 0;
 }
 
 .fkp_monitoring-page__table {
     width: 100%;
-    min-width: 840px;
+    min-width: 680px;
     table-layout: fixed;
     border-collapse: collapse;
     border-spacing: 0;
@@ -306,35 +311,24 @@ export const styles = `
 }
 
 .fkp_monitoring-page__table th:nth-child(1) {
-    width: 28%;
+    width: 20%;
 }
 
 .fkp_monitoring-page__table th:nth-child(2) {
-    width: 6%;
+    width: 32%;
 }
 
 .fkp_monitoring-page__table th:nth-child(3) {
-    width: 16%;
+    width: 30%;
 }
 
 .fkp_monitoring-page__table th:nth-child(4) {
-    width: 8%;
+    width: 14%;
 }
 
 .fkp_monitoring-page__table th:nth-child(5) {
-    width: 9.5%;
-}
-
-.fkp_monitoring-page__table th:nth-child(6) {
-    width: 8.5%;
-}
-
-.fkp_monitoring-page__table th:nth-child(7) {
-    width: 16%;
-}
-
-.fkp_monitoring-page__table th:nth-child(8) {
-    width: 8%;
+    /* Two 28px icon actions plus gaps; px so it never shrinks below them. */
+    width: 72px;
 }
 
 .fkp_monitoring-page__table tbody tr:last-child td {
@@ -344,20 +338,34 @@ export const styles = `
 .fkp_monitoring-page__table td:last-child {
     padding-top: 0;
     padding-bottom: 0;
+    overflow: visible;
+    white-space: normal;
 }
 
-.fkp_monitoring-page__table th:nth-child(4),
-.fkp_monitoring-page__table td:nth-child(4),
-.fkp_monitoring-page__table th:nth-child(5),
-.fkp_monitoring-page__table td:nth-child(5),
-.fkp_monitoring-page__table th:nth-child(6),
-.fkp_monitoring-page__table td:nth-child(6) {
-    text-align: right;
+.fkp_monitoring-page__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
 }
 
-.fkp_monitoring-page__table th:nth-child(7),
-.fkp_monitoring-page__table td:nth-child(7) {
-    text-align: left;
+.fkp_monitoring-page .btn.fkp_monitoring-page__icon-action {
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    padding: 0;
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+
+.fkp_monitoring-page__icon-action svg {
+    width: 16px;
+    height: 16px;
+    display: block;
 }
 
 .fkp_monitoring-page__table th:last-child,
@@ -441,14 +449,6 @@ export const styles = `
     text-transform: lowercase;
 }
 
-.fkp_monitoring-page__table td:nth-child(4) .fkp_monitoring-page__value,
-.fkp_monitoring-page__table td:nth-child(5) .fkp_monitoring-page__value,
-.fkp_monitoring-page__table td:nth-child(6) .fkp_monitoring-page__value {
-    color: var(--text-color-medium, #bbb);
-    font-family: inherit;
-    text-align: right;
-}
-
 .fkp_monitoring-page .btn.fkp_monitoring-page__row-action {
     width: var(--fkp-monitoring-row-action-size);
     height: var(--fkp-monitoring-row-action-size);
@@ -492,6 +492,8 @@ export const styles = `
     min-height: 90px;
     width: 100%;
     display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
     align-items: center;
     justify-content: center;
     color: var(--text-color-medium);
@@ -505,6 +507,167 @@ export const styles = `
 
 .fkp_monitoring-page__state--error {
     color: var(--error-color-medium, #d32f2f);
+}
+
+/* Views: Connections | Nodes and groups */
+.fkp_monitoring-page__views {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+
+.fkp_monitoring-page__nodes .fkp_dashboard-page {
+    margin-top: 0;
+}
+
+.fkp_monitoring-page__secondary {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-top: 2px;
+    color: var(--text-color-medium);
+    font-size: 12px;
+    line-height: 1.25;
+}
+
+.fkp_monitoring-page__path-kind {
+    display: inline-block;
+    margin-right: 6px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.5;
+    vertical-align: middle;
+    background: rgba(128, 128, 128, 0.15);
+    color: var(--text-color-high);
+}
+
+.fkp_monitoring-page__path-kind--dpi {
+    background: rgba(156, 39, 176, 0.16);
+}
+
+.fkp_monitoring-page__path-kind--connection {
+    background: rgba(33, 150, 243, 0.16);
+}
+
+.fkp_monitoring-page__path-kind--bypass,
+.fkp_monitoring-page__path-kind--direct {
+    background: rgba(76, 175, 80, 0.16);
+}
+
+.fkp_monitoring-page__path-kind--block {
+    background: rgba(244, 67, 54, 0.16);
+}
+
+.fkp_monitoring-page__table td .fkp_monitoring-page__route {
+    display: inline;
+    padding: 0;
+    background: transparent;
+    font-size: 13px;
+    vertical-align: middle;
+}
+
+.fkp_monitoring-page__row--closed td {
+    opacity: 0.65;
+}
+
+.fkp_monitoring-page__row--selected td {
+    background: rgba(33, 150, 243, 0.08);
+}
+
+.fkp_monitoring-page__filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    margin: 0 0 8px;
+    padding: 6px 10px;
+    border-radius: 4px;
+    background: rgba(33, 150, 243, 0.08);
+    font-size: 13px;
+}
+
+.fkp_monitoring-page__filter-bar[hidden] {
+    display: none;
+}
+
+.fkp_monitoring-page__details {
+    margin-top: 12px;
+    padding: 12px;
+    border: 1px solid var(--fkp-monitoring-divider-color);
+    border-radius: 6px;
+}
+
+.fkp_monitoring-page__details-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.fkp_monitoring-page__details-head h3 {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.fkp_monitoring-page .btn.fkp_monitoring-page__details-close {
+    min-width: 32px;
+    padding: 0 8px;
+    font-size: 18px;
+    line-height: 1;
+}
+
+.fkp_monitoring-page__detail-list {
+    margin: 10px 0 0;
+}
+
+.fkp_monitoring-page__detail-row {
+    display: grid;
+    grid-template-columns: minmax(120px, 28%) minmax(0, 1fr);
+    gap: 8px;
+    padding: 3px 0;
+}
+
+.fkp_monitoring-page__detail-row dt {
+    color: var(--text-color-medium);
+    font-weight: 600;
+}
+
+.fkp_monitoring-page__detail-row dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.fkp_monitoring-page__details-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.fkp_monitoring-page__technical {
+    margin-top: 12px;
+}
+
+.fkp_monitoring-page__technical summary {
+    cursor: pointer;
+    color: var(--text-color-medium);
+}
+
+.fkp_monitoring-page__cell {
+    min-width: 0;
+}
+
+.fkp-visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
 }
 
 @media (max-width: 900px) {
@@ -569,16 +732,22 @@ export const styles = `
         white-space: nowrap;
     }
 
+    /* Row actions sit at the end of the card without a label line. */
     .fkp_monitoring-page__table td:last-child {
-        grid-template-columns: minmax(92px, 34%) minmax(0, 1fr);
-        align-items: center;
+        display: flex;
+        justify-content: flex-end;
         border-bottom: 0;
         min-height: var(--fkp-monitoring-row-action-size);
-        padding: 0;
+        padding: 4px 0 0;
     }
 
-    .fkp_monitoring-page__value {
-        text-align: right;
+    .fkp_monitoring-page__table td:last-child::before {
+        display: none;
+    }
+
+    .fkp_monitoring-page__value,
+    .fkp_monitoring-page__secondary {
+        text-align: left;
     }
 
     .fkp_monitoring-page__source-value {

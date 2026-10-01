@@ -7,6 +7,7 @@ let rulesets = require("singbox.rulesets");
 let uci_core = require("core.uci");
 let core_ip = require("core.ip");
 let core_url = require("core.url");
+let refresh_worker = require("core.refresh_worker");
 
 const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || "forkop";
 const CACHE_DIR = getenv("FORKOP_RULESET_CACHE_DIR") || "/etc/forkop/ruleset-cache";
@@ -452,15 +453,19 @@ function refresh_entry(entry, proxy_address, runtime_manifest) {
             fs.unlink(binary_validation_path(temporary));
             continue;
         }
-        if (!valid_cache(temporary, format)) {
+        let current = active_cache_path(runtime_manifest, url, format);
+        let old_md5 = file_md5(current);
+        let new_md5 = file_md5(temporary);
+        // The same bytes as the active cache, which was validated when it was
+        // stored: validating the download again only repeats a decompile that
+        // takes seconds for a large list.
+        let identical = old_md5 != "" && old_md5 == new_md5 && valid_cache(current, format);
+        if (!identical && !valid_cache(temporary, format)) {
             fs.unlink(temporary);
             fs.unlink(binary_validation_path(temporary));
             continue;
         }
-        let current = active_cache_path(runtime_manifest, url, format);
-        let old_md5 = file_md5(current);
-        let new_md5 = file_md5(temporary);
-        if (old_md5 != "" && old_md5 == new_md5) {
+        if (identical) {
             let new_bytes = allocated_bytes(temporary);
             if (current == runtime_target && new_bytes >= 0 && persistent_cache_can_store(persistent_target, new_bytes) &&
                 commit_persistent_candidate(temporary, persistent_target, format)) {
@@ -617,7 +622,7 @@ function materialize_config(config_path, allow_download) {
             values[i] = local_rule_set(values[i], manifest, previous_manifest, runtime_manifest, allow_download);
     route.rule_set = values;
     config.route = route;
-    if (!common.write_json_file(config_path, config))
+    if (!common.write_private_json_file(config_path, config))
         return false;
     let persistent_manifest_written = write_manifest(manifest);
     for (let key, entry in runtime_manifest)
@@ -703,10 +708,16 @@ else if (mode == "refresh")
     exit(refresh_manifest(ARGV[1], false));
 else if (mode == "refresh-if-due")
     exit(refresh_manifest(ARGV[1], true));
-else if (mode == "refresh-and-reload")
-    refresh_and_reload(ARGV[1]);
-else if (mode == "refresh-if-due-and-reload")
-    refresh_if_due_and_reload(ARGV[1]);
+// Background workers (service/lifecycle.uc, components/updates.uc); an
+// explicit stop terminates them (core/refresh_worker.uc).
+else if (mode == "refresh-and-reload" || mode == "refresh-if-due-and-reload") {
+    refresh_worker.register();
+    if (mode == "refresh-and-reload")
+        refresh_and_reload(ARGV[1]);
+    else
+        refresh_if_due_and_reload(ARGV[1]);
+    refresh_worker.unregister();
+}
 else if (mode == "fallback-urls")
     for (let url in fallback_urls(ARGV[1]))
         print(url, "\n");

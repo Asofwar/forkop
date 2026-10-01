@@ -8,6 +8,7 @@ let subscription_share_link = require("subscription.share_link");
 let filter_identity = require("subscription.filter_identity");
 let core_ip = require("core.ip");
 let core_url = require("core.url");
+let process_identity = require("core.process_identity");
 
 const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || "forkop";
 const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
@@ -36,6 +37,10 @@ const SB_VERSION_STATE_FILE = getenv("SB_VERSION_STATE_FILE") || "/etc/forkop/si
 const ZAPRET_PROVIDER_NFQWS_BIN = getenv("ZAPRET_PROVIDER_NFQWS_BIN") || "/opt/zapret/nfq/nfqws";
 const ZAPRET2_PROVIDER_NFQWS2_BIN = getenv("ZAPRET2_PROVIDER_NFQWS2_BIN") || "/opt/zapret2/nfq2/nfqws2";
 const BYEDPI_BIN = getenv("BYEDPI_BIN") || "/usr/bin/ciadpi";
+// Responses a subscription update fetched before it took reload.lock
+// (prefetch-request, UC-057); the update-request under the lock takes them
+// from here instead of the network.
+const SUBSCRIPTION_PREFETCH_DIR = getenv("FORKOP_SUBSCRIPTION_PREFETCH_DIR") || "";
 
 function as_string(value) {
     return value == null ? "" : "" + value;
@@ -1577,7 +1582,44 @@ function subscription_curl_args(url, filepath, http_proxy_address, headers_filep
     return args;
 }
 
+// The response of a request that prefetch-request made, as
+// download_subscription() would have returned it: its status, the body in
+// filepath and the headers in headers_filepath. null when the prefetch did
+// not make this very request (the source or its profile changed meanwhile):
+// the caller downloads it then. A failed request is not repeated, unless it
+// went through the sing-box service proxy: a start, reload or DNS failover
+// may have been restarting sing-box, which the update used to wait for on
+// reload.lock, and the update now holds that lock.
+function prefetched_subscription(url, filepath, http_proxy_address, headers_filepath, effective_user_agent, effective_hwid) {
+    if (SUBSCRIPTION_PREFETCH_DIR == "")
+        return null;
+
+    for (let entry in array_or_empty(read_json(SUBSCRIPTION_PREFETCH_DIR + "/index.json"))) {
+        entry = object_or_empty(entry);
+        if (type(entry.status) != "int" || entry.url !== as_string(url) || entry.proxy !== as_string(http_proxy_address) ||
+            entry.user_agent !== as_string(effective_user_agent) || entry.hwid !== as_string(effective_hwid))
+            continue;
+        if (int(entry.status) != 0)
+            return entry.proxy != "" ? null : int(entry.status);
+
+        let body = SUBSCRIPTION_PREFETCH_DIR + "/" + as_string(entry.body);
+        if (!file_nonempty(body) || !copy_file(body, filepath))
+            return null;
+        if (headers_filepath != "") {
+            let headers = as_string(entry.headers) != "" ? SUBSCRIPTION_PREFETCH_DIR + "/" + entry.headers : "";
+            if (headers == "" || !file_nonempty(headers) || !copy_file(headers, headers_filepath))
+                unlink_path(headers_filepath);
+        }
+        return 0;
+    }
+    return null;
+}
+
 function download_subscription(url, filepath, http_proxy_address, headers_filepath, effective_user_agent, effective_hwid) {
+    let prefetched = prefetched_subscription(url, filepath, http_proxy_address, headers_filepath, effective_user_agent, effective_hwid);
+    if (prefetched != null)
+        return prefetched;
+
     let retries = 3;
     let wait_seconds = 2;
     let stamp = clock();
@@ -1666,12 +1708,20 @@ function subscription_config_is_current(section_name_value, subscription_url, su
     return false;
 }
 
-function get_subscription_download_proxy_address(section_name_value, sections, parsed, phase) {
+// The port of the sing-box service proxy through which a source downloads
+// (another rule's outbound), or 0 when it downloads directly.
+function subscription_service_proxy_port(section_name_value, sections, parsed) {
     let download_section = as_string(object_or_empty(parsed).download_section);
     if (download_section == "" || download_section == as_string(section_name_value))
-        return "";
+        return 0;
 
     let port = connections.subscription_download_target_port(sections, download_section, int(SB_SERVICE_MIXED_INBOUND_PORT));
+    return port > 0 ? port : 0;
+}
+
+function get_subscription_download_proxy_address(section_name_value, sections, parsed, phase) {
+    let download_section = as_string(object_or_empty(parsed).download_section);
+    let port = subscription_service_proxy_port(section_name_value, sections, parsed);
     if (port <= 0)
         return "";
 
@@ -2145,6 +2195,118 @@ function subscription_update_selected_source(sections, section_name_value, sourc
     return update_result;
 }
 
+// The user agent download_subscription_into_cache() starts from, as the
+// update will see it once update_subscription_source() has checked the
+// cached profile; read-only.
+function prefetch_cached_user_agent(source_section, parsed, default_user_agent) {
+    let runtime_user_agent = read_text(source_user_agent_path(TMP_SUBSCRIPTION_FOLDER, source_section));
+    for (let dir in [ TMP_SUBSCRIPTION_FOLDER, FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR ]) {
+        if (!subscription_cache_is_usable(source_json_path(dir, source_section)))
+            continue;
+        let user_agent = read_text(source_user_agent_path(dir, source_section));
+        let matches = source_cache_profile_matches(parsed, read_text(source_url_path(dir, source_section)),
+            user_agent, read_text(source_hwid_path(dir, source_section)), default_user_agent);
+        if (dir == TMP_SUBSCRIPTION_FOLDER)
+            return matches ? runtime_user_agent : "";
+        if (matches)
+            return user_agent;
+    }
+    return runtime_user_agent;
+}
+
+// The requests download_subscription_into_cache() makes for one source,
+// made into dir: one request per request profile until a response is a
+// valid subscription, as the update tries them.
+function prefetch_subscription_source(dir, index, sections, section, source_index, entry) {
+    let section_name_value = section_name(section);
+    let parsed = subscription_source_profile(section, entry);
+    if (type(parsed) != "object" || parsed.valid !== true)
+        return;
+
+    // A source that downloads through the sing-box service proxy is not
+    // fetched while that proxy is down: the fetch would go around the
+    // configured proxy, directly, and a start, reload or DNS failover may be
+    // restarting sing-box. The update decides about it under reload.lock.
+    let source_section = source_id(section_name_value, source_index);
+    let proxy_port = subscription_service_proxy_port(section_name_value, sections, parsed);
+    if (proxy_port > 0 && !sing_box_service_running())
+        return;
+    let proxy = proxy_port > 0 ? SB_SERVICE_MIXED_INBOUND_ADDRESS + ":" + as_string(proxy_port) : "";
+    let default_user_agent = get_subscription_user_agent("");
+    let parser = subscription_parser();
+    for (let user_agent in user_agent_candidates(parsed.user_agent,
+        prefetch_cached_user_agent(source_section, parsed, default_user_agent), default_user_agent)) {
+        let hwid = get_subscription_hwid(parsed.hwid);
+        let number = length(index) + 1;
+        let body = "response-" + number;
+        let headers = "headers-" + number;
+        let status = download_subscription(parsed.url, dir + "/" + body, proxy, dir + "/" + headers, user_agent, hwid);
+        push(index, {
+            url: as_string(parsed.url),
+            proxy: as_string(proxy),
+            user_agent: as_string(user_agent),
+            hwid: as_string(hwid),
+            status,
+            body: status == 0 ? body : "",
+            headers: status == 0 && file_nonempty(dir + "/" + headers) ? headers : ""
+        });
+        if (status == 6)
+            break;
+        if (status != 0)
+            continue;
+
+        let check = dir + "/check-" + number;
+        let normalized = dir + "/normalized-" + number;
+        let valid = copy_file(dir + "/" + body, check) &&
+            (parser.try_decode_gzip_content_file(check) || true) &&
+            parser.normalize_content_validated(check, normalized);
+        unlink_path(check);
+        unlink_path(normalized);
+        if (valid)
+            break;
+    }
+}
+
+// The downloads of an update-request with the same arguments, made before
+// the update takes reload.lock (UC-057). Writes nothing but dir: the update
+// commits the cache from these responses under the lock.
+function subscription_prefetch_request(force_value, target_section_name, target_source_index, dir) {
+    dir = as_string(dir);
+    let info = dir != "" ? fs.stat(dir) : null;
+    if (info == null || info.type != "directory")
+        return 1;
+
+    let force = as_string(force_value) == "1";
+    let sections = uci_sections();
+    target_section_name = as_string(target_section_name);
+    let selected_index = as_string(target_source_index) != "" ? source_index_number(target_source_index) : null;
+    let index = [];
+    // The update refuses an invalid source index without downloading.
+    if (as_string(target_source_index) != "" && selected_index == null)
+        sections = [];
+    for (let section in sections) {
+        section = object_or_empty(section);
+        if (target_section_name != "" && section_name(section) != target_section_name)
+            continue;
+        if (!section_is_subscription_proxy(section))
+            continue;
+        if (!force && subscription_update_due_result(section) != 0)
+            continue;
+
+        let source_index = 0;
+        for (let entry in connections.subscription_urls(section)) {
+            source_index++;
+            if (selected_index != null ? source_index != selected_index :
+                !force && !connections.subscription_update_enabled(section, entry))
+                continue;
+            prefetch_subscription_source(dir, index, sections, section, source_index, entry);
+        }
+        if (target_section_name != "")
+            break;
+    }
+    return write_json(dir + "/index.json", index) ? 0 : 1;
+}
+
 function empty_subscription_update_summary() {
     return {
         updated: 0,
@@ -2343,13 +2505,10 @@ function prepare_subscription_caches(phase, already_prepared, no_refresh) {
     return 1;
 }
 
+// This ucode process, the owner of the runtime locks it takes; see
+// service/lifecycle.uc owner_pid().
 function current_pid() {
-    return trim(command_output("sh -c 'echo $PPID'"));
-}
-
-function pid_running(pid) {
-    pid = as_string(pid);
-    return match(pid, /^[0-9]+$/) != null && command_success_from_args([ "kill", "-0", pid ]);
+    return as_string(fs.readlink("/proc/self"));
 }
 
 function state_ucode_status(args) {
@@ -2441,30 +2600,37 @@ function launch_self_worker(args) {
     return trim(command_output("sh -c " + shell_quote(command)));
 }
 
+// The retry worker is recorded by pid and start ticks and recognized by its
+// command line (core/process_identity.uc). A PID that a killed worker left in
+// the pidfile and another process now holds is not the worker: it neither
+// keeps a new worker from starting nor gets signalled on stop (UC-014).
+function deferred_bootstrap_worker_argv() {
+    return [ "ucode", "-L", LIB_DIR, LIB_DIR + "/subscription/cache.uc", "deferred-bootstrap-worker" ];
+}
+
 function start_deferred_subscription_bootstrap_retry_worker(deferred_sections) {
     deferred_sections = trim(as_string(deferred_sections));
     if (deferred_sections == "")
         return;
 
     ensure_runtime_dirs();
-    let existing_pid = trim(file_first_line_value(FORKOP_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE));
-    if (pid_running(existing_pid)) {
+    let existing_pid = process_identity.matches(FORKOP_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE, "ucode",
+        deferred_bootstrap_worker_argv(), false, false);
+    if (existing_pid != "") {
         log_message("Subscription bootstrap retry worker is already running with PID " + existing_pid, "debug");
         return;
     }
 
     let pid = launch_self_worker([ "deferred-bootstrap-worker", deferred_sections ]);
     if (pid != "")
-        write_file(FORKOP_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE, pid + "\n");
+        process_identity.record(FORKOP_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE, pid);
     log_message("Started subscription bootstrap retry worker for rule(s): " + deferred_sections, "info");
 }
 
 function stop_deferred_subscription_bootstrap_retry_worker() {
-    let pid = trim(file_first_line_value(FORKOP_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE));
-    if (pid_running(pid)) {
-        command_success_from_args([ "kill", pid ]);
+    if (process_identity.signal(FORKOP_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE, "ucode",
+        deferred_bootstrap_worker_argv(), false, "TERM"))
         log_message("Stopped subscription bootstrap retry worker", "info");
-    }
     unlink_path(FORKOP_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE);
 }
 
@@ -2518,7 +2684,7 @@ function deferred_subscription_bootstrap_retry_worker(remaining_sections) {
         }
 
         let result = subscription_bootstrap_retry_result(remaining_sections);
-        state_ucode_status([ "release-runtime-dir-lock", FORKOP_SUBSCRIPTION_UPDATE_LOCK_DIR ]);
+        state_ucode_status([ "release-runtime-dir-lock", FORKOP_SUBSCRIPTION_UPDATE_LOCK_DIR, current_pid() ]);
 
         if (result.recovered != "") {
             log_message("Recovered deferred subscription rule(s): " + result.recovered + "; reloading Forkop", "info");
@@ -2644,6 +2810,9 @@ else if (mode == "update-section") {
 }
 else if (mode == "update-request") {
     subscription_update_request(ARGV[1] || "0", ARGV[2] || "", ARGV[3] || "");
+}
+else if (mode == "prefetch-request") {
+    exit(subscription_prefetch_request(ARGV[1] || "0", ARGV[2] || "", ARGV[3] || "", ARGV[4] || ""));
 }
 else if (mode == "prepare-caches") {
     exit(prepare_subscription_caches(ARGV[1] || "startup", ARGV[2] || "0", ARGV[3] || "0"));

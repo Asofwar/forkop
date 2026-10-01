@@ -18,6 +18,7 @@ const DEFAULT_CONFIG_PATH = env("FORKOP_DEFAULT_CONFIG_PATH", "/usr/share/forkop
 const RT_TABLES_PATH = env("FORKOP_RT_TABLES", "/etc/iproute2/rt_tables");
 const BIN_PATH = env("FORKOP_BIN", "/usr/bin/forkop");
 const INIT_PATH = env("FORKOP_INIT", "/etc/init.d/forkop");
+const LIB_DIR = env("FORKOP_LIB", "/usr/lib/forkop");
 const DNS_APPLY_UC = env("FORKOP_DNS_APPLY_UC", "/usr/lib/forkop/dns/apply.uc");
 const SING_BOX_INIT = env("FORKOP_SING_BOX_INIT", "/etc/init.d/sing-box");
 const SING_BOX_BIN = env("FORKOP_SING_BOX_BIN", "/usr/bin/sing-box");
@@ -25,6 +26,11 @@ const SING_BOX_CRONET = env("FORKOP_SING_BOX_CRONET", "/usr/lib/libcronet.so");
 const SING_BOX_MANAGED_MARKER = env("SB_MANAGED_SERVICE_MARKER", "Forkop managed sing-box service for binary variants");
 const PACKAGE_UPGRADE_STATE = env("FORKOP_PACKAGE_UPGRADE_STATE", "/tmp/forkop-package-was-running");
 const UPGRADE_SING_BOX_WAIT_SECONDS = int(env("FORKOP_UPGRADE_SING_BOX_WAIT_SECONDS", "15"));
+// The start after an upgrade runs while the package manager holds its lock;
+// a slow cold start must not hold the package operation up for the start's
+// full timeout. The start carries on after this bound, logs its outcome and
+// schedules its own retry.
+const POSTINST_START_WAIT_SECONDS = env("FORKOP_POSTINST_START_WAIT_SECONDS", "60");
 const PROC_DIR = env("FORKOP_PROC_DIR", "/proc");
 const COMPONENT_UPDATE_CHECK_CACHE_DIR = env("FORKOP_COMPONENT_UPDATE_CHECK_CACHE_DIR", "/var/run/forkop/component-update-checks");
 const COMPONENT_UPDATE_CHECK_STATE_FILE = env("FORKOP_COMPONENT_UPDATE_CHECK_STATE_FILE", "/var/run/forkop/component-update-check.timestamp");
@@ -48,6 +54,15 @@ function normalize_status(status) {
 
 function command_success_from_args(args) {
     return normalize_status(system(command_from_args(args) + " >/dev/null 2>&1")) == 0;
+}
+
+// Status and standard output (stderr discarded).
+function command_capture_from_args(args) {
+    let pipe = fs.popen(command_from_args(args) + " 2>/dev/null", "r");
+    if (!pipe)
+        return { status: 1, output: "" };
+    let output = as_string(pipe.read("all"));
+    return { status: normalize_status(pipe.close()), output };
 }
 
 function path_exists(path) {
@@ -173,8 +188,10 @@ function remember_upgrade_state(action) {
     // an upgrade" erased the only hand-off telling postinst to restart a
     // service that prerm had just stopped, so the router came back with Forkop
     // down. Service state is authoritative here: record a restart only when
-    // Forkop was actually running immediately before prerm.
-    if (command_success_from_args([ INIT_PATH, "status" ]))
+    // Forkop was actually running immediately before prerm, or a start
+    // deferred for reload.lock was still to run: the stop below cancels it.
+    if (command_success_from_args([ INIT_PATH, "status" ]) ||
+        command_success_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/service/initd.uc", "deferred-start-pending" ]))
         fs.writefile(PACKAGE_UPGRADE_STATE, "1\n");
     else
         unlink_if_exists(PACKAGE_UPGRADE_STATE);
@@ -186,7 +203,15 @@ function prerm_cleanup(action) {
 
     remember_upgrade_state(action);
     if (!PACKAGE_TEST_MODE) {
-        command_success_from_args([ INIT_PATH, "stop" ]);
+        // Forkop's own stop for the package change, not the user's
+        // (service/initd.uc stop_request_source).
+        command_success_from_args([ "env", "FORKOP_STOP_SOURCE=package", INIT_PATH, "stop" ]);
+        // No start follows a removal: the explicit start ends with it, and
+        // a reinstall that does not start Forkop shows it not started, not
+        // as a start that failed (service/initd.uc EXPLICIT_START_FILE;
+        // D-15(a)).
+        if (as_string(action) == "remove")
+            command_success_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/service/initd.uc", "clear-explicit-start" ]);
         restore_dnsmasq_if_needed();
         remove_managed_sing_box();
     }
@@ -218,8 +243,18 @@ function postinst_restore() {
         return false;
     }
 
-    if (!path_exists(PACKAGE_UPGRADE_STATE))
+    // Only an explicit start since boot lets a reload start a runtime that
+    // is down (service/initd.uc EXPLICIT_START_FILE; D-15(a)), and a previous
+    // version kept no record of its start. A runtime that runs across the
+    // upgrade (no prerm stopped it) was started explicitly; so was Forkop
+    // that ran before the upgrade, whose restart below is an explicit start
+    // also when it does not come or fails.
+    let initd_module = LIB_DIR + "/service/initd.uc";
+    if (!path_exists(PACKAGE_UPGRADE_STATE)) {
+        command_success_from_args([ "ucode", "-L", LIB_DIR, initd_module, "mark-explicit-start", "if-running" ]);
         return true;
+    }
+    command_success_from_args([ "ucode", "-L", LIB_DIR, initd_module, "mark-explicit-start" ]);
 
     if (!wait_for_upgrade_sing_box_exit()) {
         warn("Timed out waiting for the previous Forkop sing-box runtime to exit; startup was not attempted.
@@ -227,10 +262,24 @@ function postinst_restore() {
         return false;
     }
 
-    if (!command_success_from_args([ INIT_PATH, "start" ]))
-        return false;
-
+    // The hand-off is consumed before the start, whatever its outcome: opkg
+    // configures a package whose postinst failed again on every later
+    // install, and such a re-run must neither wait for the runtime that came
+    // up meanwhile nor start a Forkop that was stopped since.
     unlink_if_exists(PACKAGE_UPGRADE_STATE);
+
+    // init.d exits 0 under procd before the detached start has run: wait for
+    // the start's own result (service/initd.uc start-and-wait, UC-013) to
+    // report a failure. It does not fail the package operation, as with
+    // OpenWrt's default postinst: a failed start schedules its own retry,
+    // and the in-app upgrade checks the runtime itself.
+    let started = command_capture_from_args([ "env", "FORKOP_SERVICE_INIT=" + INIT_PATH,
+        "ucode", "-L", LIB_DIR, LIB_DIR + "/service/initd.uc", "start-and-wait", "start", "",
+        POSTINST_START_WAIT_SECONDS ]);
+    if (started.status != 0 && match(started.output, /(^|\n)pending\n/) != null)
+        warn("Forkop is still starting after the package upgrade; see the Forkop log for its outcome.\n");
+    else if (started.status != 0)
+        warn("Forkop did not start after the package upgrade; see the Forkop log.\n");
     return true;
 }
 

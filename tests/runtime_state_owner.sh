@@ -17,6 +17,9 @@ fail() {
   exit 1
 }
 
+# shellcheck source=tests/helpers/source_checks.sh
+source "$ROOT_DIR/tests/helpers/source_checks.sh"
+
 [ ! -e "$RUNTIME_STATE" ] ||
   fail "runtime_state.sh shell owner must be removed"
 [ ! -e "$UPDATES_RUNTIME" ] ||
@@ -26,19 +29,16 @@ grep -Fq 'runtime_state.sh' "$FORKOP_BIN" &&
   fail "forkop must not source runtime_state.sh"
 
 service_predicates='process_age_seconds|sing_box_service_pid|pid_is_sing_box|sing_box_service_is_running|sing_box_service_is_stable|forkop_runtime_network_is_configured|forkop_is_running|forkop_is_stably_running|wait_for_forkop_stable_start'
-if grep -R -n -E "$service_predicates" "$FORKOP_BIN" "$ROOT_DIR/forkop/files/usr/lib" --include='*.sh' >/dev/null 2>&1; then
-  fail "service running/stability predicates must not remain in shell"
-fi
+source_refute_shell "service running/stability predicates must not remain in shell" \
+  -E "$service_predicates" "$FORKOP_BIN" "$ROOT_DIR/forkop/files/usr/lib"
 
 pending_state='mark_pending_reload|consume_pending_reload|run_pending_reload_if_requested|sync_time_if_needed'
-if grep -R -n -E "$pending_state" "$FORKOP_BIN" "$FORKOP_INIT" "$ROOT_DIR/forkop/files/usr/lib" --include='*.sh' >/dev/null 2>&1; then
-  fail "pending reload/time-sync ownership must not remain in shell"
-fi
+source_refute_shell "pending reload/time-sync ownership must not remain in shell" \
+  -E "$pending_state" "$FORKOP_BIN" "$FORKOP_INIT" "$ROOT_DIR/forkop/files/usr/lib"
 
 runtime_state_shell_symbols='runtime_state_ucode|acquire_runtime_dir_lock|release_runtime_dir_lock|capture_reload_state|write_reload_state_file|write_reload_state|clear_reload_state|populate_nft_runtime_sets|rebuild_nft_runtime|reload_sing_box_runtime|apply_pending_urltest_selector_switches|close_inherited_service_lock_fd|FORKOP_URLTEST_SELECTOR_SWITCHES'
-if grep -R -n -E "$runtime_state_shell_symbols" "$FORKOP_BIN" "$FORKOP_INIT" "$ROOT_DIR/forkop/files/usr/lib" --include='*.sh' >/dev/null 2>&1; then
-  fail "runtime_state.sh symbols must not remain in shell"
-fi
+source_refute_shell "runtime_state.sh symbols must not remain in shell" \
+  -E "$runtime_state_shell_symbols" "$FORKOP_BIN" "$FORKOP_INIT" "$ROOT_DIR/forkop/files/usr/lib"
 
 if grep -Fq 'acquire_reload_lock' "$FORKOP_INIT" || grep -Fq 'release_reload_lock' "$FORKOP_INIT"; then
   fail "init.d must not own reload lock decisions"
@@ -56,9 +56,8 @@ grep -Fq '"list-update"' "$LIFECYCLE_UC" ||
   fail "service/lifecycle.uc start/reload must run list updates through components/updates.uc"
 grep -Fq 'subscription_update: [ "components/updates.uc", "subscription-update", 2 ]' "$CLI_UC" ||
   fail "service/cli.uc must run subscription updates through components/updates.uc"
-if grep -R -n -F 'updates_runtime.sh' "$FORKOP_BIN" "$ROOT_DIR/forkop/files/usr/lib" --include='*.sh' >/dev/null 2>&1; then
-  fail "runtime shell must not reference updates_runtime.sh"
-fi
+source_refute_shell "runtime shell must not reference updates_runtime.sh" \
+  -F 'updates_runtime.sh' "$FORKOP_BIN" "$ROOT_DIR/forkop/files/usr/lib"
 grep -Fq 'mode == "refresh-cron-from-uci"' "$UPDATES_UC" ||
   fail "components/updates.uc must own cron refresh"
 grep -Fq 'mode == "remove-cron-jobs"' "$UPDATES_UC" ||

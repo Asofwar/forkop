@@ -42,6 +42,11 @@ const CHILD_ITEM_TYPES = [
     "section_interface",
     "urltest"
 ];
+// Other section types the migrations read or change.
+const MODEL_SECTION_TYPES = [
+    ...CHILD_ITEM_TYPES,
+    "urltest_override"
+];
 const SECONDARY_RULESET_RAW_PREFIX = "https://raw.githubusercontent.com/Greeg0ry/b4geoip-forkop/main/srs/";
 const SECONDARY_RULESET_CDN_PREFIX = "https://cdn.jsdelivr.net/gh/Greeg0ry/b4geoip-forkop@main/srs/";
 const OWN_MIRROR_BASE = "https://mirror.infotechtg.ru";
@@ -122,7 +127,7 @@ function model_from_fixture(path) {
         rules: [],
         sections: []
     };
-    for (let type_name in CHILD_ITEM_TYPES)
+    for (let type_name in MODEL_SECTION_TYPES)
         model[type_name] = [];
 
     if (model.settings[".name"] == null)
@@ -134,9 +139,18 @@ function model_from_fixture(path) {
         push(model.rules, clone_section(section));
     for (let section in fixture_section_list(data, "section"))
         push(model.sections, clone_section(section));
-    for (let type_name in CHILD_ITEM_TYPES)
+    for (let type_name in MODEL_SECTION_TYPES)
         for (let section in fixture_section_list(data, type_name))
             push(model[type_name], clone_section(section));
+
+    // Sections of every type, those the migrations do not read included.
+    model.names = [];
+    for (let type_name in keys(data)) {
+        let value = data[type_name];
+        for (let section in (type(value) == "array" ? value : [ value ]))
+            if (type(section) == "object" && section[".name"] != null)
+                push(model.names, as_string(section[".name"]));
+    }
 
     return model;
 }
@@ -147,7 +161,7 @@ function model_from_uci(cursor) {
         rules: [],
         sections: []
     };
-    for (let type_name in CHILD_ITEM_TYPES)
+    for (let type_name in MODEL_SECTION_TYPES)
         model[type_name] = [];
 
     cursor.foreach(CONFIG_NAME, "rule", function(section) {
@@ -156,11 +170,13 @@ function model_from_uci(cursor) {
     cursor.foreach(CONFIG_NAME, "section", function(section) {
         push(model.sections, clone_section(section));
     });
-    for (let type_name in CHILD_ITEM_TYPES) {
+    for (let type_name in MODEL_SECTION_TYPES) {
         cursor.foreach(CONFIG_NAME, type_name, function(section) {
             push(model[type_name], clone_section(section));
         });
     }
+    // Sections of every type, those the migrations do not read included.
+    model.names = cursor.all_sections(CONFIG_NAME);
 
     return model;
 }
@@ -172,7 +188,7 @@ function export_model(model) {
     };
     if (length(model.rules) > 0)
         result.rule = model.rules;
-    for (let type_name in CHILD_ITEM_TYPES)
+    for (let type_name in MODEL_SECTION_TYPES)
         if (length(model[type_name] || []) > 0)
             result[type_name] = model[type_name];
     return result;
@@ -184,6 +200,7 @@ function migration_context(model) {
         operations: [],
         removed_caches: [],
         added_lists: {},
+        created_anonymous: {},
         changed: false
     };
 }
@@ -294,8 +311,18 @@ function create_child_section(ctx, type_name) {
     if (ctx.model[type_name] == null)
         ctx.model[type_name] = [];
     push(ctx.model[type_name], section);
+    ctx.created_anonymous[item_id] = true;
     record_operation(ctx, { op: "create", section: item_id, type: type_name, anonymous: true });
     return section;
+}
+
+// A rename keeps the section, its options and its place in the file.
+function rename_section(ctx, section, name) {
+    let old_name = section_name(section);
+    section[".name"] = name;
+    if (section[".anonymous"] != null)
+        section[".anonymous"] = false;
+    record_operation(ctx, { op: "rename", section: old_name, name });
 }
 
 function create_child_for_section(ctx, parent, type_name) {
@@ -1404,6 +1431,74 @@ function migrate_own_dependency_mirror(ctx) {
     }
 }
 
+// D-1 (b): the Clash API controller listens on the LAN and always requires a
+// secret. A configuration without one (a new install: the shipped config has
+// none, or an upgrade) gets 256 random bits as hex; an existing secret is
+// never replaced. Without a random source nothing is recorded, so the next
+// run retries, and the validator refuses to start without a secret.
+function migrate_clash_api_secret(ctx) {
+    if (common.clash_api_secret(ctx.model.settings) != "")
+        return true;
+    let secret = common.random_hex_secret();
+    if (secret == null)
+        return false;
+    set_option(ctx, ctx.model.settings, "yacd_secret_key", secret);
+    return true;
+}
+
+// UC-044: sing-box tags a URLTest group <rule>-urltest-<section name>, and
+// libuci names an anonymous section after its position in the file
+// (cfg<index><type hash>): adding or removing any section before a group
+// changed its tag, and sing-box forgot the server or group chosen in the
+// rule's selector. The editor creates named groups now (ut_<8 hex>); this
+// names the anonymous ones once, keeping the hash part of their name. Their
+// tag changes this one time, and dashboard overrides of the old tag follow.
+function anonymous_urltest_section(ctx, section) {
+    let name = section_name(section);
+    if (ctx.created_anonymous[name])
+        return true;
+    // uci cursors report the flag; a fixture or state file may not.
+    if (section[".anonymous"] != null)
+        return section[".anonymous"] === true || section[".anonymous"] == "1";
+    return match(name, /^cfg[0-9a-f]{6}$/) != null;
+}
+
+function urltest_group_tag(rule, name) {
+    return singbox_constants_module.outbound_tag(rule + "-urltest-" + name);
+}
+
+function migrate_urltest_section_names(ctx) {
+    // A section of any type may hold the name: the rename would fail while
+    // the overrides already point at the new tag.
+    let taken = { [section_name(ctx.model.settings)]: true };
+    for (let name in ctx.model.names || [])
+        taken[as_string(name)] = true;
+    for (let type_name in [ "rules", "sections", ...MODEL_SECTION_TYPES ])
+        for (let section in ctx.model[type_name] || [])
+            taken[section_name(section)] = true;
+
+    let created = 0;
+    for (let group in ctx.model.urltest) {
+        if (!anonymous_urltest_section(ctx, group))
+            continue;
+
+        let name = section_name(group);
+        let hash = match(name, /^cfg([0-9a-f]{6})$/);
+        let base = "ut_" + (hash ? hash[1] : sprintf("%06x", ++created));
+        let stable = base;
+        for (let suffix = 2; taken[stable]; suffix++)
+            stable = base + "_" + suffix;
+        taken[stable] = true;
+
+        let rule = option(group, "section", "");
+        let old_tag = urltest_group_tag(rule, name);
+        rename_section(ctx, group, stable);
+        for (let override in ctx.model.urltest_override)
+            if (option(override, "rule", "") == rule && option(override, "tag", "") == old_tag)
+                set_option(ctx, override, "tag", urltest_group_tag(rule, stable));
+    }
+}
+
 const MIGRATIONS = [
     { id: "interface_sections", run: migrate_interface_sections },
     { id: "enable_component_checks", run: migrate_enable_component_checks },
@@ -1412,7 +1507,9 @@ const MIGRATIONS = [
     { id: "retired_secondary_rulesets", run: migrate_retired_secondary_rulesets },
     { id: "retired_secondary_rulesets_v2", run: migrate_retired_secondary_rulesets },
     { id: "secondary_rulesets_mirror_v1", run: migrate_secondary_rulesets_to_mirror },
-    { id: "own_dependency_mirror_v1", run: migrate_own_dependency_mirror }
+    { id: "own_dependency_mirror_v1", run: migrate_own_dependency_mirror },
+    { id: "clash_api_secret_v1", run: migrate_clash_api_secret },
+    { id: "urltest_section_names_v1", run: migrate_urltest_section_names }
 ];
 
 function apply_migrations(ctx) {
@@ -1433,7 +1530,8 @@ function apply_migrations(ctx) {
         if (seen[migration.id])
             continue;
 
-        migration.run(ctx);
+        if (migration.run(ctx) === false)
+            continue;
         seen[migration.id] = true;
         push(applied, migration.id);
         added = true;
@@ -1570,6 +1668,8 @@ function apply_operations(cursor, operations) {
             cursor.set(CONFIG_NAME, section_ref(op.section), op.option, op.values);
         else if (op.op == "set_type")
             cursor.set(CONFIG_NAME, section_ref(op.section), op.type);
+        else if (op.op == "rename")
+            cursor.rename(CONFIG_NAME, section_ref(op.section), op.name);
     }
 }
 
@@ -1585,6 +1685,9 @@ function runtime_cursor() {
             for (let section in uci_core.section_objects(package_name, type_name))
                 callback(section);
         },
+        all_sections: function(package_name) {
+            return uci_core.all_sections(package_name);
+        },
         add: function(package_name, type_name) {
             return uci_core.add(package_name, type_name);
         },
@@ -1595,6 +1698,9 @@ function runtime_cursor() {
         },
         delete: function(package_name, section_name, option_name) {
             return uci_core.delete(package_name + "." + section_name + "." + option_name);
+        },
+        rename: function(package_name, section_name, name) {
+            return uci_core.rename(package_name + "." + section_name, name);
         },
         commit: function(package_name) {
             return uci_core.commit(package_name);

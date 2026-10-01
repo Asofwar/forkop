@@ -49,11 +49,14 @@ bootstrap_cmd() {
     ucode -L "$FORKOP_LIB" "$FORKOP_LIB/components/updates.uc" "$@"
 }
 
+# The lock and its owner go through service/state.uc (core/runtime_lock.uc).
+state() { ucode -L "$FORKOP_LIB" "$FORKOP_LIB/service/state.uc" "$@"; }
+
 for bootstrap_fail in 0 1; do
   case_dir="$WORK_DIR/case-$bootstrap_fail"
-  mkdir -p "$case_dir/rulesets" "$case_dir/run/reload.lock" "$case_dir/cache"
+  mkdir -p "$case_dir/rulesets" "$case_dir/run" "$case_dir/cache"
   # Startup already owns this lock; preparation must not wait for its parent.
-  printf '%s\n' "$$" >"$case_dir/run/reload.lock/pid"
+  state acquire-runtime-dir-lock "$case_dir/run/reload.lock" "$$" || fail "startup could not take reload.lock"
   printf 'previous flash data\n' >"$case_dir/cache/marker"
   cat >"$case_dir/uci.state" <<'UCI'
 forkop.settings=settings
@@ -76,7 +79,7 @@ UCI
   [ ! -s "$case_dir/nft.log" ] || fail "bootstrap touched live nft policy"
   [ ! -s "$case_dir/reload.log" ] || fail "bootstrap recursively requested reload"
   [ ! -e "$case_dir/run/list.pid" ] || fail "bootstrap leaked worker PID"
-  [ -e "$case_dir/run/reload.lock/pid" ] || fail "bootstrap released the parent's lock"
+  [ "$(state runtime-dir-lock-owner "$case_dir/run/reload.lock")" = "$$" ] || fail "bootstrap released the parent's lock"
   grep -Fxq 'previous flash data' "$case_dir/cache/marker" || fail "bootstrap damaged flash cache"
 done
 printf 'initial list generation checks passed\n'

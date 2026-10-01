@@ -16,14 +16,6 @@ export function isServiceTransitionStatus(status: string) {
   return ['starting', 'stopping', 'restarting', 'reloading'].includes(status);
 }
 
-export function getServiceTransition(status: string) {
-  return {
-    starting: status === 'starting',
-    stopping: status === 'stopping',
-    restarting: status === 'restarting' || status === 'reloading',
-  };
-}
-
 export function hasLocalMutatingServiceActionLoading(
   actions: DiagnosticServiceActions,
 ) {
@@ -97,6 +89,13 @@ export function getAvailableActionsDisabledState({
       mutatingServiceActionLoading || componentActionLoading,
     viewLogsDisabled: false,
   };
+}
+
+export function serviceActionErrorText(error: unknown) {
+  const detail = error instanceof Error ? error.message.trim() : '';
+  return detail
+    ? `${_('Service action failed')}: ${detail}`
+    : _('Service action failed');
 }
 
 export function shouldShowRestartAction({

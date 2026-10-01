@@ -23,17 +23,23 @@ export { showToast } from './helpers/showToast';
 export { getClashUIUrl } from './helpers/getClashApiUrl';
 export { ForkopShellMethods } from './forkop/methods/shell';
 export { coreService } from './forkop/services/core.service';
+export { setReadonlyMode } from './forkop/services/accessMode.service';
+export { setForkopPage } from './forkop/services/tab.service';
+export { confirmAction } from './forkop/ui/confirmAction';
 export { store } from './forkop/services/store.service';
 export { applyUiStateToStore } from './forkop/services/uiState.service';
 export { DashboardTab } from './forkop/tabs/dashboard';
 export { DiagnosticTab } from './forkop/tabs/diagnostic';
 export { MonitoringTab } from './forkop/tabs/monitoring';
 export { UpdatesTab } from './forkop/tabs/updates';
+export { HistoryTab } from './forkop/tabs/history';
+export { AutotuneTab } from './forkop/tabs/autotune';
 export {
   BOOTSTRAP_DNS_SERVER_OPTIONS,
   DEFAULT_LATENCY_TEST_URL,
   DNS_SERVER_OPTIONS,
   DOMAIN_LIST_OPTIONS,
+  domainListLabel,
   SECONDARY_RULESET_OPTIONS,
   LATENCY_TEST_URL_OPTIONS,
   FORKOP_ACTION_PROVIDERS_AVAILABILITY_EVENT,

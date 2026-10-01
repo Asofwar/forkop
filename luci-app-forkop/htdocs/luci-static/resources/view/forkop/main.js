@@ -906,6 +906,7 @@ function downloadAsTxt(text, filename) {
 }
 
 // src/forkop/services/logger.service.ts
+var MAX_BUFFERED_LOGS = 500;
 var Logger = class {
   constructor() {
     this.logs = [];
@@ -918,6 +919,9 @@ var Logger = class {
     if (!this.levels.includes(level)) level = "info";
     const message = this.format(level, ...args);
     this.logs.push(message);
+    if (this.logs.length > MAX_BUFFERED_LOGS) {
+      this.logs.splice(0, this.logs.length - MAX_BUFFERED_LOGS);
+    }
     switch (level) {
       case "error":
         console.error(message);
@@ -972,7 +976,7 @@ async function withTimeout(promise, timeoutMs, operationName, timeoutMessage = _
   } finally {
     clearTimeout(timeoutId);
     const elapsed = performance.now() - start;
-    logger.info("[SHELL]", `[${operationName}] took ${elapsed.toFixed(2)} ms`);
+    logger.debug("[SHELL]", `[${operationName}] took ${elapsed.toFixed(2)} ms`);
   }
 }
 
@@ -1018,6 +1022,30 @@ var DOMAIN_LIST_OPTIONS = {
   digitalocean: "Digital Ocean ASN",
   cloudfront: "CloudFront ASN"
 };
+function domainListLabel(key) {
+  switch (key) {
+    case "russia_inside":
+      return _("Russia: blocked inside");
+    case "russia_outside":
+      return _("Russia: blocked from outside");
+    case "ukraine_inside":
+      return _("Ukraine");
+    case "geoblock":
+      return _("Geo-blocked services");
+    case "block":
+      return _("Block list");
+    case "porn":
+      return _("Adult sites");
+    case "news":
+      return _("News");
+    case "anime":
+      return _("Anime");
+    case "ads_hagezi_pro":
+      return _("Ads (Hagezi Pro)");
+    default:
+      return DOMAIN_LIST_OPTIONS[key] ?? key;
+  }
+}
 var SECONDARY_RULESET_OPTIONS = {
   blizzard: "Blizzard",
   bungie: "Bungie",
@@ -1060,12 +1088,93 @@ var BOOTSTRAP_DNS_SERVER_OPTIONS = {
 };
 var COMMAND_TIMEOUT = 1e4;
 
+// src/forkop/services/accessMode.service.ts
+var readonlyMode = false;
+function setReadonlyMode(value) {
+  readonlyMode = value;
+}
+function isReadonlyMode() {
+  return readonlyMode;
+}
+
+// src/forkop/services/readonlyCommandGuard.ts
+var FORKOP_CLI = "/usr/bin/forkop";
+var FORKOP_READONLY_CLI = "/usr/libexec/forkop-ro";
+var READONLY_EXEC_PATTERNS = [
+  "/usr/libexec/forkop-ro get_status",
+  "/usr/libexec/forkop-ro get_sing_box_status",
+  "/usr/libexec/forkop-ro get_zapret_status",
+  "/usr/libexec/forkop-ro get_zapret2_status",
+  "/usr/libexec/forkop-ro get_byedpi_status",
+  "/usr/libexec/forkop-ro get_system_info",
+  "/usr/libexec/forkop-ro get_ui_capabilities",
+  "/usr/libexec/forkop-ro get_ui_state",
+  "/usr/libexec/forkop-ro get_health_status",
+  "/usr/libexec/forkop-ro get_history",
+  "/usr/libexec/forkop-ro autotune_status",
+  "/usr/libexec/forkop-ro autotune_groups",
+  "/usr/libexec/forkop-ro autotune_run_status *",
+  "/usr/libexec/forkop-ro route_trace *",
+  "/usr/libexec/forkop-ro config_snapshot_list",
+  "/usr/libexec/forkop-ro config_snapshot_diff *",
+  "/usr/libexec/forkop-ro connectivity_test *",
+  "/usr/libexec/forkop-ro get_readonly_config_sections",
+  "/usr/libexec/forkop-ro get_dashboard_runtime_metadata",
+  "/usr/libexec/forkop-ro show_version",
+  "/usr/libexec/forkop-ro check_nft_rules",
+  "/usr/libexec/forkop-ro check_sing_box",
+  "/usr/libexec/forkop-ro check_logs",
+  "/usr/libexec/forkop-ro check_fakeip",
+  "/usr/libexec/forkop-ro check_zapret_runtime",
+  "/usr/libexec/forkop-ro check_zapret2_runtime",
+  "/usr/libexec/forkop-ro check_byedpi_runtime",
+  "/usr/libexec/forkop-ro check_dns_available",
+  "/usr/libexec/forkop-ro clash_api get_proxies",
+  "/usr/libexec/forkop-ro clash_api get_connections",
+  "/usr/libexec/forkop-ro service_action_status *",
+  "/usr/libexec/forkop-ro latency_test_status *",
+  "/usr/libexec/forkop-ro component_action_status *",
+  "/usr/libexec/forkop-ro subscription_update_status *",
+  "/usr/libexec/forkop-ro component_update_check_cache",
+  "/usr/libexec/forkop-ro global_check masked",
+  "/usr/libexec/forkop-ro show_sing_box_config masked"
+];
+var READONLY_REFUSED = "forkop: not available in read-only mode";
+var compiled = READONLY_EXEC_PATTERNS.map(
+  (pattern) => new RegExp(
+    `^${pattern.split("*").map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`
+  )
+);
+function isReadonlyCommandAllowed(command, args) {
+  const invocation = [command, ...args].join(" ");
+  return compiled.some((pattern) => pattern.test(invocation));
+}
+function resolveReadonlyCommand(command) {
+  return isReadonlyMode() && command === FORKOP_CLI ? FORKOP_READONLY_CLI : command;
+}
+var reported = /* @__PURE__ */ new Set();
+function shouldRefuseCommand(command, args) {
+  if (!isReadonlyMode() || isReadonlyCommandAllowed(command, args)) {
+    return false;
+  }
+  const key = [command, args[0] ?? ""].join(" ");
+  if (!reported.has(key)) {
+    reported.add(key);
+    logger.warn("[READONLY]", `refused ${key}`);
+  }
+  return true;
+}
+
 // src/helpers/executeShellCommand.ts
 async function executeShellCommand({
-  command,
+  command: requestedCommand,
   args,
   timeout = COMMAND_TIMEOUT
 }) {
+  const command = resolveReadonlyCommand(requestedCommand);
+  if (shouldRefuseCommand(command, args)) {
+    return { stdout: "", stderr: READONLY_REFUSED, code: 126 };
+  }
   try {
     return await withTimeout(
       fs.exec(command, args),
@@ -1117,13 +1226,19 @@ async function onMount(target) {
 function getWindowLocation() {
   return typeof window !== "undefined" ? window.location : void 0;
 }
-function canUseDirectClashApi() {
+function getClashApiSecretFromSettings(settings) {
+  return `${settings?.yacd_secret_key ?? ""}`.trim();
+}
+function canUseDirectClashApi(secret) {
   const location = getWindowLocation();
-  return typeof location?.hostname === "string" && location.hostname !== "" && location.protocol !== "https:";
+  return secret.trim() !== "" && typeof location?.hostname === "string" && location.hostname !== "" && location.protocol !== "https:";
 }
 function getClashWsUrl() {
   const { hostname } = window.location;
   return `ws://${hostname}:9090`;
+}
+function getClashWsStreamUrl(path, secret) {
+  return `${getClashWsUrl()}${path}?token=${encodeURIComponent(secret)}`;
 }
 function getClashHttpUrl() {
   const { hostname } = window.location;
@@ -1476,66 +1591,6 @@ function renderRotateCcwIcon24() {
   );
 }
 
-// src/icons/renderCircleStopIcon24.ts
-function renderCircleStopIcon24() {
-  const NS = "http://www.w3.org/2000/svg";
-  return svgEl(
-    "svg",
-    {
-      xmlns: NS,
-      viewBox: "0 0 24 24",
-      fill: "none",
-      stroke: "currentColor",
-      "stroke-width": "2",
-      "stroke-linecap": "round",
-      "stroke-linejoin": "round",
-      class: "lucide lucide-circle-stop-icon lucide-circle-stop"
-    },
-    [
-      svgEl("circle", {
-        cx: "12",
-        cy: "12",
-        r: "10"
-      }),
-      svgEl("rect", {
-        x: "9",
-        y: "9",
-        width: "6",
-        height: "6",
-        rx: "1"
-      })
-    ]
-  );
-}
-
-// src/icons/renderCirclePlayIcon24.ts
-function renderCirclePlayIcon24() {
-  const NS = "http://www.w3.org/2000/svg";
-  return svgEl(
-    "svg",
-    {
-      xmlns: NS,
-      viewBox: "0 0 24 24",
-      fill: "none",
-      stroke: "currentColor",
-      "stroke-width": "2",
-      "stroke-linecap": "round",
-      "stroke-linejoin": "round",
-      class: "lucide lucide-circle-play-icon lucide-circle-play"
-    },
-    [
-      svgEl("path", {
-        d: "M9 9.003a1 1 0 0 1 1.517-.859l4.997 2.997a1 1 0 0 1 0 1.718l-4.997 2.997A1 1 0 0 1 9 14.996z"
-      }),
-      svgEl("circle", {
-        cx: "12",
-        cy: "12",
-        r: "10"
-      })
-    ]
-  );
-}
-
 // src/icons/renderCircleCheckBigIcon24.ts
 function renderCircleCheckBigIcon24() {
   const NS = "http://www.w3.org/2000/svg";
@@ -1644,34 +1699,6 @@ function renderSearchIcon24() {
     [
       svgEl("path", { d: "m21 21-4.34-4.34" }),
       svgEl("circle", { cx: "11", cy: "11", r: "8" })
-    ]
-  );
-}
-
-// src/icons/renderBookOpenTextIcon24.ts
-function renderBookOpenTextIcon24() {
-  const NS = "http://www.w3.org/2000/svg";
-  return svgEl(
-    "svg",
-    {
-      xmlns: NS,
-      viewBox: "0 0 24 24",
-      fill: "none",
-      stroke: "currentColor",
-      "stroke-width": "2",
-      "stroke-linecap": "round",
-      "stroke-linejoin": "round",
-      class: "lucide lucide-book-open-text-icon lucide-book-open-text"
-    },
-    [
-      svgEl("path", { d: "M12 7v14" }),
-      svgEl("path", { d: "M16 12h2" }),
-      svgEl("path", { d: "M16 8h2" }),
-      svgEl("path", {
-        d: "M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"
-      }),
-      svgEl("path", { d: "M6 12h2" }),
-      svgEl("path", { d: "M6 8h2" })
     ]
   );
 }
@@ -1965,8 +1992,10 @@ function renderDefaultState({
   subscriptionUpdating,
   selectorSwitchingTag,
   isPriorityMembersExpanded,
-  onPriorityMembersToggle
+  onPriorityMembersToggle,
+  readonly = false
 }) {
+  const withTagSelect = section.withTagSelect && !readonly;
   function renderPriorityMembers(outbound) {
     const members = outbound.priorityInfo?.outbounds || [];
     if (members.length === 0) {
@@ -2010,7 +2039,7 @@ function renderDefaultState({
               {
                 class: member.latency ? "fkp_dashboard-page__outbound-grid__item__latency--green" : "fkp_dashboard-page__outbound-grid__item__latency--empty"
               },
-              member.latency ? `${member.latency}ms` : "N/A"
+              member.latency ? _("%d ms").replace("%d", String(member.latency)) : "\u2014"
             )
           ]
         )
@@ -2065,12 +2094,12 @@ function renderDefaultState({
     const priorityMembers = renderPriorityMembers(outbound);
     const selectorSwitching = Boolean(selectorSwitchingTag);
     const outboundSwitching = selectorSwitchingTag === outbound.code;
-    const canChooseOutbound = section.withTagSelect && outbound.runtimeAvailable !== false && !selectorSwitching && !outbound.selected;
+    const canChooseOutbound = withTagSelect && outbound.runtimeAvailable !== false && !selectorSwitching && !outbound.selected;
     const className = [
       "fkp_dashboard-page__outbound-grid__item",
       outbound.selected ? "fkp_dashboard-page__outbound-grid__item--active" : "",
       canChooseOutbound ? "fkp_dashboard-page__outbound-grid__item--selectable" : "",
-      section.withTagSelect && !canChooseOutbound ? "fkp_dashboard-page__outbound-grid__item--disabled" : "",
+      withTagSelect && !canChooseOutbound ? "fkp_dashboard-page__outbound-grid__item--disabled" : "",
       outboundSwitching ? "fkp_dashboard-page__outbound-grid__item--switching" : ""
     ].filter(Boolean).join(" ");
     return E(
@@ -2078,7 +2107,7 @@ function renderDefaultState({
       {
         class: className,
         "aria-busy": outboundSwitching ? "true" : void 0,
-        "aria-disabled": section.withTagSelect && !canChooseOutbound ? "true" : void 0,
+        "aria-disabled": withTagSelect && !canChooseOutbound ? "true" : void 0,
         click: () => canChooseOutbound && onChooseOutbound(section.sectionName, section.code, outbound.code)
       },
       [
@@ -2142,7 +2171,7 @@ function renderDefaultState({
           E(
             "div",
             { class: getLatencyClass() },
-            outbound.latency ? `${outbound.latency}ms` : "N/A"
+            outbound.latency ? _("%d ms").replace("%d", String(outbound.latency)) : "\u2014"
           )
         ]),
         ...priorityMembers ? [priorityMembers] : []
@@ -2150,7 +2179,7 @@ function renderDefaultState({
     );
   }
   const metadataNodes = (section.subscriptionMetadata || []).map((metadata) => renderSubscriptionMetadata(metadata)).filter(Boolean);
-  const subscriptionUpdateAction = renderSubscriptionUpdateAction(
+  const subscriptionUpdateAction = readonly ? void 0 : renderSubscriptionUpdateAction(
     section,
     subscriptionUpdating,
     onUpdateSubscription
@@ -2172,39 +2201,41 @@ function renderDefaultState({
         },
         [
           ...subscriptionUpdateAction ? [subscriptionUpdateAction] : [],
-          E(
-            "button",
-            {
-              type: "button",
-              class: "btn dashboard-sections-grid-item-test-latency",
-              "data-latency-section": section.sectionName,
-              disabled: latencyFetching ? true : void 0,
-              click: (event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                if (latencyFetching) {
-                  return;
+          ...readonly ? [] : [
+            E(
+              "button",
+              {
+                type: "button",
+                class: "btn dashboard-sections-grid-item-test-latency",
+                "data-latency-section": section.sectionName,
+                disabled: latencyFetching ? true : void 0,
+                click: (event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  if (latencyFetching) {
+                    return;
+                  }
+                  testLatency();
                 }
-                testLatency();
-              }
-            },
-            latencyFetching ? [
-              renderLoaderCircleIcon24(),
-              E(
+              },
+              latencyFetching ? [
+                renderLoaderCircleIcon24(),
+                E(
+                  "span",
+                  {
+                    class: "dashboard-sections-grid-item-test-latency__label"
+                  },
+                  getLatencyTestLabel(latencyProgress)
+                )
+              ] : E(
                 "span",
                 {
                   class: "dashboard-sections-grid-item-test-latency__label"
                 },
-                getLatencyTestLabel(latencyProgress)
+                _("Test latency")
               )
-            ] : E(
-              "span",
-              {
-                class: "dashboard-sections-grid-item-test-latency__label"
-              },
-              _("Test latency")
             )
-          )
+          ]
         ]
       )
     ]),
@@ -2224,68 +2255,6 @@ function renderSections(props) {
   return renderDefaultState(props);
 }
 
-// src/forkop/tabs/dashboard/partials/renderWidget.ts
-function renderFailedState2() {
-  return E(
-    "div",
-    {
-      id: "",
-      style: "height: 78px",
-      class: "fkp_dashboard-page__widgets-section__item centered"
-    },
-    _("Currently unavailable")
-  );
-}
-function renderLoadingState2() {
-  return E(
-    "div",
-    {
-      id: "",
-      style: "height: 78px",
-      class: "fkp_dashboard-page__widgets-section__item skeleton"
-    },
-    ""
-  );
-}
-function renderDefaultState2({ title, items }) {
-  return E("div", { class: "fkp_dashboard-page__widgets-section__item" }, [
-    E(
-      "b",
-      { class: "fkp_dashboard-page__widgets-section__item__title" },
-      title
-    ),
-    ...items.map(
-      (item) => E(
-        "div",
-        {
-          class: `fkp_dashboard-page__widgets-section__item__row ${item?.attributes?.class || ""}`
-        },
-        [
-          E(
-            "span",
-            { class: "fkp_dashboard-page__widgets-section__item__row__key" },
-            `${item.key}: `
-          ),
-          E(
-            "span",
-            { class: "fkp_dashboard-page__widgets-section__item__row__value" },
-            item.value
-          )
-        ]
-      )
-    )
-  ]);
-}
-function renderWidget(props) {
-  if (props.loading) {
-    return renderLoadingState2();
-  }
-  if (props.failed) {
-    return renderFailedState2();
-  }
-  return renderDefaultState2(props);
-}
-
 // src/forkop/tabs/dashboard/render.ts
 function render() {
   return E(
@@ -2297,94 +2266,47 @@ function render() {
     [
       E(
         "div",
-        {
-          class: "fkp_dashboard-page__service-stopped",
-          role: "status"
-        },
-        _(
-          "Forkop service is stopped. Start the service to display the dashboard."
-        )
-      ),
-      E("div", { class: "fkp_dashboard-page__content" }, [
-        // Widgets section
-        E("div", { class: "fkp_dashboard-page__widgets-section" }, [
-          E(
-            "div",
-            { id: "dashboard-widget-traffic" },
-            renderWidget({
-              loading: true,
-              failed: false,
-              title: "",
-              items: []
-            })
-          ),
-          E(
-            "div",
-            { id: "dashboard-widget-traffic-total" },
-            renderWidget({
-              loading: true,
-              failed: false,
-              title: "",
-              items: []
-            })
-          ),
-          E(
-            "div",
-            { id: "dashboard-widget-system-info" },
-            renderWidget({
-              loading: true,
-              failed: false,
-              title: "",
-              items: []
-            })
-          ),
-          E(
-            "div",
-            { id: "dashboard-widget-service-info" },
-            renderWidget({
-              loading: true,
-              failed: false,
-              title: "",
-              items: []
-            })
-          )
-        ]),
-        // All outbounds
-        E(
-          "div",
-          { id: "dashboard-sections-grid" },
-          renderSections({
-            loading: true,
-            failed: false,
-            section: {
-              code: "",
-              sectionName: "",
-              displayName: "",
-              outbounds: [],
-              withTagSelect: false
-            },
-            onTestLatency: () => {
-            },
-            onChooseOutbound: () => {
-            },
-            onShowUrlTestInfo: () => {
-            },
-            onShowPriorityInfo: () => {
-            },
-            onUpdateSubscription: () => {
-            },
-            latencyFetching: false,
-            latencyProgress: void 0,
-            subscriptionUpdating: false,
-            selectorSwitchingTag: void 0,
-            isPriorityMembersExpanded: () => false,
-            onPriorityMembersToggle: () => {
-            }
-          })
-        )
-      ])
+        { id: "dashboard-overview", role: "status" },
+        E("p", { class: "fkp-overview__hint" }, _("Loading\u2026"))
+      )
     ]
   );
+}
+function renderNodes() {
+  return E("div", { id: "dashboard-status", class: "fkp_dashboard-page" }, [
+    E(
+      "div",
+      { id: "dashboard-sections-grid" },
+      renderSections({
+        loading: true,
+        failed: false,
+        section: {
+          code: "",
+          sectionName: "",
+          displayName: "",
+          outbounds: [],
+          withTagSelect: false
+        },
+        onTestLatency: () => {
+        },
+        onChooseOutbound: () => {
+        },
+        onShowUrlTestInfo: () => {
+        },
+        onShowPriorityInfo: () => {
+        },
+        onUpdateSubscription: () => {
+        },
+        latencyFetching: false,
+        latencyProgress: void 0,
+        subscriptionUpdating: false,
+        selectorSwitchingTag: void 0,
+        isPriorityMembersExpanded: () => false,
+        onPriorityMembersToggle: () => {
+        }
+      })
+    )
+  ]);
 }
 
 // src/helpers/showToast.ts
@@ -2458,7 +2380,6 @@ var Forkop;
     AvailableMethods2["CHECK_ZAPRET2_RUNTIME"] = "check_zapret2_runtime";
     AvailableMethods2["CHECK_BYEDPI_RUNTIME"] = "check_byedpi_runtime";
     AvailableMethods2["GET_STATUS"] = "get_status";
-    AvailableMethods2["GET_OUTBOUND_METADATA"] = "get_outbound_metadata";
     AvailableMethods2["GET_SUBSCRIPTION_METADATA"] = "get_subscription_metadata";
     AvailableMethods2["CHECK_SING_BOX"] = "check_sing_box";
     AvailableMethods2["GET_SING_BOX_STATUS"] = "get_sing_box_status";
@@ -2472,10 +2393,21 @@ var Forkop;
     AvailableMethods2["SUPPORT_REPORT"] = "support_report";
     AvailableMethods2["SHOW_SING_BOX_CONFIG"] = "show_sing_box_config";
     AvailableMethods2["CHECK_LOGS"] = "check_logs";
-    AvailableMethods2["CHECK_SING_BOX_LOGS"] = "check_sing_box_logs";
     AvailableMethods2["GET_SYSTEM_INFO"] = "get_system_info";
     AvailableMethods2["GET_UI_CAPABILITIES"] = "get_ui_capabilities";
     AvailableMethods2["GET_UI_STATE"] = "get_ui_state";
+    AvailableMethods2["GET_HEALTH_STATUS"] = "get_health_status";
+    AvailableMethods2["GET_HISTORY"] = "get_history";
+    AvailableMethods2["ROUTE_TRACE"] = "route_trace";
+    AvailableMethods2["CONFIG_SNAPSHOT_CREATE"] = "config_snapshot_create";
+    AvailableMethods2["CONFIG_SNAPSHOT_LIST"] = "config_snapshot_list";
+    AvailableMethods2["CONFIG_SNAPSHOT_DIFF"] = "config_snapshot_diff";
+    AvailableMethods2["CONFIG_SNAPSHOT_RESTORE"] = "config_snapshot_restore";
+    AvailableMethods2["CONFIG_SNAPSHOT_DELETE"] = "config_snapshot_delete";
+    AvailableMethods2["CONNECTIVITY_TEST"] = "connectivity_test";
+    AvailableMethods2["VALIDATE_NFQWS_STRATEGY_JSON"] = "validate_nfqws_strategy_json";
+    AvailableMethods2["VALIDATE_NFQWS2_STRATEGY_JSON"] = "validate_nfqws2_strategy_json";
+    AvailableMethods2["VALIDATE_BYEDPI_STRATEGY_JSON"] = "validate_byedpi_strategy_json";
     AvailableMethods2["GET_READONLY_CONFIG_SECTIONS"] = "get_readonly_config_sections";
     AvailableMethods2["GET_DASHBOARD_RUNTIME_METADATA"] = "get_dashboard_runtime_metadata";
     AvailableMethods2["SERVICE_ACTION_ASYNC"] = "service_action_async";
@@ -2488,6 +2420,16 @@ var Forkop;
     AvailableMethods2["COMPONENT_UPDATE_CHECK_CACHE"] = "component_update_check_cache";
     AvailableMethods2["SUBSCRIPTION_UPDATE_ASYNC"] = "subscription_update_async";
     AvailableMethods2["SUBSCRIPTION_UPDATE_STATUS"] = "subscription_update_status";
+    AvailableMethods2["AUTOTUNE_STATUS"] = "autotune_status";
+    AvailableMethods2["AUTOTUNE_GROUPS"] = "autotune_groups";
+    AvailableMethods2["AUTOTUNE_POLICY_SET"] = "autotune_policy_set";
+    AvailableMethods2["AUTOTUNE_TARGET_SET"] = "autotune_target_set";
+    AvailableMethods2["AUTOTUNE_TARGET_REMOVE"] = "autotune_target_remove";
+    AvailableMethods2["AUTOTUNE_LIST_DOMAINS"] = "autotune_list_domains";
+    AvailableMethods2["AUTOTUNE_RUN_ASYNC"] = "autotune_run_async";
+    AvailableMethods2["AUTOTUNE_APPLY_ASYNC"] = "autotune_apply_async";
+    AvailableMethods2["AUTOTUNE_ROLLBACK"] = "autotune_rollback";
+    AvailableMethods2["AUTOTUNE_RUN_STATUS"] = "autotune_run_status";
   })(AvailableMethods = Forkop2.AvailableMethods || (Forkop2.AvailableMethods = {}));
   let AvailableClashAPIMethods;
   ((AvailableClashAPIMethods2) => {
@@ -2535,6 +2477,7 @@ var COMPONENT_ACTION_TRANSIENT_RPC_GRACE_MS = 3e4;
 var COMPONENT_ACTION_STATE_DIR = "/var/run/forkop/component-actions";
 var GET_UI_STATE_RPC_TIMEOUT_MS = 3e3;
 var SUPPORT_REPORT_RPC_TIMEOUT_MS = 6e4;
+var AUTOTUNE_GROUPS_RPC_TIMEOUT_MS = 45e3;
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -2684,10 +2627,6 @@ var ForkopShellMethods = {
   getDashboardRuntimeMetadata: async () => callBaseMethod(
     Forkop.AvailableMethods.GET_DASHBOARD_RUNTIME_METADATA
   ),
-  getOutboundMetadata: async (section) => callBaseMethod(
-    Forkop.AvailableMethods.GET_OUTBOUND_METADATA,
-    [section]
-  ),
   getSubscriptionMetadata: async (section) => callBaseMethod(
     Forkop.AvailableMethods.GET_SUBSCRIPTION_METADATA,
     [section]
@@ -2764,7 +2703,6 @@ var ForkopShellMethods = {
     masked ? "masked" : "raw"
   ]),
   checkLogs: async () => callBaseMethod(Forkop.AvailableMethods.CHECK_LOGS),
-  checkSingBoxLogs: async () => callBaseMethod(Forkop.AvailableMethods.CHECK_SING_BOX_LOGS),
   getSystemInfo: async () => callBaseMethod(
     Forkop.AvailableMethods.GET_SYSTEM_INFO
   ),
@@ -2776,6 +2714,130 @@ var ForkopShellMethods = {
     [],
     "/usr/bin/forkop",
     { timeout: GET_UI_STATE_RPC_TIMEOUT_MS }
+  ),
+  getHealthStatus: async () => callBaseMethod(
+    Forkop.AvailableMethods.GET_HEALTH_STATUS
+  ),
+  getHistory: async () => callBaseMethod(Forkop.AvailableMethods.GET_HISTORY),
+  // Autotune commands exit non-zero with a structured result (failed,
+  // refused, busy); keep it instead of a bare failure.
+  autotuneStatus: async () => callBaseMethod(
+    Forkop.AvailableMethods.AUTOTUNE_STATUS,
+    [],
+    "/usr/bin/forkop",
+    { allowNonZeroWithStdout: true }
+  ),
+  // Resolves every target through the router DNS.
+  autotuneGroups: async () => callBaseMethod(
+    Forkop.AvailableMethods.AUTOTUNE_GROUPS,
+    [],
+    "/usr/bin/forkop",
+    { allowNonZeroWithStdout: true, timeout: AUTOTUNE_GROUPS_RPC_TIMEOUT_MS }
+  ),
+  autotunePolicySet: async (option, value) => callBaseMethod(
+    Forkop.AvailableMethods.AUTOTUNE_POLICY_SET,
+    [option, value],
+    "/usr/bin/forkop",
+    { allowNonZeroWithStdout: true }
+  ),
+  // A host target, or with an empty host a rule-list target: the sing-box
+  // rule set tag, how many domains are measured, pinned domains.
+  autotuneTargetSet: async (id, host, enabled, resolver, list) => callBaseMethod(
+    Forkop.AvailableMethods.AUTOTUNE_TARGET_SET,
+    [
+      id,
+      host,
+      enabled ? "1" : "0",
+      resolver,
+      ...list ? [list.ruleSet, list.sample, list.pins.join(",")] : []
+    ],
+    "/usr/bin/forkop",
+    { allowNonZeroWithStdout: true }
+  ),
+  autotuneListDomains: async (ruleSet) => callBaseMethod(
+    Forkop.AvailableMethods.AUTOTUNE_LIST_DOMAINS,
+    [ruleSet],
+    "/usr/bin/forkop",
+    { allowNonZeroWithStdout: true }
+  ),
+  autotuneTargetRemove: async (id) => callBaseMethod(
+    Forkop.AvailableMethods.AUTOTUNE_TARGET_REMOVE,
+    [id],
+    "/usr/bin/forkop",
+    { allowNonZeroWithStdout: true }
+  ),
+  autotuneRunAsync: async (scope) => callBaseMethod(
+    Forkop.AvailableMethods.AUTOTUNE_RUN_ASYNC,
+    [scope],
+    "/usr/bin/forkop",
+    { allowNonZeroWithStdout: true }
+  ),
+  // Only the group is sent: the backend derives the candidate itself.
+  autotuneApplyAsync: async (group) => callBaseMethod(
+    Forkop.AvailableMethods.AUTOTUNE_APPLY_ASYNC,
+    [group],
+    "/usr/bin/forkop",
+    { allowNonZeroWithStdout: true }
+  ),
+  // Restores the snapshot taken before the apply and reloads the service,
+  // like a snapshot restore.
+  autotuneRollback: async () => callBaseMethod(
+    Forkop.AvailableMethods.AUTOTUNE_ROLLBACK,
+    [],
+    "/usr/bin/forkop",
+    { timeout: 12e4, allowNonZeroWithStdout: true }
+  ),
+  autotuneRunStatus: async (job) => callBaseMethod(
+    Forkop.AvailableMethods.AUTOTUNE_RUN_STATUS,
+    [job],
+    "/usr/bin/forkop",
+    { allowNonZeroWithStdout: true }
+  ),
+  routeTrace: async (target, source, protocol, port) => (
+    // An invalid target exits non-zero with {"error":"invalid_input"}.
+    callBaseMethod(
+      Forkop.AvailableMethods.ROUTE_TRACE,
+      [target, source, protocol, port],
+      "/usr/bin/forkop",
+      { allowNonZeroWithStdout: true }
+    )
+  ),
+  // Snapshot mutations print a structured result (busy, failed, ...) even
+  // when they exit non-zero; keep it instead of a bare failure.
+  snapshotCreate: async (kind = "manual") => callBaseMethod(
+    Forkop.AvailableMethods.CONFIG_SNAPSHOT_CREATE,
+    [kind],
+    "/usr/bin/forkop",
+    { allowNonZeroWithStdout: true }
+  ),
+  snapshotList: async () => callBaseMethod(
+    Forkop.AvailableMethods.CONFIG_SNAPSHOT_LIST
+  ),
+  snapshotDiff: async (id) => callBaseMethod(
+    Forkop.AvailableMethods.CONFIG_SNAPSHOT_DIFF,
+    [id]
+  ),
+  snapshotRestore: async (id) => callBaseMethod(
+    Forkop.AvailableMethods.CONFIG_SNAPSHOT_RESTORE,
+    [id],
+    "/usr/bin/forkop",
+    { timeout: 12e4, allowNonZeroWithStdout: true }
+  ),
+  snapshotDelete: async (id) => callBaseMethod(
+    Forkop.AvailableMethods.CONFIG_SNAPSHOT_DELETE,
+    [id],
+    "/usr/bin/forkop",
+    { allowNonZeroWithStdout: true }
+  ),
+  connectivityTest: async (host, type, port) => callBaseMethod(
+    Forkop.AvailableMethods.CONNECTIVITY_TEST,
+    [host, type, port],
+    "/usr/bin/forkop",
+    { timeout: 1e4 }
+  ),
+  validateDpiStrategy: async (provider, strategy) => callBaseMethod(
+    provider === "zapret" ? Forkop.AvailableMethods.VALIDATE_NFQWS_STRATEGY_JSON : provider === "zapret2" ? Forkop.AvailableMethods.VALIDATE_NFQWS2_STRATEGY_JSON : Forkop.AvailableMethods.VALIDATE_BYEDPI_STRATEGY_JSON,
+    [strategy]
   ),
   serviceActionStart: async (action) => {
     const response = await executeShellCommand({
@@ -3161,14 +3223,14 @@ function getSettingsSection(configSections) {
   return configSections.find((section) => section[".type"] === "settings");
 }
 function getClashApiSecret(configSections) {
-  return getSettingsSection(configSections)?.yacd_secret_key || "";
+  return getClashApiSecretFromSettings(getSettingsSection(configSections));
 }
-function canFetchClashApiDirectly() {
-  return canUseDirectClashApi() && typeof fetch === "function";
+function canFetchClashApiDirectly(secret) {
+  return canUseDirectClashApi(secret) && typeof fetch === "function";
 }
 async function getClashApiProxies(configSections) {
-  if (canFetchClashApiDirectly()) {
-    const secret = getClashApiSecret(configSections);
+  const secret = getClashApiSecret(configSections);
+  if (canFetchClashApiDirectly(secret)) {
     const controller = new AbortController();
     const timeoutId = setTimeout(
       () => controller.abort(),
@@ -3176,7 +3238,7 @@ async function getClashApiProxies(configSections) {
     );
     try {
       const response = await fetch(`${getClashHttpUrl()}/proxies`, {
-        headers: secret ? { Authorization: `Bearer ${secret}` } : void 0,
+        headers: { Authorization: `Bearer ${secret}` },
         signal: controller.signal
       });
       if (response.ok) {
@@ -3365,6 +3427,11 @@ function isUrlTestEnabled(section) {
 }
 function shouldUseProxyGroup(section) {
   return getManualProxyLinks(section).length > 0 || hasSubscriptionSources(section) || getConnectionInterfaces(section).length > 0 || getJsonOutbounds(section).length > 0 || isUrlTestEnabled(section) || hasConfiguredPriorityList(section);
+}
+function hasRuntimeProxyGroup(sectionName, proxies) {
+  const selectorTag = getOutboundTagBySection(sectionName);
+  const selector = proxies.find((proxy) => proxy.code === selectorTag);
+  return Array.isArray(selector?.value?.all) && selector.value.all.length > 0;
 }
 function getSectionProxyConfigType(section) {
   if (hasSubscriptionSources(section)) {
@@ -3632,7 +3699,7 @@ function getPriorityConfigs(section) {
   });
 }
 async function readDashboardSectionCache(sectionName) {
-  if (!isSafeSectionName(sectionName)) {
+  if (!isSafeSectionName(sectionName) || isReadonlyMode()) {
     return void 0;
   }
   try {
@@ -4047,7 +4114,7 @@ async function getDashboardSections() {
       const sectionName = section[".name"];
       const sectionAction = section.action;
       const proxyConfigType = getSectionProxyConfigType(section);
-      if (isConnectionAction(sectionAction) && shouldUseProxyGroup(section)) {
+      if (isConnectionAction(sectionAction) && (shouldUseProxyGroup(section) || hasRuntimeProxyGroup(sectionName, proxies))) {
         const subscriptionSourceCount = getSubscriptionSourceCount(section);
         const subscriptionEnabled = subscriptionSourceCount > 0;
         const dashboardCache = await readDashboardSectionCache(sectionName);
@@ -4147,7 +4214,7 @@ async function getDashboardSections() {
 async function getClashApiSecret2() {
   const sections = await getConfigSections();
   const settings = sections.find((section) => section[".type"] === "settings");
-  return settings?.yacd_secret_key || "";
+  return getClashApiSecretFromSettings(settings);
 }
 
 // src/forkop/methods/custom/index.ts
@@ -4220,7 +4287,20 @@ var RemoteFakeIPMethods = {
   getIpCheck
 };
 
+// src/forkop/services/forkopPage.ts
+var standalonePage = null;
+function setStandalonePage(pageId) {
+  standalonePage = pageId || null;
+}
+function getForkopPage() {
+  return standalonePage;
+}
+
 // src/forkop/services/tab.service.ts
+function setForkopPage(pageId) {
+  setStandalonePage(pageId);
+  TabService.getInstance().refresh();
+}
 var TabService = class _TabService {
   constructor() {
     this.observer = null;
@@ -4260,7 +4340,7 @@ var TabService = class _TabService {
     const active = document.querySelector(
       ".cbi-tab:not(.cbi-tab-disabled)"
     );
-    return active?.dataset.tab || null;
+    return active?.dataset.tab || getForkopPage();
   }
   notify() {
     const tabs = this.getTabsInfo();
@@ -4270,16 +4350,41 @@ var TabService = class _TabService {
       this.callback?.(activeId, tabs);
     }
   }
+  refresh() {
+    this.notify();
+  }
+  // A new subscriber always gets the current tab, even when it was already
+  // known before (a page registered before the subscription).
   onChange(callback) {
     this.callback = callback;
-    this.notify();
+    this.lastActiveId = this.getActiveTabId();
+    callback(this.lastActiveId, this.getTabsInfo());
   }
 };
 var TabServiceInstance = TabService.getInstance();
 
 // src/forkop/tabs/diagnostic/helpers/getCheckTitle.ts
 function getCheckTitle(name) {
-  return `${name} ${_("checks")}`;
+  switch (name) {
+    case "DNS":
+      return _("DNS checks");
+    case "Sing-box":
+      return _("sing-box checks");
+    case "Nftables":
+      return _("nftables checks");
+    case "Zapret":
+      return _("Zapret checks");
+    case "Zapret2":
+      return _("Zapret2 checks");
+    case "ByeDPI":
+      return _("ByeDPI checks");
+    case "Outbounds":
+      return _("Outbound checks");
+    case "FakeIP":
+      return _("FakeIP checks");
+    default:
+      return name;
+  }
 }
 
 // src/forkop/tabs/diagnostic/checks/contstants.ts
@@ -4587,6 +4692,8 @@ var initialStore = {
       forkopRunning: 0,
       forkopEnabled: 0,
       forkopStatus: "",
+      forkopStoppedByUser: 0,
+      forkopNotStarted: null,
       forkopRestartBlocked: 0,
       forkopStopAvailable: 0
     }
@@ -4986,6 +5093,8 @@ function applyServiceState(uiState) {
         forkopRunning: uiState.service.forkop.running,
         forkopEnabled: uiState.service.forkop.enabled,
         forkopStatus: uiState.service.forkop.status,
+        forkopStoppedByUser: uiState.service.forkop.stopped_by_user ?? 0,
+        forkopNotStarted: uiState.service.forkop.not_started ?? null,
         forkopRestartBlocked: uiState.service.forkop.restart_blocked ?? 0,
         forkopStopAvailable: uiState.service.forkop.stop_available ?? 0
       }
@@ -5270,6 +5379,9 @@ function coreService(options = {}) {
 }
 
 // src/forkop/services/socket.service.ts
+function loggableUrl(url) {
+  return url.split("?")[0];
+}
 var SocketManager = class _SocketManager {
   constructor() {
     this.sockets = /* @__PURE__ */ new Map();
@@ -5292,7 +5404,7 @@ var SocketManager = class _SocketManager {
       } catch (err) {
         logger.error(
           "[SOCKET]",
-          `resetAll: failed to close socket ${url}`,
+          `resetAll: failed to close socket ${loggableUrl(url)}`,
           err
         );
       }
@@ -5311,7 +5423,7 @@ var SocketManager = class _SocketManager {
     } catch (err) {
       logger.error(
         "[SOCKET]",
-        `failed to construct WebSocket for ${url}:`,
+        `failed to construct WebSocket for ${loggableUrl(url)}:`,
         err
       );
       this.triggerError(url, err instanceof Event ? err : String(err));
@@ -5323,7 +5435,7 @@ var SocketManager = class _SocketManager {
     if (!this.errorListeners.has(url)) this.errorListeners.set(url, /* @__PURE__ */ new Set());
     ws.addEventListener("open", () => {
       this.connected.set(url, true);
-      logger.info("[SOCKET]", "Connected to", url);
+      logger.info("[SOCKET]", "Connected to", loggableUrl(url));
     });
     ws.addEventListener("message", (event) => {
       const handlers = this.listeners.get(url);
@@ -5332,18 +5444,22 @@ var SocketManager = class _SocketManager {
           try {
             handler(event.data);
           } catch (err) {
-            logger.error("[SOCKET]", `Handler error for ${url}:`, err);
+            logger.error(
+              "[SOCKET]",
+              `Handler error for ${loggableUrl(url)}:`,
+              err
+            );
           }
         }
       }
     });
     ws.addEventListener("close", () => {
       this.connected.set(url, false);
-      logger.warn("[SOCKET]", `Disconnected: ${url}`);
+      logger.warn("[SOCKET]", `Disconnected: ${loggableUrl(url)}`);
       this.triggerError(url, "Connection closed");
     });
     ws.addEventListener("error", (err) => {
-      logger.error("[SOCKET]", `Socket error for ${url}:`, err);
+      logger.error("[SOCKET]", `Socket error for ${loggableUrl(url)}:`, err);
       this.triggerError(url, err);
     });
   }
@@ -5374,7 +5490,10 @@ var SocketManager = class _SocketManager {
     if (ws && this.connected.get(url)) {
       ws.send(typeof data === "string" ? data : JSON.stringify(data));
     } else {
-      logger.warn("[SOCKET]", `Cannot send: not connected to ${url}`);
+      logger.warn(
+        "[SOCKET]",
+        `Cannot send: not connected to ${loggableUrl(url)}`
+      );
       this.triggerError(url, "Not connected");
     }
   }
@@ -5400,7 +5519,11 @@ var SocketManager = class _SocketManager {
         try {
           cb(err);
         } catch (e) {
-          logger.error("[SOCKET]", `Error handler threw for ${url}:`, e);
+          logger.error(
+            "[SOCKET]",
+            `Error handler threw for ${loggableUrl(url)}:`,
+            e
+          );
         }
       }
     }
@@ -5555,6 +5678,8 @@ async function fetchServicesInfo() {
         forkopRunning: forkop.success ? forkop.data.running : previousData.forkopRunning,
         forkopEnabled: forkop.success ? forkop.data.enabled : previousData.forkopEnabled,
         forkopStatus: forkop.success ? forkop.data.status : previousData.forkopStatus,
+        forkopStoppedByUser: forkop.success ? forkop.data.stopped_by_user ?? 0 : previousData.forkopStoppedByUser,
+        forkopNotStarted: forkop.success ? forkop.data.not_started ?? null : previousData.forkopNotStarted,
         forkopRestartBlocked: forkop.success ? forkop.data.restart_blocked ?? 0 : previousData.forkopRestartBlocked,
         forkopStopAvailable: forkop.success ? forkop.data.stop_available ?? 0 : previousData.forkopStopAvailable
       }
@@ -5565,6 +5690,9 @@ async function fetchServicesInfo() {
 
 // src/forkop/helpers/isActiveLuciTab.ts
 function isActiveLuciTab(tabId) {
+  if (getForkopPage() === tabId) {
+    return true;
+  }
   if (typeof document === "undefined") {
     return false;
   }
@@ -5614,11 +5742,1527 @@ function createPriorityMembersState() {
   };
 }
 
+// src/forkop/ui/status.ts
+function statusTone(status2) {
+  switch (status2) {
+    case "healthy":
+      return "success";
+    case "warning":
+      return "warning";
+    case "error":
+    case "needs_attention":
+      return "error";
+    case "busy":
+      return "loading";
+    case "unsupported":
+    case "off":
+      return "muted";
+    default:
+      return "neutral";
+  }
+}
+var EVENT_OUTCOMES = {
+  success: "succeeded",
+  succeeded: "succeeded",
+  applied: "succeeded",
+  recovered: "recovered",
+  rolled_back: "rolled_back",
+  failure: "failed",
+  failed: "failed",
+  needs_attention: "needs_attention",
+  stale: "cancelled",
+  refused: "cancelled",
+  cancelled: "cancelled",
+  // A restore while Forkop was stopped by the user (diagnostics/health.uc).
+  not_started: "not_started"
+};
+function toEventOutcome(raw) {
+  return EVENT_OUTCOMES[raw == null ? "" : String(raw)] ?? "unknown";
+}
+function eventOutcomeView(outcome) {
+  switch (outcome) {
+    case "succeeded":
+      return { label: _("Succeeded"), tone: "success" };
+    case "recovered":
+      return { label: _("Recovered"), tone: "warning" };
+    case "rolled_back":
+      return { label: _("Rolled back"), tone: "warning" };
+    case "failed":
+      return { label: _("Failed"), tone: "error" };
+    case "needs_attention":
+      return { label: _("Needs attention"), tone: "error" };
+    case "cancelled":
+      return { label: _("Cancelled"), tone: "neutral" };
+    case "not_started":
+      return { label: _("Saved, service stopped"), tone: "warning" };
+    default:
+      return { label: _("Unknown"), tone: "neutral" };
+  }
+}
+function eventKindLabel(kind) {
+  switch (kind) {
+    case "start":
+      return _("Service start");
+    case "reload":
+      return _("Configuration reload");
+    case "restore":
+      return _("Snapshot restore");
+    case "recovery":
+      return _("Recovery");
+    case "autotune_apply":
+      return _("Autotune apply");
+    case "autotune_mode":
+      return _("Autotune mode changed");
+    case "autotune_recommendation":
+      return _("Autotune recommendation confirmed");
+    case "autotune_run":
+      return _("Autotune run");
+    case "snapshot_create":
+      return _("Snapshot created");
+    case "snapshot_delete":
+      return _("Snapshot deleted");
+    default:
+      return _("Other event");
+  }
+}
+function provenanceLabel(provenance) {
+  switch (provenance) {
+    case "observed":
+      return _("Observed");
+    case "configured":
+      return _("From configuration");
+    case "simulated":
+      return _("Calculated");
+    default:
+      return _("Not determined");
+  }
+}
+function provenanceDescription(provenance) {
+  switch (provenance) {
+    case "observed":
+      return _("Seen in an active connection");
+    case "configured":
+      return _("Derived from configuration");
+    case "simulated":
+      return _("Calculated result");
+    default:
+      return _("Not determined");
+  }
+}
+function renderStatus(view) {
+  return E(
+    "span",
+    { class: `fkp-status fkp-status--${view.tone}` },
+    view.label
+  );
+}
+function renderProvenance(provenance) {
+  return E(
+    "span",
+    {
+      class: `fkp-provenance fkp-provenance--${provenance}`,
+      title: provenanceDescription(provenance)
+    },
+    provenanceLabel(provenance)
+  );
+}
+
+// src/forkop/ui/time.ts
+function formatRelativeTime(timestampSeconds, nowMs = Date.now()) {
+  const seconds = Math.max(0, Math.round(nowMs / 1e3 - timestampSeconds));
+  if (seconds < 60) return _("just now");
+  if (seconds < 3600) {
+    return _("%d min ago").replace("%d", String(Math.floor(seconds / 60)));
+  }
+  if (seconds < 86400) {
+    return _("%d h ago").replace("%d", String(Math.floor(seconds / 3600)));
+  }
+  return new Date(timestampSeconds * 1e3).toLocaleString();
+}
+
+// src/forkop/tabs/dashboard/overview.ts
+function lastEvent(health2) {
+  const events = health2?.recent_activity || [];
+  return events.length ? events[events.length - 1] : null;
+}
+function guardWarningText(action) {
+  switch (action) {
+    case "restart":
+      return _(
+        "A failed change left the DPI guard in place. Traffic that needs DPI bypass stays blocked until you restart Forkop X."
+      );
+    case "restore":
+      return _(
+        "A configuration restore did not finish. Traffic that needs DPI bypass stays blocked until you restore the last known good snapshot."
+      );
+    case "wait":
+      return _(
+        "A configuration change is being applied. Traffic that needs DPI bypass may be blocked until it finishes."
+      );
+    default:
+      return _(
+        "A configuration change was not confirmed. Traffic that needs DPI bypass may be blocked; see the recovery details for the next step."
+      );
+  }
+}
+function overviewWarning(health2) {
+  if (!health2) return null;
+  const details = {
+    page: "history",
+    label: _("Recovery details")
+  };
+  if (health2.guard?.active) {
+    return {
+      title: _("DPI protection is holding traffic"),
+      text: guardWarningText(health2.recovery?.action),
+      link: details
+    };
+  }
+  if (health2.package_recovery?.pending) {
+    return {
+      title: _("Package recovery has not finished"),
+      text: _(
+        "An interrupted package update is being recovered. Avoid changes until it completes."
+      ),
+      link: details
+    };
+  }
+  if (lastEvent(health2)?.status === "failure") {
+    return {
+      title: _("The last configuration change failed"),
+      text: _("Forkop X kept or restored the previous configuration."),
+      link: details
+    };
+  }
+  return null;
+}
+function overviewState(input) {
+  const { health: health2, availability } = input;
+  const lines = [];
+  let status2;
+  let title;
+  if (availability === "stopped" && ["starting", "restarting", "reloading"].includes(input.forkopStatus)) {
+    status2 = "busy";
+    title = input.forkopStatus === "reloading" ? _("Applying changes\u2026") : _("Starting\u2026");
+  } else if (availability === "stopped" && input.forkopStoppedByUser) {
+    status2 = "off";
+    title = _("Stopped by user");
+    lines.push({
+      text: _(
+        "Forkop X stays stopped until you start it: reloads, restores and updates do not start it."
+      )
+    });
+    lines.push({
+      text: _("Traffic goes through the router without Forkop X.")
+    });
+  } else if (availability === "stopped" && input.forkopNotStarted === true) {
+    status2 = "off";
+    title = _("Not started");
+    lines.push({
+      text: _(
+        "Forkop X was not started since the router booted: reloads, restores and updates do not start it."
+      )
+    });
+    lines.push({
+      text: _("Traffic goes through the router without Forkop X.")
+    });
+  } else if (availability === "stopped") {
+    const failed2 = input.forkopNotStarted === false || input.forkopEnabled;
+    status2 = failed2 ? "error" : "off";
+    title = _("Not running");
+    if (failed2) {
+      lines.push({
+        text: _(
+          "Forkop X was not stopped by the user: its start failed or it stopped unexpectedly."
+        ),
+        tone: "error"
+      });
+    }
+    lines.push({
+      text: _("Traffic goes through the router without Forkop X.")
+    });
+  } else if (availability === "loading") {
+    status2 = "busy";
+    title = _("Checking\u2026");
+  } else if (availability === "unavailable") {
+    status2 = "unknown";
+    title = _("State unavailable");
+  } else if (health2?.overall === "transitioning") {
+    status2 = "busy";
+    title = _("Applying changes\u2026");
+  } else if (health2?.overall === "error") {
+    status2 = "error";
+    title = _("Forkop X needs attention");
+  } else {
+    const known = !input.healthStale && (health2?.overall === "ok" || health2?.overall === "recovered");
+    status2 = health2?.overall === "recovered" ? "warning" : known ? "healthy" : "unknown";
+    title = _("Forkop X is running");
+    if (health2?.overall === "recovered") {
+      lines.push({
+        text: _("The last change was rolled back automatically."),
+        tone: "warning"
+      });
+    }
+    if (!known) lines.push({ text: _("Health state unavailable") });
+  }
+  if (availability === "running") {
+    lines.push(
+      input.singBoxRunning ? { text: _("sing-box is running") } : { text: _("sing-box is not running"), tone: "error" }
+    );
+    if (health2?.dns?.status === "warning") {
+      lines.push({
+        text: _("Router DNS is not pointed to Forkop X"),
+        tone: "warning"
+      });
+    }
+  }
+  lines.push({
+    text: input.forkopEnabled ? _("Autostart is on") : _("Autostart is off")
+  });
+  lines.push({
+    text: input.lastDiagnosticRun ? _("Last diagnostics: %s").replace(
+      "%s",
+      formatRelativeTime(input.lastDiagnosticRun / 1e3, input.nowMs)
+    ) : _("Diagnostics has not been run yet")
+  });
+  return { status: status2, title, lines, stopped: availability === "stopped" };
+}
+function latencyTone(latency) {
+  if (!latency) return "neutral";
+  if (latency < 800) return "success";
+  return latency < 1500 ? "warning" : "error";
+}
+var MAX_GROUPS = 3;
+function overviewRouting(input) {
+  const groups = input.groups.filter((group) => group.outbounds.length);
+  const groupsKnown = input.availability === "running" || groups.length > 0;
+  let summary = "";
+  if (input.ruleCount !== null && groupsKnown) {
+    summary = _("%d rules \xB7 %d node groups").replace("%d", String(input.ruleCount)).replace("%d", String(groups.length));
+  } else if (input.ruleCount !== null) {
+    summary = _("%d rules").replace("%d", String(input.ruleCount));
+  } else if (groupsKnown) {
+    summary = _("%d node groups").replace("%d", String(groups.length));
+  }
+  let live2 = "";
+  if (input.availability === "stopped") {
+    live2 = _("Routing is paused while Forkop X is stopped.");
+  } else if (input.connections !== null) {
+    live2 = _("%d connections now").replace("%d", String(input.connections));
+    if (input.traffic) {
+      live2 += ` \xB7 \u2193 ${prettyBytes(input.traffic.down)}/s \u2191 ${prettyBytes(input.traffic.up)}/s`;
+    }
+  }
+  return {
+    summary,
+    live: live2,
+    groups: groups.slice(0, MAX_GROUPS).map((group) => {
+      const selected = group.outbounds.find((outbound) => outbound.selected) || group.outbounds[0];
+      return {
+        name: group.displayName,
+        node: selected.displayName,
+        latency: selected.latency ? `${selected.latency} ms` : _("no data"),
+        tone: latencyTone(selected.latency)
+      };
+    }),
+    more: Math.max(0, groups.length - MAX_GROUPS)
+  };
+}
+function overviewRecovery(input) {
+  const { health: health2 } = input;
+  if (!health2) {
+    return { status: "unknown", title: _("State unavailable"), lines: [] };
+  }
+  const lines = [];
+  const reload = health2.last_reload;
+  if (reload) {
+    const outcome = eventOutcomeView(toEventOutcome(reload.status));
+    lines.push({
+      text: _("Last reload: %s").replace(
+        "%s",
+        `${outcome.label} \xB7 ${formatRelativeTime(reload.timestamp, input.nowMs)}`
+      ),
+      tone: outcome.tone
+    });
+  } else {
+    lines.push({ text: _("No reload recorded yet") });
+  }
+  if (input.snapshotCount !== null) {
+    lines.push({
+      text: _("Snapshots: %d").replace("%d", String(input.snapshotCount))
+    });
+  }
+  const state = recoveryState(health2);
+  if (input.healthStale && state.status === "healthy")
+    return { status: "unknown", title: _("State unavailable"), lines };
+  return { ...state, lines: [...state.lines, ...lines] };
+}
+function recoveryState(health2) {
+  if (health2.guard?.active) {
+    switch (health2.recovery?.action) {
+      case "restart":
+        return {
+          status: "needs_attention",
+          title: _("Restart required"),
+          step: "restart",
+          lines: [
+            {
+              text: _(
+                "A failed change left the DPI guard in place: restart Forkop X to remove it."
+              ),
+              tone: "error"
+            }
+          ]
+        };
+      case "restore":
+        return {
+          status: "needs_attention",
+          title: _("Restore required"),
+          step: "restore",
+          lines: [
+            {
+              text: _(
+                "A configuration restore did not finish: restore the last known good snapshot to finish it."
+              ),
+              tone: "error"
+            }
+          ]
+        };
+      case "wait":
+        return { status: "busy", title: _("Change in progress"), lines: [] };
+      default:
+        return {
+          status: "needs_attention",
+          title: _("Protection is active"),
+          lines: []
+        };
+    }
+  }
+  if (health2.package_recovery?.pending) {
+    return {
+      status: "needs_attention",
+      title: _("Package recovery has not finished"),
+      lines: []
+    };
+  }
+  if (health2.recovery?.pending) {
+    return {
+      status: "error",
+      title: _("The last configuration change failed"),
+      lines: [
+        {
+          text: _("Forkop X kept or restored the previous configuration."),
+          tone: "error"
+        }
+      ]
+    };
+  }
+  return { status: "healthy", title: _("No recovery needed"), lines: [] };
+}
+function overviewLastEvent(input) {
+  const event = lastEvent(input.health);
+  if (!event) return null;
+  return {
+    title: eventKindLabel(event.kind),
+    outcome: eventOutcomeView(toEventOutcome(event.status)),
+    time: formatRelativeTime(event.timestamp, input.nowMs)
+  };
+}
+
+// src/forkop/helpers/navigation.ts
+var FORKOP_MENU_PATH = "admin/services/forkop";
+function luci() {
+  return globalThis.L;
+}
+function forkopPageUrl(page, params = {}) {
+  const base = typeof luci()?.url === "function" ? luci().url(FORKOP_MENU_PATH, page) : `/cgi-bin/luci/${FORKOP_MENU_PATH}/${page}`;
+  const query = new URLSearchParams(params).toString();
+  return query ? `${base}#${query}` : base;
+}
+function openForkopPage(page, params = {}) {
+  window.location.href = forkopPageUrl(page, params);
+}
+function readPageParams(hash = window.location.hash) {
+  return Object.fromEntries(new URLSearchParams(hash.replace(/^#/, "")));
+}
+
+// src/forkop/ui/overflowMenu.ts
+function renderOverflowMenu(label, items) {
+  const menu = E("details", { class: "fkp-menu" });
+  const close = () => {
+    menu.open = false;
+  };
+  menu.appendChild(
+    E(
+      "summary",
+      {
+        class: "btn cbi-button fkp-menu__toggle",
+        title: label,
+        "aria-label": label
+      },
+      "\u22EF"
+    )
+  );
+  menu.appendChild(
+    E(
+      "div",
+      { class: "fkp-menu__list", role: "menu" },
+      items.map(
+        (item) => E(
+          "button",
+          {
+            type: "button",
+            role: "menuitem",
+            class: `fkp-menu__item${item.danger ? " fkp-action-danger-text" : ""}`,
+            disabled: item.disabled ? true : void 0,
+            click: () => {
+              close();
+              item.onClick();
+            }
+          },
+          item.label
+        )
+      )
+    )
+  );
+  registerOutsideClose();
+  return menu;
+}
+var outsideCloseRegistered = false;
+function registerOutsideClose() {
+  if (outsideCloseRegistered || typeof document === "undefined") return;
+  if (!document.addEventListener) return;
+  outsideCloseRegistered = true;
+  document.addEventListener("click", (event) => {
+    document.querySelectorAll("details.fkp-menu[open]").forEach((menu) => {
+      if (!menu.contains(event.target)) menu.open = false;
+    });
+  });
+}
+
+// src/forkop/tabs/dashboard/overviewCards.ts
+function statusView(status2, label) {
+  return { label, tone: statusTone(status2) };
+}
+function linkButton(label, onClick) {
+  return E(
+    "button",
+    {
+      type: "button",
+      class: "btn cbi-button fkp-overview__link",
+      click: onClick
+    },
+    label
+  );
+}
+function renderLines(lines) {
+  return E(
+    "ul",
+    { class: "fkp-overview__lines" },
+    lines.map(
+      (line) => E(
+        "li",
+        { class: line.tone ? `fkp-overview__line--${line.tone}` : "" },
+        line.text
+      )
+    )
+  );
+}
+function card(title, body, footer = [], headerExtra = []) {
+  return E("section", { class: "fkp-overview__card" }, [
+    E("div", { class: "fkp-overview__head" }, [
+      E("h3", { class: "fkp-overview__title" }, title),
+      ...headerExtra
+    ]),
+    ...body,
+    ...footer.length ? [E("div", { class: "fkp-overview__footer fkp-actions" }, footer)] : []
+  ]);
+}
+function renderWarning(warning) {
+  return E("section", { class: "fkp-overview__warning", role: "alert" }, [
+    E("strong", {}, warning.title),
+    E("p", {}, warning.text),
+    linkButton(warning.link.label, () => openForkopPage(warning.link.page))
+  ]);
+}
+function renderStateCard(state, actions, restartRequired) {
+  const footer = [];
+  const menu = [];
+  if (!actions.readonly) {
+    const stopOffered = !state.stopped || actions.stopAvailable === true;
+    const restartOffered = actions.restartBlocked !== true;
+    if (actions.restartBlocked)
+      footer.push(
+        E(
+          "p",
+          { class: "fkp-overview__hint" },
+          _(
+            "Multiple sing-box processes were found or their ownership is unclear. Restart is unavailable; traffic routing was not changed. To stop all sing-box processes, use Stop Forkop X, then start Forkop X again."
+          )
+        )
+      );
+    if (state.stopped && actions.stopAvailable) {
+      footer.push(
+        E(
+          "button",
+          {
+            type: "button",
+            class: "btn cbi-button cbi-button-remove",
+            disabled: actions.serviceBusy ? true : void 0,
+            click: actions.onStop
+          },
+          _("Stop Forkop X\u2026")
+        )
+      );
+    } else if (state.stopped && restartRequired && restartOffered) {
+      footer.push(
+        E(
+          "button",
+          {
+            type: "button",
+            class: "btn cbi-button cbi-button-action",
+            disabled: actions.serviceBusy ? true : void 0,
+            click: actions.onRestart
+          },
+          _("Restart Forkop X")
+        )
+      );
+    } else if (state.stopped) {
+      footer.push(
+        E(
+          "button",
+          {
+            type: "button",
+            class: "btn cbi-button cbi-button-action",
+            disabled: actions.serviceBusy ? true : void 0,
+            click: actions.onStart
+          },
+          actions.serviceBusy ? _("Starting\u2026") : _("Start Forkop X")
+        )
+      );
+    }
+    menu.push(
+      renderOverflowMenu(_("Service actions"), [
+        ...!state.stopped && restartOffered ? [
+          {
+            label: _("Restart Forkop X"),
+            onClick: actions.onRestart,
+            disabled: actions.serviceBusy
+          }
+        ] : [],
+        ...stopOffered ? [
+          {
+            label: _("Stop Forkop X\u2026"),
+            onClick: actions.onStop,
+            disabled: actions.serviceBusy,
+            danger: true
+          }
+        ] : [],
+        {
+          label: actions.autostart ? _("Disable autostart") : _("Enable autostart"),
+          onClick: actions.onToggleAutostart,
+          disabled: actions.serviceBusy
+        }
+      ])
+    );
+  }
+  return card(
+    _("State"),
+    [
+      E("div", { class: "fkp-overview__status" }, [
+        renderStatus(statusView(state.status, state.title))
+      ]),
+      renderLines(state.lines)
+    ],
+    [
+      ...footer,
+      linkButton(_("Diagnostics"), () => openForkopPage("diagnostics"))
+    ],
+    menu
+  );
+}
+function renderRoutingCard(routing, readonly) {
+  return card(
+    _("Routing"),
+    [
+      ...routing.summary ? [E("p", { class: "fkp-overview__summary" }, routing.summary)] : [],
+      ...routing.live ? [E("p", { class: "fkp-overview__hint" }, routing.live)] : [],
+      ...routing.groups.length ? [
+        E(
+          "ul",
+          { class: "fkp-overview__groups" },
+          routing.groups.map(
+            (group) => E("li", {}, [
+              E("span", { class: "fkp-overview__group-name" }, group.name),
+              E("span", { class: "fkp-overview__group-node" }, [
+                `${group.node} \xB7 `,
+                E(
+                  "span",
+                  { class: `fkp-status--${group.tone}` },
+                  group.latency
+                )
+              ])
+            ])
+          )
+        )
+      ] : [],
+      ...routing.more ? [
+        E(
+          "p",
+          { class: "fkp-overview__hint" },
+          _("%d more groups").replace("%d", String(routing.more))
+        )
+      ] : []
+    ],
+    [
+      linkButton(
+        _("Nodes and groups"),
+        () => openForkopPage("monitoring", { view: "nodes" })
+      ),
+      linkButton(_("Connections"), () => openForkopPage("monitoring")),
+      ...readonly ? [] : [linkButton(_("Rules"), () => openForkopPage("rules"))]
+    ]
+  );
+}
+function renderRecoveryCard(recovery, actions) {
+  const restart = !actions.readonly && recovery.step === "restart" ? [
+    E(
+      "button",
+      {
+        type: "button",
+        class: "btn cbi-button cbi-button-action",
+        disabled: actions.serviceBusy ? true : void 0,
+        click: actions.onRestart
+      },
+      _("Restart Forkop X")
+    )
+  ] : [];
+  return card(
+    _("Recovery"),
+    [
+      E("div", { class: "fkp-overview__status" }, [
+        renderStatus(statusView(recovery.status, recovery.title))
+      ]),
+      renderLines(recovery.lines)
+    ],
+    [
+      ...restart,
+      linkButton(_("Recovery details"), () => openForkopPage("history"))
+    ]
+  );
+}
+function renderEventCard(event) {
+  return card(
+    _("Last important event"),
+    event ? [
+      E("p", { class: "fkp-overview__summary" }, [
+        `${event.title}: `,
+        E(
+          "span",
+          { class: `fkp-status--${event.outcome.tone}` },
+          event.outcome.label
+        )
+      ]),
+      E("p", { class: "fkp-overview__hint" }, event.time)
+    ] : [E("p", { class: "fkp-overview__hint" }, _("No events recorded yet"))],
+    [linkButton(_("All events"), () => openForkopPage("history"))]
+  );
+}
+function renderOverview(vm, actions) {
+  return E("div", { class: "fkp-overview" }, [
+    ...vm.warning ? [renderWarning(vm.warning)] : [],
+    E("div", { class: "fkp-overview__grid" }, [
+      renderStateCard(vm.state, actions, vm.recovery.step === "restart"),
+      renderRoutingCard(vm.routing, actions.readonly),
+      renderRecoveryCard(vm.recovery, actions),
+      renderEventCard(vm.event)
+    ])
+  ]);
+}
+
+// src/forkop/tabs/dashboard/serviceActionFlow.ts
+async function runOverviewServiceAction(steps) {
+  steps.setBusy(true);
+  try {
+    await steps.run();
+  } catch (error) {
+    steps.onError(error);
+  } finally {
+    try {
+      await steps.refreshRuntime();
+      await steps.refreshHealth();
+    } finally {
+      steps.setBusy(false);
+    }
+  }
+}
+
+// src/forkop/tabs/dashboard/serviceReload.ts
+function serviceReloadOutcome(state) {
+  if (state.outcome === "queued") return "queued";
+  if (state.outcome === "stopped") return "stopped";
+  return state.success === false ? "failed" : "reloaded";
+}
+function urlTestChangeToast(outcome, reset) {
+  const done = reset ? _("URLTest settings reset") : _("URLTest settings saved");
+  switch (outcome) {
+    case "queued":
+      return {
+        text: `${done}. ${_("Forkop X is busy with another operation: the change applies when it finishes.")}`,
+        type: "warning",
+        duration: 8e3
+      };
+    case "stopped":
+      return {
+        text: `${done}. ${_("Forkop X is stopped: the change applies when it is started.")}`,
+        type: "warning",
+        duration: 8e3
+      };
+    case "failed":
+      return {
+        text: `${done}. ${_("Forkop X could not apply the change; see the Forkop X log.")}`,
+        type: "error",
+        duration: 1e4
+      };
+    default:
+      return { text: done, type: "success", duration: 3e3 };
+  }
+}
+
+// src/partials/button/styles.ts
+var styles = `
+.fkp-partial-button {
+    text-align: center;
+}
+
+.fkp-partial-button--with-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+}
+
+.fkp-partial-button--loading {
+}
+
+.fkp-partial-button--disabled {
+}
+
+.fkp-partial-button__icon {
+    flex: 0 0 auto;
+}
+
+.fkp-partial-button__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.fkp-partial-button__icon svg {
+    width: 16px;
+    height: 16px;
+    display: block;
+    flex: 0 0 auto;
+}
+`;
+
+// src/partials/modal/styles.ts
+var styles2 = `
+
+.fkp-partial-modal__body {}
+
+.fkp-partial-modal__content {
+    max-height: 70vh;
+    overflow: scroll;
+    border-radius: 4px;
+}
+
+.fkp-partial-modal__footer {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.fkp-partial-modal__footer button {
+    margin-left: 0;
+}
+
+.fkp-partial-modal__checkbox {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-right: auto;
+    cursor: pointer;
+    user-select: none;
+}
+
+.fkp-partial-modal__checkbox-text {
+    line-height: 1.2;
+}
+`;
+
+// src/partials/button/renderButton.ts
+function renderButton({
+  classNames = [],
+  disabled,
+  loading: loading2,
+  onClick,
+  text,
+  icon
+}) {
+  const hasIcon = !!loading2 || !!icon;
+  function getWrappedIcon() {
+    const iconWrap = E("span", {
+      class: "fkp-partial-button__icon"
+    });
+    if (loading2) {
+      iconWrap.appendChild(renderLoaderCircleIcon24());
+      return iconWrap;
+    }
+    if (icon) {
+      iconWrap.appendChild(icon());
+      return iconWrap;
+    }
+    return iconWrap;
+  }
+  function getClass() {
+    return [
+      "btn",
+      "fkp-partial-button",
+      ...insertIf(Boolean(disabled), ["fkp-partial-button--disabled"]),
+      ...insertIf(Boolean(loading2), ["fkp-partial-button--loading"]),
+      ...insertIf(Boolean(hasIcon), ["fkp-partial-button--with-icon"]),
+      ...classNames
+    ].filter(Boolean).join(" ");
+  }
+  function getDisabled() {
+    if (loading2 || disabled) {
+      return true;
+    }
+    return void 0;
+  }
+  return E(
+    "button",
+    {
+      type: "button",
+      class: getClass(),
+      disabled: getDisabled(),
+      click: onClick
+    },
+    [...insertIf(hasIcon, [getWrappedIcon()]), E("span", {}, text)]
+  );
+}
+
+// src/helpers/copyToClipboard.ts
+function copyToClipboard(text) {
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  document.body.appendChild(textarea);
+  textarea.select();
+  try {
+    document.execCommand("copy");
+    showToast(_("Copied"), "success");
+  } catch (_err) {
+    showToast(_("Failed to copy!"), "error");
+    console.error("copyToClipboard - e", _err);
+  }
+  document.body.removeChild(textarea);
+}
+
+// src/partials/modal/renderModal.ts
+function renderModal(text, name, options) {
+  let rawText = text ?? "";
+  let currentText = "";
+  let refreshInFlight = false;
+  let pendingRefresh = false;
+  let pendingForcedRefresh = false;
+  let refreshSessionId = 0;
+  let timer;
+  let observer;
+  let autoRefreshEnabled = options?.initialAutoRefresh ?? Boolean(options?.getText);
+  let maskValuesEnabled = options?.initialMaskValues ?? true;
+  let shouldScrollToBottomOnMount = Boolean(options?.startAtEnd);
+  let autoRefreshInput;
+  let maskValuesInput;
+  const getDisplayText = (value) => {
+    if (maskValuesEnabled && options?.maskText) {
+      return options.maskText(value);
+    }
+    return value;
+  };
+  const codeEl = E("code", {}, "");
+  const contentEl = E(
+    "pre",
+    { class: "fkp-partial-modal__content" },
+    codeEl
+  );
+  const stopRefreshTimer = () => {
+    if (timer) {
+      clearInterval(timer);
+      timer = void 0;
+    }
+  };
+  const destroyLiveRefresh = () => {
+    refreshSessionId += 1;
+    pendingRefresh = false;
+    pendingForcedRefresh = false;
+    stopRefreshTimer();
+    observer?.disconnect();
+    observer = void 0;
+  };
+  const scrollToBottom = () => {
+    contentEl.scrollTop = contentEl.scrollHeight;
+  };
+  const scheduleInitialScrollToBottom = () => {
+    if (!shouldScrollToBottomOnMount || !body.isConnected) {
+      return;
+    }
+    shouldScrollToBottomOnMount = false;
+    requestAnimationFrame(() => {
+      scrollToBottom();
+    });
+  };
+  const updateText = (nextText) => {
+    const normalizedText = nextText ?? "";
+    const shouldStickToBottom = shouldScrollToBottomOnMount || contentEl.scrollTop + contentEl.clientHeight >= contentEl.scrollHeight - 16;
+    if (normalizedText === currentText) {
+      if (shouldStickToBottom) {
+        requestAnimationFrame(() => {
+          scrollToBottom();
+        });
+      }
+      return;
+    }
+    currentText = normalizedText;
+    codeEl.textContent = currentText;
+    if (shouldStickToBottom) {
+      requestAnimationFrame(() => {
+        scrollToBottom();
+      });
+    }
+  };
+  const updateDisplayedTextFromRaw = () => {
+    updateText(getDisplayText(rawText));
+  };
+  const refreshText = async (force = false) => {
+    if (!options?.getText || !force && !autoRefreshEnabled || refreshInFlight) {
+      return;
+    }
+    if (!body.isConnected) {
+      return;
+    }
+    refreshInFlight = true;
+    const sessionId = refreshSessionId;
+    try {
+      const nextText = await options.getText({
+        maskValues: options.maskText ? false : maskValuesEnabled
+      });
+      if (!body.isConnected || !force && !autoRefreshEnabled) {
+        return;
+      }
+      if (sessionId !== refreshSessionId) {
+        return;
+      }
+      const normalizedText = nextText ?? "";
+      rawText = normalizedText;
+      updateText(getDisplayText(normalizedText));
+    } catch (error) {
+      console.warn("[renderModal] failed to refresh modal content", error);
+    } finally {
+      refreshInFlight = false;
+      if (pendingRefresh) {
+        const shouldForceRefresh = pendingForcedRefresh;
+        pendingRefresh = false;
+        pendingForcedRefresh = false;
+        if ((shouldForceRefresh || autoRefreshEnabled) && body.isConnected) {
+          void refreshText(shouldForceRefresh);
+        }
+      }
+    }
+  };
+  const requestRefresh = () => {
+    if (!options?.getText || !autoRefreshEnabled) {
+      return;
+    }
+    if (refreshInFlight) {
+      pendingRefresh = true;
+      return;
+    }
+    void refreshText();
+  };
+  const requestForcedRefresh = () => {
+    if (!options?.getText) {
+      return;
+    }
+    if (refreshInFlight) {
+      pendingRefresh = true;
+      pendingForcedRefresh = true;
+      return;
+    }
+    void refreshText(true);
+  };
+  const startRefreshTimer = () => {
+    if (!options?.getText || !autoRefreshEnabled || timer || typeof document === "undefined") {
+      return;
+    }
+    timer = setInterval(() => {
+      requestRefresh();
+    }, options.refreshMs ?? 3e3);
+  };
+  const setAutoRefreshEnabled = (nextValue) => {
+    autoRefreshEnabled = nextValue;
+    refreshSessionId += 1;
+    pendingRefresh = false;
+    pendingForcedRefresh = false;
+    if (autoRefreshInput) {
+      autoRefreshInput.checked = nextValue;
+    }
+    if (nextValue) {
+      startRefreshTimer();
+      requestRefresh();
+      return;
+    }
+    stopRefreshTimer();
+  };
+  const setMaskValuesEnabled = (nextValue) => {
+    maskValuesEnabled = nextValue;
+    refreshSessionId += 1;
+    pendingRefresh = false;
+    pendingForcedRefresh = false;
+    if (maskValuesInput) {
+      maskValuesInput.checked = nextValue;
+    }
+    if (options?.maskText) {
+      updateDisplayedTextFromRaw();
+      return;
+    }
+    requestForcedRefresh();
+  };
+  const footerChildren = [
+    renderButton({
+      classNames: ["cbi-button-apply"],
+      text: _("Download"),
+      onClick: () => downloadAsTxt(currentText, name)
+    }),
+    renderButton({
+      classNames: ["cbi-button-apply"],
+      text: _("Copy"),
+      onClick: () => copyToClipboard(`\`\`\`${name}
+${currentText}
+\`\`\``)
+    }),
+    renderButton({
+      classNames: ["cbi-button-remove"],
+      text: _("Close"),
+      onClick: () => {
+        destroyLiveRefresh();
+        ui.hideModal();
+      }
+    })
+  ];
+  if (options?.getText && options?.showAutoRefreshToggle) {
+    autoRefreshInput = document.createElement("input");
+    autoRefreshInput.type = "checkbox";
+    autoRefreshInput.className = "cbi-input-checkbox";
+    autoRefreshInput.checked = autoRefreshEnabled;
+    autoRefreshInput.addEventListener("change", () => {
+      setAutoRefreshEnabled(autoRefreshInput.checked);
+    });
+    footerChildren.unshift(
+      E("label", { class: "fkp-partial-modal__checkbox" }, [
+        autoRefreshInput,
+        E(
+          "span",
+          { class: "fkp-partial-modal__checkbox-text" },
+          options.autoRefreshLabel ?? _("Auto refresh")
+        )
+      ])
+    );
+  }
+  if ((options?.getText || options?.maskText) && options?.showMaskValuesToggle) {
+    maskValuesInput = document.createElement("input");
+    maskValuesInput.type = "checkbox";
+    maskValuesInput.className = "cbi-input-checkbox";
+    maskValuesInput.checked = maskValuesEnabled;
+    maskValuesInput.addEventListener("change", () => {
+      setMaskValuesEnabled(maskValuesInput.checked);
+    });
+    footerChildren.unshift(
+      E("label", { class: "fkp-partial-modal__checkbox" }, [
+        maskValuesInput,
+        E(
+          "span",
+          { class: "fkp-partial-modal__checkbox-text" },
+          options.maskValuesLabel ?? _("Hide values")
+        )
+      ])
+    );
+  }
+  const body = E("div", { class: "fkp-partial-modal__body" }, [
+    E("div", {}, [
+      contentEl,
+      E("div", { class: "fkp-partial-modal__footer" }, footerChildren)
+    ])
+  ]);
+  if ((options?.getText || options?.startAtEnd) && typeof document !== "undefined") {
+    observer = new MutationObserver(() => {
+      if (!body.isConnected) {
+        destroyLiveRefresh();
+        return;
+      }
+      scheduleInitialScrollToBottom();
+    });
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+    scheduleInitialScrollToBottom();
+  }
+  if (options?.getText && typeof document !== "undefined") {
+    startRefreshTimer();
+    requestRefresh();
+  }
+  updateDisplayedTextFromRaw();
+  return body;
+}
+
+// src/partials/index.ts
+var PartialStyles = `
+${styles}
+${styles2}
+`;
+
+// src/forkop/tabs/diagnostic/partials/renderRunAction.ts
+function renderRunAction({
+  loading: loading2,
+  disabled,
+  click
+}) {
+  return E("div", { class: "fkp_diagnostic-page__run_check_wrapper" }, [
+    renderButton({
+      text: _("Run full diagnostics"),
+      onClick: click,
+      icon: renderSearchIcon24,
+      loading: loading2,
+      disabled,
+      classNames: ["cbi-button-apply"]
+    })
+  ]);
+}
+var LAST_RUN_KEY = "forkop.diagnostic.lastRun";
+function saveLastRun(storage, now = Date.now()) {
+  try {
+    storage.setItem(LAST_RUN_KEY, String(now));
+  } catch (_error) {
+  }
+}
+function readLastRun(storage) {
+  let value = 0;
+  try {
+    value = Number(storage.getItem(LAST_RUN_KEY) || 0);
+  } catch (_error) {
+    value = 0;
+  }
+  return value > 0 ? value : null;
+}
+function lastRunText(storage) {
+  const value = readLastRun(storage) || 0;
+  return value > 0 ? `${_("Last check")}: ${new Date(value).toLocaleString()}` : _("No check has been run yet");
+}
+
+// src/forkop/tabs/diagnostic/serviceTransition.ts
+function isServiceTransitionStatus(status2) {
+  return ["starting", "stopping", "restarting", "reloading"].includes(status2);
+}
+function hasLocalMutatingServiceActionLoading(actions) {
+  return actions.restart.loading || actions.start.loading || actions.stop.loading || actions.enable.loading || actions.disable.loading;
+}
+function shouldSkipServicesInfoAutoRefresh({
+  force,
+  localMutatingActionLoading
+}) {
+  return !force && localMutatingActionLoading;
+}
+function shouldResetDiagnosticsChecks({
+  resetChecks,
+  diagnosticsRunLoading
+}) {
+  return resetChecks && !diagnosticsRunLoading;
+}
+function shouldDisableDiagnosticRunAction({
+  providerInfoLoaded,
+  servicesInfoLoading,
+  forkopRunning,
+  mutatingServiceActionLoading
+}) {
+  return !providerInfoLoaded || servicesInfoLoading || !forkopRunning || mutatingServiceActionLoading;
+}
+function hasComponentActionLoading(actions) {
+  return Object.values(actions).some((action) => action.loading);
+}
+function getAvailableActionsDisabledState({
+  servicesInfoLoading,
+  mutatingServiceActionLoading,
+  componentActionLoading
+}) {
+  return {
+    serviceControlsDisabled: servicesInfoLoading || mutatingServiceActionLoading || componentActionLoading,
+    utilityActionsDisabled: mutatingServiceActionLoading || componentActionLoading,
+    viewLogsDisabled: false
+  };
+}
+function serviceActionErrorText(error) {
+  const detail = error instanceof Error ? error.message.trim() : "";
+  return detail ? `${_("Service action failed")}: ${detail}` : _("Service action failed");
+}
+
+// src/forkop/ui/confirmAction.ts
+function confirmAction(options) {
+  return new Promise((resolve) => {
+    let settled = false;
+    let observer;
+    const finish = (confirmed, closeModal = true) => {
+      if (settled) return;
+      settled = true;
+      observer?.disconnect();
+      if (closeModal) ui.hideModal();
+      resolve(confirmed);
+    };
+    const cancelButton = E(
+      "button",
+      { type: "button", class: "btn cbi-button", click: () => finish(false) },
+      _("Cancel")
+    );
+    const confirmButton = E(
+      "button",
+      {
+        type: "button",
+        class: `btn ${options.danger ? "cbi-button-negative" : "cbi-button-action"}`,
+        click: () => finish(true)
+      },
+      options.confirmLabel
+    );
+    const content = E("div", { class: "fkp-confirm" }, [
+      E("p", {}, options.message),
+      ...options.consequences?.length ? [
+        E(
+          "ul",
+          { class: "fkp-confirm__consequences" },
+          options.consequences.map((line) => E("li", {}, line))
+        )
+      ] : [],
+      ...(options.notes ?? []).map((line) => E("p", {}, line)),
+      E("div", { class: "fkp-confirm__actions" }, [
+        cancelButton,
+        confirmButton
+      ])
+    ]);
+    ui.showModal(options.title, content);
+    if (typeof MutationObserver === "function") {
+      observer = new MutationObserver(() => {
+        if (!content.isConnected) finish(false, false);
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    }
+    cancelButton.focus?.();
+  });
+}
+
+// src/forkop/tabs/shared/serviceControl.ts
+async function runForkopServiceAction(action) {
+  const start = await ForkopShellMethods.serviceActionStart(action);
+  if (!start.success) {
+    throw new Error(start.error);
+  }
+  const jobId = start.data.job_id;
+  try {
+    const result = await ForkopShellMethods.waitServiceActionJob(jobId);
+    if (!result.success) {
+      throw new Error(result.error);
+    }
+    if (result.data.success === false) {
+      throw new Error(result.data.message || "");
+    }
+  } finally {
+    void ForkopShellMethods.uiActionAck("service", jobId);
+  }
+}
+function confirmStopForkop() {
+  return confirmAction({
+    title: _("Stop Forkop X?"),
+    message: _("Forkop X stops handling traffic until it is started again."),
+    consequences: [
+      _("Routing, DNS and DPI bypass rules stop applying"),
+      _("Devices keep using the router without Forkop X")
+    ],
+    confirmLabel: _("Stop"),
+    danger: true
+  });
+}
+async function setForkopAutostart(enabled) {
+  try {
+    await (enabled ? ForkopShellMethods.enable() : ForkopShellMethods.disable());
+  } finally {
+    await refreshRuntimeUiState({ force: true });
+  }
+  return Boolean(store.get().servicesInfoWidget.data.forkopEnabled);
+}
+
+// src/forkop/tabs/dashboard/clashTraffic.ts
+function counter(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? number : 0;
+}
+function sampleFromConnections(payload, at) {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+  const data = payload;
+  return {
+    downloadTotal: counter(data.downloadTotal),
+    uploadTotal: counter(data.uploadTotal),
+    connections: Array.isArray(data.connections) ? data.connections.length : 0,
+    memory: counter(data.memory),
+    at
+  };
+}
+function trafficSpeed(previous, next) {
+  if (!previous) {
+    return null;
+  }
+  const seconds = (next.at - previous.at) / 1e3;
+  const down = next.downloadTotal - previous.downloadTotal;
+  const up = next.uploadTotal - previous.uploadTotal;
+  if (seconds <= 0 || down < 0 || up < 0) {
+    return null;
+  }
+  return { up: Math.round(up / seconds), down: Math.round(down / seconds) };
+}
+
 // src/forkop/tabs/dashboard/initController.ts
 var SECTIONS_REFRESH_INTERVAL_MS = 1e4;
+var CLASH_RPC_POLL_INTERVAL_MS = 2e3;
 var LATENCY_TEST_BUTTON_CLASS = "dashboard-sections-grid-item-test-latency";
 var LATENCY_TEST_BUTTON_LABEL_CLASS = "dashboard-sections-grid-item-test-latency__label";
 var sectionsRefreshTimer = null;
+var healthRefreshTimer = null;
+var overviewHealth = null;
+var overviewHealthStale = false;
+var overviewRuleCount = null;
+var overviewSnapshotCount = null;
+var overviewServiceBusy = false;
+var overviewHost = false;
+var clashUpdatesStarted = false;
+async function refreshHealth(mountId3) {
+  const response = await ForkopShellMethods.getHealthStatus();
+  if (!dashboardMounted || mountId3 !== dashboardMountId) return;
+  if (response.success && response.data) {
+    overviewHealth = response.data;
+    overviewHealthStale = false;
+  } else {
+    overviewHealthStale = true;
+  }
+  renderOverviewCards();
+}
+async function loadOverviewCounts(mountId3) {
+  const [sections, snapshots2] = await Promise.allSettled([
+    CustomForkopMethods.getConfigSections(),
+    ForkopShellMethods.snapshotList()
+  ]);
+  if (!dashboardMounted || mountId3 !== dashboardMountId) return;
+  overviewRuleCount = sections.status === "fulfilled" ? sections.value.filter(
+    (section) => section[".type"] === "section" && section.enabled !== "0"
+  ).length : null;
+  overviewSnapshotCount = snapshots2.status === "fulfilled" && snapshots2.value.success && Array.isArray(snapshots2.value.data) ? snapshots2.value.data.length : null;
+  renderOverviewCards();
+}
+function overviewInput() {
+  const state = store.get();
+  const services = state.servicesInfoWidget;
+  const bandwidth = state.bandwidthWidget;
+  const systemInfo = state.systemInfoWidget;
+  return {
+    health: overviewHealth,
+    healthStale: overviewHealthStale,
+    availability: getDashboardServiceAvailability(),
+    forkopEnabled: Boolean(services.data.forkopEnabled),
+    forkopStoppedByUser: Boolean(services.data.forkopStoppedByUser),
+    forkopNotStarted: services.data.forkopNotStarted === null ? null : Boolean(services.data.forkopNotStarted),
+    forkopStatus: services.data.forkopStatus || "",
+    singBoxRunning: Boolean(services.data.singbox),
+    groups: state.sectionsWidget.data,
+    ruleCount: overviewRuleCount,
+    traffic: !bandwidth.loading && !bandwidth.failed ? { up: bandwidth.data.up, down: bandwidth.data.down } : null,
+    connections: !systemInfo.loading && !systemInfo.failed ? systemInfo.data.connections : null,
+    snapshotCount: overviewSnapshotCount,
+    lastDiagnosticRun: readLastRun(localStorage),
+    nowMs: Date.now()
+  };
+}
+async function handleServiceAction(action) {
+  if (overviewServiceBusy) return;
+  if (action === "stop" && !await confirmStopForkop()) return;
+  const mountId3 = dashboardMountId;
+  await runOverviewServiceAction({
+    run: () => runForkopServiceAction(action),
+    onError: (error) => showToast(serviceActionErrorText(error), "error", 6e3),
+    refreshRuntime: () => refreshRuntimeUiState({ force: true }),
+    refreshHealth: () => refreshHealth(mountId3),
+    setBusy: (busy2) => {
+      overviewServiceBusy = busy2;
+      renderOverviewCards();
+    }
+  });
+}
+async function handleToggleAutostart() {
+  if (overviewServiceBusy) return;
+  const wanted = !store.get().servicesInfoWidget.data.forkopEnabled;
+  overviewServiceBusy = true;
+  renderOverviewCards();
+  try {
+    if (await setForkopAutostart(wanted) !== wanted) {
+      showToast(_("Could not change autostart"), "error", 6e3);
+    }
+  } catch (_error) {
+    showToast(_("Could not change autostart"), "error", 6e3);
+  } finally {
+    overviewServiceBusy = false;
+    renderOverviewCards();
+  }
+}
+function renderOverviewCards() {
+  const container = document.getElementById("dashboard-overview");
+  if (!container || !dashboardMounted) return;
+  const input = overviewInput();
+  const view = renderOverview(
+    {
+      warning: overviewWarning(input.health),
+      state: overviewState(input),
+      routing: overviewRouting(input),
+      recovery: overviewRecovery(input),
+      event: overviewLastEvent(input)
+    },
+    {
+      readonly: isReadonlyMode(),
+      serviceBusy: overviewServiceBusy,
+      autostart: input.forkopEnabled,
+      restartBlocked: Boolean(
+        store.get().servicesInfoWidget.data.forkopRestartBlocked
+      ),
+      stopAvailable: Boolean(
+        store.get().servicesInfoWidget.data.forkopStopAvailable
+      ),
+      onStart: () => void handleServiceAction("start"),
+      onRestart: () => void handleServiceAction("restart"),
+      onStop: () => void handleServiceAction("stop"),
+      onToggleAutostart: () => void handleToggleAutostart()
+    }
+  );
+  if (container.querySelector(".fkp-menu[open]")) return;
+  preserveScrollForPage(() => container.replaceChildren(view));
+}
 var sectionsRefreshPromise = null;
 var sectionsRefreshQueued = false;
 var actionStateUnsubscribe = null;
@@ -5627,6 +7271,9 @@ var dashboardMountId = 0;
 var dashboardDataUpdatesStarted = false;
 var dashboardDataUpdatesId = 0;
 var pageUnloading = false;
+var clashRpcPollTimer = null;
+var clashRpcPolling = false;
+var lastConnectionsSample = null;
 var followedSubscriptionJobs = /* @__PURE__ */ new Set();
 var followedLatencyJobs = /* @__PURE__ */ new Set();
 var handledSubscriptionJobs = /* @__PURE__ */ new Set();
@@ -5640,7 +7287,7 @@ if (typeof window !== "undefined") {
     pageUnloading = false;
   });
 }
-async function fetchDashboardSectionsOnce(mountId) {
+async function fetchDashboardSectionsOnce(mountId3) {
   if (getDashboardServiceAvailability() === "stopped") {
     return false;
   }
@@ -5655,7 +7302,7 @@ async function fetchDashboardSectionsOnce(mountId) {
   });
   try {
     const { data, success } = await CustomForkopMethods.getDashboardSections();
-    if (!dashboardMounted || mountId !== dashboardMountId || getDashboardServiceAvailability() === "stopped") {
+    if (!dashboardMounted || mountId3 !== dashboardMountId || getDashboardServiceAvailability() === "stopped") {
       return false;
     }
     if (!success) {
@@ -5673,7 +7320,7 @@ async function fetchDashboardSectionsOnce(mountId) {
     return true;
   } catch (error) {
     logger.error("[DASHBOARD]", "fetchDashboardSections: failed", error);
-    if (!dashboardMounted || mountId !== dashboardMountId || getDashboardServiceAvailability() === "stopped") {
+    if (!dashboardMounted || mountId3 !== dashboardMountId || getDashboardServiceAvailability() === "stopped") {
       return false;
     }
     const current = store.get().sectionsWidget;
@@ -5695,13 +7342,13 @@ async function fetchDashboardSections(options = {}) {
     }
     return sectionsRefreshPromise;
   }
-  const mountId = dashboardMountId;
+  const mountId3 = dashboardMountId;
   const promise = (async () => {
     let success = false;
     do {
       sectionsRefreshQueued = false;
-      success = await fetchDashboardSectionsOnce(mountId);
-    } while (sectionsRefreshQueued && dashboardMounted && mountId === dashboardMountId);
+      success = await fetchDashboardSectionsOnce(mountId3);
+    } while (sectionsRefreshQueued && dashboardMounted && mountId3 === dashboardMountId);
     return success;
   })();
   sectionsRefreshPromise = promise;
@@ -5932,13 +7579,17 @@ function stopActionStateWatcher() {
   actionStateUnsubscribe = null;
 }
 async function connectToClashSockets(dataUpdatesId) {
-  const mountId = dashboardMountId;
+  const mountId3 = dashboardMountId;
   const clashApiSecret = await getClashApiSecret2();
-  if (!dashboardMounted || mountId !== dashboardMountId || dataUpdatesId !== dashboardDataUpdatesId || getDashboardServiceAvailability() === "stopped") {
+  if (!dashboardMounted || mountId3 !== dashboardMountId || dataUpdatesId !== dashboardDataUpdatesId || getDashboardServiceAvailability() === "stopped") {
+    return;
+  }
+  if (!canUseDirectClashApi(clashApiSecret)) {
+    startClashRpcPolling(dataUpdatesId);
     return;
   }
   socket.subscribe(
-    `${getClashWsUrl()}/traffic?token=${clashApiSecret}`,
+    getClashWsStreamUrl("/traffic", clashApiSecret),
     (msg) => {
       if (dataUpdatesId !== dashboardDataUpdatesId || getDashboardServiceAvailability() === "stopped") {
         return;
@@ -5956,22 +7607,15 @@ async function connectToClashSockets(dataUpdatesId) {
       if (dataUpdatesId !== dashboardDataUpdatesId || getDashboardServiceAvailability() === "stopped") {
         return;
       }
-      logger.error(
+      logger.warn(
         "[DASHBOARD]",
-        "connectToClashSockets - traffic: failed to connect to",
-        getClashWsUrl()
+        "connectToClashSockets - traffic: socket unavailable, polling instead"
       );
-      store.set({
-        bandwidthWidget: {
-          loading: false,
-          failed: true,
-          data: { up: 0, down: 0 }
-        }
-      });
+      fallBackToClashRpcPolling(dataUpdatesId);
     }
   );
   socket.subscribe(
-    `${getClashWsUrl()}/connections?token=${clashApiSecret}`,
+    getClashWsStreamUrl("/connections", clashApiSecret),
     (msg) => {
       if (dataUpdatesId !== dashboardDataUpdatesId || getDashboardServiceAvailability() === "stopped") {
         return;
@@ -6000,28 +7644,94 @@ async function connectToClashSockets(dataUpdatesId) {
       if (dataUpdatesId !== dashboardDataUpdatesId || getDashboardServiceAvailability() === "stopped") {
         return;
       }
-      logger.error(
+      logger.warn(
         "[DASHBOARD]",
-        "connectToClashSockets - connections: failed to connect to",
-        getClashWsUrl()
+        "connectToClashSockets - connections: socket unavailable, polling instead"
       );
-      store.set({
-        trafficTotalWidget: {
-          loading: false,
-          failed: true,
-          data: { downloadTotal: 0, uploadTotal: 0 }
-        },
-        systemInfoWidget: {
-          loading: false,
-          failed: true,
-          data: {
-            connections: 0,
-            memory: 0
-          }
-        }
-      });
+      fallBackToClashRpcPolling(dataUpdatesId);
     }
   );
+}
+function setClashWidgetsFailed() {
+  store.set({
+    bandwidthWidget: { loading: false, failed: true, data: { up: 0, down: 0 } },
+    trafficTotalWidget: {
+      loading: false,
+      failed: true,
+      data: { downloadTotal: 0, uploadTotal: 0 }
+    },
+    systemInfoWidget: {
+      loading: false,
+      failed: true,
+      data: { connections: 0, memory: 0 }
+    }
+  });
+}
+async function pollClashConnections(dataUpdatesId) {
+  if (clashRpcPolling || dataUpdatesId !== dashboardDataUpdatesId || getDashboardServiceAvailability() === "stopped") {
+    return;
+  }
+  clashRpcPolling = true;
+  try {
+    const response = await ForkopShellMethods.getClashApiConnections();
+    if (dataUpdatesId !== dashboardDataUpdatesId) {
+      return;
+    }
+    const sample = response.success ? sampleFromConnections(response.data, Date.now()) : null;
+    if (!sample) {
+      lastConnectionsSample = null;
+      setClashWidgetsFailed();
+      return;
+    }
+    const speed = trafficSpeed(lastConnectionsSample, sample);
+    lastConnectionsSample = sample;
+    store.set({
+      ...speed ? { bandwidthWidget: { loading: false, failed: false, data: speed } } : {},
+      trafficTotalWidget: {
+        loading: false,
+        failed: false,
+        data: {
+          downloadTotal: sample.downloadTotal,
+          uploadTotal: sample.uploadTotal
+        }
+      },
+      systemInfoWidget: {
+        loading: false,
+        failed: false,
+        data: { connections: sample.connections, memory: sample.memory }
+      }
+    });
+  } catch (error) {
+    logger.error("[DASHBOARD]", "pollClashConnections: failed", error);
+    lastConnectionsSample = null;
+    setClashWidgetsFailed();
+  } finally {
+    clashRpcPolling = false;
+  }
+}
+function startClashRpcPolling(dataUpdatesId) {
+  if (clashRpcPollTimer) {
+    return;
+  }
+  lastConnectionsSample = null;
+  void pollClashConnections(dataUpdatesId);
+  clashRpcPollTimer = setInterval(() => {
+    void pollClashConnections(dataUpdatesId);
+  }, CLASH_RPC_POLL_INTERVAL_MS);
+}
+function stopClashRpcPolling() {
+  if (clashRpcPollTimer) {
+    clearInterval(clashRpcPollTimer);
+    clashRpcPollTimer = null;
+  }
+  lastConnectionsSample = null;
+}
+function fallBackToClashRpcPolling(dataUpdatesId) {
+  if (dataUpdatesId !== dashboardDataUpdatesId) {
+    return;
+  }
+  socket.resetAll();
+  startClashRpcPolling(dataUpdatesId);
 }
 function getDashboardServiceAvailability() {
   const service = store.get().servicesInfoWidget;
@@ -6039,7 +7749,9 @@ function stopDashboardDataUpdates() {
     sectionsRefreshTimer = null;
   }
   sectionsRefreshQueued = false;
-  socket.resetAll();
+  stopClashRpcPolling();
+  if (clashUpdatesStarted) socket.resetAll();
+  clashUpdatesStarted = false;
 }
 function startDashboardDataUpdates() {
   if (dashboardDataUpdatesStarted || !dashboardMounted || getDashboardServiceAvailability() === "stopped") {
@@ -6048,7 +7760,10 @@ function startDashboardDataUpdates() {
   dashboardDataUpdatesStarted = true;
   const dataUpdatesId = ++dashboardDataUpdatesId;
   void fetchDashboardSections({ force: true });
-  void connectToClashSockets(dataUpdatesId);
+  if (overviewHost) {
+    clashUpdatesStarted = true;
+    void connectToClashSockets(dataUpdatesId);
+  }
   sectionsRefreshTimer = setInterval(() => {
     void fetchDashboardSections();
   }, SECTIONS_REFRESH_INTERVAL_MS);
@@ -6076,8 +7791,17 @@ async function handleChooseOutbound(sectionName, selector, tag) {
   }
   setSelectorSwitching(sectionName, tag);
   try {
-    await ForkopShellMethods.setClashApiGroupProxy(selector, tag);
+    const response = await ForkopShellMethods.setClashApiGroupProxy(
+      selector,
+      tag
+    );
+    if (!response.success) {
+      showToast(_("Failed to switch the node"), "error");
+    }
     await fetchDashboardSections({ force: true });
+  } catch (error) {
+    logger.error("[DASHBOARD]", "handleChooseOutbound: failed", error);
+    showToast(_("Failed to switch the node"), "error");
   } finally {
     setSelectorSwitching(sectionName);
   }
@@ -6173,7 +7897,7 @@ function getUrlTestLatencyClass(latency) {
   return "fkp_dashboard-page__outbound-grid__item__latency--red";
 }
 function formatUrlTestLatency(latency) {
-  return latency ? `${latency}ms` : "N/A";
+  return latency ? _("%d ms").replace("%d", String(latency)) : "\u2014";
 }
 function renderDetailsUrl(value) {
   const url = `${value ?? ""}`.trim();
@@ -6343,15 +8067,17 @@ function renderUrlTestInfoModal(outbound) {
       )
     ]),
     E("div", { class: "fkp_dashboard-page__urltest-details__footer" }, [
-      E(
-        "button",
-        {
-          type: "button",
-          class: "btn cbi-button cbi-button-action",
-          click: () => renderUrlTestEditorModal(outbound)
-        },
-        _("Edit")
-      ),
+      ...isReadonlyMode() ? [] : [
+        E(
+          "button",
+          {
+            type: "button",
+            class: "btn cbi-button cbi-button-action",
+            click: () => renderUrlTestEditorModal(outbound)
+          },
+          _("Edit")
+        )
+      ],
       E(
         "button",
         {
@@ -6384,17 +8110,17 @@ function renderUrlTestEditorModal(outbound) {
   const actionButtons = [];
   let activeButton = null;
   let activeButtonLabel = "";
-  const setBusy = (busy, message = "") => {
+  const setBusy = (busy2, message = "") => {
     controls.forEach((control) => {
-      control.disabled = busy;
+      control.disabled = busy2;
     });
     actionButtons.forEach((button) => {
-      button.disabled = busy;
+      button.disabled = busy2;
     });
     progress.style.display = message ? "" : "none";
     progress.textContent = message;
     if (activeButton) {
-      activeButton.textContent = busy ? _("Applying\u2026") : activeButtonLabel;
+      activeButton.textContent = busy2 ? _("Applying\u2026") : activeButtonLabel;
     }
   };
   const row = (label, control) => E("div", { class: "fkp_dashboard-page__urltest-details__param" }, [
@@ -6412,6 +8138,11 @@ function renderUrlTestEditorModal(outbound) {
     if (!result.success) throw new Error("reload failed");
     setBusy(true, _("Refreshing Dashboard\u2026"));
     await fetchDashboardSections({ force: true });
+    return serviceReloadOutcome(result.data);
+  };
+  const toast = (outcome, reset2) => {
+    const { text, type, duration } = urlTestChangeToast(outcome, reset2);
+    showToast(text, type, duration);
   };
   const save = async () => {
     setBusy(true, _("Saving URLTest settings\u2026"));
@@ -6426,9 +8157,9 @@ function renderUrlTestEditorModal(outbound) {
     );
     if ((response.code ?? 0) !== 0)
       throw new Error(response.stderr || "save failed");
-    await reload();
+    const outcome = await reload();
     ui.hideModal();
-    showToast(_("URLTest settings saved"), "success");
+    toast(outcome, false);
   };
   const reset = async () => {
     setBusy(true, _("Removing user settings\u2026"));
@@ -6438,9 +8169,9 @@ function renderUrlTestEditorModal(outbound) {
     );
     if ((response.code ?? 0) !== 0)
       throw new Error(response.stderr || "reset failed");
-    await reload();
+    const outcome = await reload();
     ui.hideModal();
-    showToast(_("URLTest settings reset"), "success");
+    toast(outcome, true);
   };
   const action = (fn) => async (event) => {
     activeButton = event.currentTarget;
@@ -6851,6 +8582,7 @@ async function renderSectionsWidget() {
         sectionsWidget.subscriptionUpdatingSections[section.sectionName]
       ),
       selectorSwitchingTag: sectionsWidget.selectorSwitchingSections[section.sectionName],
+      readonly: isReadonlyMode(),
       isPriorityMembersExpanded: (outbound) => priorityMembersState.isExpanded(section.sectionName, outbound.code),
       onPriorityMembersToggle: (outbound, open) => {
         priorityMembersState.setExpanded(
@@ -6895,138 +8627,6 @@ async function renderSectionsWidget() {
     container.replaceChildren(...renderedWidgets);
   });
 }
-async function renderBandwidthWidget() {
-  logger.debug("[DASHBOARD]", "renderBandwidthWidget");
-  const traffic = store.get().bandwidthWidget;
-  const container = document.getElementById("dashboard-widget-traffic");
-  if (!container) {
-    return;
-  }
-  if (traffic.loading || traffic.failed) {
-    const renderedWidget2 = renderWidget({
-      loading: traffic.loading,
-      failed: traffic.failed,
-      title: "",
-      items: []
-    });
-    return container.replaceChildren(renderedWidget2);
-  }
-  const renderedWidget = renderWidget({
-    loading: traffic.loading,
-    failed: traffic.failed,
-    title: _("Traffic"),
-    items: [
-      { key: _("Uplink"), value: `${prettyBytes(traffic.data.up)}/s` },
-      { key: _("Downlink"), value: `${prettyBytes(traffic.data.down)}/s` }
-    ]
-  });
-  container.replaceChildren(renderedWidget);
-}
-async function renderTrafficTotalWidget() {
-  logger.debug("[DASHBOARD]", "renderTrafficTotalWidget");
-  const trafficTotalWidget = store.get().trafficTotalWidget;
-  const container = document.getElementById("dashboard-widget-traffic-total");
-  if (!container) {
-    return;
-  }
-  if (trafficTotalWidget.loading || trafficTotalWidget.failed) {
-    const renderedWidget2 = renderWidget({
-      loading: trafficTotalWidget.loading,
-      failed: trafficTotalWidget.failed,
-      title: "",
-      items: []
-    });
-    return container.replaceChildren(renderedWidget2);
-  }
-  const renderedWidget = renderWidget({
-    loading: trafficTotalWidget.loading,
-    failed: trafficTotalWidget.failed,
-    title: _("Traffic Total"),
-    items: [
-      {
-        key: _("Uplink"),
-        value: String(prettyBytes(trafficTotalWidget.data.uploadTotal))
-      },
-      {
-        key: _("Downlink"),
-        value: String(prettyBytes(trafficTotalWidget.data.downloadTotal))
-      }
-    ]
-  });
-  container.replaceChildren(renderedWidget);
-}
-async function renderSystemInfoWidget() {
-  logger.debug("[DASHBOARD]", "renderSystemInfoWidget");
-  const systemInfoWidget = store.get().systemInfoWidget;
-  const container = document.getElementById("dashboard-widget-system-info");
-  if (!container) {
-    return;
-  }
-  if (systemInfoWidget.loading || systemInfoWidget.failed) {
-    const renderedWidget2 = renderWidget({
-      loading: systemInfoWidget.loading,
-      failed: systemInfoWidget.failed,
-      title: "",
-      items: []
-    });
-    return container.replaceChildren(renderedWidget2);
-  }
-  const renderedWidget = renderWidget({
-    loading: systemInfoWidget.loading,
-    failed: systemInfoWidget.failed,
-    title: _("System info"),
-    items: [
-      {
-        key: _("Active Connections"),
-        value: String(systemInfoWidget.data.connections)
-      },
-      {
-        key: _("Memory Usage"),
-        value: String(prettyBytes(systemInfoWidget.data.memory))
-      }
-    ]
-  });
-  container.replaceChildren(renderedWidget);
-}
-async function renderServicesInfoWidget() {
-  logger.debug("[DASHBOARD]", "renderServicesInfoWidget");
-  const servicesInfoWidget = store.get().servicesInfoWidget;
-  const container = document.getElementById("dashboard-widget-service-info");
-  if (!container) {
-    return;
-  }
-  if (servicesInfoWidget.loading || servicesInfoWidget.failed) {
-    const renderedWidget2 = renderWidget({
-      loading: servicesInfoWidget.loading,
-      failed: servicesInfoWidget.failed,
-      title: "",
-      items: []
-    });
-    return container.replaceChildren(renderedWidget2);
-  }
-  const renderedWidget = renderWidget({
-    loading: servicesInfoWidget.loading,
-    failed: servicesInfoWidget.failed,
-    title: _("Services info"),
-    items: [
-      {
-        key: "Forkop",
-        value: servicesInfoWidget.data.forkopRunning ? _("\u2714 Running") : _("\u2718 Stopped"),
-        attributes: {
-          class: servicesInfoWidget.data.forkopRunning ? "fkp_dashboard-page__widgets-section__item__row--success" : "fkp_dashboard-page__widgets-section__item__row--error"
-        }
-      },
-      {
-        key: "Sing-box",
-        value: servicesInfoWidget.data.singbox ? _("\u2714 Running") : _("\u2718 Stopped"),
-        attributes: {
-          class: servicesInfoWidget.data.singbox ? "fkp_dashboard-page__widgets-section__item__row--success" : "fkp_dashboard-page__widgets-section__item__row--error"
-        }
-      }
-    ]
-  });
-  container.replaceChildren(renderedWidget);
-}
 async function onStoreUpdate(next, prev, diff) {
   if (diff.sectionsWidget) {
     const inlineUpdated = canUpdateLatencyProgressInline(
@@ -7037,29 +8637,27 @@ async function onStoreUpdate(next, prev, diff) {
       renderSectionsWidget();
     }
   }
-  if (diff.bandwidthWidget) {
-    renderBandwidthWidget();
-  }
-  if (diff.trafficTotalWidget) {
-    renderTrafficTotalWidget();
-  }
-  if (diff.systemInfoWidget) {
-    renderSystemInfoWidget();
-  }
   if (diff.servicesInfoWidget) {
     syncDashboardServiceAvailability();
-    renderServicesInfoWidget();
+  }
+  if (diff.bandwidthWidget || diff.systemInfoWidget || diff.servicesInfoWidget || diff.sectionsWidget) {
+    renderOverviewCards();
   }
 }
 async function onPageMount() {
   onPageUnmount();
   dashboardMounted = true;
   dashboardMountId += 1;
-  const mountId = dashboardMountId;
+  const mountId3 = dashboardMountId;
+  overviewHost = Boolean(document.getElementById("dashboard-overview"));
+  if (overviewHost) {
+    void refreshHealth(mountId3);
+    healthRefreshTimer = setInterval(() => void refreshHealth(mountId3), 1e4);
+  }
   const hasRuntimeSnapshot = Boolean(getCachedRuntimeUiState());
   if (!hasRuntimeSnapshot) {
     const uiState = await refreshRuntimeUiState({ force: true });
-    if (!dashboardMounted || mountId !== dashboardMountId) {
+    if (!dashboardMounted || mountId3 !== dashboardMountId) {
       return;
     }
     if (!uiState) {
@@ -7069,11 +8667,9 @@ async function onPageMount() {
   store.subscribe(onStoreUpdate);
   startActionStateWatcher();
   void renderSectionsWidget();
-  void renderBandwidthWidget();
-  void renderTrafficTotalWidget();
-  void renderSystemInfoWidget();
-  void renderServicesInfoWidget();
+  if (overviewHost) void loadOverviewCounts(mountId3);
   syncDashboardServiceAvailability();
+  renderOverviewCards();
   if (hasRuntimeSnapshot) {
     void refreshRuntimeUiState({ force: true });
   }
@@ -7081,6 +8677,8 @@ async function onPageMount() {
 function onPageUnmount() {
   dashboardMounted = false;
   dashboardMountId += 1;
+  if (healthRefreshTimer) clearInterval(healthRefreshTimer);
+  healthRefreshTimer = null;
   stopDashboardDataUpdates();
   stopActionStateWatcher();
   sectionsRefreshQueued = false;
@@ -7137,7 +8735,7 @@ async function initController() {
 }
 
 // src/forkop/tabs/dashboard/styles.ts
-var styles = `
+var styles3 = `
 @font-face {
     font-family: "Twemoji Country Flags";
     src: url("/luci-static/resources/view/forkop/fonts/TwemojiCountryFlags.woff2") format("woff2");
@@ -7170,41 +8768,61 @@ var styles = `
     --dashboard-grid-min-width: 180px;
 }
 
-.fkp_dashboard-page__service-stopped {
-    display: none;
-    width: 100%;
-    min-height: 180px;
-    margin-top: 10px;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-    box-sizing: border-box;
-    border: 1px dashed var(--border-color-high, #555);
-    border-radius: 6px;
-    color: var(--text-color-medium, #888);
-    background: transparent;
-    font-family: inherit;
-    font-size: inherit;
-    font-weight: inherit;
-    line-height: inherit;
-    font-style: italic;
-    text-align: center;
-}
-
-.fkp_dashboard-page--service-stopped {
-    display: grid;
-    grid-template-columns: repeat(var(--dashboard-grid-columns), minmax(var(--dashboard-grid-min-width), 1fr));
-    gap: 10px;
-}
-
-.fkp_dashboard-page--service-stopped .fkp_dashboard-page__service-stopped {
-    display: flex;
-    grid-column: 1 / -1;
-}
-
+/* Overview: summary cards; the nodes section hides while Forkop X is stopped. */
 .fkp_dashboard-page--service-stopped .fkp_dashboard-page__content {
     display: none;
 }
+
+.fkp-overview__warning {
+    margin: 0 0 var(--fkp-space-3);
+    padding: var(--fkp-space-3) var(--fkp-space-4);
+    border: 1px solid var(--fkp-tone-error);
+    border-left-width: 4px;
+    border-radius: 6px;
+}
+.fkp-overview__warning p { margin: var(--fkp-space-1) 0 var(--fkp-space-2); }
+
+.fkp-overview__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+    gap: var(--fkp-space-3);
+}
+
+.fkp-overview__card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--fkp-space-2);
+    min-width: 0;
+    padding: var(--fkp-space-3) var(--fkp-space-4);
+    border: 1px solid var(--fkp-border);
+    border-radius: 6px;
+}
+.fkp-overview__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--fkp-space-2);
+}
+.fkp-overview__title { margin: 0; font-size: 1.05em; overflow-wrap: anywhere; }
+.fkp-overview__summary { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.fkp-overview__hint { margin: 0; color: var(--fkp-tone-neutral); overflow-wrap: anywhere; }
+.fkp-overview__lines { margin: 0; padding: 0; list-style: none; }
+.fkp-overview__lines li { overflow-wrap: anywhere; }
+.fkp-overview__line--success { color: var(--fkp-tone-success); }
+.fkp-overview__line--warning { color: var(--fkp-tone-warning); }
+.fkp-overview__line--error { color: var(--fkp-tone-error); }
+.fkp-overview__groups { margin: 0; padding: 0; list-style: none; }
+.fkp-overview__groups li {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0 var(--fkp-space-2);
+    padding: 2px 0;
+}
+.fkp-overview__group-name { font-weight: 600; overflow-wrap: anywhere; }
+.fkp-overview__group-node { overflow-wrap: anywhere; }
+.fkp-overview__footer { margin-top: auto; padding-top: var(--fkp-space-1); }
+.fkp-overview__section-title { margin: var(--fkp-space-5) 0 0; }
 
 @media (max-width: 900px) {
     .fkp_dashboard-page {
@@ -7218,36 +8836,6 @@ var styles = `
         --dashboard-grid-min-width: 0;
     }
 }
-
-.fkp_dashboard-page__widgets-section {
-    margin-top: 10px;
-    display: grid;
-    grid-template-columns: repeat(var(--dashboard-grid-columns), minmax(var(--dashboard-grid-min-width), 1fr));
-    grid-gap: 10px;
-}
-
-.fkp_dashboard-page__widgets-section__item {
-    border: 2px var(--background-color-low, lightgray) solid;
-    border-radius: 4px;
-    padding: 10px;
-    min-width: 0;
-}
-
-.fkp_dashboard-page__widgets-section__item__title {}
-
-.fkp_dashboard-page__widgets-section__item__row {}
-
-.fkp_dashboard-page__widgets-section__item__row--success .fkp_dashboard-page__widgets-section__item__row__value {
-    color: var(--success-color-medium, green);
-}
-
-.fkp_dashboard-page__widgets-section__item__row--error .fkp_dashboard-page__widgets-section__item__row__value {
-    color: var(--error-color-medium, red);
-}
-
-.fkp_dashboard-page__widgets-section__item__row__key {}
-
-.fkp_dashboard-page__widgets-section__item__row__value {}
 
 .fkp_dashboard-page__outbound-section {
     margin-top: 10px;
@@ -7875,25 +9463,185 @@ var styles = `
 // src/forkop/tabs/dashboard/index.ts
 var DashboardTab = {
   render,
+  renderNodes,
   initController,
-  styles
+  styles: styles3
 };
 
 // src/forkop/tabs/diagnostic/renderDiagnostic.ts
+function card2(id, title, hint, body) {
+  return E("section", { class: "fkp-diag-card", id }, [
+    E("h3", { class: "fkp-diag-card__title" }, title),
+    hint ? E("p", { class: "fkp-diag-hint" }, hint) : "",
+    ...body
+  ]);
+}
+function renderDpiValidator() {
+  const explanation = E(
+    "p",
+    { class: "fkp-diag-hint" },
+    _(
+      "Checks that the parameters are valid. It does not test site reachability or bypass effectiveness."
+    )
+  );
+  if (isReadonlyMode())
+    return [
+      explanation,
+      E(
+        "p",
+        { class: "fkp-diag-hint" },
+        _("Available to administrators only.")
+      )
+    ];
+  return [
+    explanation,
+    E("div", { class: "fkp-diag-form" }, [
+      E("label", { class: "fkp-diag-field" }, [
+        E("span", {}, _("Provider")),
+        E("select", { id: "dpi-provider", class: "cbi-input-select" }, [
+          E("option", { value: "zapret" }, "Zapret"),
+          E("option", { value: "zapret2" }, "Zapret2"),
+          E("option", { value: "byedpi" }, "ByeDPI")
+        ])
+      ]),
+      E("label", { class: "fkp-diag-field fkp-diag-field--wide" }, [
+        E("span", {}, _("Strategy")),
+        E("textarea", {
+          id: "dpi-strategy",
+          class: "cbi-input-textarea",
+          maxLength: 4096,
+          rows: 3,
+          spellcheck: false
+        })
+      ])
+    ]),
+    E("div", { class: "fkp-diag-actions" }, [
+      E(
+        "button",
+        { id: "dpi-validate", type: "button", class: "btn cbi-button" },
+        _("Check")
+      ),
+      E("span", { id: "dpi-playground-result", role: "status" })
+    ])
+  ];
+}
+var HELP_URL = "https://github.com/slayer326/forkop#readme";
+function renderSiteCheck() {
+  return card2(
+    "site-check",
+    _("Check a site or app"),
+    _(
+      "The route is calculated from the configuration; DNS and the HTTPS request are made by the router itself."
+    ),
+    [
+      E("div", { class: "fkp-route__form" }, [
+        E("label", { class: "fkp-diag-field fkp-diag-field--wide" }, [
+          E("span", {}, _("Domain or IP address")),
+          E("input", {
+            id: "site-check-target",
+            class: "cbi-input-text",
+            placeholder: "youtube.com",
+            maxLength: 253
+          })
+        ]),
+        E("label", { class: "fkp-diag-field" }, [
+          E("span", {}, _("Device")),
+          E("select", { id: "site-check-device", class: "cbi-input-select" }, [
+            E("option", { value: "" }, _("Any device"))
+          ])
+        ]),
+        E(
+          "button",
+          {
+            id: "site-check-run",
+            class: "btn cbi-button cbi-button-apply",
+            type: "button"
+          },
+          _("Check")
+        )
+      ]),
+      E("div", { id: "site-check-result", role: "status" })
+    ]
+  );
+}
 function render2() {
-  return E("div", { id: "diagnostic-status", class: "fkp_diagnostic-page" }, [
-    E("div", { class: "fkp_diagnostic-page__left-bar" }, [
-      E("div", { id: "fkp_diagnostic-page-run-check" }),
+  return E("div", { id: "diagnostic-status", class: "fkp-diag" }, [
+    E("div", { class: "fkp-diag-help" }, [
+      E(
+        "a",
+        { href: HELP_URL, target: "_blank", rel: "noopener noreferrer" },
+        _("Help")
+      )
+    ]),
+    E("section", { class: "fkp-diag-card fkp-diag-system" }, [
+      E("div", { class: "fkp-diag-card__head" }, [
+        E("div", {}, [
+          E("h3", { class: "fkp-diag-card__title" }, _("System check")),
+          E("span", {
+            id: "fkp_diagnostic-last-run",
+            class: "fkp-diag-hint",
+            role: "status"
+          })
+        ]),
+        E("div", { id: "fkp_diagnostic-page-run-check" })
+      ]),
       E("div", {
-        class: "fkp_diagnostic-page__checks",
+        id: "fkp_diagnostic-run-reason",
+        class: "fkp-diag-run-reason",
+        role: "status"
+      }),
+      E("div", {
+        class: "fkp-diag-checks",
         id: "fkp_diagnostic-page-checks"
       })
     ]),
-    E("div", { class: "fkp_diagnostic-page__right-bar" }, [
-      E("div", { id: "fkp_diagnostic-page-wiki" }),
-      E("div", { id: "fkp_diagnostic-page-actions" }),
-      E("div", { id: "fkp_diagnostic-page-system-info" })
-    ])
+    renderSiteCheck(),
+    E(
+      "details",
+      { class: "fkp-diag-card fkp-diag-details", id: "connectivity-matrix" },
+      [
+        E("summary", {}, _("Address set for checking")),
+        E(
+          "p",
+          { class: "fkp-diag-hint" },
+          _(
+            "Checks run on the router and do not prove the path of a LAN client."
+          )
+        ),
+        E("div", { id: "connectivity-rows", class: "fkp-conn" }),
+        E("div", { class: "fkp-diag-actions" }, [
+          E(
+            "button",
+            { id: "connectivity-add", type: "button", class: "btn cbi-button" },
+            `+ ${_("Add address")}`
+          ),
+          E(
+            "button",
+            {
+              id: "connectivity-run",
+              type: "button",
+              class: "btn cbi-button cbi-button-apply"
+            },
+            _("Check all")
+          )
+        ])
+      ]
+    ),
+    E(
+      "details",
+      { class: "fkp-diag-card fkp-diag-details", id: "technical-data" },
+      [
+        E("summary", {}, _("Technical data")),
+        E("div", { class: "fkp-diag-row" }, [
+          E("div", { id: "fkp_diagnostic-page-actions" }),
+          E("div", { id: "fkp_diagnostic-page-system-info" })
+        ]),
+        E("div", { class: "fkp-diag-subsection", id: "dpi-playground" }, [
+          E("h4", {}, _("DPI strategy syntax check")),
+          ...renderDpiValidator()
+        ])
+      ]
+    )
   ]);
 }
 
@@ -8610,498 +10358,14 @@ async function ensureSystemInfo({
   }
 }
 
-// src/partials/button/styles.ts
-var styles2 = `
-.fkp-partial-button {
-    text-align: center;
-}
-
-.fkp-partial-button--with-icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 5px;
-}
-
-.fkp-partial-button--loading {
-}
-
-.fkp-partial-button--disabled {
-}
-
-.fkp-partial-button__icon {
-    flex: 0 0 auto;
-}
-
-.fkp-partial-button__icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.fkp-partial-button__icon svg {
-    width: 16px;
-    height: 16px;
-    display: block;
-    flex: 0 0 auto;
-}
-`;
-
-// src/partials/modal/styles.ts
-var styles3 = `
-
-.fkp-partial-modal__body {}
-
-.fkp-partial-modal__content {
-    max-height: 70vh;
-    overflow: scroll;
-    border-radius: 4px;
-}
-
-.fkp-partial-modal__footer {
-    display: flex;
-    justify-content: flex-end;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 10px;
-}
-
-.fkp-partial-modal__footer button {
-    margin-left: 0;
-}
-
-.fkp-partial-modal__checkbox {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    margin-right: auto;
-    cursor: pointer;
-    user-select: none;
-}
-
-.fkp-partial-modal__checkbox-text {
-    line-height: 1.2;
-}
-`;
-
-// src/partials/button/renderButton.ts
-function renderButton({
-  classNames = [],
-  disabled,
-  loading: loading2,
-  onClick,
-  text,
-  icon
-}) {
-  const hasIcon = !!loading2 || !!icon;
-  function getWrappedIcon() {
-    const iconWrap = E("span", {
-      class: "fkp-partial-button__icon"
-    });
-    if (loading2) {
-      iconWrap.appendChild(renderLoaderCircleIcon24());
-      return iconWrap;
-    }
-    if (icon) {
-      iconWrap.appendChild(icon());
-      return iconWrap;
-    }
-    return iconWrap;
-  }
-  function getClass() {
-    return [
-      "btn",
-      "fkp-partial-button",
-      ...insertIf(Boolean(disabled), ["fkp-partial-button--disabled"]),
-      ...insertIf(Boolean(loading2), ["fkp-partial-button--loading"]),
-      ...insertIf(Boolean(hasIcon), ["fkp-partial-button--with-icon"]),
-      ...classNames
-    ].filter(Boolean).join(" ");
-  }
-  function getDisabled() {
-    if (loading2 || disabled) {
-      return true;
-    }
-    return void 0;
-  }
-  return E(
-    "button",
-    {
-      type: "button",
-      class: getClass(),
-      disabled: getDisabled(),
-      click: onClick
-    },
-    [...insertIf(hasIcon, [getWrappedIcon()]), E("span", {}, text)]
-  );
-}
-
-// src/helpers/copyToClipboard.ts
-function copyToClipboard(text) {
-  const textarea = document.createElement("textarea");
-  textarea.value = text;
-  document.body.appendChild(textarea);
-  textarea.select();
-  try {
-    document.execCommand("copy");
-    showToast(_("Copied"), "success");
-  } catch (_err) {
-    showToast(_("Failed to copy!"), "error");
-    console.error("copyToClipboard - e", _err);
-  }
-  document.body.removeChild(textarea);
-}
-
-// src/partials/modal/renderModal.ts
-function renderModal(text, name, options) {
-  let rawText = text ?? "";
-  let currentText = "";
-  let refreshInFlight = false;
-  let pendingRefresh = false;
-  let pendingForcedRefresh = false;
-  let refreshSessionId = 0;
-  let timer;
-  let observer;
-  let autoRefreshEnabled = options?.initialAutoRefresh ?? Boolean(options?.getText);
-  let maskValuesEnabled = options?.initialMaskValues ?? true;
-  let shouldScrollToBottomOnMount = Boolean(options?.startAtEnd);
-  let autoRefreshInput;
-  let maskValuesInput;
-  const getDisplayText = (value) => {
-    if (maskValuesEnabled && options?.maskText) {
-      return options.maskText(value);
-    }
-    return value;
-  };
-  const codeEl = E("code", {}, "");
-  const contentEl = E(
-    "pre",
-    { class: "fkp-partial-modal__content" },
-    codeEl
-  );
-  const stopRefreshTimer = () => {
-    if (timer) {
-      clearInterval(timer);
-      timer = void 0;
-    }
-  };
-  const destroyLiveRefresh = () => {
-    refreshSessionId += 1;
-    pendingRefresh = false;
-    pendingForcedRefresh = false;
-    stopRefreshTimer();
-    observer?.disconnect();
-    observer = void 0;
-  };
-  const scrollToBottom = () => {
-    contentEl.scrollTop = contentEl.scrollHeight;
-  };
-  const scheduleInitialScrollToBottom = () => {
-    if (!shouldScrollToBottomOnMount || !body.isConnected) {
-      return;
-    }
-    shouldScrollToBottomOnMount = false;
-    requestAnimationFrame(() => {
-      scrollToBottom();
-    });
-  };
-  const updateText = (nextText) => {
-    const normalizedText = nextText ?? "";
-    const shouldStickToBottom = shouldScrollToBottomOnMount || contentEl.scrollTop + contentEl.clientHeight >= contentEl.scrollHeight - 16;
-    if (normalizedText === currentText) {
-      if (shouldStickToBottom) {
-        requestAnimationFrame(() => {
-          scrollToBottom();
-        });
-      }
-      return;
-    }
-    currentText = normalizedText;
-    codeEl.textContent = currentText;
-    if (shouldStickToBottom) {
-      requestAnimationFrame(() => {
-        scrollToBottom();
-      });
-    }
-  };
-  const updateDisplayedTextFromRaw = () => {
-    updateText(getDisplayText(rawText));
-  };
-  const refreshText = async (force = false) => {
-    if (!options?.getText || !force && !autoRefreshEnabled || refreshInFlight) {
-      return;
-    }
-    if (!body.isConnected) {
-      return;
-    }
-    refreshInFlight = true;
-    const sessionId = refreshSessionId;
-    try {
-      const nextText = await options.getText({
-        maskValues: options.maskText ? false : maskValuesEnabled
-      });
-      if (!body.isConnected || !force && !autoRefreshEnabled) {
-        return;
-      }
-      if (sessionId !== refreshSessionId) {
-        return;
-      }
-      const normalizedText = nextText ?? "";
-      rawText = normalizedText;
-      updateText(getDisplayText(normalizedText));
-    } catch (error) {
-      console.warn("[renderModal] failed to refresh modal content", error);
-    } finally {
-      refreshInFlight = false;
-      if (pendingRefresh) {
-        const shouldForceRefresh = pendingForcedRefresh;
-        pendingRefresh = false;
-        pendingForcedRefresh = false;
-        if ((shouldForceRefresh || autoRefreshEnabled) && body.isConnected) {
-          void refreshText(shouldForceRefresh);
-        }
-      }
-    }
-  };
-  const requestRefresh = () => {
-    if (!options?.getText || !autoRefreshEnabled) {
-      return;
-    }
-    if (refreshInFlight) {
-      pendingRefresh = true;
-      return;
-    }
-    void refreshText();
-  };
-  const requestForcedRefresh = () => {
-    if (!options?.getText) {
-      return;
-    }
-    if (refreshInFlight) {
-      pendingRefresh = true;
-      pendingForcedRefresh = true;
-      return;
-    }
-    void refreshText(true);
-  };
-  const startRefreshTimer = () => {
-    if (!options?.getText || !autoRefreshEnabled || timer || typeof document === "undefined") {
-      return;
-    }
-    timer = setInterval(() => {
-      requestRefresh();
-    }, options.refreshMs ?? 3e3);
-  };
-  const setAutoRefreshEnabled = (nextValue) => {
-    autoRefreshEnabled = nextValue;
-    refreshSessionId += 1;
-    pendingRefresh = false;
-    pendingForcedRefresh = false;
-    if (autoRefreshInput) {
-      autoRefreshInput.checked = nextValue;
-    }
-    if (nextValue) {
-      startRefreshTimer();
-      requestRefresh();
-      return;
-    }
-    stopRefreshTimer();
-  };
-  const setMaskValuesEnabled = (nextValue) => {
-    maskValuesEnabled = nextValue;
-    refreshSessionId += 1;
-    pendingRefresh = false;
-    pendingForcedRefresh = false;
-    if (maskValuesInput) {
-      maskValuesInput.checked = nextValue;
-    }
-    if (options?.maskText) {
-      updateDisplayedTextFromRaw();
-      return;
-    }
-    requestForcedRefresh();
-  };
-  const footerChildren = [
-    renderButton({
-      classNames: ["cbi-button-apply"],
-      text: _("Download"),
-      onClick: () => downloadAsTxt(currentText, name)
-    }),
-    renderButton({
-      classNames: ["cbi-button-apply"],
-      text: _("Copy"),
-      onClick: () => copyToClipboard(`\`\`\`${name}
-${currentText}
-\`\`\``)
-    }),
-    renderButton({
-      classNames: ["cbi-button-remove"],
-      text: _("Close"),
-      onClick: () => {
-        destroyLiveRefresh();
-        ui.hideModal();
-      }
-    })
-  ];
-  if (options?.getText && options?.showAutoRefreshToggle) {
-    autoRefreshInput = document.createElement("input");
-    autoRefreshInput.type = "checkbox";
-    autoRefreshInput.className = "cbi-input-checkbox";
-    autoRefreshInput.checked = autoRefreshEnabled;
-    autoRefreshInput.addEventListener("change", () => {
-      setAutoRefreshEnabled(autoRefreshInput.checked);
-    });
-    footerChildren.unshift(
-      E("label", { class: "fkp-partial-modal__checkbox" }, [
-        autoRefreshInput,
-        E(
-          "span",
-          { class: "fkp-partial-modal__checkbox-text" },
-          options.autoRefreshLabel ?? _("Auto refresh")
-        )
-      ])
-    );
-  }
-  if ((options?.getText || options?.maskText) && options?.showMaskValuesToggle) {
-    maskValuesInput = document.createElement("input");
-    maskValuesInput.type = "checkbox";
-    maskValuesInput.className = "cbi-input-checkbox";
-    maskValuesInput.checked = maskValuesEnabled;
-    maskValuesInput.addEventListener("change", () => {
-      setMaskValuesEnabled(maskValuesInput.checked);
-    });
-    footerChildren.unshift(
-      E("label", { class: "fkp-partial-modal__checkbox" }, [
-        maskValuesInput,
-        E(
-          "span",
-          { class: "fkp-partial-modal__checkbox-text" },
-          options.maskValuesLabel ?? _("Hide values")
-        )
-      ])
-    );
-  }
-  const body = E("div", { class: "fkp-partial-modal__body" }, [
-    E("div", {}, [
-      contentEl,
-      E("div", { class: "fkp-partial-modal__footer" }, footerChildren)
-    ])
-  ]);
-  if ((options?.getText || options?.startAtEnd) && typeof document !== "undefined") {
-    observer = new MutationObserver(() => {
-      if (!body.isConnected) {
-        destroyLiveRefresh();
-        return;
-      }
-      scheduleInitialScrollToBottom();
-    });
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true
-    });
-    scheduleInitialScrollToBottom();
-  }
-  if (options?.getText && typeof document !== "undefined") {
-    startRefreshTimer();
-    requestRefresh();
-  }
-  updateDisplayedTextFromRaw();
-  return body;
-}
-
-// src/partials/index.ts
-var PartialStyles = `
-${styles2}
-${styles3}
-`;
-
 // src/forkop/tabs/diagnostic/partials/renderAvailableActions.ts
 function renderAvailableActions({
-  restartBlocked,
-  restart,
-  start,
-  stop,
-  enable,
-  disable,
   globalCheck,
   viewLogs,
   showSingBoxConfig,
   supportReport
 }) {
   return E("div", { class: "fkp_diagnostic-page__right-bar__actions" }, [
-    E("b", {}, _("Available actions")),
-    // Restart is hidden in this state, so say why and what to do instead.
-    ...insertIf(restartBlocked, [
-      E("div", { class: "fkp_diagnostic_alert fkp_diagnostic_alert--error" }, [
-        E("span", { class: "fkp_diagnostic_alert__icon" }, [
-          renderCircleXIcon24()
-        ]),
-        E("div", { class: "fkp_diagnostic_alert__content" }, [
-          E(
-            "b",
-            { class: "fkp_diagnostic_alert__title" },
-            _("Cannot restart Forkop X")
-          ),
-          E(
-            "div",
-            { class: "fkp_diagnostic_alert__description" },
-            _(
-              "Multiple sing-box processes were found or their ownership is unclear. Restart is unavailable; traffic routing was not changed. To stop all sing-box processes, use Stop Forkop X, then start Forkop X again."
-            )
-          )
-        ])
-      ])
-    ]),
-    ...insertIf(restart.visible, [
-      renderButton({
-        classNames: ["cbi-button-apply"],
-        onClick: restart.onClick,
-        icon: renderRotateCcwIcon24,
-        text: _("Restart Forkop X"),
-        loading: restart.loading,
-        disabled: restart.disabled
-      })
-    ]),
-    ...insertIf(stop.visible, [
-      renderButton({
-        classNames: ["cbi-button-remove"],
-        onClick: stop.onClick,
-        icon: renderCircleStopIcon24,
-        text: _("Stop Forkop X"),
-        loading: stop.loading,
-        disabled: stop.disabled
-      })
-    ]),
-    ...insertIf(start.visible, [
-      renderButton({
-        classNames: ["cbi-button-save"],
-        onClick: start.onClick,
-        icon: renderCirclePlayIcon24,
-        text: _("Start Forkop"),
-        loading: start.loading,
-        disabled: start.disabled
-      })
-    ]),
-    ...insertIf(disable.visible, [
-      renderButton({
-        classNames: ["cbi-button-remove"],
-        onClick: disable.onClick,
-        icon: renderPauseIcon24,
-        text: _("Disable autostart"),
-        loading: disable.loading,
-        disabled: disable.disabled
-      })
-    ]),
-    ...insertIf(enable.visible, [
-      renderButton({
-        classNames: ["cbi-button-save"],
-        onClick: enable.onClick,
-        icon: renderPlayIcon24,
-        text: _("Enable autostart"),
-        loading: enable.loading,
-        disabled: enable.disabled
-      })
-    ]),
     ...insertIf(globalCheck.visible, [
       renderButton({
         onClick: globalCheck.onClick,
@@ -9141,177 +10405,301 @@ function renderAvailableActions({
   ]);
 }
 
-// src/forkop/tabs/diagnostic/partials/renderCheckSection.ts
-function renderCheckSummary(items) {
-  if (!items.length) {
-    return E("div", {}, "");
+// src/forkop/tabs/diagnostic/statusLabels.ts
+function checkStatus(state) {
+  switch (state) {
+    case "success":
+      return { text: _("Healthy"), tone: "success" };
+    case "warning":
+      return { text: _("Needs attention"), tone: "warning" };
+    case "error":
+      return { text: _("Error"), tone: "error" };
+    case "loading":
+      return { text: _("Checking\u2026"), tone: "loading" };
+    case "unsupported":
+      return { text: _("Not available for checking"), tone: "neutral" };
+    default:
+      return { text: _("Not checked"), tone: "neutral" };
   }
-  const renderedItems = items.map((item) => {
-    function getIcon() {
-      const iconWrap = E("span", {
-        class: "fkp_diagnostic_alert__summary__item__icon"
-      });
-      if (item.state === "success") {
-        iconWrap.appendChild(renderCheckIcon24());
-      }
-      if (item.state === "warning") {
-        iconWrap.appendChild(renderTriangleAlertIcon24());
-      }
-      if (item.state === "error") {
-        iconWrap.appendChild(renderXIcon24());
-      }
-      return iconWrap;
-    }
-    return E(
-      "div",
-      {
-        class: `fkp_diagnostic_alert__summary__item fkp_diagnostic_alert__summary__item--${item.state}`
-      },
-      [getIcon(), E("b", {}, item.key), E("div", {}, item.value)]
-    );
-  });
-  return E("div", { class: "fkp_diagnostic_alert__summary" }, renderedItems);
 }
-function renderLoadingState3(props) {
-  const iconWrap = E("span", { class: "fkp_diagnostic_alert__icon" });
-  iconWrap.appendChild(renderLoaderCircleIcon24());
+function renderStatusBadge(status2) {
   return E(
-    "div",
-    { class: "fkp_diagnostic_alert fkp_diagnostic_alert--loading" },
-    [
-      iconWrap,
-      E("div", { class: "fkp_diagnostic_alert__content" }, [
-        E("b", { class: "fkp_diagnostic_alert__title" }, props.title),
-        E(
-          "div",
-          { class: "fkp_diagnostic_alert__description" },
-          props.description
-        )
-      ]),
-      E("div", {}, ""),
-      renderCheckSummary(props.items)
-    ]
+    "span",
+    { class: `fkp-diag-badge fkp-diag-badge--${status2.tone}` },
+    status2.text
   );
-}
-function renderWarningState(props) {
-  const iconWrap = E("span", { class: "fkp_diagnostic_alert__icon" });
-  iconWrap.appendChild(renderCircleAlertIcon24());
-  return E(
-    "div",
-    { class: "fkp_diagnostic_alert fkp_diagnostic_alert--warning" },
-    [
-      iconWrap,
-      E("div", { class: "fkp_diagnostic_alert__content" }, [
-        E("b", { class: "fkp_diagnostic_alert__title" }, props.title),
-        E(
-          "div",
-          { class: "fkp_diagnostic_alert__description" },
-          props.description
-        )
-      ]),
-      E("div", {}, ""),
-      renderCheckSummary(props.items)
-    ]
-  );
-}
-function renderErrorState(props) {
-  const iconWrap = E("span", { class: "fkp_diagnostic_alert__icon" });
-  iconWrap.appendChild(renderCircleXIcon24());
-  return E(
-    "div",
-    { class: "fkp_diagnostic_alert fkp_diagnostic_alert--error" },
-    [
-      iconWrap,
-      E("div", { class: "fkp_diagnostic_alert__content" }, [
-        E("b", { class: "fkp_diagnostic_alert__title" }, props.title),
-        E(
-          "div",
-          { class: "fkp_diagnostic_alert__description" },
-          props.description
-        )
-      ]),
-      E("div", {}, ""),
-      renderCheckSummary(props.items)
-    ]
-  );
-}
-function renderSuccessState(props) {
-  const iconWrap = E("span", { class: "fkp_diagnostic_alert__icon" });
-  iconWrap.appendChild(renderCircleCheckIcon24());
-  return E(
-    "div",
-    { class: "fkp_diagnostic_alert fkp_diagnostic_alert--success" },
-    [
-      iconWrap,
-      E("div", { class: "fkp_diagnostic_alert__content" }, [
-        E("b", { class: "fkp_diagnostic_alert__title" }, props.title),
-        E(
-          "div",
-          { class: "fkp_diagnostic_alert__description" },
-          props.description
-        )
-      ]),
-      E("div", {}, ""),
-      renderCheckSummary(props.items)
-    ]
-  );
-}
-function renderSkippedState(props) {
-  const iconWrap = E("span", { class: "fkp_diagnostic_alert__icon" });
-  iconWrap.appendChild(renderCircleSlashIcon24());
-  return E(
-    "div",
-    { class: "fkp_diagnostic_alert fkp_diagnostic_alert--skipped" },
-    [
-      iconWrap,
-      E("div", { class: "fkp_diagnostic_alert__content" }, [
-        E("b", { class: "fkp_diagnostic_alert__title" }, props.title),
-        E(
-          "div",
-          { class: "fkp_diagnostic_alert__description" },
-          props.description
-        )
-      ]),
-      E("div", {}, ""),
-      renderCheckSummary(props.items)
-    ]
-  );
-}
-function renderCheckSection(props) {
-  if (props.state === "loading") {
-    return renderLoadingState3(props);
-  }
-  if (props.state === "warning") {
-    return renderWarningState(props);
-  }
-  if (props.state === "error") {
-    return renderErrorState(props);
-  }
-  if (props.state === "success") {
-    return renderSuccessState(props);
-  }
-  if (props.state === "skipped") {
-    return renderSkippedState(props);
-  }
-  return E("div", {}, _("Not implement yet"));
 }
 
-// src/forkop/tabs/diagnostic/partials/renderRunAction.ts
-function renderRunAction({
-  loading: loading2,
-  disabled,
-  click
-}) {
-  return E("div", { class: "fkp_diagnostic-page__run_check_wrapper" }, [
-    renderButton({
-      text: _("Run Diagnostic"),
-      onClick: click,
-      icon: renderSearchIcon24,
-      loading: loading2,
-      disabled,
-      classNames: ["cbi-button-apply"]
-    })
+// src/forkop/tabs/diagnostic/checkCards.ts
+function checkAdvice(check) {
+  if (check.state !== "error" && check.state !== "warning") return null;
+  switch (check.code) {
+    case "DNS" /* DNS */:
+      return {
+        meaning: _(
+          "Domains in rules may not resolve, or resolve past Forkop, so their rules do not apply."
+        ),
+        action: _(
+          "Check the DNS server addresses in Settings or choose another server."
+        ),
+        link: "settings"
+      };
+    case "SINGBOX" /* SINGBOX */:
+      return {
+        meaning: _(
+          "Traffic of the rules does not reach sing-box, so connections through rules fail."
+        ),
+        action: _(
+          "Restart Forkop X on the Overview. If it repeats, open the logs under Technical data."
+        ),
+        link: "overview"
+      };
+    case "NFT" /* NFT */:
+      return {
+        meaning: _(
+          "Firewall rules that send traffic to Forkop are missing or not hit, so rules may not apply."
+        ),
+        action: _(
+          "Restart Forkop X. If another add-on marks traffic, make sure it does not conflict."
+        ),
+        link: "overview"
+      };
+    case "ZAPRET" /* ZAPRET */:
+    case "ZAPRET2" /* ZAPRET2 */:
+    case "BYEDPI" /* BYEDPI */:
+      return {
+        meaning: _("DPI bypass of the rules using this provider may not work."),
+        action: _(
+          "Make sure the provider is installed and the rule strategy is valid, then restart Forkop X."
+        ),
+        link: "rules"
+      };
+    case "OUTBOUNDS" /* OUTBOUNDS */:
+      return {
+        meaning: _(
+          "Some connections or nodes do not respond, so sites of their rules may not open."
+        ),
+        action: _(
+          "Test latency in Monitoring \u2192 Nodes and groups, choose a working node or update the subscription."
+        ),
+        link: "nodes"
+      };
+    case "FAKEIP" /* FAKEIP */:
+      if (check.description === _("Browser FakeIP check could not be completed"))
+        return {
+          meaning: _(
+            "This browser could not reach the check service, so FakeIP for devices is not proven either way."
+          ),
+          action: _(
+            "Retry the check when this device has internet access through the router."
+          )
+        };
+      if (check.description === _("FakeIP works; public IP comparison is inconclusive"))
+        return {
+          meaning: _(
+            "FakeIP works; only the comparison with the control address did not give an answer."
+          ),
+          action: _("Usually harmless. Retry the check later.")
+        };
+      return {
+        meaning: _(
+          "Devices may bypass the router DNS, so domain rules do not apply to them."
+        ),
+        action: _(
+          "Make sure devices use the router as DNS: turn off secure DNS (DoH, Private DNS) in browsers and phones."
+        )
+      };
+    default:
+      return {
+        meaning: _("Part of Forkop X does not work as expected."),
+        action: _(
+          "Retry the check. If it repeats, open the logs under Technical data."
+        )
+      };
+  }
+}
+function provenFacts(check) {
+  const failing = check.items.filter(
+    (item) => item.state === "error" || item.state === "warning"
+  );
+  return failing.length ? failing.map(
+    (item) => item.value ? `${item.key}: ${item.value}` : item.key
+  ) : [check.description].filter(Boolean);
+}
+var RANK = { error: 0, warning: 1 };
+function groupChecks(checks) {
+  const sorted = [...checks].sort((a, b) => a.order - b.order);
+  return {
+    attention: sorted.filter((check) => check.state === "error" || check.state === "warning").sort((a, b) => RANK[a.state] - RANK[b.state] || a.order - b.order),
+    other: sorted.filter(
+      (check) => !["error", "warning", "success"].includes(check.state)
+    ),
+    passed: sorted.filter((check) => check.state === "success")
+  };
+}
+function checkSummary(checks) {
+  const count = (state) => checks.filter((check) => check.state === state).length;
+  const errors = count("error");
+  const warnings = count("warning");
+  const passed = count("success");
+  const parts = [
+    errors ? _("Errors: %d").replace("%d", String(errors)) : "",
+    warnings ? _("Warnings: %d").replace("%d", String(warnings)) : "",
+    passed ? _("Passed: %d").replace("%d", String(passed)) : ""
+  ].filter(Boolean);
+  return { errors, warnings, passed, text: parts.join(" \xB7 ") };
+}
+
+// src/forkop/tabs/diagnostic/partials/renderCheckSection.ts
+function diagnosticActionSummary(props) {
+  return [
+    props.title,
+    props.description,
+    ...props.items.map((item) => `${item.key}: ${item.value}`)
+  ].join("\n");
+}
+function itemIcon(state) {
+  const icon = E("span", { class: "fkp-check__item-icon" });
+  if (state === "success") icon.appendChild(renderCheckIcon24());
+  if (state === "warning") icon.appendChild(renderTriangleAlertIcon24());
+  if (state === "error") icon.appendChild(renderXIcon24());
+  return icon;
+}
+function stateIcon(state) {
+  switch (state) {
+    case "success":
+      return renderCircleCheckIcon24();
+    case "warning":
+      return renderCircleAlertIcon24();
+    case "error":
+      return renderCircleXIcon24();
+    case "loading":
+      return renderLoaderCircleIcon24();
+    default:
+      return renderCircleSlashIcon24();
+  }
+}
+function renderHead(props) {
+  const icon = E("span", { class: "fkp-check__icon" });
+  icon.appendChild(stateIcon(props.state));
+  return E("div", { class: "fkp-check__head" }, [
+    icon,
+    E("b", { class: "fkp-check__title" }, props.title),
+    renderStatusBadge(checkStatus(props.state))
   ]);
+}
+function renderItems(props) {
+  return props.items.map(
+    (item) => E("div", { class: `fkp-check__item fkp-diag-text--${item.state}` }, [
+      itemIcon(item.state),
+      E("b", {}, item.key),
+      E("span", {}, item.value)
+    ])
+  );
+}
+function adviceLink(link) {
+  if (!link || isReadonlyMode() && link !== "nodes") return "";
+  const [label, open] = link === "settings" ? [_("Open settings"), () => openForkopPage("settings")] : link === "rules" ? [_("Open rules"), () => openForkopPage("rules")] : link === "nodes" ? [
+    _("Nodes and groups"),
+    () => openForkopPage("monitoring", { view: "nodes" })
+  ] : [_("Overview"), () => openForkopPage("overview")];
+  return E("button", { type: "button", class: "btn cbi-button", click: open }, [
+    label
+  ]);
+}
+function renderCheckSection(props, handlers) {
+  const status2 = checkStatus(props.state);
+  const advice = checkAdvice(props);
+  return E("div", { class: `fkp-check fkp-check--${status2.tone}` }, [
+    renderHead(props),
+    ...advice ? [
+      E("dl", { class: "fkp-check__advice" }, [
+        E("dt", {}, _("What it means")),
+        E("dd", {}, advice.meaning),
+        E("dt", {}, _("What was proven")),
+        E(
+          "dd",
+          {},
+          E(
+            "ul",
+            {},
+            provenFacts(props).map((fact) => E("li", {}, fact))
+          )
+        ),
+        E("dt", {}, _("What to do")),
+        E("dd", {}, advice.action)
+      ])
+    ] : [E("div", { class: "fkp-check__description" }, props.description)],
+    E("div", { class: "fkp-check__actions" }, [
+      E(
+        "button",
+        {
+          type: "button",
+          class: "btn cbi-button",
+          disabled: handlers.busy ? true : void 0,
+          click: () => handlers.onRetry(props.code)
+        },
+        _("Retry this check")
+      ),
+      adviceLink(advice?.link),
+      E(
+        "button",
+        {
+          type: "button",
+          class: "btn cbi-button",
+          click: () => (
+            // navigator.clipboard needs a secure context; LuCI is usually plain HTTP.
+            copyToClipboard(diagnosticActionSummary(props))
+          )
+        },
+        _("Copy details")
+      )
+    ]),
+    props.items.length ? E("details", { class: "fkp-check__details" }, [
+      E("summary", {}, _("All check results")),
+      E("div", { class: "fkp-check__description" }, props.description),
+      ...renderItems(props)
+    ]) : ""
+  ]);
+}
+function renderCheckRow(props) {
+  const status2 = checkStatus(props.state);
+  return E(
+    "div",
+    { class: `fkp-check fkp-check--compact fkp-check--${status2.tone}` },
+    [
+      renderHead(props),
+      // An unsupported check explains why instead of pretending to have run.
+      props.state === "unsupported" ? E("div", { class: "fkp-check__description" }, props.description) : "",
+      props.state === "success" && props.items.length ? E("details", { class: "fkp-check__details" }, [
+        E("summary", {}, _("Details")),
+        E("div", { class: "fkp-check__description" }, props.description),
+        ...renderItems(props)
+      ]) : ""
+    ]
+  );
+}
+function renderChecks(checks, handlers) {
+  const groups = groupChecks(checks);
+  const summary = checkSummary(checks);
+  return [
+    ...summary.text ? [E("p", { class: "fkp-diag-summary", role: "status" }, summary.text)] : [],
+    ...groups.attention.map((check) => renderCheckSection(check, handlers)),
+    ...groups.other.map(renderCheckRow),
+    ...groups.passed.length ? [
+      E("details", { class: "fkp-check-passed" }, [
+        E(
+          "summary",
+          {},
+          _("Passed checks: %d").replace(
+            "%d",
+            String(groups.passed.length)
+          )
+        ),
+        ...groups.passed.map(renderCheckRow)
+      ])
+    ] : []
+  ];
 }
 
 // src/forkop/tabs/diagnostic/partials/renderSystemInfo.ts
@@ -9358,41 +10746,6 @@ function normalizeCompiledVersion(version) {
   return version;
 }
 
-// src/forkop/tabs/diagnostic/partials/renderWikiDisclaimer.ts
-function renderWikiDisclaimer(kind) {
-  const iconWrap = E("span", {
-    class: "fkp_diagnostic-page__right-bar__wiki__icon"
-  });
-  iconWrap.appendChild(renderBookOpenTextIcon24());
-  const className = [
-    "fkp_diagnostic-page__right-bar__wiki",
-    ...insertIf(kind === "error", [
-      "fkp_diagnostic-page__right-bar__wiki--error"
-    ]),
-    ...insertIf(kind === "warning", [
-      "fkp_diagnostic-page__right-bar__wiki--warning"
-    ])
-  ].join(" ");
-  return E("div", { class: className }, [
-    E("div", { class: "fkp_diagnostic-page__right-bar__wiki__content" }, [
-      iconWrap,
-      E("div", { class: "fkp_diagnostic-page__right-bar__wiki__texts" }, [
-        E("b", {}, _("Troubleshooting")),
-        E("div", {}, _("Do not panic, everything can be fixed, just..."))
-      ])
-    ]),
-    renderButton({
-      classNames: ["cbi-button-save"],
-      text: _("Open Project Page"),
-      onClick: () => window.open(
-        "https://github.com/slayer326/forkop#readme",
-        "_blank",
-        "noopener,noreferrer"
-      )
-    })
-  ]);
-}
-
 // src/forkop/tabs/diagnostic/checks/runSectionsCheck.ts
 function getSubscriptionLatencyState(latencyValues) {
   const hasAvailableLatency = latencyValues.some((item) => Boolean(item));
@@ -9415,6 +10768,19 @@ async function runSectionsCheck() {
     state: "loading",
     items: []
   });
+  if (isReadonlyMode()) {
+    updateCheckStore({
+      order,
+      code,
+      title,
+      description: _(
+        "Outbound checks need access to the Forkop configuration, which this role does not have."
+      ),
+      state: "unsupported",
+      items: []
+    });
+    return;
+  }
   const sections = await getDashboardSections();
   if (!sections.success) {
     updateCheckStore({
@@ -9522,86 +10888,745 @@ async function runSectionsCheck() {
   }
 }
 
-// src/forkop/tabs/diagnostic/serviceTransition.ts
-function isServiceTransitionStatus(status) {
-  return ["starting", "stopping", "restarting", "reloading"].includes(status);
+// src/forkop/tabs/monitoring/connectionView.ts
+function trafficSortValue(connection, mode) {
+  if (mode === "download") return connection.download || 0;
+  if (mode === "upload") return connection.upload || 0;
+  if (mode === "total")
+    return (connection.download || 0) + (connection.upload || 0);
+  return null;
 }
-function getServiceTransition(status) {
+var BYPASS_TAG = "bypass-out";
+var DIRECT_TAG = "direct-out";
+function routeTagFromRule(rule) {
+  const match = String(rule || "").match(/=>\s*route\(([^)]+)\)/);
+  return String(match?.[1] || "").trim().replace(/^['"]|['"]$/g, "");
+}
+function kindForAction(action) {
+  switch (action) {
+    case "zapret":
+    case "zapret2":
+    case "byedpi":
+      return "dpi";
+    case "connection":
+    case "proxy":
+    case "outbound":
+    case "vpn":
+      return "connection";
+    case "bypass":
+      return "bypass";
+    case "block":
+      return "block";
+    default:
+      return "unknown";
+  }
+}
+function connectionPath(chains, rule, ruleByTag) {
+  const list = (Array.isArray(chains) ? chains : []).filter(Boolean);
+  const routeTag = routeTagFromRule(rule);
+  for (let index = list.length - 1; index >= 0; index--) {
+    const owner2 = ruleByTag(list[index]);
+    if (owner2)
+      return {
+        kind: kindForAction(owner2.action),
+        rule: owner2,
+        node: index > 0 ? list[0] : "",
+        tag: ""
+      };
+  }
+  const owner = routeTag ? ruleByTag(routeTag) : null;
+  if (owner)
+    return {
+      kind: kindForAction(owner.action),
+      rule: owner,
+      node: list[0] && list[0] !== routeTag ? list[0] : "",
+      tag: ""
+    };
+  const tag = list[list.length - 1] || routeTag;
+  if (list.includes(BYPASS_TAG) || routeTag === BYPASS_TAG)
+    return { kind: "bypass", rule: null, node: "", tag: "" };
+  if (/\breject\b/.test(String(rule || "")))
+    return { kind: "block", rule: null, node: "", tag: "" };
+  if (!tag || tag === DIRECT_TAG)
+    return { kind: "direct", rule: null, node: "", tag: "" };
+  return { kind: "unknown", rule: null, node: "", tag };
+}
+function pathKindLabel(kind) {
+  switch (kind) {
+    case "dpi":
+      return _("DPI");
+    case "connection":
+      return _("Connection");
+    case "bypass":
+      return _("Bypass");
+    case "direct":
+      return _("Direct");
+    case "block":
+      return _("Block");
+    default:
+      return _("Other");
+  }
+}
+function dpiProviderLabel(provider) {
+  switch (provider) {
+    case "zapret":
+      return "Zapret";
+    case "zapret2":
+      return "Zapret2";
+    case "byedpi":
+      return "ByeDPI";
+    default:
+      return _("DPI");
+  }
+}
+function dpiStrategyLabel(rule) {
+  if (rule.dpiCustom) return _("custom strategy");
+  if (rule.dpiStrategy === "default") return _("default strategy");
+  return rule.dpiStrategy || "";
+}
+function pathSummary(path) {
+  const base = { kind: path.kind, kindLabel: pathKindLabel(path.kind) };
+  if (path.rule && path.kind === "dpi") {
+    const strategy = dpiStrategyLabel(path.rule);
+    return {
+      ...base,
+      primary: path.rule.label,
+      secondary: [dpiProviderLabel(path.rule.dpiProvider), strategy].filter(Boolean).join(" \xB7 ")
+    };
+  }
+  if (path.rule)
+    return { ...base, primary: path.rule.label, secondary: path.node };
+  if (path.kind === "direct")
+    return { ...base, primary: "", secondary: _("No rule matched") };
+  return { ...base, primary: path.tag, secondary: "" };
+}
+function matchesPathFilter(path, filter2) {
+  if (!filter2 || filter2 === "all") return true;
+  if (filter2.startsWith("kind:")) return path.kind === filter2.slice(5);
+  if (filter2.startsWith("rule:")) return path.rule?.name === filter2.slice(5);
+  return true;
+}
+function connectionActions(active, readonly = false) {
+  const actions = [
+    {
+      kind: "details",
+      label: _("Details"),
+      className: "fkp-monitoring-details"
+    }
+  ];
+  if (active && !readonly)
+    actions.push({
+      kind: "close",
+      label: _("Close connection"),
+      className: "fkp_monitoring-page__row-action"
+    });
+  return actions;
+}
+
+// src/forkop/tabs/diagnostic/connectivityMatrix.ts
+var KEY = "forkop.connectivity.targets";
+var TYPES = ["DNS", "TCP", "HTTP", "HTTPS"];
+var DEFAULT_PORTS = {
+  DNS: "",
+  TCP: "",
+  HTTP: "80",
+  HTTPS: "443"
+};
+var DEFAULTS = [
+  { host: "cloudflare.com", type: "HTTPS", port: "443" },
+  { host: "telegram.org", type: "HTTPS", port: "443" }
+];
+var MAX_TARGETS = 10;
+function loadTargets(storage) {
+  try {
+    const value = JSON.parse(storage.getItem(KEY) || "null");
+    if (Array.isArray(value))
+      return value.slice(0, MAX_TARGETS).map(
+        (item) => item && item.type === "TLS" ? { ...item, type: "HTTPS" } : item
+      ).filter(
+        (item) => item && typeof item.host === "string" && item.host.length <= 253 && TYPES.includes(item.type) && typeof item.port === "string" && item.port.length <= 5
+      );
+  } catch (_error) {
+  }
+  return DEFAULTS.map((target) => ({ ...target }));
+}
+function changeType(target, type) {
+  if (type === "DNS") return { ...target, type, port: "" };
+  if (type === "TCP") return { ...target, type, port: target.port };
+  const wasDefault = target.port === "" || Object.values(DEFAULT_PORTS).includes(target.port);
   return {
-    starting: status === "starting",
-    stopping: status === "stopping",
-    restarting: status === "restarting" || status === "reloading"
+    ...target,
+    type,
+    port: wasDefault ? DEFAULT_PORTS[type] : target.port
   };
 }
-function hasLocalMutatingServiceActionLoading(actions) {
-  return actions.restart.loading || actions.start.loading || actions.stop.loading || actions.enable.loading || actions.disable.loading;
+var IPV4 = /^(\d{1,3}\.){3}\d{1,3}$/;
+function validateTarget(target) {
+  const host = target.host.trim();
+  if (!host) return _("Enter an address");
+  if (target.type === "DNS")
+    return IPV4.test(host) || host.includes(":") ? _("DNS check needs a domain name") : null;
+  if (!target.port) return _("Enter a port");
+  const port = Number(target.port);
+  if (!Number.isInteger(port) || port < 1 || port > 65535)
+    return _("Port must be between 1 and 65535");
+  return null;
 }
-function shouldSkipServicesInfoAutoRefresh({
-  force,
-  localMutatingActionLoading
-}) {
-  return !force && localMutatingActionLoading;
-}
-function shouldResetDiagnosticsChecks({
-  resetChecks,
-  diagnosticsRunLoading
-}) {
-  return resetChecks && !diagnosticsRunLoading;
-}
-function shouldDisableDiagnosticRunAction({
-  providerInfoLoaded,
-  servicesInfoLoading,
-  forkopRunning,
-  mutatingServiceActionLoading
-}) {
-  return !providerInfoLoaded || servicesInfoLoading || !forkopRunning || mutatingServiceActionLoading;
-}
-function hasComponentActionLoading(actions) {
-  return Object.values(actions).some((action) => action.loading);
-}
-function getAvailableActionsDisabledState({
-  servicesInfoLoading,
-  mutatingServiceActionLoading,
-  componentActionLoading
-}) {
+var ERROR_TEXT = {
+  timeout: () => _("Timed out"),
+  nxdomain: () => _("Domain does not exist"),
+  no_answer: () => _("No DNS records for this name"),
+  dns_failed: () => _("DNS name did not resolve"),
+  connect_failed: () => _("Connection refused or host unreachable"),
+  tls_failed: () => _("TLS or certificate error"),
+  no_response: () => _("Server closed the connection without a response"),
+  tool_missing: () => _("Probe tool is missing on the router"),
+  failed: () => _("Check failed")
+};
+function resultView(result) {
+  if (result.state === "idle")
+    return { text: _("Not checked"), tone: "neutral" };
+  if (result.state === "running")
+    return { text: _("Checking\u2026"), tone: "loading" };
+  if (result.state === "invalid")
+    return { text: result.message, tone: "error" };
+  const data = result.result;
+  if (data.status === "ok") {
+    const parts = [`\u2713 ${_("Reachable")}`, `${data.latency_ms} ${_("ms")}`];
+    if (data.address) parts.push(data.address);
+    if (data.http_code) parts.push(`HTTP ${data.http_code}`);
+    return { text: parts.join(" \xB7 "), tone: "success" };
+  }
+  const reason = (ERROR_TEXT[data.error || ""] || ERROR_TEXT.failed)();
   return {
-    serviceControlsDisabled: servicesInfoLoading || mutatingServiceActionLoading || componentActionLoading,
-    utilityActionsDisabled: mutatingServiceActionLoading || componentActionLoading,
-    viewLogsDisabled: false
+    text: `\u2715 ${reason}`,
+    tone: data.status === "timeout" ? "warning" : "error"
   };
 }
-function shouldShowRestartAction({
-  forkopRunning,
-  restartBlocked = false,
-  restartLoading,
-  startLoading,
-  stopLoading
-}) {
-  return restartLoading || forkopRunning && !restartBlocked && !startLoading && !stopLoading;
+async function probe(target) {
+  const invalid2 = validateTarget(target);
+  if (invalid2) return { state: "invalid", message: invalid2 };
+  const response = await ForkopShellMethods.connectivityTest(
+    target.host.trim(),
+    target.type,
+    target.type === "DNS" ? "" : target.port
+  );
+  if (!response.success || !response.data?.status)
+    return { state: "invalid", message: _("The router rejected this check") };
+  if (response.data.type !== target.type || target.type !== "DNS" && String(response.data.port) !== target.port)
+    return { state: "idle" };
+  return { state: "done", result: response.data };
 }
-function shouldShowStartAction({
-  forkopRunning,
-  restartLoading,
-  startLoading,
-  stopAvailable = false,
-  stopLoading
-}) {
-  return startLoading || !restartLoading && !forkopRunning && !stopAvailable && !stopLoading;
+function field(label, control, extraClass = "") {
+  return E("label", { class: `fkp-conn__cell ${extraClass}`.trim() }, [
+    E("span", { class: "fkp-conn__cell-label" }, label),
+    control
+  ]);
 }
-function shouldShowStopAction({
-  forkopRunning,
-  restartLoading,
-  startLoading,
-  stopAvailable = false,
-  stopLoading
-}) {
-  return stopLoading || restartLoading || (forkopRunning || stopAvailable) && !startLoading;
+function initConnectivityMatrix() {
+  const root = document.getElementById("connectivity-rows");
+  const add = document.getElementById(
+    "connectivity-add"
+  );
+  const run = document.getElementById(
+    "connectivity-run"
+  );
+  if (!root || !add || !run || add.onclick) return;
+  const rows = loadTargets(localStorage).map((target) => ({
+    target,
+    result: { state: "idle" }
+  }));
+  let runningAll = false;
+  const save = () => localStorage.setItem(KEY, JSON.stringify(rows.map((row) => row.target)));
+  const busy2 = () => rows.some((row) => row.result.state === "running");
+  const updateButtons = () => {
+    run.disabled = runningAll || busy2() || rows.length === 0;
+    add.disabled = rows.length >= MAX_TARGETS;
+    for (const row of rows) {
+      const retry = row.element?.querySelector(".fkp-conn__retry");
+      if (retry) retry.disabled = runningAll || row.result.state === "running";
+    }
+  };
+  const paintResult = (row) => {
+    const cell = row.element?.querySelector(".fkp-conn__result");
+    if (!cell) return;
+    const view = resultView(row.result);
+    cell.className = `fkp-conn__result fkp-diag-text--${view.tone}`;
+    cell.textContent = view.text;
+    updateButtons();
+  };
+  const invalidate = (row) => {
+    row.result = { state: "idle" };
+    save();
+    paintResult(row);
+  };
+  const check = async (row) => {
+    row.result = { state: "running" };
+    paintResult(row);
+    const requested = { ...row.target };
+    const result = await probe(requested);
+    if (JSON.stringify(requested) !== JSON.stringify(row.target)) return;
+    row.result = result;
+    paintResult(row);
+  };
+  const renderRow2 = (row) => {
+    const host = E("input", {
+      class: "cbi-input-text",
+      value: row.target.host,
+      placeholder: "example.com",
+      maxLength: 253
+    });
+    const type = E(
+      "select",
+      { class: "cbi-input-select" },
+      TYPES.map(
+        (kind) => E("option", { value: kind, selected: row.target.type === kind }, kind)
+      )
+    );
+    const port = E("input", {
+      class: "cbi-input-text",
+      value: row.target.port,
+      type: "number",
+      min: "1",
+      max: "65535",
+      placeholder: row.target.type === "TCP" ? "443" : ""
+    });
+    host.oninput = () => {
+      row.target.host = host.value;
+      invalidate(row);
+    };
+    port.oninput = () => {
+      row.target.port = port.value.trim();
+      invalidate(row);
+    };
+    type.onchange = () => {
+      row.target = changeType(row.target, type.value);
+      row.result = { state: "idle" };
+      save();
+      row.element?.replaceWith(renderRow2(row));
+      updateButtons();
+    };
+    const portCell = row.target.type === "DNS" ? E("div", { class: "fkp-conn__cell fkp-conn__cell--muted" }, [
+      E("span", { class: "fkp-conn__cell-label" }, _("Port")),
+      E("span", {}, _("not used"))
+    ]) : field(_("Port"), port);
+    const view = resultView(row.result);
+    row.element = E("div", { class: "fkp-conn__row" }, [
+      field(_("Address"), host),
+      field(_("Type"), type),
+      portCell,
+      E("div", { class: "fkp-conn__cell" }, [
+        E("span", { class: "fkp-conn__cell-label" }, _("Result")),
+        E(
+          "span",
+          {
+            class: `fkp-conn__result fkp-diag-text--${view.tone}`,
+            role: "status"
+          },
+          view.text
+        )
+      ]),
+      E("div", { class: "fkp-conn__actions" }, [
+        E(
+          "button",
+          {
+            type: "button",
+            class: "btn cbi-button fkp-conn__retry",
+            click: () => void check(row)
+          },
+          _("Check")
+        ),
+        E(
+          "button",
+          {
+            type: "button",
+            class: "btn cbi-button fkp-conn__remove",
+            title: _("Remove"),
+            "aria-label": _("Remove"),
+            click: () => {
+              rows.splice(rows.indexOf(row), 1);
+              save();
+              render7();
+            }
+          },
+          "\u2715"
+        )
+      ])
+    ]);
+    return row.element;
+  };
+  const render7 = () => {
+    root.replaceChildren(
+      E("div", { class: "fkp-conn__head", role: "presentation" }, [
+        E("span", {}, _("Address")),
+        E("span", {}, _("Type")),
+        E("span", {}, _("Port")),
+        E("span", {}, _("Result")),
+        E("span", {}, "")
+      ]),
+      ...rows.map(renderRow2)
+    );
+    updateButtons();
+  };
+  add.onclick = () => {
+    if (rows.length >= MAX_TARGETS) return;
+    rows.push({
+      target: { host: "", type: "HTTPS", port: "443" },
+      result: { state: "idle" }
+    });
+    save();
+    render7();
+    rows[rows.length - 1].element?.querySelector("input")?.focus();
+  };
+  run.onclick = async () => {
+    if (runningAll || busy2()) return;
+    runningAll = true;
+    updateButtons();
+    try {
+      for (const row of [...rows]) if (rows.includes(row)) await check(row);
+    } finally {
+      runningAll = false;
+      updateButtons();
+    }
+  };
+  render7();
+}
+
+// src/forkop/tabs/diagnostic/siteCheck.ts
+function undecidedReasonText(reason) {
+  switch (reason) {
+    case "singbox_config_unavailable":
+    case "config_unavailable":
+      return _(
+        "the sing-box configuration is not available; is Forkop X running?"
+      );
+    // Reason codes of routing/resolve.uc (shared with autotune apply).
+    case "undecidable_matcher":
+      return _(
+        "an earlier rule uses a list or pattern whose contents cannot be checked here"
+      );
+    case "resolve_rule":
+      return _(
+        "an earlier rule re-resolves the address, so the route depends on its answer"
+      );
+    case "source_scoped_rule":
+      return _("a rule applies to selected devices only; choose a device");
+    default:
+      return _("a rule is too complex to calculate");
+  }
+}
+function kindOf(action) {
+  if (action === "zapret" || action === "zapret2" || action === "byedpi")
+    return "dpi";
+  if (["connection", "bypass", "block", "direct"].includes(action))
+    return action;
+  return "unknown";
+}
+function routeRow(trace) {
+  const action = String(trace.action.value || "");
+  if (trace.action.provenance === "unknown" || !action)
+    return {
+      label: _("Route"),
+      value: _("Rule not calculated"),
+      note: undecidedReasonText(trace.rule.reason),
+      provenance: "unknown",
+      tone: "neutral"
+    };
+  const kind = kindOf(action);
+  const parts = [pathKindLabel(kind)];
+  if (trace.rule.value) parts.push(`${_("rule")} \xAB${trace.rule.value}\xBB`);
+  if (kind === "dpi")
+    parts.push(
+      [
+        dpiProviderLabel(String(trace.dpi.value || action)),
+        dpiStrategyLabel({
+          name: "",
+          label: "",
+          action,
+          dpiStrategy: trace.dpi.strategy,
+          dpiCustom: trace.dpi.strategy_custom
+        })
+      ].filter(Boolean).join(" \xB7 ")
+    );
+  return {
+    label: _("Route"),
+    value: parts.join(" \xB7 "),
+    note: kind === "direct" ? _("No rule matched") : kind === "block" ? _("The address is blocked by a rule") : "",
+    provenance: "simulated",
+    tone: "neutral"
+  };
+}
+function dnsRow(trace) {
+  const address = trace.dns.address || "";
+  if (trace.dns.provenance === "simulated")
+    return {
+      label: _("Address"),
+      value: address,
+      note: _("An IP address needs no DNS"),
+      provenance: "simulated",
+      tone: "neutral"
+    };
+  if (!address)
+    return {
+      label: _("DNS"),
+      value: _("Not resolved"),
+      note: _("The router DNS returned no address"),
+      provenance: "observed",
+      tone: "error"
+    };
+  return {
+    label: _("DNS"),
+    value: /^198\.1[89]\./.test(address) ? `${address} (FakeIP)` : address,
+    note: _("Answer of the router DNS"),
+    provenance: "observed",
+    tone: "success"
+  };
+}
+function probeRow(result) {
+  const view = resultView(result);
+  return {
+    label: _("From the router"),
+    value: view.text,
+    note: _("HTTPS request made by the router itself"),
+    provenance: result.state === "done" ? "observed" : "unknown",
+    tone: view.tone
+  };
+}
+function siteConclusion(trace, result) {
+  const action = String(trace.action.value || "");
+  if (!trace.dns.address)
+    return _(
+      "The name does not resolve on the router, so no rule can open it. Check the DNS results above."
+    );
+  if (action === "block")
+    return _(
+      "A rule blocks this address. This is intended for ads and trackers."
+    );
+  const reachable = result.state === "done" && result.result.status === "ok";
+  if (reachable)
+    return _(
+      "The site opens from the router. If it does not open on a device, look at its real connections."
+    );
+  const hint = kindOf(action) === "dpi" ? _(
+    "For a DPI rule this can mean the strategy does not work with your provider."
+  ) : action === "connection" ? _("Check the node of the rule in Monitoring \u2192 Nodes and groups.") : action === "direct" ? _("No rule handles it; it may need to be added to a rule.") : "";
+  return [
+    _(
+      "The site did not open from the router. The router may take a different path than devices."
+    ),
+    hint
+  ].filter(Boolean).join(" ");
+}
+function renderRow(row) {
+  return [
+    E("dt", {}, row.label),
+    E("dd", {}, [
+      // Value and its provenance on one line; neutral values keep the text colour.
+      E("span", { class: "fkp-site__value" }, [
+        E(
+          "span",
+          row.tone === "neutral" ? {} : { class: `fkp-diag-text--${row.tone}` },
+          row.value
+        ),
+        " ",
+        renderProvenance(row.provenance)
+      ]),
+      row.note ? E("small", {}, row.note) : ""
+    ])
+  ];
+}
+function routeTraceFailureText(response) {
+  const data = response.data;
+  if (response.success && data?.error === "invalid_input") {
+    return _("Enter a valid domain or IP address");
+  }
+  return _("The route check did not complete. Try again.");
+}
+function initSiteCheck(loadDevices) {
+  const button = document.getElementById(
+    "site-check-run"
+  );
+  const input = document.getElementById(
+    "site-check-target"
+  );
+  const device = document.getElementById(
+    "site-check-device"
+  );
+  const container = document.getElementById("site-check-result");
+  if (!button || !input || !container || button.onclick) return;
+  void loadDevices?.().then((devices) => {
+    if (!device) return;
+    for (const [ip, name] of Object.entries(devices || {}))
+      device.appendChild(E("option", { value: ip }, `${name || ip} (${ip})`));
+  }).catch(() => {
+  });
+  input.onkeydown = (event) => {
+    if (event.key === "Enter") button.click();
+  };
+  input.oninput = () => container.replaceChildren();
+  button.onclick = async () => {
+    const target = input.value.trim();
+    if (!target) {
+      container.textContent = _("Enter a domain or IP address");
+      return;
+    }
+    const source = device?.value || "";
+    container.textContent = _("Checking\u2026");
+    button.disabled = true;
+    try {
+      const [trace, reach] = await Promise.all([
+        ForkopShellMethods.routeTrace(target, source, "TCP", "443"),
+        probe({ host: target, type: "HTTPS", port: "443" })
+      ]);
+      if (input.value.trim() !== target) return;
+      if (!trace.success || !trace.data?.target) {
+        container.textContent = routeTraceFailureText(trace);
+        return;
+      }
+      const rows = [routeRow(trace.data), dnsRow(trace.data), probeRow(reach)];
+      container.replaceChildren(
+        E("dl", { class: "fkp-route__facts" }, rows.flatMap(renderRow)),
+        E(
+          "p",
+          { class: "fkp-site__conclusion" },
+          siteConclusion(trace.data, reach)
+        ),
+        E("div", { class: "fkp-diag-actions" }, [
+          E(
+            "a",
+            {
+              class: "btn cbi-button",
+              href: forkopPageUrl("monitoring", { search: target })
+            },
+            _("See connections to this address")
+          )
+        ]),
+        ...trace.data.interface.value ? [
+          E(
+            "p",
+            { class: "fkp-diag-hint" },
+            `${_("Router kernel route")}: ${trace.data.interface.value}`
+          )
+        ] : []
+      );
+    } catch (_error) {
+      if (input.value.trim() === target)
+        container.textContent = routeTraceFailureText({ success: false });
+    } finally {
+      button.disabled = false;
+    }
+  };
+  const host = readPageParams().host;
+  if (host && !input.value) {
+    input.value = host.slice(0, 253);
+    button.click();
+  }
+}
+
+// src/forkop/tabs/shared/startService.ts
+var starting = false;
+function renderStartServiceAction() {
+  if (isReadonlyMode()) {
+    return [];
+  }
+  const button = E(
+    "button",
+    {
+      type: "button",
+      class: "btn cbi-button cbi-button-action fkp-start-service",
+      disabled: starting ? true : void 0,
+      click: async () => {
+        if (starting) {
+          return;
+        }
+        starting = true;
+        button.disabled = true;
+        button.textContent = _("Starting\u2026");
+        try {
+          await runForkopServiceAction("start");
+        } catch (error) {
+          showToast(serviceActionErrorText(error), "error", 6e3);
+        } finally {
+          starting = false;
+          button.disabled = false;
+          button.textContent = _("Start Forkop X");
+        }
+      }
+    },
+    starting ? _("Starting\u2026") : _("Start Forkop X")
+  );
+  return [button];
+}
+
+// src/forkop/tabs/diagnostic/dpiPlayground.ts
+function validationView(response) {
+  const data = response.data;
+  if (!response.success || typeof data?.valid !== "boolean")
+    return { text: _("Syntax check is unavailable"), tone: "error" };
+  if (data.valid)
+    return { text: `\u2713 ${_("Syntax is correct")}`, tone: "success" };
+  const message = typeof data.message === "string" ? data.message.trim() : "";
+  return {
+    text: `\u2715 ${message || _("The strategy contains an error")}`,
+    tone: "error"
+  };
+}
+function initDpiPlayground() {
+  const button = document.getElementById(
+    "dpi-validate"
+  );
+  const input = document.getElementById(
+    "dpi-strategy"
+  );
+  const provider = document.getElementById(
+    "dpi-provider"
+  );
+  const result = document.getElementById("dpi-playground-result");
+  if (!button || !input || !provider || !result || button.onclick) return;
+  const clear = () => result.replaceChildren();
+  input.oninput = clear;
+  provider.onchange = clear;
+  button.onclick = async () => {
+    const strategy = input.value.trim();
+    if (!strategy) {
+      result.className = "fkp-diag-text--error";
+      result.textContent = _("Enter a strategy");
+      return;
+    }
+    button.disabled = true;
+    result.className = "fkp-diag-text--loading";
+    result.textContent = _("Checking\u2026");
+    try {
+      const response = await ForkopShellMethods.validateDpiStrategy(
+        provider.value,
+        strategy
+      );
+      if (input.value.trim() !== strategy) return;
+      const view = validationView(response);
+      result.className = `fkp-diag-text--${view.tone}`;
+      result.textContent = view.text;
+    } catch (_error) {
+      if (input.value.trim() !== strategy) return;
+      const view = validationView({ success: false });
+      result.className = `fkp-diag-text--${view.tone}`;
+      result.textContent = view.text;
+    } finally {
+      button.disabled = false;
+    }
+  };
 }
 
 // src/forkop/tabs/diagnostic/diagnosticRunPersistence.ts
 var DIAGNOSTIC_RUN_STORAGE_KEY = "forkop:diagnostic-run:v1";
 var DIAGNOSTIC_RUN_TTL_MS = 30 * 60 * 1e3;
-var CHECK_STATES = ["loading", "warning", "success", "error", "skipped"];
+var CHECK_STATES = [
+  "loading",
+  "warning",
+  "success",
+  "error",
+  "skipped",
+  "unsupported"
+];
 var CHECK_ITEM_STATES = ["error", "warning", "success"];
 function getSessionStorage3() {
   if (typeof window === "undefined") {
@@ -9688,147 +11713,330 @@ function clearPersistedDiagnosticRun(storage = getSessionStorage3()) {
 // src/forkop/tabs/diagnostic/helpers/maskDiagnostics.ts
 var MASKED_VALUE = "MASKED";
 var SING_BOX_MASKED_KEYS = /* @__PURE__ */ new Set([
-  "auth_key",
-  "control_url",
-  "exit_node",
-  "hostname",
-  "listen",
-  "listen_port",
-  "username",
-  "uuid",
-  "server",
-  "server_name",
-  "secret",
-  "password",
-  "private_key",
-  "public_key",
-  "short_id",
-  "fingerprint",
-  "server_port",
-  "server_ports",
+  "access_key_id",
+  "address",
   "advertise_routes",
+  "api_token",
+  "auth",
+  "auth_key",
+  "auth_str",
+  "client_key",
+  "control_url",
   "domain",
-  "domain_suffix",
   "domain_keyword",
   "domain_regex",
+  "domain_suffix",
+  "email",
+  "excluded_source_ip_cidr",
+  "exit_node",
+  "extra_headers",
+  "fingerprint",
+  "headers",
+  "host",
+  "hostname",
   "ip_cidr",
+  "key",
+  "key_id",
+  "listen",
+  "listen_port",
+  "local_address",
+  "mac_key",
+  "obfs",
+  "password",
+  "path",
+  "peer_public_key",
+  "plugin_opts",
+  "pre_shared_key",
+  "private_key",
+  "private_key_passphrase",
+  "public_key",
+  "secret",
+  "secret_access_key",
+  "server",
+  "server_name",
+  "server_port",
+  "server_ports",
+  "service_name",
+  "short_id",
   "source_ip_cidr",
-  "excluded_source_ip_cidr"
+  "torrc",
+  "user",
+  "username",
+  "uuid"
 ]);
-var FORKOP_MASK_AFTER_TOKEN = [
-  "option proxy_string",
-  "option hwid",
-  "option subscription_url",
-  "list subscription_urls",
-  "list urltest_proxy_links",
-  "list selector_proxy_links",
-  "list server_users",
-  "option server_uuid",
-  "option server_username",
-  "option server_password",
-  "option mtproto_secret",
-  "option hysteria2_obfs_password",
-  "option reality_private_key",
-  "option reality_public_key",
-  "option reality_short_id",
-  "list reality_short_id",
-  "option yacd_secret_key"
-];
-var FORKOP_MASK_AFTER_TOKEN_SPACE = [
-  "option outbound_json",
-  "list domain",
-  "list domain_suffix",
-  "list domain_keyword",
-  "list domain_regex",
-  "list ip_cidr",
-  "list source_ip_cidr",
-  "list excluded_source_ip_cidr",
-  "list fully_routed_ips",
-  "option dns_server",
-  "option bootstrap_dns_server",
-  "list dns_server",
-  "list bootstrap_dns_server",
-  "option listen",
-  "option listen_port",
-  "option public_host",
-  "option mtproto_faketls",
-  "option mtproto_domain_fronting_ip",
-  "option tls_server_name",
-  "option reality_handshake_server",
-  "option reality_handshake_server_port",
-  "option transport_host",
-  "list transport_hosts",
-  "option tailscale_auth_key",
-  "option tailscale_control_url",
-  "option tailscale_hostname",
-  "list tailscale_advertise_routes",
-  "option tailscale_ephemeral",
-  "option tailscale_exit_node",
-  "option tailscale_exit_node_allow_lan_access",
-  "option mixed_proxy_username",
-  "option mixed_proxy_password",
-  "option ipaddr",
-  "option netmask",
-  "option gateway",
-  "option username",
-  "option password",
-  "option private_key",
-  "option url"
-];
+var UCI_SAFE_OPTIONS = /* @__PURE__ */ new Set([
+  "action",
+  "active_check_interval",
+  "applied_migrations",
+  "auto_hwid",
+  "auto_user_agent",
+  "badwan_monitored_interfaces",
+  "badwan_reload_delay",
+  "cache_path",
+  "check_interval",
+  "check_timeout",
+  "community_lists",
+  "component_update_check_enabled",
+  "component_update_check_interval",
+  "conditions_text_mode",
+  "config_path",
+  "config_version",
+  "connection_type",
+  "detect_server_country",
+  "direct_proxy_enabled",
+  "direct_proxy_port",
+  "disable_quic",
+  "dns_check_interval",
+  "dns_check_timeout",
+  "dns_detour_enabled",
+  "dns_detour_section",
+  "dns_failover_failure_threshold",
+  "dns_recovery_check_interval",
+  "dns_rewrite_ttl",
+  "dns_strategy",
+  "dns_type",
+  "domain_resolver_dns_type",
+  "domain_resolver_enabled",
+  "dont_touch_dhcp",
+  "download_components_via_proxy",
+  "download_components_via_proxy_section",
+  "download_lists_via_proxy",
+  "download_lists_via_proxy_section",
+  "download_subscriptions_via_proxy",
+  "download_via_proxy_enabled",
+  "download_via_proxy_section",
+  "enable_badwan_interface_monitoring",
+  "enable_output_network_interface",
+  "enable_yacd",
+  "enable_yacd_wan_access",
+  "enabled",
+  "exclude_countries",
+  "exclude_ntp",
+  "exclude_outbounds",
+  "exclude_regex",
+  "fastest_check_interval",
+  "filter_mode",
+  "group",
+  "hide_detour_outbounds",
+  "hide_urltest_group_outbounds",
+  "idle_timeout",
+  "include_countries",
+  "include_outbounds",
+  "include_regex",
+  "include_subnets",
+  "include_urltest_groups",
+  "interface",
+  "interfaces",
+  "interrupt_exist_connections",
+  "label",
+  "list_update_enabled",
+  "log_level",
+  "mixed_proxy_auth_enabled",
+  "mixed_proxy_enabled",
+  "mixed_proxy_port",
+  "name",
+  "node_prefix",
+  "order",
+  "outbound_detour_enabled",
+  "outbound_detour_section",
+  "output_network_interface",
+  "pick_fastest",
+  "pin_dashboard",
+  "ports",
+  "prefix_nodes",
+  "priority_groups",
+  "proxy_config_type",
+  "recovery_check_interval",
+  "resolve_real_ip_for_routing",
+  "rule",
+  "secondary_rule_sets",
+  "section",
+  "show_dashboard_metadata",
+  "shutdown_correctly",
+  "sort_by_latency",
+  "source_network_interfaces",
+  "subscription_update_enabled",
+  "subscription_update_interval",
+  "switch_to_faster_same_priority",
+  "tag",
+  "tolerance",
+  "torrserver_direct_enabled",
+  "update_interval",
+  "urltest_check_interval",
+  "urltest_enabled",
+  "urltest_exclude_countries",
+  "urltest_filter_mode",
+  "urltest_include_countries",
+  "urltest_tolerance",
+  "urltests",
+  "user_domain_list_type"
+]);
+var UCI_SAFE_SECTION_OPTIONS = {
+  interface: /* @__PURE__ */ new Set([
+    "auto",
+    "defaultroute",
+    "delegate",
+    "demand",
+    "device",
+    "disabled",
+    "force_link",
+    "ifname",
+    "ip6assign",
+    "ipv6",
+    "keepalive",
+    "metric",
+    "mtu",
+    "multipath",
+    "norelease",
+    "peerdns",
+    "proto",
+    "reqaddress",
+    "reqprefix",
+    "type"
+  ]),
+  dnsmasq: /* @__PURE__ */ new Set([
+    "allservers",
+    "authoritative",
+    "boguspriv",
+    "cachesize",
+    "confdir",
+    "dnsforwardmax",
+    "domain",
+    "domainneeded",
+    "ednspacket_max",
+    "expandhosts",
+    "filter_a",
+    "filter_aaaa",
+    "filterwin2k",
+    "leasefile",
+    "local",
+    "localise_queries",
+    "localservice",
+    "localuse",
+    "logqueries",
+    "nonegcache",
+    "nonwildcard",
+    "noresolv",
+    "port",
+    "readethers",
+    "rebind_localhost",
+    "rebind_protection",
+    "resolvfile",
+    "sequential_ip",
+    "server",
+    "strictorder"
+  ])
+};
+var UCI_URL_OPTIONS = /* @__PURE__ */ new Set([
+  "domain_ip_lists",
+  "health_url",
+  "latency_test_url",
+  "local_domain_lists",
+  "local_subnet_lists",
+  "mirror_base_url",
+  "remote_domain_lists",
+  "remote_subnet_lists",
+  "rule_set",
+  "rule_set_with_subnets",
+  "testing_url",
+  "urltest_testing_url"
+]);
+var URL_PARTS = /^([A-Za-z][A-Za-z0-9+.-]*:\/\/)?([^/?#]*)([^?#]*)(\?[^#]*)?(#.*)?$/;
+var URL_SCHEME = /^([A-Za-z][A-Za-z0-9+.-]*):\/\//;
+var UCI_HEADER = /^[ \t]*(#[ \t#]*)?config[ \t]+([A-Za-z0-9_-]+)([ \t]+['"]?[A-Za-z0-9_-]+['"]?)?[ \t]*$/;
+var UCI_OPTION = /^([ \t]*(#[ \t#]*)?(option|list)[ \t]+([A-Za-z0-9_-]+)[ \t]*)(.*)$/;
 function isRecord2(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
-function isSpaceChar(value) {
-  return value === " " || value === "	" || value === "\r" || value === "\n";
+function maskUrlValue(value, maskPath = false) {
+  const parts = `${value}`.match(URL_PARTS);
+  if (!parts) {
+    return MASKED_VALUE;
+  }
+  const scheme = parts[1] ?? "";
+  let authority = parts[2] ?? "";
+  let path = parts[3] ?? "";
+  if (scheme === "" && (`${value}`.startsWith("//") || `${value}`.includes("@"))) {
+    return MASKED_VALUE;
+  }
+  const at = authority.lastIndexOf("@");
+  if (at >= 0) {
+    authority = `${MASKED_VALUE}@${authority.slice(at + 1)}`;
+  }
+  if (maskPath && path !== "" && path !== "/") {
+    path = `/${MASKED_VALUE}`;
+  }
+  return `${scheme}${authority}${path}${parts[4] !== void 0 ? `?${MASKED_VALUE}` : ""}${parts[5] !== void 0 ? `#${MASKED_VALUE}` : ""}`;
 }
-function maskAfterToken(line, token) {
-  const position = line.indexOf(token);
-  return position < 0 ? line : `${line.slice(0, position)}${token} '${MASKED_VALUE}'`;
+function maskHttpUrlValue(value) {
+  const scheme = `${value}`.match(URL_SCHEME);
+  if (scheme && !["http", "https"].includes(scheme[1].toLowerCase())) {
+    return MASKED_VALUE;
+  }
+  return maskUrlValue(value, false);
 }
-function maskAfterTokenSpace(line, token) {
-  const position = line.indexOf(token);
-  if (position < 0) {
+function uciValueScan(text, initialQuote) {
+  let quote = initialQuote;
+  let value = "";
+  let comment = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quote === "'") {
+      if (c === "'") quote = null;
+      else value += c;
+    } else if (quote === '"') {
+      if (c === "\\" && i + 1 < text.length) value += text[++i];
+      else if (c === '"') quote = null;
+      else value += c;
+    } else if (c === "'" || c === '"') quote = c;
+    else if (c === "\\" && i + 1 < text.length) value += text[++i];
+    else if (c === "#") {
+      comment = true;
+      break;
+    } else if (c !== " " && c !== "	" && c !== "\r") value += c;
+  }
+  return { quote, value, comment };
+}
+function uciOptionSafe(state, name) {
+  return UCI_SAFE_OPTIONS.has(name) || Boolean(UCI_SAFE_SECTION_OPTIONS[state.sectionType]?.has(name));
+}
+function uciQuotedLine(prefix, value) {
+  return `${prefix}'${value.replace(/'/g, "'\\''")}'`;
+}
+function maskUciLine(state, line) {
+  const indent = line.match(/^[ \t]*/)?.[0] ?? "";
+  if (state.quote !== null) {
+    const closing = state.quote;
+    state.quote = uciValueScan(line, state.quote).quote;
+    return `${indent}${MASKED_VALUE}${state.quote === null ? closing : ""}`;
+  }
+  const header = line.match(UCI_HEADER);
+  if (header) {
+    if (header[1] === void 0) {
+      state.sectionType = header[2];
+    }
     return line;
   }
-  const spacePosition = position + token.length;
-  if (spacePosition >= line.length || !isSpaceChar(line.slice(spacePosition, spacePosition + 1))) {
+  const option = line.match(UCI_OPTION);
+  if (option) {
+    const name = option[4];
+    const scan = uciValueScan(option[5], null);
+    if (scan.quote === null && uciOptionSafe(state, name)) {
+      return scan.comment ? uciQuotedLine(option[1], scan.value) : line;
+    }
+    if (scan.quote === null && UCI_URL_OPTIONS.has(name)) {
+      return uciQuotedLine(option[1], maskHttpUrlValue(scan.value));
+    }
+    state.quote = scan.quote;
+    return `${option[1]}'${MASKED_VALUE}${scan.quote === null ? "'" : ""}`;
+  }
+  if (/^[ \t]*$/.test(line)) {
     return line;
   }
-  return `${line.slice(0, spacePosition + 1)}'${MASKED_VALUE}'`;
-}
-function maskOptionPath(line, token) {
-  const position = line.indexOf(token);
-  if (position < 0) {
-    return line;
+  if (/^[ \t]*#/.test(line)) {
+    return `${indent}# ${MASKED_VALUE}`;
   }
-  const slashOffset = line.slice(position + token.length).indexOf("/");
-  if (slashOffset < 0) {
-    return line;
-  }
-  const slash = slashOffset + position + token.length;
-  const quoteOffset = line.slice(slash + 1).indexOf("'");
-  if (quoteOffset < 0) {
-    return line;
-  }
-  const quote = quoteOffset + slash + 1;
-  return `${line.slice(0, slash)}/MASKED'${line.slice(quote + 1)}`;
-}
-function maskGlobalCheckLine(line) {
-  let maskedLine = line;
-  for (const token of FORKOP_MASK_AFTER_TOKEN) {
-    maskedLine = maskAfterToken(maskedLine, token);
-  }
-  for (const token of FORKOP_MASK_AFTER_TOKEN_SPACE) {
-    maskedLine = maskAfterTokenSpace(maskedLine, token);
-  }
-  maskedLine = maskOptionPath(maskedLine, "option dns_server '");
-  maskedLine = maskOptionPath(maskedLine, "list dns_server '");
-  return maskedLine;
-}
-function maskMultilineContinuation(line) {
-  const leadingSpace = line.match(/^\s*/)?.[0] ?? "";
-  const hasClosingQuote = line.includes("'");
-  return `${leadingSpace}${MASKED_VALUE}${hasClosingQuote ? "'" : ""}`;
+  return null;
 }
 function maskSingBoxConfigValue(value) {
   if (Array.isArray(value)) {
@@ -9838,9 +12046,12 @@ function maskSingBoxConfigValue(value) {
     return Object.fromEntries(
       Object.entries(value).map(([key, item]) => [
         key,
-        SING_BOX_MASKED_KEYS.has(key) ? MASKED_VALUE : maskSingBoxConfigValue(item)
+        SING_BOX_MASKED_KEYS.has(key) || key === "port" && value.address !== void 0 && value.address !== null ? MASKED_VALUE : maskSingBoxConfigValue(item)
       ])
     );
+  }
+  if (typeof value === "string" && URL_SCHEME.test(value)) {
+    return maskHttpUrlValue(value);
   }
   return value;
 }
@@ -9857,29 +12068,34 @@ function formatMaskedSingBoxConfig(value) {
   }
   return JSON.stringify(maskSingBoxConfigValue(value), null, 2);
 }
+var VALIDATION_HEADER = "\u{1F9EA} Forkop configuration validation";
+var VALIDATION_FAILED = "\u274C Forkop configuration validation failed";
+var SECTION_SEPARATOR = /^━+$/;
 function maskGlobalCheckText(text = "") {
-  let inMaskedMultiline = false;
-  return `${text}`.split("\n").map((line) => {
-    if (inMaskedMultiline) {
-      if (line.includes("'")) {
-        inMaskedMultiline = false;
-      }
-      return maskMultilineContinuation(line);
+  const state = { quote: null, sectionType: "" };
+  let inValidation = false;
+  const result = [];
+  for (const line of `${text}`.split("\n")) {
+    if (line === VALIDATION_HEADER) {
+      inValidation = true;
+      result.push(line);
+      continue;
     }
-    const maskedLine = maskGlobalCheckLine(line);
-    if (line.includes("option outbound_json")) {
-      const firstQuote = line.indexOf("'");
-      if (firstQuote >= 0 && line.slice(firstQuote + 1).indexOf("'") < 0) {
-        inMaskedMultiline = true;
+    if (inValidation && !SECTION_SEPARATOR.test(line)) {
+      if (line.startsWith("\u2705")) {
+        result.push(line);
+      } else if (line.startsWith("\u274C")) {
+        result.push(VALIDATION_FAILED);
       }
+      continue;
     }
-    return maskedLine;
-  }).join("\n");
+    inValidation = false;
+    result.push(maskUciLine(state, line) ?? line);
+  }
+  return result.join("\n");
 }
 
 // src/forkop/tabs/diagnostic/initController.ts
-var SERVICE_STATUS_REFRESH_INTERVAL_MS = 2e3;
-var SERVICE_ACTION_STATUS_TIMEOUT_MS = 45e3;
 var latestProviderInfoRequestId = 0;
 var diagnosticLifecycleRegistered = false;
 var diagnosticControllerInitialized = false;
@@ -9890,9 +12106,6 @@ var servicesInfoStateUnsubscribe = null;
 var servicesInfoRefreshPromise = null;
 var followedServiceActionJobs = /* @__PURE__ */ new Set();
 var handledServiceActionJobs = /* @__PURE__ */ new Set();
-function sleep2(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 function getDiagnosticsProviderOptions(systemInfo = store.get().diagnosticsSystemInfo) {
   return {
     includeZapret: Boolean(systemInfo.zapret_installed),
@@ -9923,8 +12136,8 @@ function setDiagnosticActionLoading(action, loading2, local = false) {
     }
   });
 }
-function isDiagnosticMountActive(mountId = diagnosticMountId) {
-  return diagnosticMounted && diagnosticMountId === mountId;
+function isDiagnosticMountActive(mountId3 = diagnosticMountId) {
+  return diagnosticMounted && diagnosticMountId === mountId3;
 }
 function isLocalMutatingServiceActionLoading() {
   const actions = store.get().diagnosticsActions;
@@ -9958,7 +12171,7 @@ async function handleDownloadSupportReport() {
       _(
         "Support report contains confidential information. Do not share it in public chats."
       ),
-      "error",
+      "warning",
       1e4
     );
   } catch (error) {
@@ -9968,33 +12181,12 @@ async function handleDownloadSupportReport() {
     setDiagnosticActionLoading("supportReport", false);
   }
 }
-function getForkopStatusText(running, enabled) {
-  if (running) {
-    return enabled ? "running & enabled" : "running but disabled";
-  }
-  return enabled ? "stopped but enabled" : "stopped & disabled";
-}
-function setDisplayedForkopRunning(running) {
-  const servicesInfoWidget = store.get().servicesInfoWidget;
-  const enabled = Boolean(servicesInfoWidget.data.forkopEnabled);
-  store.set({
-    servicesInfoWidget: {
-      ...servicesInfoWidget,
-      loading: false,
-      data: {
-        ...servicesInfoWidget.data,
-        forkopRunning: running ? 1 : 0,
-        forkopStatus: getForkopStatusText(running, enabled)
-      }
-    }
-  });
-}
 async function refreshDiagnosticServicesInfo({
   force = false,
-  mountId = diagnosticMountId,
+  mountId: mountId3 = diagnosticMountId,
   allowInactive = false
 } = {}) {
-  if (!allowInactive && !isDiagnosticMountActive(mountId)) {
+  if (!allowInactive && !isDiagnosticMountActive(mountId3)) {
     return;
   }
   if (shouldSkipServicesInfoAutoRefresh({
@@ -10021,20 +12213,6 @@ async function refreshDiagnosticServicesInfo({
   });
   servicesInfoRefreshPromise = promise;
   return promise;
-}
-async function waitForForkopRunningState(expectedRunning) {
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < SERVICE_ACTION_STATUS_TIMEOUT_MS) {
-    await refreshDiagnosticServicesInfo({ force: true, allowInactive: true });
-    const forkopRunning = Boolean(
-      store.get().servicesInfoWidget.data.forkopRunning
-    );
-    if (forkopRunning === expectedRunning) {
-      return true;
-    }
-    await sleep2(SERVICE_STATUS_REFRESH_INTERVAL_MS);
-  }
-  return false;
 }
 function startServiceActionStateWatcher() {
   if (servicesInfoStateUnsubscribe) {
@@ -10221,18 +12399,35 @@ async function fetchDiagnosticsProviderInfo({
     }
   }
 }
+var retryingCheck = null;
 function renderDiagnosticsChecks() {
   logger.debug("[DIAGNOSTIC]", "renderDiagnosticsChecks");
-  const diagnosticsChecks = [...store.get().diagnosticsChecks].sort(
-    (a, b) => a.order - b.order
-  );
   const container = document.getElementById("fkp_diagnostic-page-checks");
-  const renderedDiagnosticsChecks = diagnosticsChecks.map(
-    (check) => renderCheckSection(check)
-  );
-  return preserveScrollForPage(() => {
-    container.replaceChildren(...renderedDiagnosticsChecks);
+  if (!container) return;
+  const rendered = renderChecks(store.get().diagnosticsChecks, {
+    onRetry: (code) => void retryCheck(code),
+    busy: store.get().diagnosticsRunAction.loading || retryingCheck !== null
   });
+  return preserveScrollForPage(() => {
+    container.replaceChildren(...rendered);
+  });
+}
+async function retryCheck(code) {
+  if (store.get().diagnosticsRunAction.loading || retryingCheck) return;
+  const runner = getDiagnosticRunners(getDiagnosticsProviderOptions()).find(
+    (item) => item.code === code
+  );
+  if (!runner) return;
+  retryingCheck = code;
+  setDiagnosticCheckLoading(code);
+  try {
+    await runner.run();
+  } catch (e) {
+    logger.error("[DIAGNOSTIC]", `retryCheck - ${code} failed`, e);
+  } finally {
+    retryingCheck = null;
+    renderDiagnosticsChecks();
+  }
 }
 function renderDiagnosticRunActionWidget() {
   logger.debug("[DIAGNOSTIC]", "renderDiagnosticRunActionWidget");
@@ -10251,110 +12446,28 @@ function renderDiagnosticRunActionWidget() {
     }),
     click: () => runChecks()
   });
+  const lastRun = document.getElementById("fkp_diagnostic-last-run");
+  const reason = document.getElementById("fkp_diagnostic-run-reason");
+  const blocked = servicesInfoWidget.loading || loading2 ? null : !forkopRunning ? {
+    text: _("Forkop X is stopped. Start it to run the checks."),
+    actions: renderStartServiceAction()
+  } : isMutatingServiceActionLoading() ? {
+    text: _("Waiting for the service action to finish."),
+    actions: []
+  } : null;
   return preserveScrollForPage(() => {
     container.replaceChildren(renderedAction);
+    if (lastRun) lastRun.textContent = lastRunText(localStorage);
+    reason?.replaceChildren(
+      ...blocked ? [E("span", {}, blocked.text), ...blocked.actions] : []
+    );
   });
-}
-async function handleServiceRuntimeAction({
-  action,
-  expectedRunning,
-  optimisticRunning
-}) {
-  setDiagnosticActionLoading(action, true, true);
-  let jobId = "";
-  let ownsJobFollow = false;
-  let delegatedToWatcher = false;
-  if (optimisticRunning !== void 0) {
-    setDisplayedForkopRunning(optimisticRunning);
-  }
-  try {
-    const startResponse = await ForkopShellMethods.serviceActionStart(action);
-    if (!startResponse.success) {
-      throw new Error(startResponse.error);
-    }
-    jobId = startResponse.data.job_id;
-    if (followedServiceActionJobs.has(jobId)) {
-      delegatedToWatcher = true;
-      return;
-    }
-    followedServiceActionJobs.add(jobId);
-    ownsJobFollow = true;
-    const result = await ForkopShellMethods.waitServiceActionJob(jobId);
-    if (!result.success) {
-      throw new Error(result.error);
-    }
-    if (result.data.success === false) {
-      throw new Error(result.data.message || _("Service action failed"));
-    }
-    await waitForForkopRunningState(expectedRunning);
-  } catch (e) {
-    logger.error("[DIAGNOSTIC]", `handleServiceRuntimeAction(${action})`, e);
-  } finally {
-    if (!delegatedToWatcher) {
-      if (ownsJobFollow) {
-        followedServiceActionJobs.delete(jobId);
-      }
-      setDiagnosticActionLoading(action, false);
-      await refreshDiagnosticServicesInfo({ force: true, allowInactive: true });
-      if (jobId) {
-        handledServiceActionJobs.add(jobId);
-        void ForkopShellMethods.uiActionAck("service", jobId);
-      }
-      resetDiagnosticsChecks();
-    }
-  }
-}
-async function handleRestart() {
-  await handleServiceRuntimeAction({
-    action: "restart",
-    expectedRunning: true,
-    optimisticRunning: false
-  });
-}
-async function handleStart() {
-  await handleServiceRuntimeAction({
-    action: "start",
-    expectedRunning: true
-  });
-}
-async function handleStop() {
-  await handleServiceRuntimeAction({
-    action: "stop",
-    expectedRunning: false
-  });
-}
-async function handleEnable() {
-  setDiagnosticActionLoading("enable", true);
-  try {
-    await ForkopShellMethods.enable();
-  } catch (e) {
-    logger.error("[DIAGNOSTIC]", "handleEnable - e", e);
-  } finally {
-    await refreshDiagnosticServicesInfo({
-      force: true,
-      allowInactive: true
-    });
-    setDiagnosticActionLoading("enable", false);
-  }
-}
-async function handleDisable() {
-  setDiagnosticActionLoading("disable", true);
-  try {
-    await ForkopShellMethods.disable();
-  } catch (e) {
-    logger.error("[DIAGNOSTIC]", "handleDisable - e", e);
-  } finally {
-    await refreshDiagnosticServicesInfo({
-      force: true,
-      allowInactive: true
-    });
-    setDiagnosticActionLoading("disable", false);
-  }
 }
 async function handleShowGlobalCheck() {
   setDiagnosticActionLoading("globalCheck", true);
   try {
-    const globalCheck = await ForkopShellMethods.globalCheck(false);
+    const readonly = isReadonlyMode();
+    const globalCheck = await ForkopShellMethods.globalCheck(readonly);
     if (globalCheck.success) {
       const rawGlobalCheckText = globalCheck.data ?? "";
       const maskedGlobalCheckText = maskGlobalCheckText(rawGlobalCheckText);
@@ -10363,14 +12476,16 @@ async function handleShowGlobalCheck() {
         renderModal(rawGlobalCheckText, "global_check", {
           maskText: () => maskedGlobalCheckText,
           initialAutoRefresh: false,
-          showMaskValuesToggle: true
+          showMaskValuesToggle: !readonly
         })
       );
     } else {
       logger.error("[DIAGNOSTIC]", "handleShowGlobalCheck - e", globalCheck);
+      showToast(_("Could not load data"), "error");
     }
   } catch (e) {
     logger.error("[DIAGNOSTIC]", "handleShowGlobalCheck - e", e);
+    showToast(_("Could not load data"), "error");
   } finally {
     setDiagnosticActionLoading("globalCheck", false);
   }
@@ -10399,9 +12514,11 @@ async function handleViewLogs() {
       );
     } else {
       logger.error("[DIAGNOSTIC]", "handleViewLogs - e", viewLogs);
+      showToast(_("Could not load data"), "error");
     }
   } catch (e) {
     logger.error("[DIAGNOSTIC]", "handleViewLogs - e", e);
+    showToast(_("Could not load data"), "error");
   } finally {
     setDiagnosticActionLoading("viewLogs", false);
   }
@@ -10409,7 +12526,8 @@ async function handleViewLogs() {
 async function handleShowSingBoxConfig() {
   setDiagnosticActionLoading("showSingBoxConfig", true);
   try {
-    const showSingBoxConfig = await ForkopShellMethods.showSingBoxConfig(false);
+    const readonly = isReadonlyMode();
+    const showSingBoxConfig = await ForkopShellMethods.showSingBoxConfig(readonly);
     if (showSingBoxConfig.success) {
       const rawSingBoxConfigText = stringifySingBoxConfig(
         showSingBoxConfig.data
@@ -10422,7 +12540,7 @@ async function handleShowSingBoxConfig() {
         renderModal(rawSingBoxConfigText, "show_sing_box_config", {
           maskText: () => maskedSingBoxConfigText,
           initialAutoRefresh: false,
-          showMaskValuesToggle: true
+          showMaskValuesToggle: !readonly
         })
       );
     } else {
@@ -10431,105 +12549,28 @@ async function handleShowSingBoxConfig() {
         "handleShowSingBoxConfig - e",
         showSingBoxConfig
       );
+      showToast(_("Could not load data"), "error");
     }
   } catch (e) {
     logger.error("[DIAGNOSTIC]", "handleShowSingBoxConfig - e", e);
+    showToast(_("Could not load data"), "error");
   } finally {
     setDiagnosticActionLoading("showSingBoxConfig", false);
   }
-}
-function renderWikiDisclaimerWidget() {
-  const diagnosticsChecks = store.get().diagnosticsChecks;
-  function getWikiKind() {
-    const allResults = diagnosticsChecks.map((check) => check.state);
-    if (allResults.includes("error")) {
-      return "error";
-    }
-    if (allResults.includes("warning")) {
-      return "warning";
-    }
-    return "default";
-  }
-  const container = document.getElementById("fkp_diagnostic-page-wiki");
-  return preserveScrollForPage(() => {
-    container.replaceChildren(renderWikiDisclaimer(getWikiKind()));
-  });
 }
 function renderDiagnosticAvailableActionsWidget() {
   const diagnosticsActions = store.get().diagnosticsActions;
   const updatesActions = store.get().updatesActions;
   const servicesInfoWidget = store.get().servicesInfoWidget;
   logger.debug("[DIAGNOSTIC]", "renderDiagnosticAvailableActionsWidget");
-  const forkopEnabled = Boolean(servicesInfoWidget.data.forkopEnabled);
-  const forkopRunning = Boolean(servicesInfoWidget.data.forkopRunning);
-  const serviceTransition = getServiceTransition(
-    servicesInfoWidget.data.forkopStatus
-  );
-  const restartLoading = diagnosticsActions.restart.loading || serviceTransition.restarting;
-  const startLoading = diagnosticsActions.start.loading || serviceTransition.starting;
-  const stopLoading = diagnosticsActions.stop.loading || serviceTransition.stopping;
-  const atLeastOneMutatingActionLoading = restartLoading || startLoading || stopLoading || diagnosticsActions.enable.loading || diagnosticsActions.disable.loading;
-  const componentActionLoading = hasComponentActionLoading(updatesActions);
-  const { serviceControlsDisabled, utilityActionsDisabled, viewLogsDisabled } = getAvailableActionsDisabledState({
+  const { utilityActionsDisabled, viewLogsDisabled } = getAvailableActionsDisabledState({
     servicesInfoLoading: servicesInfoWidget.loading,
-    mutatingServiceActionLoading: atLeastOneMutatingActionLoading,
-    componentActionLoading
-  });
-  const restartBlocked = Boolean(servicesInfoWidget.data.forkopRestartBlocked);
-  const stopAvailable = Boolean(servicesInfoWidget.data.forkopStopAvailable);
-  const startVisible = shouldShowStartAction({
-    forkopRunning,
-    restartLoading,
-    startLoading,
-    stopAvailable,
-    stopLoading
-  });
-  const stopVisible = shouldShowStopAction({
-    forkopRunning,
-    restartLoading,
-    startLoading,
-    stopAvailable,
-    stopLoading
+    mutatingServiceActionLoading: isMutatingServiceActionLoading(),
+    componentActionLoading: hasComponentActionLoading(updatesActions)
   });
   const container = document.getElementById("fkp_diagnostic-page-actions");
+  const readonly = isReadonlyMode();
   const renderedActions = renderAvailableActions({
-    restartBlocked,
-    restart: {
-      loading: restartLoading,
-      visible: shouldShowRestartAction({
-        forkopRunning,
-        restartBlocked,
-        restartLoading,
-        startLoading,
-        stopLoading
-      }),
-      onClick: handleRestart,
-      disabled: serviceControlsDisabled
-    },
-    start: {
-      loading: startLoading,
-      visible: startVisible,
-      onClick: handleStart,
-      disabled: serviceControlsDisabled
-    },
-    stop: {
-      loading: stopLoading,
-      visible: stopVisible,
-      onClick: handleStop,
-      disabled: serviceControlsDisabled
-    },
-    enable: {
-      loading: diagnosticsActions.enable.loading,
-      visible: !forkopEnabled,
-      onClick: handleEnable,
-      disabled: serviceControlsDisabled
-    },
-    disable: {
-      loading: diagnosticsActions.disable.loading,
-      visible: forkopEnabled,
-      onClick: handleDisable,
-      disabled: serviceControlsDisabled
-    },
     globalCheck: {
       loading: diagnosticsActions.globalCheck.loading,
       visible: true,
@@ -10550,14 +12591,27 @@ function renderDiagnosticAvailableActionsWidget() {
     },
     supportReport: {
       loading: diagnosticsActions.supportReport.loading,
-      visible: true,
+      visible: !readonly,
       onClick: () => void handleDownloadSupportReport(),
       disabled: utilityActionsDisabled
     }
   });
   return preserveScrollForPage(() => {
-    container.replaceChildren(renderedActions);
+    container?.replaceChildren(renderedActions);
   });
+}
+function displayValue(value) {
+  switch (String(value ?? "").trim().toLowerCase()) {
+    case "":
+    case "unknown":
+      return _("unknown");
+    case "loading":
+      return _("Loading\u2026");
+    case "not installed":
+      return _("Not installed");
+    default:
+      return value;
+  }
 }
 function renderDiagnosticSystemInfoWidget() {
   logger.debug("[DIAGNOSTIC]", "renderDiagnosticSystemInfoWidget");
@@ -10569,11 +12623,11 @@ function renderDiagnosticSystemInfoWidget() {
       value: normalizeCompiledVersion(diagnosticsSystemInfo.forkop_version)
     },
     {
-      key: "Luci App",
+      key: _("LuCI app"),
       value: normalizeCompiledVersion(FORKOP_LUCI_APP_VERSION)
     },
     {
-      key: "Sing-box",
+      key: "sing-box",
       value: formatSingBoxVersion(diagnosticsSystemInfo)
     }
   ];
@@ -10597,25 +12651,24 @@ function renderDiagnosticSystemInfoWidget() {
   }
   items.push(
     {
-      key: "OS",
+      key: _("OS"),
       value: diagnosticsSystemInfo.openwrt_version
     },
     {
-      key: "Device",
+      key: _("Device"),
       value: diagnosticsSystemInfo.device_model
     }
   );
   const renderedSystemInfo = renderSystemInfo({
-    items
+    items: items.map((item) => ({ ...item, value: displayValue(item.value) }))
   });
   return preserveScrollForPage(() => {
     container.replaceChildren(renderedSystemInfo);
   });
 }
 async function onStoreUpdate2(_next, _prev, diff) {
-  if (diff.diagnosticsChecks) {
+  if (diff.diagnosticsChecks || diff.diagnosticsRunAction) {
     renderDiagnosticsChecks();
-    renderWikiDisclaimerWidget();
   }
   if (diff.diagnosticsRunAction) {
     renderDiagnosticRunActionWidget();
@@ -10720,6 +12773,7 @@ async function runChecks({ resume } = {}) {
         nextRunnerIndex: index + 1
       });
     }
+    saveLastRun(localStorage);
   } catch (e) {
     logger.error("[DIAGNOSTIC]", "runChecks - e", e);
   } finally {
@@ -10760,11 +12814,11 @@ async function onPageMount2() {
   });
   diagnosticMounted = true;
   diagnosticMountId += 1;
-  const mountId = diagnosticMountId;
+  const mountId3 = diagnosticMountId;
   const hasRuntimeSnapshot = Boolean(getCachedRuntimeUiState());
   if (!hasRuntimeSnapshot) {
     const uiState = await refreshRuntimeUiState({ force: true });
-    if (!diagnosticMounted || mountId !== diagnosticMountId) {
+    if (!diagnosticMounted || mountId3 !== diagnosticMountId) {
       return;
     }
     if (!uiState) {
@@ -10784,7 +12838,6 @@ async function onPageMount2() {
   renderDiagnosticRunActionWidget();
   renderDiagnosticAvailableActionsWidget();
   renderDiagnosticSystemInfoWidget();
-  renderWikiDisclaimerWidget();
   if (hasRuntimeSnapshot) {
     void refreshRuntimeUiState({ force: true });
   }
@@ -10842,12 +12895,15 @@ function registerLifecycleListeners2() {
     }
   });
 }
-async function initController2() {
+async function initController2(dependencies2 = {}) {
   if (diagnosticControllerInitialized) {
     return;
   }
   diagnosticControllerInitialized = true;
   onMount("diagnostic-status").then(() => {
+    initSiteCheck(dependencies2.loadLocalDeviceChoices);
+    initConnectivityMatrix();
+    initDpiPlayground();
     logger.debug("[DIAGNOSTIC]", "initController", "onMount");
     registerLifecycleListeners2();
     if (store.get().tabService.current === "diagnostic" || isActiveLuciTab("diagnostic")) {
@@ -10858,7 +12914,6 @@ async function initController2() {
 
 // src/forkop/tabs/diagnostic/styles.ts
 var styles4 = `
-
 #cbi-${FORKOP_UCI_PACKAGE}-diagnostic-_mount_node > div {
     width: 100%;
 }
@@ -10867,49 +12922,394 @@ var styles4 = `
     display: none;
 }
 
-.fkp_diagnostic-page {
+.fkp-diag {
     display: grid;
-    grid-template-columns: 2fr 1fr;
-    grid-column-gap: 10px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.fkp-diag * {
+    text-align: left;
+}
+
+/* Service actions: a wrapping row of buttons instead of a tall column. */
+.fkp-diag .fkp_diagnostic-page__right-bar__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: 6px;
+}
+
+.fkp-diag .fkp_diagnostic-page__right-bar__actions > b,
+.fkp-diag .fkp_diagnostic-page__right-bar__actions > p {
+    flex-basis: 100%;
+    margin: 0;
+}
+
+.fkp-diag .fkp_diagnostic-page__right-bar__actions > .fkp-partial-button {
+    width: auto;
+    margin: 0;
+}
+
+.fkp-diag-card {
+    border: 1px solid var(--border-color-medium, #777);
+    border-radius: 6px;
+    padding: 12px 14px;
+    min-width: 0;
+    overflow-wrap: break-word;
+}
+
+.fkp-diag-card__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 16px;
+}
+
+.fkp-diag-card__title,
+.fkp-diag-section-title {
+    margin: 0 0 4px;
+}
+
+.fkp-diag-section-title {
+    margin-top: 8px;
+}
+
+.fkp-diag-hint {
+    display: block;
+    margin: 4px 0;
+    color: var(--text-color-medium, gray);
+}
+
+.fkp-diag-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 12px;
     align-items: start;
 }
 
-@media (max-width: 800px) {
-    .fkp_diagnostic-page {
-        grid-template-columns: 1fr;
+.fkp-diag-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    margin-top: 10px;
+}
+
+.fkp-diag-actions .btn {
+    margin: 0;
+}
+
+.fkp-diag-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.fkp-diag-field {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+}
+
+.fkp-diag-field--wide {
+    flex: 1 1 280px;
+}
+
+.fkp-diag-field input,
+.fkp-diag-field select,
+.fkp-diag-field textarea {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    margin: 0;
+}
+
+.fkp-diag-details > summary {
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 1.1em;
+}
+
+.fkp-diag-details[open] > summary {
+    margin-bottom: 8px;
+}
+
+.fkp-diag-badge {
+    display: inline-block;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 1px 8px;
+    border-radius: 10px;
+    border: 1px solid currentColor;
+    font-size: 0.9em;
+    white-space: nowrap;
+}
+
+.fkp-diag-badge--success, .fkp-diag-text--success { color: var(--success-color-medium, green); }
+.fkp-diag-badge--warning, .fkp-diag-text--warning { color: var(--warn-color-medium, orange); }
+.fkp-diag-badge--error, .fkp-diag-text--error { color: var(--error-color-medium, red); }
+.fkp-diag-badge--loading, .fkp-diag-text--loading { color: var(--primary-color-high, dodgerblue); }
+.fkp-diag-badge--neutral, .fkp-diag-text--neutral { color: var(--text-color-medium, gray); }
+
+.fkp-diag-facts {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 6px 16px;
+    margin: 0;
+}
+
+.fkp-diag-facts dt { font-weight: bold; }
+.fkp-diag-facts dd { margin: 0; min-width: 0; }
+.fkp-diag-facts .fkp-diag-badge,
+.fkp-diag-events .fkp-diag-badge { white-space: normal; overflow-wrap: break-word; }
+
+.fkp-diag-events {
+    border-collapse: collapse;
+}
+
+.fkp-diag-events td {
+    padding: 3px 16px 3px 0;
+    vertical-align: top;
+}
+
+/* System checks: problems first as full-width cards, then one-line rows;
+   passed checks fold into one group. */
+.fkp-diag-checks {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.fkp-diag-summary {
+    margin: 0;
+    font-weight: 600;
+}
+
+.fkp-diag-run-reason:empty {
+    display: none;
+}
+
+.fkp-diag-run-reason {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    margin-top: 8px;
+    color: var(--text-color-medium, gray);
+}
+
+.fkp-diag-run-reason .btn {
+    margin: 0;
+}
+
+.fkp-check-passed > summary {
+    cursor: pointer;
+    color: var(--success-color-medium, green);
+}
+
+.fkp-check-passed[open] {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    align-items: start;
+    gap: 8px;
+}
+
+.fkp-check-passed[open] > summary {
+    grid-column: 1 / -1;
+}
+
+.fkp-check__advice {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 4px 12px;
+    margin: 8px 0 0;
+}
+
+.fkp-check__advice dt {
+    font-weight: 600;
+    color: var(--text-color-medium, gray);
+}
+
+.fkp-check__advice dd {
+    margin: 0;
+}
+
+.fkp-check__advice ul {
+    margin: 0;
+    padding-left: 1.2em;
+}
+
+.fkp-diag-help {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: -4px;
+}
+
+.fkp-diag-subsection h4 {
+    margin: 12px 0 4px;
+}
+
+.fkp-site__value {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 8px;
+}
+
+.fkp-site__conclusion {
+    margin: 10px 0 0;
+    font-weight: 600;
+}
+
+.fkp-check {
+    border: 1px solid var(--border-color-low, lightgray);
+    border-radius: 6px;
+    padding: 8px 10px;
+    min-width: 0;
+}
+
+.fkp-check--success { border-color: var(--success-color-medium, green); }
+.fkp-check--warning { border-color: var(--warn-color-medium, orange); }
+.fkp-check--error { border-color: var(--error-color-medium, red); }
+.fkp-check--loading { border-color: var(--primary-color-high, dodgerblue); }
+
+.fkp-check__head {
+    /* Flex-wrap: the badge moves below a long title instead of squeezing it. */
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
+}
+
+.fkp-check__head .fkp-check__title { flex: 1 1 8em; }
+.fkp-check__head .fkp-diag-badge { flex: 0 0 auto; }
+
+.fkp-check__icon svg { width: 20px; height: 20px; }
+
+.fkp-check__details { margin-top: 6px; }
+.fkp-check__details > summary { cursor: pointer; }
+.fkp-check__description { margin: 4px 0; }
+
+.fkp-check__item {
+    display: grid;
+    /* Name and value on separate lines, so a long name never squeezes the
+       value into one character per line. */
+    grid-template-columns: 16px minmax(0, 1fr);
+    column-gap: 6px;
+    align-items: start;
+    overflow-wrap: break-word;
+}
+
+.fkp-check__item > :nth-child(3) { grid-column: 2; }
+
+.fkp-check, .fkp-check__head, .fkp-check__details { min-width: 0; }
+.fkp-check__title { min-width: 0; overflow-wrap: break-word; }
+
+.fkp-check__item-icon svg { width: 16px; height: 16px; }
+
+.fkp-check__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 6px;
+}
+
+.fkp_diagnostic-page__run_check_wrapper button { margin: 0; }
+
+/* Reachability table: header and rows share one grid, so the action column can
+   size to the real (translated) button labels; stacked cards on narrow screens. */
+.fkp-conn {
+    display: grid;
+    grid-template-columns: minmax(140px, 2fr) minmax(90px, 110px) minmax(80px, 100px) minmax(140px, 2fr) max-content;
+    column-gap: 8px;
+    align-items: center;
+}
+
+.fkp-conn__head,
+.fkp-conn__row {
+    display: contents;
+}
+
+.fkp-conn__head > span {
+    font-weight: bold;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border-color-low, lightgray);
+    text-align: left;
+}
+
+.fkp-conn__row > * {
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border-color-low, lightgray);
+    min-width: 0;
+    text-align: left;
+}
+
+.fkp-conn__cell { display: block; margin: 0; }
+.fkp-conn__cell input, .fkp-conn__cell select {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    margin: 0;
+}
+.fkp-conn__cell-label { display: none; }
+.fkp-conn__cell--muted { color: var(--text-color-medium, gray); }
+.fkp-conn__result { overflow-wrap: break-word; }
+.fkp-conn__actions { display: flex; gap: 4px; }
+.fkp-conn__actions .btn { margin: 0; white-space: nowrap; }
+
+@media (max-width: 860px) {
+    .fkp-conn { display: block; }
+    .fkp-conn__head { display: none; }
+    .fkp-conn__row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 6px 8px;
+        border: 1px solid var(--border-color-low, lightgray);
+        border-radius: 6px;
+        padding: 8px;
+        margin-top: 8px;
     }
+    .fkp-conn__row > * { padding: 0; border-bottom: 0; }
+    .fkp-conn__row > :first-child,
+    .fkp-conn__row > :nth-child(4) { grid-column: 1 / -1; }
+    .fkp-conn__cell-label {
+        display: block;
+        font-size: 0.85em;
+        color: var(--text-color-medium, gray);
+    }
+    .fkp-conn__actions { grid-column: 1 / -1; flex-wrap: wrap; }
 }
 
-.fkp_diagnostic-page__right-bar {
+.fkp-route__form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 10px;
+}
+
+.fkp-route__form .btn { margin: 0; }
+
+.fkp-route__facts {
     display: grid;
-    grid-template-columns: 1fr;
-    grid-row-gap: 10px;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 6px 16px;
+    margin: 12px 0 0;
 }
 
-.fkp_diagnostic-page__right-bar__wiki {
-    border: 2px var(--background-color-low, lightgray) solid;
-    border-radius: 4px;
-    padding: 10px;
+.fkp-route__facts dt { font-weight: bold; }
+.fkp-route__facts dd { margin: 0; display: grid; gap: 2px; }
+.fkp-route__facts small { color: var(--text-color-medium, gray); }
 
-    display: grid;
-    grid-template-columns: auto;
-    grid-row-gap: 10px;
+@media (max-width: 560px) {
+    .fkp-diag-facts, .fkp-route__facts, .fkp-check__advice { grid-template-columns: minmax(0, 1fr); }
+    .fkp-diag-checks { grid-template-columns: minmax(0, 1fr); }
 }
-
-.fkp_diagnostic-page__right-bar__wiki--warning {
-    border: 2px var(--warn-color-medium, orange) solid;
-}
-.fkp_diagnostic-page__right-bar__wiki--error {
-    border: 2px var(--error-color-medium, red) solid;
-}
-
-.fkp_diagnostic-page__right-bar__wiki__content {
-    display: grid;
-    grid-template-columns: 1fr 5fr;
-    grid-column-gap: 10px;
-}
-
-.fkp_diagnostic-page__right-bar__wiki__texts {}
 
 .fkp_diagnostic-page__right-bar__actions {
     border: 2px var(--background-color-low, lightgray) solid;
@@ -10970,92 +13370,6 @@ var styles4 = `
     color: var(--success-color-medium, green);
 }
 
-.fkp_diagnostic-page__left-bar {
-    display: grid;
-    grid-template-columns: 1fr;
-    grid-row-gap: 10px;
-}
-
-.fkp_diagnostic-page__run_check_wrapper {}
-
-.fkp_diagnostic-page__run_check_wrapper button {
-    width: 100%;
-}
-
-.fkp_diagnostic-page__checks {
-    display: grid;
-    grid-template-columns: 1fr;
-    grid-row-gap: 10px;
-}
-
-.fkp_diagnostic_alert {
-    border: 2px var(--background-color-low, lightgray) solid;
-    border-radius: 4px;
-
-    display: grid;
-    grid-template-columns: 24px 1fr;
-    grid-column-gap: 10px;
-    align-items: center;
-    padding: 10px;
-}
-
-.fkp_diagnostic_alert--loading {
-    border: 2px var(--primary-color-high, dodgerblue) solid;
-}
-
-.fkp_diagnostic_alert--warning {
-    border: 2px var(--warn-color-medium, orange) solid;
-    color: var(--warn-color-medium, orange);
-}
-
-.fkp_diagnostic_alert--error {
-    border: 2px var(--error-color-medium, red) solid;
-    color: var(--error-color-medium, red);
-}
-
-.fkp_diagnostic_alert--success {
-    border: 2px var(--success-color-medium, green) solid;
-    color: var(--success-color-medium, green);
-}
-
-.fkp_diagnostic_alert--skipped {}
-
-.fkp_diagnostic_alert__icon {}
-
-.fkp_diagnostic_alert__content {}
-
-.fkp_diagnostic_alert__title {
-    display: block;
-}
-
-.fkp_diagnostic_alert__description {}
-
-.fkp_diagnostic_alert__summary {
-    margin-top: 10px;
-}
-
-.fkp_diagnostic_alert__summary__item {
-    display: grid;
-    grid-template-columns: 16px auto 1fr;
-    grid-column-gap: 10px;
-}
-
-.fkp_diagnostic_alert__summary__item--error {
-    color: var(--error-color-medium, red);
-}
-
-.fkp_diagnostic_alert__summary__item--warning {
-    color: var(--warn-color-medium, orange);
-}
-
-.fkp_diagnostic_alert__summary__item--success {
-    color: var(--success-color-medium, green);
-}
-
-.fkp_diagnostic_alert__summary__item__icon {
-    width: 16px;
-    height: 16px;
-}
 `;
 
 // src/forkop/tabs/diagnostic/index.ts
@@ -11065,58 +13379,148 @@ var DiagnosticTab = {
   styles: styles4
 };
 
+// src/forkop/tabs/monitoring/views.ts
+function readMonitoringView(hash) {
+  return readPageParams(hash).view === "nodes" ? "nodes" : "connections";
+}
+function controllerForView(view) {
+  return view === "nodes" ? "dashboard" : "monitoring";
+}
+function showMonitoringView(view, updateUrl = true) {
+  const connections = document.getElementById("monitoring-view-connections");
+  const nodes = document.getElementById("monitoring-view-nodes");
+  if (connections) connections.hidden = view !== "connections";
+  if (nodes) nodes.hidden = view !== "nodes";
+  document.querySelectorAll(".fkp_monitoring-page__view").forEach((button) => {
+    const selected = button.dataset.view === view;
+    button.setAttribute("aria-pressed", selected ? "true" : "false");
+    button.classList.toggle("fkp_monitoring-page__tab--active", selected);
+  });
+  if (updateUrl && typeof history !== "undefined" && history.replaceState) {
+    const url = `${window.location.pathname}${window.location.search}`;
+    history.replaceState(
+      null,
+      "",
+      view === "nodes" ? `${url}#view=nodes` : url
+    );
+  }
+  setForkopPage(controllerForView(view));
+}
+
 // src/forkop/tabs/monitoring/render.ts
-function render3() {
+function renderViewSwitch(current) {
   return E(
     "div",
     {
-      id: "monitoring-status",
-      class: "fkp_monitoring-page"
+      class: "fkp_monitoring-page__views",
+      role: "group",
+      "aria-label": _("Monitoring view")
     },
     [
-      E("div", { class: "fkp_monitoring-page__panel" }, [
-        E("div", { class: "fkp_monitoring-page__controls" }, [
-          E("div", { class: "fkp_monitoring-page__tabs" }, [
-            E(
-              "button",
-              {
-                id: "monitoring-tab-active",
-                class: "btn cbi-button fkp_monitoring-page__tab fkp_monitoring-page__tab--active",
-                type: "button"
-              },
-              `${_("Active")} 0`
-            ),
-            E(
-              "button",
-              {
-                id: "monitoring-tab-closed",
-                class: "btn cbi-button fkp_monitoring-page__tab",
-                type: "button"
-              },
-              `${_("Closed")} 0`
-            )
-          ]),
-          E("div", { class: "fkp_monitoring-page__filters" }, [
-            E(
-              "select",
-              {
-                id: "monitoring-device-filter",
-                class: "cbi-input-select fkp_monitoring-page__device-filter"
-              },
-              [E("option", { value: "all" }, _("All"))]
-            ),
-            E("label", { class: "fkp_monitoring-page__search" }, [
-              E("span", { class: "fkp_monitoring-page__search-icon" }, []),
-              E("input", {
-                id: "monitoring-search",
-                class: "cbi-input-text fkp_monitoring-page__search-input",
-                type: "search",
-                placeholder: _("Search"),
-                autocomplete: "off"
-              })
-            ])
-          ]),
-          E("div", { class: "fkp_monitoring-page__actions" }, [
+      ["connections", _("Connections")],
+      ["nodes", _("Nodes and groups")]
+    ].map(
+      ([view, label]) => E(
+        "button",
+        {
+          type: "button",
+          class: `btn cbi-button fkp_monitoring-page__tab fkp_monitoring-page__view${current === view ? " fkp_monitoring-page__tab--active" : ""}`,
+          "data-view": view,
+          "aria-pressed": current === view ? "true" : "false",
+          click: () => showMonitoringView(view)
+        },
+        label
+      )
+    )
+  );
+}
+function renderConnectionsView(hidden) {
+  return E(
+    "div",
+    {
+      id: "monitoring-view-connections",
+      class: "fkp_monitoring-page__panel",
+      ...hidden ? { hidden: true } : {}
+    },
+    [
+      E("div", { class: "fkp_monitoring-page__controls" }, [
+        E("div", { class: "fkp_monitoring-page__tabs" }, [
+          E(
+            "button",
+            {
+              id: "monitoring-tab-active",
+              class: "btn cbi-button fkp_monitoring-page__tab fkp_monitoring-page__tab--active",
+              type: "button"
+            },
+            `${_("Active")} 0`
+          ),
+          E(
+            "button",
+            {
+              id: "monitoring-tab-closed",
+              class: "btn cbi-button fkp_monitoring-page__tab",
+              type: "button"
+            },
+            `${_("Closed")} 0`
+          ),
+          E(
+            "button",
+            {
+              id: "monitoring-follow-toggle",
+              class: "btn cbi-button fkp_monitoring-page__tab",
+              type: "button",
+              "aria-pressed": "false",
+              title: _(
+                "Show only connections that start from now on, active and closed"
+              )
+            },
+            _("Follow new")
+          )
+        ]),
+        E("div", { class: "fkp_monitoring-page__filters" }, [
+          E(
+            "select",
+            {
+              id: "monitoring-device-filter",
+              class: "cbi-input-select fkp_monitoring-page__device-filter",
+              "aria-label": _("Device")
+            },
+            [E("option", { value: "all" }, _("All devices"))]
+          ),
+          E("select", {
+            id: "monitoring-path-filter",
+            class: "cbi-input-select",
+            "aria-label": _("Path")
+          }),
+          E(
+            "select",
+            {
+              id: "monitoring-sort",
+              class: "cbi-input-select",
+              "aria-label": _("Sort connections")
+            },
+            [
+              E("option", { value: "start" }, _("Start time")),
+              E("option", { value: "duration" }, _("Duration")),
+              E("option", { value: "download" }, _("Download")),
+              E("option", { value: "upload" }, _("Upload")),
+              E("option", { value: "total" }, _("Total traffic"))
+            ]
+          ),
+          E("label", { class: "fkp_monitoring-page__search" }, [
+            E("span", { class: "fkp_monitoring-page__search-icon" }, []),
+            E("input", {
+              id: "monitoring-search",
+              class: "cbi-input-text fkp_monitoring-page__search-input",
+              type: "search",
+              placeholder: _("Site, IP, device or rule"),
+              "aria-label": _("Search"),
+              autocomplete: "off"
+            })
+          ])
+        ]),
+        E("div", { class: "fkp_monitoring-page__actions" }, [
+          ...isReadonlyMode() ? [] : [
             E(
               "button",
               {
@@ -11128,34 +13532,64 @@ function render3() {
                 disabled: true
               },
               []
-            ),
-            E(
-              "button",
-              {
-                id: "monitoring-pause-toggle",
-                class: "btn cbi-button fkp_monitoring-page__icon-button",
-                title: _("Pause updates"),
-                "aria-label": _("Pause updates"),
-                type: "button"
-              },
-              []
             )
-          ])
-        ]),
-        E(
-          "div",
-          { id: "monitoring-connections", class: "fkp_monitoring-page__body" },
-          [
-            E(
-              "div",
-              {
-                class: "fkp_monitoring-page__state fkp_monitoring-page__state--loading"
-              },
-              _("Loading connections")
-            )
-          ]
-        )
-      ])
+          ],
+          E(
+            "button",
+            {
+              id: "monitoring-pause-toggle",
+              class: "btn cbi-button fkp_monitoring-page__icon-button",
+              title: _("Pause updates"),
+              "aria-label": _("Pause updates"),
+              type: "button"
+            },
+            []
+          )
+        ])
+      ]),
+      E("div", {
+        id: "monitoring-filter-bar",
+        class: "fkp_monitoring-page__filter-bar",
+        role: "status",
+        hidden: true
+      }),
+      E(
+        "div",
+        { id: "monitoring-connections", class: "fkp_monitoring-page__body" },
+        [
+          E(
+            "div",
+            {
+              class: "fkp_monitoring-page__state fkp_monitoring-page__state--loading"
+            },
+            _("Loading connections")
+          )
+        ]
+      ),
+      E("div", { id: "monitoring-connection-details", role: "region" })
+    ]
+  );
+}
+function render3() {
+  const view = readMonitoringView();
+  return E(
+    "div",
+    {
+      id: "monitoring-status",
+      class: "fkp_monitoring-page"
+    },
+    [
+      renderViewSwitch(view),
+      renderConnectionsView(view !== "connections"),
+      E(
+        "div",
+        {
+          id: "monitoring-view-nodes",
+          class: "fkp_monitoring-page__nodes",
+          ...view !== "nodes" ? { hidden: true } : {}
+        },
+        [renderNodes()]
+      )
     ]
   );
 }
@@ -11187,9 +13621,17 @@ var pollingConnections = false;
 var activeTab = "active";
 var selectedDeviceFilter = ALL_FILTER_VALUE;
 var searchQuery = "";
+var pathFilter = ALL_FILTER_VALUE;
+var followBaseline = null;
+var selectedConnectionId = null;
+var sortMode = "start";
+var MONITORING_PREFS_KEY = "forkop.monitoring.preferences";
 var localDeviceChoices = {};
 var routeDisplayNames = {};
 var routeSections = [];
+var routeRulesByTag = {};
+var nodeDisplayNames = {};
+var routeRules = [];
 var lastDeviceFilterSignature = "";
 var loading = true;
 var failed = false;
@@ -11243,10 +13685,12 @@ function getDisplayName2(section) {
 }
 function buildRouteDisplayNames(sections) {
   const map = {
-    "bypass-out": "Bypass",
-    "direct-out": "direct"
+    "bypass-out": _("Bypass"),
+    "direct-out": _("direct")
   };
   const routeSectionItems = [];
+  const rulesByTag = {};
+  const rules = [];
   const urltestsBySection = /* @__PURE__ */ new Map();
   sections.filter((section) => section[".type"] === "urltest").forEach((section) => {
     const owner = normalizeString(section.section);
@@ -11265,14 +13709,27 @@ function buildRouteDisplayNames(sections) {
     if (!sectionName || !displayName) {
       return;
     }
+    const rule = {
+      name: sectionName,
+      label: displayName,
+      action: normalizeString(section.action),
+      dpiProvider: section.dpi_provider,
+      dpiStrategy: section.dpi_strategy,
+      dpiCustom: section.dpi_strategy_custom
+    };
+    rules.push(rule);
     routeSectionItems.push({ sectionName, displayName });
     map[getOutboundTagBySection(sectionName)] = displayName;
+    rulesByTag[getOutboundTagBySection(sectionName)] = rule;
     const urltestIds = urltestsBySection.get(sectionName) || getUrlTestIds2(section);
     urltestIds.forEach((id) => {
       map[getUrlTestTag2(sectionName, id)] = displayName;
+      rulesByTag[getUrlTestTag2(sectionName, id)] = rule;
     });
   });
   routeDisplayNames = map;
+  routeRulesByTag = rulesByTag;
+  routeRules = rules;
   routeSections = routeSectionItems.sort(
     (a, b) => b.sectionName.length - a.sectionName.length
   );
@@ -11293,9 +13750,10 @@ function getRouteDisplayNameByTag(tag) {
   });
   return manualSection?.displayName || "";
 }
-function getRouteTagFromRule(rule) {
-  const match = normalizeString(rule).match(/=>\s*route\(([^)]+)\)/);
-  return normalizeString(match?.[1]).replace(/^['"]|['"]$/g, "");
+function getRuleByTag(tag) {
+  if (routeRulesByTag[tag]) return routeRulesByTag[tag];
+  const name = getRouteDisplayNameByTag(tag) ? routeSections.find(({ sectionName }) => tag.startsWith(`${sectionName}-`))?.sectionName : "";
+  return routeRules.find((rule) => rule.name === name) || null;
 }
 function parseStartedAt(connection) {
   const startedAt = Date.parse(connection.start || "");
@@ -11336,8 +13794,8 @@ function getSourceCellParts(connection) {
   if (deviceName) {
     return {
       primary: deviceName,
-      ip: "",
-      copyValue: deviceName,
+      ip,
+      copyValue: ip ? `${deviceName} (${ip})` : deviceName,
       searchValue: `${deviceName} ${ip}`
     };
   }
@@ -11360,18 +13818,19 @@ function getTargetCellParts(connection) {
     searchValue: [primary, host, destinationIp].filter(Boolean).join(" ")
   };
 }
-function getRoute(connection) {
-  const chains = Array.isArray(connection.chains) ? connection.chains : [];
-  const routeTag = [...chains].reverse().find(getRouteDisplayNameByTag);
-  const fallbackRouteTag = getRouteTagFromRule(connection.rule);
-  const route = getRouteDisplayNameByTag(routeTag || "") || getRouteDisplayNameByTag(fallbackRouteTag) || normalizeString(routeTag) || normalizeString(fallbackRouteTag);
-  return route || "-";
+function getPath(connection) {
+  const path = connectionPath(connection.chains, connection.rule, getRuleByTag);
+  return path.node ? { ...path, node: nodeDisplayNames[path.node] || path.node } : path;
 }
 function getNetwork(connection) {
   return normalizeString(connection.metadata?.network).toLowerCase() || "-";
 }
 function sortConnections(connections, tab) {
   return [...connections].sort((a, b) => {
+    const aTraffic = trafficSortValue(a, sortMode);
+    const bTraffic = trafficSortValue(b, sortMode);
+    if (aTraffic != null && bTraffic != null) return bTraffic - aTraffic;
+    if (sortMode === "duration") return parseStartedAt(a) - parseStartedAt(b);
     if (tab === "closed") {
       return (b.closedAt || 0) - (a.closedAt || 0);
     }
@@ -11379,6 +13838,10 @@ function sortConnections(connections, tab) {
   });
 }
 function getConnectionsForActiveTab() {
+  if (followBaseline) {
+    const baseline = followBaseline;
+    return [...activeConnections.values(), ...closedConnections.values()].filter((connection) => !baseline.has(connection.id)).sort((a, b) => parseStartedAt(b) - parseStartedAt(a));
+  }
   const source = activeTab === "active" ? Array.from(activeConnections.values()) : Array.from(closedConnections.values());
   return sortConnections(source, activeTab);
 }
@@ -11388,16 +13851,16 @@ function normalizeSearchValue(value) {
 function getSearchValues(connection) {
   const target = getTargetCellParts(connection);
   const source = getSourceCellParts(connection);
+  const path = pathSummary(getPath(connection));
   return [
     connection.id,
-    target.primary,
+    target.searchValue,
     getNetwork(connection),
-    getRoute(connection),
-    formatConnectionDuration(connection),
-    formatBytes2(connection.download),
-    formatBytes2(connection.upload),
-    source.primary,
-    source.copyValue,
+    path.kindLabel,
+    path.primary,
+    path.secondary,
+    normalizeString(connection.rule),
+    ...connection.chains || [],
     source.searchValue
   ].filter(Boolean);
 }
@@ -11408,6 +13871,7 @@ function getVisibleConnections() {
     if (selectedDeviceFilter !== ALL_FILTER_VALUE && sourceIp !== selectedDeviceFilter) {
       return false;
     }
+    if (!matchesPathFilter(getPath(connection), pathFilter)) return false;
     if (!normalizedSearch) {
       return true;
     }
@@ -11415,6 +13879,21 @@ function getVisibleConnections() {
       (value) => normalizeSearchValue(value).includes(normalizedSearch)
     );
   });
+}
+function filtersActive() {
+  return selectedDeviceFilter !== ALL_FILTER_VALUE || pathFilter !== ALL_FILTER_VALUE || normalizeSearchValue(searchQuery) !== "";
+}
+function resetFilters() {
+  selectedDeviceFilter = ALL_FILTER_VALUE;
+  pathFilter = ALL_FILTER_VALUE;
+  searchQuery = "";
+  const search = document.getElementById(
+    "monitoring-search"
+  );
+  if (search) search.value = "";
+  saveMonitoringPreferences();
+  renderControls();
+  renderConnections({ force: true });
 }
 function moveConnectionToClosed(connection, now) {
   closedConnections.set(connection.id, {
@@ -11437,7 +13916,7 @@ function applyConnectionsPayload(payload) {
     pendingConnectionsPayload = payload;
     return;
   }
-  const mountId = monitoringMountId;
+  const mountId3 = monitoringMountId;
   const now = Date.now();
   const incomingIds = /* @__PURE__ */ new Set();
   const rawConnections = Array.isArray(payload.connections) ? payload.connections : [];
@@ -11463,7 +13942,7 @@ function applyConnectionsPayload(payload) {
   trimClosedConnections();
   loading = false;
   failed = false;
-  if (monitoringMounted && mountId === monitoringMountId) {
+  if (monitoringMounted && mountId3 === monitoringMountId) {
     renderControls();
     renderConnections();
   }
@@ -11498,10 +13977,10 @@ function getKnownSourceIps() {
   });
 }
 function renderDeviceFilterOptions() {
-  const select = document.getElementById(
+  const select2 = document.getElementById(
     "monitoring-device-filter"
   );
-  if (!select) {
+  if (!select2) {
     return;
   }
   const sourceIps = getKnownSourceIps();
@@ -11513,18 +13992,98 @@ function renderDeviceFilterOptions() {
     ...sourceIps.map((ip) => `${ip}:${getDeviceFilterLabel(ip)}`)
   ].join("|");
   if (signature === lastDeviceFilterSignature) {
-    select.value = selectedDeviceFilter;
+    select2.value = selectedDeviceFilter;
     return;
   }
   lastDeviceFilterSignature = signature;
   const options = [
-    E("option", { value: ALL_FILTER_VALUE }, _("All")),
+    E("option", { value: ALL_FILTER_VALUE }, _("All devices")),
     ...sourceIps.map(
       (ip) => E("option", { value: ip }, getDeviceFilterLabel(ip))
     )
   ];
-  select.replaceChildren(...options);
-  select.value = selectedDeviceFilter;
+  select2.replaceChildren(...options);
+  select2.value = selectedDeviceFilter;
+}
+var PATH_KINDS = [
+  "dpi",
+  "connection",
+  "bypass",
+  "direct",
+  "block"
+];
+var lastPathFilterSignature = "";
+function renderPathFilterOptions() {
+  const select2 = document.getElementById(
+    "monitoring-path-filter"
+  );
+  if (!select2) return;
+  const rules = [...routeRules].sort((a, b) => a.label.localeCompare(b.label));
+  const known = [
+    ALL_FILTER_VALUE,
+    ...PATH_KINDS.map((kind) => `kind:${kind}`),
+    ...rules.map((rule) => `rule:${rule.name}`)
+  ];
+  if (!known.includes(pathFilter)) pathFilter = ALL_FILTER_VALUE;
+  const signature = rules.map((rule) => `${rule.name}:${rule.label}`).join("|");
+  if (signature !== lastPathFilterSignature || !select2.options.length) {
+    lastPathFilterSignature = signature;
+    select2.replaceChildren(
+      E("option", { value: ALL_FILTER_VALUE }, _("All paths")),
+      E(
+        "optgroup",
+        { label: _("Path type") },
+        PATH_KINDS.map(
+          (kind) => E("option", { value: `kind:${kind}` }, pathKindLabel(kind))
+        )
+      ),
+      ...rules.length ? [
+        E(
+          "optgroup",
+          { label: _("Rule") },
+          rules.map(
+            (rule) => E("option", { value: `rule:${rule.name}` }, rule.label)
+          )
+        )
+      ] : []
+    );
+  }
+  select2.value = pathFilter;
+}
+function renderFilterBar() {
+  const bar = document.getElementById("monitoring-filter-bar");
+  if (!bar) return;
+  const active = filtersActive();
+  const following = followBaseline !== null;
+  if (!active && !following) {
+    bar.replaceChildren();
+    bar.hidden = true;
+    return;
+  }
+  const total = getConnectionsForActiveTab().length;
+  const shown = active ? getVisibleConnections().length : total;
+  bar.hidden = false;
+  bar.replaceChildren(
+    E(
+      "span",
+      {},
+      [
+        following ? _("Following new connections") : "",
+        active ? _("Shown %d of %d").replace("%d", String(shown)).replace("%d", String(total)) : ""
+      ].filter(Boolean).join(" \xB7 ")
+    ),
+    ...active ? [
+      E(
+        "button",
+        {
+          type: "button",
+          class: "btn cbi-button fkp_monitoring-page__reset",
+          click: () => resetFilters()
+        },
+        _("Reset filters")
+      )
+    ] : []
+  );
 }
 function setButtonActive(button, active) {
   if (!button) {
@@ -11551,20 +14110,32 @@ function renderControls() {
   const pauseToggleButton = document.getElementById(
     "monitoring-pause-toggle"
   );
+  const following = followBaseline !== null;
   if (activeButton) {
     activeButton.replaceChildren(
       ...renderTabButtonContent(_("Active"), activeConnections.size)
     );
-    activeButton.disabled = serviceAvailability === "stopped";
+    activeButton.disabled = serviceAvailability === "stopped" || following;
   }
   if (closedButton) {
     closedButton.replaceChildren(
       ...renderTabButtonContent(_("Closed"), closedConnections.size)
     );
-    closedButton.disabled = serviceAvailability === "stopped";
+    closedButton.disabled = serviceAvailability === "stopped" || following;
   }
-  setButtonActive(activeButton, activeTab === "active");
-  setButtonActive(closedButton, activeTab === "closed");
+  setButtonActive(activeButton, !following && activeTab === "active");
+  setButtonActive(closedButton, !following && activeTab === "closed");
+  const followButton = document.getElementById(
+    "monitoring-follow-toggle"
+  );
+  if (followButton) {
+    followButton.disabled = serviceAvailability === "stopped";
+    followButton.setAttribute("aria-pressed", following ? "true" : "false");
+    followButton.classList.toggle(
+      "fkp_monitoring-page__tab--active",
+      following
+    );
+  }
   if (closeAllButton) {
     closeAllButton.replaceChildren(renderXIcon24());
     closeAllButton.disabled = serviceAvailability === "stopped" || activeConnections.size === 0 || closingAll;
@@ -11589,14 +14160,20 @@ function renderControls() {
     searchIcon.replaceChildren(renderSearchIcon24());
   }
   renderDeviceFilterOptions();
-  const select = document.getElementById(
+  renderPathFilterOptions();
+  renderFilterBar();
+  const pathSelect = document.getElementById(
+    "monitoring-path-filter"
+  );
+  if (pathSelect) pathSelect.disabled = serviceAvailability === "stopped";
+  const select2 = document.getElementById(
     "monitoring-device-filter"
   );
   const searchInput = document.getElementById(
     "monitoring-search"
   );
-  if (select) {
-    select.disabled = serviceAvailability === "stopped";
+  if (select2) {
+    select2.disabled = serviceAvailability === "stopped";
   }
   if (searchInput) {
     searchInput.disabled = serviceAvailability === "stopped";
@@ -11644,60 +14221,296 @@ function renderSourceValue(source) {
   return element;
 }
 function renderTableCell(label, children) {
-  const cell = E("td", {}, children);
+  const cell = E("td", {}, [
+    E("div", { class: "fkp_monitoring-page__cell" }, children)
+  ]);
   cell.setAttribute("data-label", label);
   return cell;
+}
+function renderSecondary(text) {
+  return E("span", { class: "fkp_monitoring-page__secondary" }, text);
+}
+function renderPathCell(path) {
+  const summary = pathSummary(path);
+  return [
+    E(
+      "span",
+      {
+        class: `fkp_monitoring-page__path-kind fkp_monitoring-page__path-kind--${summary.kind}`
+      },
+      summary.kindLabel
+    ),
+    ...summary.primary ? [renderValue(summary.primary, "fkp_monitoring-page__route")] : [],
+    ...summary.secondary ? [renderSecondary(summary.secondary)] : []
+  ];
 }
 function renderConnectionRow(connection) {
   const target = getTargetCellParts(connection);
   const source = getSourceCellParts(connection);
+  const isActive = activeConnections.has(connection.id);
   const isClosing = closingConnectionIds.has(connection.id);
-  const closeButton = activeTab === "active" ? E(
-    "button",
-    {
-      class: "btn cbi-button fkp_monitoring-page__row-action",
-      title: _("Close connection"),
-      "aria-label": _("Close connection"),
-      type: "button",
-      value: connection.id,
-      ...isClosing ? { disabled: true } : {}
-    },
-    [renderXIcon24()]
-  ) : E("span", {}, "-");
+  const icons = { details: renderInfoIcon24, close: renderXIcon24 };
+  const actions = E(
+    "div",
+    { class: "fkp_monitoring-page__actions" },
+    connectionActions(isActive, isReadonlyMode()).map(
+      (action) => E(
+        "button",
+        {
+          class: `btn cbi-button fkp_monitoring-page__icon-action ${action.className}`,
+          title: action.label,
+          "aria-label": action.label,
+          type: "button",
+          value: connection.id,
+          ...action.kind === "close" && isClosing ? { disabled: true } : {}
+        },
+        [icons[action.kind]()]
+      )
+    )
+  );
+  const destinationMeta = [
+    getNetwork(connection).toUpperCase(),
+    formatConnectionDuration(connection),
+    ...isActive ? [] : [_("closed")]
+  ].join(" \xB7 ");
   return E(
     "tr",
     {
-      class: isClosing ? "fkp_monitoring-page__row--closing" : ""
+      class: [
+        isClosing ? "fkp_monitoring-page__row--closing" : "",
+        !isActive ? "fkp_monitoring-page__row--closed" : "",
+        selectedConnectionId === connection.id ? "fkp_monitoring-page__row--selected" : ""
+      ].filter(Boolean).join(" ")
     },
     [
-      renderTableCell(_("Host"), [renderValue(target.primary)]),
-      renderTableCell(_("Type"), [
-        renderValue(getNetwork(connection), "fkp_monitoring-page__network")
+      renderTableCell(_("Device"), [renderSourceValue(source)]),
+      renderTableCell(_("Destination"), [
+        renderValue(target.primary),
+        renderSecondary(destinationMeta)
       ]),
-      renderTableCell(_("Route"), [
-        renderValue(getRoute(connection), "fkp_monitoring-page__route")
+      renderTableCell(_("Path"), renderPathCell(getPath(connection))),
+      renderTableCell(_("Traffic"), [
+        renderValue(`\u2193 ${formatBytes2(connection.download)}`),
+        renderSecondary(`\u2191 ${formatBytes2(connection.upload)}`)
       ]),
-      renderTableCell(_("Time"), [
-        renderValue(formatConnectionDuration(connection))
-      ]),
-      renderTableCell(_("Downloaded"), [
-        renderValue(formatBytes2(connection.download))
-      ]),
-      renderTableCell(_("Uploaded"), [
-        renderValue(formatBytes2(connection.upload))
-      ]),
-      renderTableCell(_("Source"), [renderSourceValue(source)]),
-      renderTableCell(_("Close"), [closeButton])
+      renderTableCell(_("Actions"), [actions])
     ]
   );
 }
-function renderStateRow(text, className = "") {
+function safeText(value) {
+  return normalizeString(value == null ? "" : String(value)).replace(/\b(?:https?:\/\/)?[^\s@]+@/g, "***@").replace(
+    /(?:token|secret|password|uuid|authorization)=([^&\s]+)/gi,
+    "$1=***"
+  );
+}
+function connectionTechnicalDetails(connection) {
+  const metadata = connection.metadata || {};
+  return [
+    [_("Source"), formatEndpoint(metadata.sourceIP, metadata.sourcePort)],
+    [
+      _("Destination"),
+      formatEndpoint(metadata.destinationIP, metadata.destinationPort)
+    ],
+    [_("Host"), safeText(metadata.host)],
+    [_("Protocol"), getNetwork(connection)],
+    [_("Rule"), safeText(connection.rule)],
+    [_("Rule payload"), safeText(connection.rulePayload)],
+    [_("Outbound chain"), safeText((connection.chains || []).join(" \u2192 "))],
+    [_("Started"), formatStarted(connection.start)],
+    [_("Connection ID"), connection.id]
+  ];
+}
+function formatStarted(start) {
+  const time = Date.parse(start || "");
+  return Number.isFinite(time) ? new Date(time).toLocaleString() : safeText(start);
+}
+function connectionDetails(connection) {
+  const target = getTargetCellParts(connection);
+  const source = getSourceCellParts(connection);
+  const path = pathSummary(getPath(connection));
+  return [
+    [_("Device"), source.copyValue],
+    [_("Destination"), target.primary],
+    [
+      _("Path"),
+      [path.kindLabel, path.primary, path.secondary].filter(Boolean).join(" \xB7 ")
+    ],
+    [_("Duration"), formatConnectionDuration(connection)],
+    [_("Download"), formatBytes2(connection.download)],
+    [_("Upload"), formatBytes2(connection.upload)],
+    ...connectionTechnicalDetails(connection)
+  ];
+}
+function detailRow(label, value) {
+  return E("div", { class: "fkp_monitoring-page__detail-row" }, [
+    E("dt", {}, label),
+    E("dd", {}, value)
+  ]);
+}
+function closeConnectionDetails() {
+  selectedConnectionId = null;
+  document.getElementById("monitoring-connection-details")?.replaceChildren();
+  renderConnections({ force: true });
+}
+function renderConnectionDetailsPanel() {
+  const container = document.getElementById("monitoring-connection-details");
+  if (!container) return;
+  const connection = selectedConnectionId ? activeConnections.get(selectedConnectionId) || closedConnections.get(selectedConnectionId) : void 0;
+  if (!connection) {
+    container.replaceChildren();
+    return;
+  }
+  const technicalOpen = Boolean(
+    container.querySelector("details")?.open
+  );
+  const isActive = activeConnections.has(connection.id);
+  const target = getTargetCellParts(connection);
+  const host = normalizeString(connection.metadata?.host) || normalizeString(connection.metadata?.destinationIP);
+  const rawPath = getPath(connection);
+  const path = pathSummary(rawPath);
+  const source = getSourceCellParts(connection);
+  container.replaceChildren(
+    E("div", { class: "fkp_monitoring-page__details" }, [
+      E("div", { class: "fkp_monitoring-page__details-head" }, [
+        E("h3", {}, target.primary),
+        E(
+          "button",
+          {
+            type: "button",
+            class: "btn cbi-button fkp_monitoring-page__details-close",
+            "aria-label": _("Close details"),
+            title: _("Close details"),
+            click: () => closeConnectionDetails()
+          },
+          "\xD7"
+        )
+      ]),
+      E("dl", { class: "fkp_monitoring-page__detail-list" }, [
+        detailRow(_("Device"), source.copyValue),
+        detailRow(
+          _("Status"),
+          isActive ? `${_("Active")} \xB7 ${formatConnectionDuration(connection)}` : `${_("Closed")} \xB7 ${formatConnectionDuration(connection)}`
+        ),
+        detailRow(
+          _("Route"),
+          E("span", {}, [
+            [path.kindLabel, path.primary, rawPath.node].filter(Boolean).join(" \xB7 "),
+            " ",
+            renderProvenance("observed")
+          ])
+        ),
+        ...rawPath.kind === "dpi" && path.secondary ? [
+          detailRow(
+            _("DPI strategy"),
+            E("span", {}, [
+              path.secondary,
+              " ",
+              renderProvenance("configured")
+            ])
+          )
+        ] : [],
+        detailRow(
+          _("Traffic"),
+          `\u2193 ${formatBytes2(connection.download)} \xB7 \u2191 ${formatBytes2(connection.upload)}`
+        )
+      ]),
+      E("div", { class: "fkp_monitoring-page__details-actions" }, [
+        ...host ? [
+          E(
+            "a",
+            {
+              class: "btn cbi-button",
+              href: forkopPageUrl("diagnostics", { host })
+            },
+            _("Check address in Diagnostics")
+          )
+        ] : [],
+        E(
+          "button",
+          {
+            type: "button",
+            class: "btn cbi-button",
+            click: () => (
+              // navigator.clipboard needs a secure context; LuCI is usually plain HTTP.
+              copyToClipboard(
+                connectionDetails(connection).map(([key, value]) => `${key}: ${value}`).join("\n")
+              )
+            )
+          },
+          _("Copy details")
+        ),
+        ...isActive && !isReadonlyMode() ? [
+          E(
+            "button",
+            {
+              type: "button",
+              class: "btn cbi-button cbi-button-negative",
+              disabled: closingConnectionIds.has(connection.id) ? true : void 0,
+              click: () => void closeConnection(connection.id)
+            },
+            _("Close connection")
+          )
+        ] : []
+      ]),
+      E(
+        "details",
+        {
+          class: "fkp_monitoring-page__technical",
+          ...technicalOpen ? { open: true } : {}
+        },
+        [
+          E("summary", {}, _("Technical details")),
+          E(
+            "dl",
+            { class: "fkp_monitoring-page__detail-list" },
+            connectionTechnicalDetails(connection).map(
+              ([label, value]) => detailRow(label, value || "\u2014")
+            )
+          )
+        ]
+      )
+    ])
+  );
+}
+function showConnectionDetails(connection) {
+  selectedConnectionId = connection.id;
+  renderConnectionDetailsPanel();
+  renderConnections({ force: true });
+  document.getElementById("monitoring-connection-details")?.scrollIntoView?.({ block: "nearest" });
+}
+function saveMonitoringPreferences() {
+  localStorage.setItem(
+    MONITORING_PREFS_KEY,
+    JSON.stringify({
+      selectedDeviceFilter,
+      pathFilter,
+      sortMode
+    })
+  );
+}
+function loadMonitoringPreferences() {
+  try {
+    const value = JSON.parse(
+      localStorage.getItem(MONITORING_PREFS_KEY) || "{}"
+    );
+    if (typeof value.selectedDeviceFilter === "string")
+      selectedDeviceFilter = value.selectedDeviceFilter;
+    if (["start", "duration", "download", "upload", "total"].includes(
+      value.sortMode
+    ))
+      sortMode = value.sortMode;
+    if (typeof value.pathFilter === "string")
+      pathFilter = value.pathFilter.slice(0, 100);
+  } catch (_error) {
+  }
+}
+function renderStateRow(text, className = "", actions = []) {
   return E("tr", { class: "fkp_monitoring-page__state-row" }, [
     E(
       "td",
       {
         class: "fkp_monitoring-page__state-cell",
-        colSpan: 8
+        colSpan: 5
       },
       [
         E(
@@ -11705,14 +14518,14 @@ function renderStateRow(text, className = "") {
           {
             class: ["fkp_monitoring-page__state", className].filter(Boolean).join(" ")
           },
-          text
+          actions.length ? [E("span", {}, text), ...actions] : text
         )
       ]
     )
   ]);
 }
 function renderConnectionsTable(connections, state) {
-  const rows = state ? [renderStateRow(state.text, state.className)] : connections.map(renderConnectionRow);
+  const rows = state ? [renderStateRow(state.text, state.className, state.actions)] : connections.map(renderConnectionRow);
   return E("div", { class: "fkp_monitoring-page__table-wrap" }, [
     E(
       "table",
@@ -11720,14 +14533,13 @@ function renderConnectionsTable(connections, state) {
       [
         E("thead", {}, [
           E("tr", {}, [
-            E("th", {}, _("Host")),
-            E("th", {}, _("Type")),
-            E("th", {}, _("Route")),
-            E("th", {}, _("Time")),
-            E("th", {}, `\u2193 ${_("Downloaded")}`),
-            E("th", {}, `\u2191 ${_("Uploaded")}`),
-            E("th", {}, _("Source")),
-            E("th", {}, _("Close"))
+            E("th", {}, _("Device")),
+            E("th", {}, _("Destination")),
+            E("th", {}, _("Path")),
+            E("th", {}, _("Traffic")),
+            E("th", { class: "fkp_monitoring-page__actions-head" }, [
+              E("span", { class: "fkp-visually-hidden" }, _("Actions"))
+            ])
           ])
         ]),
         E("tbody", {}, rows)
@@ -11762,7 +14574,8 @@ function renderConnections(options = {}) {
       renderConnectionsTable([], {
         text: _(
           "Forkop service is stopped. Start the service to display connections."
-        )
+        ),
+        actions: renderStartServiceAction()
       })
     );
     return;
@@ -11786,11 +14599,32 @@ function renderConnections(options = {}) {
     return;
   }
   const visibleConnections = getVisibleConnections();
+  renderFilterBar();
+  renderConnectionDetailsPanel();
   if (visibleConnections.length === 0) {
+    const anyConnections = getConnectionsForActiveTab().length > 0;
     container.replaceChildren(
-      renderConnectionsTable([], {
-        text: activeTab === "active" ? _("No active connections") : _("No closed connections")
-      })
+      renderConnectionsTable(
+        [],
+        anyConnections && filtersActive() ? {
+          text: _("No connections match the filters"),
+          actions: [
+            E(
+              "button",
+              {
+                type: "button",
+                class: "btn cbi-button",
+                click: () => resetFilters()
+              },
+              _("Reset filters")
+            )
+          ]
+        } : {
+          text: followBaseline ? _(
+            "No new connections yet. Open the site or app you want to check."
+          ) : activeTab === "active" ? _("No active connections") : _("No closed connections")
+        }
+      )
     );
     return;
   }
@@ -11989,6 +14823,18 @@ async function closeAllConnections() {
   if (activeConnections.size === 0 || closingAll) {
     return;
   }
+  const confirmed = await confirmAction({
+    title: _("Close all connections?"),
+    message: _("Active connections of all devices are interrupted."),
+    consequences: [
+      _("Apps reconnect on their own; downloads and calls may drop")
+    ],
+    confirmLabel: _("Close all"),
+    danger: true
+  });
+  if (!confirmed || closingAll) {
+    return;
+  }
   closingAll = true;
   renderControls();
   try {
@@ -12016,7 +14862,7 @@ async function closeAllConnections() {
 function bindControls() {
   const activeButton = document.getElementById("monitoring-tab-active");
   const closedButton = document.getElementById("monitoring-tab-closed");
-  const select = document.getElementById(
+  const select2 = document.getElementById(
     "monitoring-device-filter"
   );
   const searchInput = document.getElementById(
@@ -12044,9 +14890,39 @@ function bindControls() {
       pauseToggleButton.blur();
     };
   }
-  if (select) {
-    select.onchange = () => {
-      selectedDeviceFilter = select.value || ALL_FILTER_VALUE;
+  if (select2) {
+    select2.onchange = () => {
+      selectedDeviceFilter = select2.value || ALL_FILTER_VALUE;
+      saveMonitoringPreferences();
+      renderConnections();
+    };
+  }
+  const pathSelect = document.getElementById(
+    "monitoring-path-filter"
+  );
+  if (pathSelect) {
+    pathSelect.onchange = () => {
+      pathFilter = pathSelect.value || ALL_FILTER_VALUE;
+      saveMonitoringPreferences();
+      renderConnections({ force: true });
+    };
+  }
+  const followButton = document.getElementById("monitoring-follow-toggle");
+  if (followButton) {
+    followButton.onclick = () => {
+      followBaseline = followBaseline ? null : /* @__PURE__ */ new Set([...activeConnections.keys(), ...closedConnections.keys()]);
+      renderControls();
+      renderConnections({ force: true });
+    };
+  }
+  const sort = document.getElementById(
+    "monitoring-sort"
+  );
+  if (sort) {
+    sort.value = sortMode;
+    sort.onchange = () => {
+      sortMode = sort.value;
+      saveMonitoringPreferences();
       renderConnections();
     };
   }
@@ -12059,6 +14935,14 @@ function bindControls() {
   if (connectionsContainer) {
     connectionsContainer.onclick = (event) => {
       const target = event.target;
+      const action = target?.closest(
+        ".fkp-monitoring-details"
+      );
+      if (action?.value) {
+        const connection = activeConnections.get(action.value) || closedConnections.get(action.value);
+        if (connection) showConnectionDetails(connection);
+        return;
+      }
       const button = target?.closest(
         ".fkp_monitoring-page__row-action"
       );
@@ -12066,6 +14950,21 @@ function bindControls() {
         void closeConnection(button.value);
       }
     };
+  }
+}
+async function loadNodeDisplayNames() {
+  try {
+    const response = await CustomForkopMethods.getDashboardSections();
+    const names = {};
+    for (const group of response.success ? response.data : [])
+      for (const outbound of group.outbounds)
+        if (outbound.displayName && outbound.displayName !== outbound.code)
+          names[outbound.code] = outbound.displayName;
+    nodeDisplayNames = names;
+  } catch (error) {
+    logger.warn("[MONITORING]", "loadNodeDisplayNames: failed", error);
+  } finally {
+    renderConnections();
   }
 }
 async function loadLocalDevices() {
@@ -12081,7 +14980,8 @@ async function loadLocalDevices() {
 }
 async function loadRouteDisplayNames() {
   try {
-    buildRouteDisplayNames(await CustomForkopMethods.getConfigSections());
+    const response = await ForkopShellMethods.getReadonlyConfigSections();
+    buildRouteDisplayNames(response.success ? response.data : []);
   } catch (error) {
     logger.warn("[MONITORING]", "loadRouteDisplayNames: failed", error);
     buildRouteDisplayNames([]);
@@ -12094,11 +14994,11 @@ async function pollConnectionsSnapshot() {
   if (pollingConnections || !monitoringMounted || monitoringPaused || serviceAvailability !== "running") {
     return;
   }
-  const mountId = monitoringMountId;
+  const mountId3 = monitoringMountId;
   pollingConnections = true;
   try {
     const response = await ForkopShellMethods.getClashApiConnections();
-    if (!monitoringMounted || mountId !== monitoringMountId || serviceAvailability !== "running") {
+    if (!monitoringMounted || mountId3 !== monitoringMountId || serviceAvailability !== "running") {
       return;
     }
     if (!response.success) {
@@ -12109,7 +15009,7 @@ async function pollConnectionsSnapshot() {
     }
     applyConnectionsPayload(normalizeConnectionsPayload(response.data));
   } catch (error) {
-    if (!monitoringMounted || mountId !== monitoringMountId || serviceAvailability !== "running") {
+    if (!monitoringMounted || mountId3 !== monitoringMountId || serviceAvailability !== "running") {
       return;
     }
     logger.error("[MONITORING]", "connections polling failed", error);
@@ -12130,12 +15030,16 @@ function startConnectionsPolling() {
   }, CONNECTIONS_RPC_POLL_INTERVAL_MS);
 }
 async function connectToConnectionsSocket(updatesId) {
-  const mountId = monitoringMountId;
+  const mountId3 = monitoringMountId;
   const clashApiSecret = await getClashApiSecret2();
-  if (!monitoringMounted || mountId !== monitoringMountId || updatesId !== connectionsUpdatesId || serviceAvailability !== "running") {
+  if (!monitoringMounted || mountId3 !== monitoringMountId || updatesId !== connectionsUpdatesId || serviceAvailability !== "running") {
     return;
   }
-  connectionsSocketUrl = `${getClashWsUrl()}/connections?token=${clashApiSecret}`;
+  if (!canUseDirectClashApi(clashApiSecret)) {
+    startConnectionsPolling();
+    return;
+  }
+  connectionsSocketUrl = getClashWsStreamUrl("/connections", clashApiSecret);
   socket.subscribe(
     connectionsSocketUrl,
     (msg) => {
@@ -12149,12 +15053,15 @@ async function connectToConnectionsSocket(updatesId) {
       }
     },
     (_err) => {
-      if (!monitoringMounted || mountId !== monitoringMountId || updatesId !== connectionsUpdatesId || serviceAvailability !== "running") {
+      if (!monitoringMounted || mountId3 !== monitoringMountId || updatesId !== connectionsUpdatesId || serviceAvailability !== "running") {
         return;
       }
-      failed = true;
-      loading = false;
-      renderConnections();
+      logger.warn("[MONITORING]", "connections socket unavailable, polling");
+      if (connectionsSocketUrl) {
+        socket.disconnect(connectionsSocketUrl);
+        connectionsSocketUrl = "";
+      }
+      startConnectionsPolling();
     }
   );
 }
@@ -12162,12 +15069,8 @@ function startConnectionsUpdates() {
   if (serviceAvailability !== "running") {
     return;
   }
-  if (canUseDirectClashApi()) {
-    const updatesId = ++connectionsUpdatesId;
-    void connectToConnectionsSocket(updatesId);
-    return;
-  }
-  startConnectionsPolling();
+  const updatesId = ++connectionsUpdatesId;
+  void connectToConnectionsSocket(updatesId);
 }
 function stopConnectionsUpdates() {
   connectionsUpdatesId += 1;
@@ -12224,7 +15127,11 @@ function watchServiceState() {
 function resetMonitoringState() {
   activeTab = "active";
   selectedDeviceFilter = ALL_FILTER_VALUE;
-  searchQuery = "";
+  searchQuery = readPageParams().search || "";
+  pathFilter = ALL_FILTER_VALUE;
+  followBaseline = null;
+  selectedConnectionId = null;
+  lastPathFilterSignature = "";
   lastDeviceFilterSignature = "";
   loading = true;
   failed = false;
@@ -12240,26 +15147,28 @@ function resetMonitoringState() {
     "monitoring-search"
   );
   if (searchInput) {
-    searchInput.value = "";
+    searchInput.value = searchQuery;
   }
 }
 async function onPageMount3() {
   onPageUnmount3();
   monitoringMounted = true;
   monitoringMountId += 1;
-  const mountId = monitoringMountId;
+  const mountId3 = monitoringMountId;
   resetMonitoringState();
+  loadMonitoringPreferences();
   bindControls();
   renderControls();
   renderConnections();
   watchServiceState();
   void loadLocalDevices();
   void loadRouteDisplayNames();
+  void loadNodeDisplayNames();
   if (getCachedRuntimeUiState()) {
     void refreshRuntimeUiState({ force: true });
   } else {
     const uiState = await refreshRuntimeUiState({ force: true });
-    if (!monitoringMounted || mountId !== monitoringMountId) {
+    if (!monitoringMounted || mountId3 !== monitoringMountId) {
       return;
     }
     if (!uiState && serviceAvailability === "loading") {
@@ -12316,9 +15225,11 @@ async function initController3(controllerDependencies = {}) {
     return;
   }
   monitoringControllerInitialized = true;
+  if (getForkopPage() === "monitoring")
+    setForkopPage(controllerForView(readMonitoringView()));
   onMount("monitoring-status").then(() => {
     registerLifecycleListeners3();
-    if (store.get().tabService.current === "monitoring") {
+    if (store.get().tabService.current === "monitoring" || isActiveLuciTab("monitoring")) {
       onPageMount3();
     }
   });
@@ -12498,7 +15409,8 @@ var styles5 = `
     color: var(--text-color-high) !important;
 }
 
-.fkp_monitoring-page .btn.fkp_monitoring-page__tab--active {
+.fkp_monitoring-page .btn.fkp_monitoring-page__tab--active,
+.fkp_monitoring-page .btn.fkp_monitoring-page__tab--active:hover {
     background: rgba(25, 118, 210, 0.16) !important;
     color: var(--primary-color-high, #1976d2) !important;
     font-weight: 700;
@@ -12594,15 +15506,19 @@ var styles5 = `
     min-width: 0;
 }
 
+/* width: 0 + min-width: 100% keeps the wide table from widening the page
+   (flex layouts such as OpenWrt2020 size the content to its min-content);
+   the wrapper still fills its parent and scrolls the table inside. */
 .fkp_monitoring-page__table-wrap {
-    width: 100%;
+    width: 0;
+    min-width: 100%;
     overflow-x: auto;
     margin-bottom: 0;
 }
 
 .fkp_monitoring-page__table {
     width: 100%;
-    min-width: 840px;
+    min-width: 680px;
     table-layout: fixed;
     border-collapse: collapse;
     border-spacing: 0;
@@ -12630,35 +15546,24 @@ var styles5 = `
 }
 
 .fkp_monitoring-page__table th:nth-child(1) {
-    width: 28%;
+    width: 20%;
 }
 
 .fkp_monitoring-page__table th:nth-child(2) {
-    width: 6%;
+    width: 32%;
 }
 
 .fkp_monitoring-page__table th:nth-child(3) {
-    width: 16%;
+    width: 30%;
 }
 
 .fkp_monitoring-page__table th:nth-child(4) {
-    width: 8%;
+    width: 14%;
 }
 
 .fkp_monitoring-page__table th:nth-child(5) {
-    width: 9.5%;
-}
-
-.fkp_monitoring-page__table th:nth-child(6) {
-    width: 8.5%;
-}
-
-.fkp_monitoring-page__table th:nth-child(7) {
-    width: 16%;
-}
-
-.fkp_monitoring-page__table th:nth-child(8) {
-    width: 8%;
+    /* Two 28px icon actions plus gaps; px so it never shrinks below them. */
+    width: 72px;
 }
 
 .fkp_monitoring-page__table tbody tr:last-child td {
@@ -12668,20 +15573,34 @@ var styles5 = `
 .fkp_monitoring-page__table td:last-child {
     padding-top: 0;
     padding-bottom: 0;
+    overflow: visible;
+    white-space: normal;
 }
 
-.fkp_monitoring-page__table th:nth-child(4),
-.fkp_monitoring-page__table td:nth-child(4),
-.fkp_monitoring-page__table th:nth-child(5),
-.fkp_monitoring-page__table td:nth-child(5),
-.fkp_monitoring-page__table th:nth-child(6),
-.fkp_monitoring-page__table td:nth-child(6) {
-    text-align: right;
+.fkp_monitoring-page__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
 }
 
-.fkp_monitoring-page__table th:nth-child(7),
-.fkp_monitoring-page__table td:nth-child(7) {
-    text-align: left;
+.fkp_monitoring-page .btn.fkp_monitoring-page__icon-action {
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    padding: 0;
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+
+.fkp_monitoring-page__icon-action svg {
+    width: 16px;
+    height: 16px;
+    display: block;
 }
 
 .fkp_monitoring-page__table th:last-child,
@@ -12765,14 +15684,6 @@ var styles5 = `
     text-transform: lowercase;
 }
 
-.fkp_monitoring-page__table td:nth-child(4) .fkp_monitoring-page__value,
-.fkp_monitoring-page__table td:nth-child(5) .fkp_monitoring-page__value,
-.fkp_monitoring-page__table td:nth-child(6) .fkp_monitoring-page__value {
-    color: var(--text-color-medium, #bbb);
-    font-family: inherit;
-    text-align: right;
-}
-
 .fkp_monitoring-page .btn.fkp_monitoring-page__row-action {
     width: var(--fkp-monitoring-row-action-size);
     height: var(--fkp-monitoring-row-action-size);
@@ -12816,6 +15727,8 @@ var styles5 = `
     min-height: 90px;
     width: 100%;
     display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
     align-items: center;
     justify-content: center;
     color: var(--text-color-medium);
@@ -12829,6 +15742,167 @@ var styles5 = `
 
 .fkp_monitoring-page__state--error {
     color: var(--error-color-medium, #d32f2f);
+}
+
+/* Views: Connections | Nodes and groups */
+.fkp_monitoring-page__views {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+
+.fkp_monitoring-page__nodes .fkp_dashboard-page {
+    margin-top: 0;
+}
+
+.fkp_monitoring-page__secondary {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-top: 2px;
+    color: var(--text-color-medium);
+    font-size: 12px;
+    line-height: 1.25;
+}
+
+.fkp_monitoring-page__path-kind {
+    display: inline-block;
+    margin-right: 6px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.5;
+    vertical-align: middle;
+    background: rgba(128, 128, 128, 0.15);
+    color: var(--text-color-high);
+}
+
+.fkp_monitoring-page__path-kind--dpi {
+    background: rgba(156, 39, 176, 0.16);
+}
+
+.fkp_monitoring-page__path-kind--connection {
+    background: rgba(33, 150, 243, 0.16);
+}
+
+.fkp_monitoring-page__path-kind--bypass,
+.fkp_monitoring-page__path-kind--direct {
+    background: rgba(76, 175, 80, 0.16);
+}
+
+.fkp_monitoring-page__path-kind--block {
+    background: rgba(244, 67, 54, 0.16);
+}
+
+.fkp_monitoring-page__table td .fkp_monitoring-page__route {
+    display: inline;
+    padding: 0;
+    background: transparent;
+    font-size: 13px;
+    vertical-align: middle;
+}
+
+.fkp_monitoring-page__row--closed td {
+    opacity: 0.65;
+}
+
+.fkp_monitoring-page__row--selected td {
+    background: rgba(33, 150, 243, 0.08);
+}
+
+.fkp_monitoring-page__filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    margin: 0 0 8px;
+    padding: 6px 10px;
+    border-radius: 4px;
+    background: rgba(33, 150, 243, 0.08);
+    font-size: 13px;
+}
+
+.fkp_monitoring-page__filter-bar[hidden] {
+    display: none;
+}
+
+.fkp_monitoring-page__details {
+    margin-top: 12px;
+    padding: 12px;
+    border: 1px solid var(--fkp-monitoring-divider-color);
+    border-radius: 6px;
+}
+
+.fkp_monitoring-page__details-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.fkp_monitoring-page__details-head h3 {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.fkp_monitoring-page .btn.fkp_monitoring-page__details-close {
+    min-width: 32px;
+    padding: 0 8px;
+    font-size: 18px;
+    line-height: 1;
+}
+
+.fkp_monitoring-page__detail-list {
+    margin: 10px 0 0;
+}
+
+.fkp_monitoring-page__detail-row {
+    display: grid;
+    grid-template-columns: minmax(120px, 28%) minmax(0, 1fr);
+    gap: 8px;
+    padding: 3px 0;
+}
+
+.fkp_monitoring-page__detail-row dt {
+    color: var(--text-color-medium);
+    font-weight: 600;
+}
+
+.fkp_monitoring-page__detail-row dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.fkp_monitoring-page__details-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.fkp_monitoring-page__technical {
+    margin-top: 12px;
+}
+
+.fkp_monitoring-page__technical summary {
+    cursor: pointer;
+    color: var(--text-color-medium);
+}
+
+.fkp_monitoring-page__cell {
+    min-width: 0;
+}
+
+.fkp-visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
 }
 
 @media (max-width: 900px) {
@@ -12893,16 +15967,22 @@ var styles5 = `
         white-space: nowrap;
     }
 
+    /* Row actions sit at the end of the card without a label line. */
     .fkp_monitoring-page__table td:last-child {
-        grid-template-columns: minmax(92px, 34%) minmax(0, 1fr);
-        align-items: center;
+        display: flex;
+        justify-content: flex-end;
         border-bottom: 0;
         min-height: var(--fkp-monitoring-row-action-size);
-        padding: 0;
+        padding: 4px 0 0;
     }
 
-    .fkp_monitoring-page__value {
-        text-align: right;
+    .fkp_monitoring-page__table td:last-child::before {
+        display: none;
+    }
+
+    .fkp_monitoring-page__value,
+    .fkp_monitoring-page__secondary {
+        text-align: left;
     }
 
     .fkp_monitoring-page__source-value {
@@ -13023,18 +16103,18 @@ function confirmVersionChange(currentVersion, version, install) {
   );
 }
 async function showReleaseSelector(currentVersion, install) {
-  const status = E("p", { role: "status" }, _("Loading available versions\u2026"));
-  const content = E("div", {}, [status]);
+  const status2 = E("p", { role: "status" }, _("Loading available versions\u2026"));
+  const content = E("div", {}, [status2]);
   ui.showModal(_("Choose Forkop X version"), content);
   try {
     const releases = await loadReleases();
-    const select = E("select", {
+    const select2 = E("select", {
       class: "cbi-input-select",
       "aria-label": _("Choose Forkop X version")
     });
     for (const release of releases) {
       const installed = release.version === currentVersion;
-      select.appendChild(
+      select2.appendChild(
         E(
           "option",
           { value: release.version },
@@ -13042,28 +16122,28 @@ async function showReleaseSelector(currentVersion, install) {
         )
       );
     }
-    if (!select.options.length) {
+    if (!select2.options.length) {
       throw new Error(_("No compatible releases available"));
     }
     const confirm = renderButton({
       text: _("Install selected version"),
       classNames: ["cbi-button-save"],
-      onClick: () => confirmVersionChange(currentVersion, select.value, install)
+      onClick: () => confirmVersionChange(currentVersion, select2.value, install)
     });
     const update = () => {
-      confirm.disabled = select.value === currentVersion;
+      confirm.disabled = select2.value === currentVersion;
     };
-    select.addEventListener("change", update);
+    select2.addEventListener("change", update);
     update();
     content.replaceChildren(
-      select,
+      select2,
       E("div", { class: "right" }, [
         renderButton({ text: _("Cancel"), onClick: () => ui.hideModal() }),
         confirm
       ])
     );
   } catch (error) {
-    status.textContent = error instanceof Error ? error.message : _("Could not load available versions");
+    status2.textContent = error instanceof Error ? error.message : _("Could not load available versions");
     content.appendChild(
       renderButton({ text: _("Close"), onClick: () => ui.hideModal() })
     );
@@ -13073,9 +16153,9 @@ async function showReleaseSelector(currentVersion, install) {
 // src/forkop/tabs/updates/checkResultLifecycle.ts
 function shouldPreserveCompletedCheckResultOnNextMount({
   action,
-  mounted
+  mounted: mounted3
 }) {
-  return action === "check_update" && !mounted;
+  return action === "check_update" && !mounted3;
 }
 function shouldResetCheckResultsOnMount({
   anyActionLoading,
@@ -13090,10 +16170,10 @@ function shouldRefreshComponentStateBeforeRender(uiState) {
   );
 }
 function shouldExposeCheckResults({
-  mounted,
+  mounted: mounted3,
   cacheResolved
 }) {
-  return mounted && cacheResolved;
+  return mounted3 && cacheResolved;
 }
 
 // src/forkop/tabs/updates/fullUninstall.ts
@@ -13133,17 +16213,17 @@ function confirmRemoval() {
           const deadline = Date.now() + 18e4;
           while (Date.now() < deadline) {
             await new Promise((resolve) => setTimeout(resolve, 1500));
-            let status;
+            let status2;
             try {
               const reply = await fetch(result.status_url, {
                 cache: "no-store"
               });
               if (!reply.ok) continue;
-              status = await reply.json();
+              status2 = await reply.json();
             } catch {
               continue;
             }
-            if (status.state === "complete") {
+            if (status2.state === "complete") {
               progress.textContent = _(
                 "Forkop X and sing-box have been removed. Original repositories have been restored."
               );
@@ -13152,9 +16232,9 @@ function confirmRemoval() {
               cancel.onclick = () => window.location.assign("/cgi-bin/luci/");
               return;
             }
-            if (status.state === "failed") {
+            if (status2.state === "failed") {
               throw new Error(
-                status.phase === "preflight" ? _(
+                status2.phase === "preflight" ? _(
                   "Original repositories could not be restored. Removal was cancelled before deleting packages."
                 ) : _(
                   "Removal did not finish. See the removal log in /tmp/forkop-uninstall.*/output.log."
@@ -13247,8 +16327,8 @@ if (typeof window !== "undefined") {
   });
 }
 function shouldShowInstallAfterCheck(component) {
-  const status = getVisibleCheckResult(component)?.status;
-  return status === "outdated" || status === "dev";
+  const status2 = getVisibleCheckResult(component)?.status;
+  return status2 === "outdated" || status2 === "dev";
 }
 function getVisibleCheckResult(component) {
   if (!shouldExposeCheckResults({
@@ -13303,13 +16383,13 @@ function beginComponentAction(button) {
   setActionLoading(button.key, true, true);
   return true;
 }
-function setCheckResult(component, status, latestVersion, releaseUrl = "") {
+function setCheckResult(component, status2, latestVersion, releaseUrl = "") {
   const updatesChecks = store.get().updatesChecks;
   store.set({
     updatesChecks: {
       ...updatesChecks,
       [component]: {
-        status,
+        status: status2,
         latest_version: latestVersion,
         release_url: releaseUrl
       }
@@ -13321,11 +16401,11 @@ function resetCheckResult(component) {
 }
 function applyCachedCheckResults(results) {
   results.forEach((result) => {
-    const status = result.status || null;
-    if (status === "latest" || status === "outdated" || status === "dev") {
+    const status2 = result.status || null;
+    if (status2 === "latest" || status2 === "outdated" || status2 === "dev") {
       setCheckResult(
         result.component,
-        status,
+        status2,
         result.latest_version || "",
         result.release_url || ""
       );
@@ -13374,11 +16454,11 @@ function getExpectedLatestVersionForAction(button) {
   }
   return store.get().updatesChecks[button.component].latest_version || void 0;
 }
-function getCheckToastMessage(status) {
-  if (status === "outdated") {
+function getCheckToastMessage(status2) {
+  if (status2 === "outdated") {
     return _("Update is available");
   }
-  if (status === "dev") {
+  if (status2 === "dev") {
     return _("Installed version is newer than release");
   }
   return _("Latest version is installed");
@@ -13503,17 +16583,17 @@ async function applyCompletedComponentAction({
     })) {
       preserveCheckResultsOnNextMount = true;
     }
-    const status = result.status === "recovered" ? null : result.status || null;
-    if (status === "latest" || status === "outdated" || status === "dev") {
+    const status2 = result.status === "recovered" ? null : result.status || null;
+    if (status2 === "latest" || status2 === "outdated" || status2 === "dev") {
       setCheckResult(
         result.component,
-        status,
+        status2,
         result.latest_version || "",
         result.release_url || ""
       );
     }
     if (notify) {
-      showToast(getCheckToastMessage(status), "success");
+      showToast(getCheckToastMessage(status2), "success");
     }
     return;
   }
@@ -13680,7 +16760,29 @@ function stopComponentActionStateWatcher() {
   componentActionStateUnsubscribe();
   componentActionStateUnsubscribe = null;
 }
+var REMOVABLE_COMPONENT_TITLES = {
+  zapret: "Zapret",
+  zapret2: "Zapret2",
+  byedpi: "ByeDPI",
+  zapret_manager: "Zapret-Manager-Stressozz"
+};
+function confirmComponentRemoval(button) {
+  const title = REMOVABLE_COMPONENT_TITLES[button.component] || button.component;
+  const isDpiProvider = ["zapret", "zapret2", "byedpi"].includes(
+    button.component
+  );
+  return confirmAction({
+    title: _("Remove %s?").replace("%s", title),
+    message: _("The package is removed from the router."),
+    consequences: isDpiProvider ? [_("Rules that use this provider stop bypassing DPI")] : void 0,
+    confirmLabel: _("Remove"),
+    danger: true
+  });
+}
 async function handleComponentAction(button) {
+  if (button.action === "remove" && !await confirmComponentRemoval(button)) {
+    return;
+  }
   if (!beginComponentAction(button)) {
     return;
   }
@@ -13822,7 +16924,7 @@ function getComponentCards() {
   if (!singBoxTiny) {
     singBoxActions.push({
       key: "singBoxInstallTiny",
-      text: "Tiny",
+      text: _("Install Tiny build"),
       icon: renderDownloadIcon24,
       component: "sing_box",
       action: "install_tiny"
@@ -13831,7 +16933,7 @@ function getComponentCards() {
   if (!singBoxExtended) {
     singBoxActions.push({
       key: "singBoxInstallExtended",
-      text: "Extended",
+      text: _("Install Extended build"),
       icon: renderDownloadIcon24,
       component: "sing_box",
       action: "install_extended"
@@ -13997,17 +17099,17 @@ function getComponentCards() {
     }
   ];
 }
-function renderComponentCard(card) {
+function renderComponentCard(card3) {
   const updatesActions = store.get().updatesActions;
   const anyActionLoading = isAnyActionLoading();
   const serviceRuntimeActionLoading = isServiceRuntimeActionLoading();
   const systemInfoLoading = isSystemInfoLoading();
   const headerChildren = [
-    E("b", { class: "fkp_updates-page__component__title" }, card.title),
+    E("b", { class: "fkp_updates-page__component__title" }, card3.title),
     E(
       "span",
       { class: "fkp_updates-page__component__header-version" },
-      card.version
+      card3.version
     )
   ];
   const header = E(
@@ -14016,13 +17118,13 @@ function renderComponentCard(card) {
     headerChildren
   );
   const detailsChildren = [];
-  const checkResult = getVisibleCheckResult(card.component);
+  const checkResult = getVisibleCheckResult(card3.component);
   if (checkResult && checkResult.status) {
     let labelText = "";
     const latestValueNodes = [];
     if (checkResult.status === "outdated") {
       labelText = _("Update is available:");
-      const versionToShow = checkResult.latest_version || card.latestVersion || card.version;
+      const versionToShow = checkResult.latest_version || card3.latestVersion || card3.version;
       if (checkResult.release_url) {
         latestValueNodes.push(
           E(
@@ -14043,7 +17145,7 @@ function renderComponentCard(card) {
       labelText = _("Latest version is installed");
     } else if (checkResult.status === "dev") {
       labelText = `${_("Installed version is newer than release")}. ${_("Latest version:")}`;
-      const versionToShow = checkResult.latest_version || card.latestVersion;
+      const versionToShow = checkResult.latest_version || card3.latestVersion;
       if (checkResult.release_url) {
         latestValueNodes.push(
           E(
@@ -14097,7 +17199,7 @@ function renderComponentCard(card) {
   const primaryActions = [];
   const dangerActions = [];
   const variantActions = [];
-  card.actions.forEach((action) => {
+  card3.actions.forEach((action) => {
     if (action.action === "remove") {
       dangerActions.push(action);
     } else if (action.action.startsWith("install_")) {
@@ -14119,12 +17221,12 @@ function renderComponentCard(card) {
       onClick: () => void handleComponentAction(action)
     });
   });
-  if (card.component === "forkop") {
+  if (card3.component === "forkop") {
     primaryButtons.push(
       renderButton({
         text: _("Choose version"),
         disabled: systemInfoLoading || serviceRuntimeActionLoading || anyActionLoading,
-        onClick: () => void showReleaseSelector(card.version, (version) => {
+        onClick: () => void showReleaseSelector(card3.version, (version) => {
           void handleComponentAction({
             key: "forkopInstall",
             text: _("Install"),
@@ -14156,14 +17258,14 @@ function renderComponentCard(card) {
       ])
     );
   }
-  if (card.copyValue) {
+  if (card3.copyValue) {
     actionElements.push(
       E("div", { class: "fkp_updates-page__component__actions-main" }, [
         renderButton({
           text: _("Copy address"),
           icon: renderCopyIcon24,
           disabled: anyActionLoading || serviceRuntimeActionLoading,
-          onClick: () => copyToClipboard(card.copyValue || "")
+          onClick: () => copyToClipboard(card3.copyValue || "")
         })
       ])
     );
@@ -14217,8 +17319,8 @@ function renderUpdatesComponents() {
     return;
   }
   const columns = [[], [], []];
-  getComponentCards().forEach((card) => {
-    columns[card.column].push(renderComponentCard(card));
+  getComponentCards().forEach((card3) => {
+    columns[card3.column].push(renderComponentCard(card3));
   });
   columns[2].push(
     renderFullUninstall(
@@ -14256,7 +17358,7 @@ async function onPageMount4() {
   onPageUnmount4();
   updatesMounted = true;
   updatesMountId += 1;
-  const mountId = updatesMountId;
+  const mountId3 = updatesMountId;
   const cachedRuntimeState = getCachedRuntimeUiState();
   const hasRuntimeSnapshot = Boolean(cachedRuntimeState);
   const needsFreshStateBeforeRender = shouldRefreshComponentStateBeforeRender(cachedRuntimeState);
@@ -14269,7 +17371,7 @@ async function onPageMount4() {
   const componentUpdateCheckCache = await loadComponentUpdateCheckCache({
     force: Boolean(prefetchedComponentUpdateCheckCache)
   });
-  if (!updatesMounted || mountId !== updatesMountId) {
+  if (!updatesMounted || mountId3 !== updatesMountId) {
     return;
   }
   applyComponentUpdateCheckCache(componentUpdateCheckCache);
@@ -14277,7 +17379,7 @@ async function onPageMount4() {
   renderUpdatesComponents();
   if (runtimeStateRefreshPromise) {
     await runtimeStateRefreshPromise;
-    if (!updatesMounted || mountId !== updatesMountId) {
+    if (!updatesMounted || mountId3 !== updatesMountId) {
       return;
     }
   }
@@ -14503,12 +17605,3689 @@ var UpdatesTab = {
   styles: styles6
 };
 
+// src/forkop/tabs/history/render.ts
+function render5() {
+  const card3 = (title, body, actions) => E("section", { class: "fkp-history__card" }, [
+    E("div", { class: "fkp-history__head" }, [
+      E("h3", { class: "fkp-history__title" }, title),
+      ...actions ? [actions] : []
+    ]),
+    ...body
+  ]);
+  return E("div", { id: "history-status", class: "fkp-history" }, [
+    card3(_("Protection and recovery"), [
+      E("div", { id: "history-state", role: "status" }, _("Loading\u2026"))
+    ]),
+    card3(_("History"), [
+      E("div", { id: "history-filter", class: "fkp-history__filter" }),
+      E("div", { id: "history-events" }, _("Loading\u2026"))
+    ]),
+    card3(
+      _("Configuration snapshots"),
+      [
+        E(
+          "p",
+          { class: "fkp-history__hint" },
+          _(
+            "Changes compare a snapshot with the saved configuration. Unsaved form edits are not included."
+          )
+        ),
+        E("div", { id: "history-snapshots" }, _("Loading\u2026"))
+      ],
+      E("div", { id: "history-snapshot-actions", class: "fkp-actions" })
+    )
+  ]);
+}
+
+// src/forkop/ui/states.ts
+function renderAction(action) {
+  if (!action) return [];
+  return [
+    E(
+      "button",
+      {
+        type: "button",
+        class: "btn cbi-button",
+        click: () => action.onClick()
+      },
+      action.label
+    )
+  ];
+}
+function renderEmptyState(title, hint, action) {
+  return E("div", { class: "fkp-state fkp-state--empty" }, [
+    E("div", { class: "fkp-state__title" }, title),
+    ...hint ? [E("div", { class: "fkp-state__hint" }, hint)] : [],
+    ...renderAction(action)
+  ]);
+}
+function renderLoadingState2(label = _("Loading\u2026")) {
+  return E(
+    "div",
+    { class: "fkp-state fkp-state--loading", role: "status" },
+    E("div", { class: "fkp-state__title" }, label)
+  );
+}
+function renderErrorState(title, onRetry, details) {
+  return E("div", { class: "fkp-state fkp-state--error", role: "alert" }, [
+    E("div", { class: "fkp-state__title" }, title),
+    ...renderAction(
+      onRetry ? { label: _("Retry"), onClick: onRetry } : void 0
+    ),
+    ...details ? [renderTechnicalDetails(details)] : []
+  ]);
+}
+function renderTechnicalDetails(text) {
+  return E("details", { class: "fkp-tech" }, [
+    E("summary", {}, _("Technical details")),
+    E("pre", { class: "fkp-tech__content" }, text)
+  ]);
+}
+
+// src/forkop/tabs/history/model.ts
+function formatTime(timestamp) {
+  return new Date(timestamp * 1e3).toLocaleString();
+}
+function lastRecoveryEvent(health2) {
+  const events = [
+    ...health2.recent_activity,
+    ...health2.recovery.last_event ? [health2.recovery.last_event] : []
+  ].filter(
+    (event) => event.kind === "restore" || event.kind === "recovery" || event.status === "recovered"
+  );
+  return events.sort((a, b) => b.timestamp - a.timestamp)[0] ?? null;
+}
+function eventText(event) {
+  const outcome = eventOutcomeView(toEventOutcome(event.status));
+  return {
+    value: `${eventKindLabel(event.kind)}: ${outcome.label} \xB7 ${formatTime(event.timestamp)}`,
+    tone: outcome.tone
+  };
+}
+function guardRow(health2) {
+  if (!health2.guard.active)
+    return { value: _("Inactive"), tone: "success" };
+  switch (health2.recovery.action) {
+    case "wait":
+      return {
+        value: _("Active: a change is being applied"),
+        tone: "loading"
+      };
+    case "restart":
+      return {
+        value: _("Active: kept by a failed change"),
+        tone: "error"
+      };
+    case "restore":
+      return {
+        value: _("Active: restore not finished"),
+        tone: "error"
+      };
+    default:
+      return {
+        value: _("Active: DPI switch not confirmed"),
+        tone: "error"
+      };
+  }
+}
+function lastRecoveryRow(health2) {
+  if (health2.guard.active)
+    return health2.recovery.action === "wait" ? { value: _("In progress"), tone: "loading" } : { value: _("Needs attention"), tone: "error" };
+  const failed2 = health2.recovery.last_event;
+  if (failed2) return eventText(failed2);
+  return { value: _("Needs attention"), tone: "error" };
+}
+function nextStepRow(health2) {
+  if (!health2.guard.active) return [];
+  switch (health2.recovery.action) {
+    case "restart":
+      return [
+        {
+          label: _("Next step"),
+          value: _(
+            "Restart Forkop X: the restart removes the DPI guard that a failed change left in place."
+          ),
+          tone: "warning"
+        }
+      ];
+    case "restore":
+      return [
+        {
+          label: _("Next step"),
+          value: _(
+            "Restore the last known good snapshot: the restore finishes and removes the DPI guard."
+          ),
+          tone: "warning"
+        }
+      ];
+    default:
+      return [];
+  }
+}
+function recoveryRows(health2, snapshots2) {
+  const last = lastRecoveryEvent(health2);
+  const reload = health2.last_reload;
+  const lkg = snapshots2?.find((snapshot) => snapshot.is_lkg);
+  const reloadOutcome = reload ? eventOutcomeView(toEventOutcome(reload.status)) : null;
+  return [
+    {
+      label: _("DPI guard"),
+      ...guardRow(health2)
+    },
+    {
+      label: _("Last recovery"),
+      ...health2.recovery.pending ? lastRecoveryRow(health2) : last ? eventText(last) : { value: _("Not needed"), tone: "success" }
+    },
+    ...nextStepRow(health2),
+    {
+      label: _("Package recovery"),
+      ...health2.package_recovery.pending ? { value: _("Waiting to finish"), tone: "warning" } : { value: _("Not needed"), tone: "success" }
+    },
+    {
+      label: _("Last reload"),
+      ...reload && reloadOutcome ? {
+        value: `${reloadOutcome.label} \xB7 ${formatTime(reload.timestamp)}`,
+        tone: reloadOutcome.tone
+      } : { value: _("No reload recorded yet"), tone: "neutral" }
+    },
+    {
+      label: _("Last known good configuration"),
+      ...lkg ? { value: formatTime(lkg.created_at), tone: "success" } : snapshots2 ? { value: _("Not recorded yet"), tone: "neutral" } : { value: _("Unknown"), tone: "neutral" }
+    }
+  ];
+}
+var CATEGORY = {
+  reload: "config",
+  restore: "config",
+  snapshot_create: "config",
+  snapshot_delete: "config",
+  start: "service",
+  recovery: "service",
+  autotune_apply: "autotune",
+  autotune_mode: "autotune",
+  autotune_recommendation: "autotune",
+  autotune_run: "autotune"
+};
+function historyFilterLabel(filter2) {
+  switch (filter2) {
+    case "config":
+      return _("Configuration");
+    case "service":
+      return _("Service");
+    case "autotune":
+      return _("Autotune");
+    default:
+      return _("All");
+  }
+}
+function eventTitle(event) {
+  if (event.kind !== "autotune_apply" || !event.trigger)
+    return eventKindLabel(event.kind);
+  const candidate = event.candidate ?? "";
+  const manual = event.trigger === "manual";
+  if (!candidate)
+    return manual ? _("Autotune: manual apply") : _("Autotune: automatic apply");
+  if (event.status === "success")
+    return (manual ? _("Autotune: %s applied manually") : _("Autotune: %s applied automatically")).replace("%s", candidate);
+  return (manual ? _("Autotune: manual apply of %s") : _("Autotune: automatic apply of %s")).replace("%s", candidate);
+}
+function historyItems(events, filter2, nowMs = Date.now()) {
+  return events.filter((event) => filter2 === "all" || CATEGORY[event.kind] === filter2).slice().sort((a, b) => b.timestamp - a.timestamp).map((event) => ({
+    title: eventTitle(event),
+    outcome: eventOutcomeView(toEventOutcome(event.status)),
+    time: formatTime(event.timestamp),
+    relative: formatRelativeTime(event.timestamp, nowMs)
+  }));
+}
+function snapshotReasonLabel(reason) {
+  switch (reason) {
+    case "manual":
+      return _("Manual");
+    case "before-reload":
+      return _("Before applying changes");
+    case "pre-restore":
+      return _("Before restore");
+    case "last-known-working":
+      return _("Last known good");
+    case "before-autotune":
+      return _("Before autotune");
+    // A configuration edited while a restore or an autotune change owned it:
+    // kept, never rolled back or taken for the restored one
+    // (config/snapshots.uc).
+    case "concurrent-change":
+      return _("Concurrent edit");
+    default:
+      return _("Other");
+  }
+}
+function snapshotRows(snapshots2) {
+  return snapshots2.slice().sort((a, b) => b.created_at - a.created_at).map((snapshot) => ({
+    id: snapshot.id,
+    time: formatTime(snapshot.created_at),
+    // The badge already says "last known good" for such snapshots.
+    reason: snapshot.is_lkg && snapshot.reason === "last-known-working" ? "" : snapshotReasonLabel(snapshot.reason),
+    lkg: Boolean(snapshot.is_lkg),
+    canDelete: !snapshot.is_lkg
+  }));
+}
+function diffValue(value) {
+  if (value === null || value === void 0) return _("not set");
+  if (Array.isArray(value)) return value.length ? value.join(", ") : "\u2014";
+  return value === "" ? "\u2014" : value;
+}
+function diffRows(changes) {
+  return changes.map((change) => ({
+    where: `${change.section} \xB7 ${change.option}`,
+    snapshot: diffValue(change.before),
+    current: diffValue(change.after)
+  }));
+}
+function isTruncation(entry) {
+  return entry.truncated === true;
+}
+function snapshotDiff(entries) {
+  const changes = entries.filter(
+    (entry) => !isTruncation(entry)
+  );
+  const marker = entries.find(isTruncation);
+  return {
+    changes,
+    total: Math.max(Number(marker?.total) || 0, changes.length)
+  };
+}
+function diffTruncatedText(diff) {
+  return _("Only the first %d changes are listed; %d changes in total.").replace("%d", String(diff.changes.length)).replace("%d", String(diff.total));
+}
+function restorePreview(diff, limit) {
+  const preview = diffRows(diff.changes.slice(0, limit)).map(
+    (row) => `${row.where}: ${row.current} \u2192 ${row.snapshot}`
+  );
+  const more = diff.total - preview.length;
+  if (more > 0) preview.push(_("and %d more").replace("%d", String(more)));
+  return preview;
+}
+function snapshotBusyText(reason) {
+  if (reason === "service_action_in_progress")
+    return _(
+      "The service is busy with another operation (list or subscription update, reload or start). Nothing was changed; try again when it finishes."
+    );
+  return _(
+    "Another snapshot operation is already in progress. Try again in a moment."
+  );
+}
+function unsavedChangesBlockRestore(changes, uciPackage) {
+  const pending = changes?.[uciPackage];
+  return Array.isArray(pending) && pending.length > 0;
+}
+function unsavedChangesText() {
+  return _(
+    "There are unsaved changes of Forkop X in this session. Save & Apply or revert them, then restore the snapshot."
+  );
+}
+function restoreConfirmMessage(staysStopped) {
+  return staysStopped ? _(
+    "Forkop X is stopped: the configuration is replaced and checked, but Forkop X is not started. It takes effect when you start Forkop X."
+  ) : _(
+    "Forkop X reloads the configuration. If the reload fails, the previous configuration is restored automatically."
+  );
+}
+function restoreResultToast(result) {
+  switch (result?.status) {
+    case "busy":
+      return {
+        text: snapshotBusyText(result.reason),
+        type: "warning",
+        duration: 6e3
+      };
+    case "success":
+      return {
+        text: _("Configuration restored and reloaded"),
+        type: "success",
+        duration: 6e3
+      };
+    // Forkop X was stopped by the user: only a start brings it back.
+    case "restored_not_started":
+      return {
+        text: _(
+          "Configuration restored, but Forkop X is stopped: it was not started or checked. The restored configuration takes effect when Forkop X is started."
+        ),
+        type: "warning",
+        duration: 1e4
+      };
+    case "recovered":
+      return {
+        text: result.reason === "target_reload_queued" ? _(
+          "Restore was not applied: the service was busy and only queued the reload. The previous configuration is kept."
+        ) : _("Restore failed; previous configuration and runtime recovered"),
+        type: "warning",
+        duration: 8e3
+      };
+    case "failed":
+      if (result.reason === "runtime_guard_active")
+        return {
+          text: _(
+            "Restore was not started: a failed change left the DPI guard in place, and nothing can be reloaded until Forkop X is restarted. Restart Forkop X, then restore the snapshot if it is still needed."
+          ),
+          type: "warning",
+          duration: 12e3
+        };
+      if (result.reason === "uncommitted_uci_changes")
+        return {
+          text: _(
+            'Restore was not started: the router has uncommitted uci changes of Forkop X (made with "uci set" without a commit). Commit or revert them, then restore again.'
+          ),
+          type: "warning",
+          duration: 1e4
+        };
+      if (result.runtime === "stopped")
+        return {
+          text: result.reason === "target_invalid" ? _(
+            "Restore was not applied: the snapshot configuration did not pass validation. The previous configuration is kept; Forkop X stays stopped."
+          ) : _(
+            "Restore was not applied: Forkop X was stopped during the restore. The previous configuration is kept."
+          ),
+          type: "warning",
+          duration: 1e4
+        };
+      break;
+    case "needs_attention":
+      if (result.reason === "config_changed_during_transaction") {
+        const kept = result.saved_snapshot ? _('The change is kept and saved as a snapshot ("Concurrent edit").') : _(
+          "The change is kept in the configuration, but no snapshot of it could be saved."
+        );
+        return {
+          text: (
+            // Forkop X was stopped: the snapshot was not reloaded, no
+            // guard is left.
+            result.runtime === "stopped" ? `${_("Restore was not applied: Forkop X was stopped, and the configuration was changed during the restore.")} ${kept}` : (
+              // The reload ran, but it may have read the change.
+              result.guard === "inactive" ? `${_("Restore did not finish: the configuration was changed while the snapshot was being applied. Forkop X was reloaded, but it is not known whether with the snapshot or with the change.")} ${kept} ${_("Restore the snapshot you need to finish.")}` : `${_("Restore did not finish: the configuration was changed while the snapshot was being applied.")} ${kept} ${_("The DPI guard stays active. Restore the snapshot you need to finish.")}`
+            )
+          ),
+          type: "error",
+          duration: 12e3
+        };
+      }
+      if (result.reason === "runtime_guard_active")
+        return {
+          text: _(
+            "Restore did not finish: a failed change left the DPI guard in place, and the DPI guard stays active. Restart Forkop X, then restore the snapshot again."
+          ),
+          type: "error",
+          duration: 12e3
+        };
+      if (result.reason === "rollback_reload_queued")
+        return {
+          text: _(
+            "Restore did not finish: the service was busy and only queued the reload. The DPI guard stays active; restore again when the service is idle."
+          ),
+          type: "error",
+          duration: 1e4
+        };
+      break;
+  }
+  return {
+    text: _("Restore failed; check the recovery state before retrying"),
+    type: "error",
+    duration: 8e3
+  };
+}
+
+// src/forkop/tabs/history/initController.ts
+var REFRESH_INTERVAL_MS = 15e3;
+var FILTERS = ["all", "config", "service", "autotune"];
+var MAX_RESTORE_PREVIEW = 8;
+var mounted = false;
+var mountId = 0;
+var refreshTimer = null;
+var filter = "all";
+var health = null;
+var healthFailed = false;
+var history2 = null;
+var historyFailed = false;
+var snapshots = null;
+var snapshotsFailed = false;
+var snapshotBusy = false;
+async function loadAll() {
+  const id = mountId;
+  const [healthResponse, historyResponse, snapshotResponse] = await Promise.allSettled([
+    ForkopShellMethods.getHealthStatus(),
+    ForkopShellMethods.getHistory(),
+    ForkopShellMethods.snapshotList()
+  ]);
+  if (!mounted || id !== mountId) return;
+  const value = (result) => result.status === "fulfilled" && result.value.success ? result.value.data : null;
+  health = value(healthResponse);
+  healthFailed = !health;
+  history2 = value(historyResponse);
+  historyFailed = !history2 || !Array.isArray(history2.events);
+  const list = value(snapshotResponse);
+  snapshots = Array.isArray(list) ? list : null;
+  snapshotsFailed = !snapshots;
+  renderAll();
+}
+function replace(id, ...nodes) {
+  const container = document.getElementById(id);
+  if (container)
+    preserveScrollForPage(() => container.replaceChildren(...nodes));
+}
+function renderState() {
+  if (healthFailed || !health) {
+    replace(
+      "history-state",
+      healthFailed ? renderErrorState(
+        _("Recovery state is unavailable"),
+        () => void loadAll()
+      ) : renderLoadingState2()
+    );
+    return;
+  }
+  replace(
+    "history-state",
+    E(
+      "dl",
+      { class: "fkp-history__facts" },
+      recoveryRows(health, snapshots).flatMap((row) => [
+        E("dt", {}, row.label),
+        E("dd", {}, renderStatus({ label: row.value, tone: row.tone }))
+      ])
+    )
+  );
+}
+function renderHistory() {
+  replace(
+    "history-filter",
+    ...FILTERS.map(
+      (item) => E(
+        "button",
+        {
+          type: "button",
+          class: "btn cbi-button",
+          "aria-pressed": item === filter ? "true" : "false",
+          click: () => {
+            filter = item;
+            renderHistory();
+          }
+        },
+        historyFilterLabel(item)
+      )
+    )
+  );
+  if (historyFailed || !history2) {
+    replace(
+      "history-events",
+      historyFailed ? renderErrorState(_("History is unavailable"), () => void loadAll()) : renderLoadingState2()
+    );
+    return;
+  }
+  const items = historyItems(history2.events, filter);
+  const notes = history2.persistent ? [] : [
+    E(
+      "p",
+      { class: "fkp-history__hint" },
+      _("History is kept in memory until the router restarts.")
+    )
+  ];
+  replace(
+    "history-events",
+    ...notes,
+    items.length ? E(
+      "ul",
+      { class: "fkp-history__list" },
+      items.map(
+        (item) => E("li", { class: "fkp-history__event" }, [
+          E(
+            "span",
+            { class: "fkp-history__time", title: item.time },
+            item.relative
+          ),
+          E("span", { class: "fkp-history__what" }, item.title),
+          renderStatus(item.outcome)
+        ])
+      )
+    ) : renderEmptyState(
+      filter === "all" ? _("No events recorded yet") : _("No events of this kind")
+    )
+  );
+}
+function renderDiffTable(diff) {
+  const rows = diffRows(diff.changes);
+  if (!diff.total) {
+    return E("p", {}, _("No saved changes since this snapshot"));
+  }
+  return E("div", { class: "fkp-history__diff-wrap" }, [
+    // UC-062: a cut list says it is not the whole change.
+    ...diff.total > rows.length ? [E("p", {}, diffTruncatedText(diff))] : [],
+    E("table", { class: "table fkp-history__diff" }, [
+      E("tr", { class: "tr table-titles" }, [
+        E("th", { class: "th" }, _("Setting")),
+        E("th", { class: "th" }, _("In snapshot")),
+        E("th", { class: "th" }, _("Now"))
+      ]),
+      ...rows.map(
+        (row) => E("tr", { class: "tr" }, [
+          E("td", { class: "td" }, row.where),
+          E("td", { class: "td" }, row.snapshot),
+          E("td", { class: "td" }, row.current)
+        ])
+      )
+    ])
+  ]);
+}
+async function loadDiff(id) {
+  const response = await ForkopShellMethods.snapshotDiff(id);
+  return response.success && Array.isArray(response.data) ? snapshotDiff(response.data) : null;
+}
+async function showChanges(id) {
+  const diff = await loadDiff(id);
+  if (!diff) {
+    showToast(_("Could not compare configurations"), "error");
+    return;
+  }
+  ui.showModal(_("Changes since this snapshot"), [
+    renderDiffTable(diff),
+    E("div", { class: "fkp-confirm__actions" }, [
+      E(
+        "button",
+        {
+          type: "button",
+          class: "btn cbi-button",
+          click: () => ui.hideModal()
+        },
+        _("Close")
+      )
+    ])
+  ]);
+}
+async function runSnapshotAction(action) {
+  if (snapshotBusy) return;
+  snapshotBusy = true;
+  renderSnapshots();
+  try {
+    await action();
+  } catch (error) {
+    logger.error("[HISTORY]", "snapshot action failed", error);
+    showToast(_("Could not load data"), "error");
+  } finally {
+    snapshotBusy = false;
+    await loadAll();
+  }
+}
+async function restoreSnapshot(id, label) {
+  const sessionChanges = await Promise.resolve(uci.changes?.()).catch(
+    () => null
+  );
+  if (unsavedChangesBlockRestore(sessionChanges, FORKOP_UCI_PACKAGE)) {
+    showToast(unsavedChangesText(), "warning", 8e3);
+    return;
+  }
+  const diff = await loadDiff(id);
+  await refreshRuntimeUiState({ force: true }).catch(() => void 0);
+  const services = store.get().servicesInfoWidget.data;
+  const staysStopped = Boolean(
+    services.forkopStoppedByUser || services.forkopNotStarted
+  );
+  const confirmed = await confirmAction({
+    title: _("Restore configuration snapshot?"),
+    message: `${label}. ${restoreConfirmMessage(staysStopped)}`,
+    consequences: diff ? diff.total ? restorePreview(diff, MAX_RESTORE_PREVIEW) : [_("No saved changes since this snapshot")] : [_("Could not compare configurations")],
+    confirmLabel: _("Restore"),
+    danger: true
+  });
+  if (!confirmed) return;
+  await runSnapshotAction(async () => {
+    const result = await ForkopShellMethods.snapshotRestore(id);
+    const toast = restoreResultToast(result.success ? result.data : void 0);
+    showToast(toast.text, toast.type, toast.duration);
+  });
+}
+async function deleteSnapshot(id, label) {
+  const confirmed = await confirmAction({
+    title: _("Delete snapshot?"),
+    message: `${label}. ${_("Delete this configuration snapshot?")}`,
+    confirmLabel: _("Delete"),
+    danger: true
+  });
+  if (!confirmed) return;
+  await runSnapshotAction(async () => {
+    const result = await ForkopShellMethods.snapshotDelete(id);
+    const status2 = result.success ? result.data.status : void 0;
+    if (status2 === "busy") showToast(snapshotBusyText(), "warning", 6e3);
+    else if (status2 === "deleted") showToast(_("Snapshot deleted"), "success");
+    else showToast(_("Could not delete snapshot"), "error");
+  });
+}
+async function createSnapshot() {
+  await runSnapshotAction(async () => {
+    const result = await ForkopShellMethods.snapshotCreate("manual");
+    const status2 = result.success ? result.data.status : void 0;
+    if (status2 === "busy") showToast(snapshotBusyText(), "warning", 6e3);
+    else if (status2 === "created") showToast(_("Snapshot saved"), "success");
+    else showToast(_("Could not create snapshot"), "error");
+  });
+}
+function renderSnapshots() {
+  const readonly = isReadonlyMode();
+  replace(
+    "history-snapshot-actions",
+    ...readonly ? [] : [
+      E(
+        "button",
+        {
+          type: "button",
+          class: "btn cbi-button",
+          disabled: snapshotBusy ? true : void 0,
+          click: () => void createSnapshot()
+        },
+        _("Create snapshot")
+      )
+    ]
+  );
+  if (snapshotsFailed || !snapshots) {
+    replace(
+      "history-snapshots",
+      snapshotsFailed ? renderErrorState(
+        _("Could not load configuration snapshots"),
+        () => void loadAll()
+      ) : renderLoadingState2()
+    );
+    return;
+  }
+  const rows = snapshotRows(snapshots);
+  replace(
+    "history-snapshots",
+    rows.length ? E(
+      "ul",
+      { class: "fkp-history__list" },
+      rows.map((row) => {
+        const label = row.reason ? `${row.time} \xB7 ${row.reason}` : row.time;
+        return E("li", { class: "fkp-history__snapshot" }, [
+          E("span", { class: "fkp-history__what" }, [
+            label,
+            ...row.lkg ? [
+              " ",
+              E(
+                "span",
+                { class: "fkp-history__lkg" },
+                _("Last known good")
+              )
+            ] : []
+          ]),
+          E("span", { class: "fkp-actions" }, [
+            E(
+              "button",
+              {
+                type: "button",
+                class: "btn cbi-button",
+                click: () => void showChanges(row.id)
+              },
+              _("Changes")
+            ),
+            ...readonly ? [] : [
+              renderOverflowMenu(_("Snapshot actions"), [
+                {
+                  label: _("Restore\u2026"),
+                  onClick: () => void restoreSnapshot(row.id, label),
+                  disabled: snapshotBusy,
+                  danger: true
+                },
+                {
+                  label: row.canDelete ? _("Delete\u2026") : _(
+                    "The last known good snapshot cannot be deleted"
+                  ),
+                  onClick: () => void deleteSnapshot(row.id, label),
+                  disabled: snapshotBusy || !row.canDelete,
+                  danger: row.canDelete
+                }
+              ])
+            ]
+          ])
+        ]);
+      })
+    ) : renderEmptyState(_("No snapshots yet"))
+  );
+}
+function renderAll() {
+  renderState();
+  renderHistory();
+  renderSnapshots();
+}
+function onPageMount5() {
+  onPageUnmount5();
+  mounted = true;
+  mountId += 1;
+  renderAll();
+  void loadAll();
+  refreshTimer = setInterval(() => {
+    if (!snapshotBusy) void loadAll();
+  }, REFRESH_INTERVAL_MS);
+}
+function onPageUnmount5() {
+  mounted = false;
+  mountId += 1;
+  if (refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = null;
+}
+var initialized = false;
+async function initController5() {
+  if (initialized) return;
+  initialized = true;
+  onMount("history-status").then(() => {
+    store.subscribe(
+      (next, prev, diff) => {
+        if (diff.tabService && next.tabService.current !== prev.tabService.current) {
+          if (next.tabService.current === "history") onPageMount5();
+          else onPageUnmount5();
+        }
+      }
+    );
+    if (store.get().tabService.current === "history" || isActiveLuciTab("history")) {
+      onPageMount5();
+    }
+  });
+}
+
+// src/forkop/tabs/history/styles.ts
+var styles7 = `
+.fkp-history {
+    display: flex;
+    flex-direction: column;
+    gap: var(--fkp-space-3);
+    min-width: 0;
+}
+.fkp-history__card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--fkp-space-2);
+    min-width: 0;
+    padding: var(--fkp-space-3) var(--fkp-space-4);
+    border: 1px solid var(--fkp-border);
+    border-radius: 6px;
+}
+.fkp-history__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--fkp-space-2);
+}
+.fkp-history__title { margin: 0; font-size: 1.05em; }
+.fkp-history__hint { margin: 0; color: var(--fkp-tone-neutral); overflow-wrap: anywhere; }
+.fkp-history__facts {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: var(--fkp-space-1) var(--fkp-space-4);
+    margin: 0;
+}
+.fkp-history__facts dt { font-weight: 600; }
+.fkp-history__facts dd { margin: 0; overflow-wrap: anywhere; }
+.fkp-history__filter { display: flex; flex-wrap: wrap; gap: var(--fkp-space-1); }
+.fkp-history__filter .btn[aria-pressed="true"] { font-weight: 600; border-color: var(--fkp-tone-loading); }
+.fkp-history__list { margin: 0; padding: 0; list-style: none; }
+.fkp-history__event,
+.fkp-history__snapshot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--fkp-space-1) var(--fkp-space-3);
+    padding: var(--fkp-space-2) 0;
+    border-top: 1px solid var(--fkp-border);
+}
+.fkp-history__event:first-child,
+.fkp-history__snapshot:first-child { border-top: 0; }
+.fkp-history__time { color: var(--fkp-tone-neutral); min-width: 0; }
+.fkp-history__what { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }
+.fkp-history__lkg {
+    padding: 0 var(--fkp-space-2);
+    border: 1px solid var(--fkp-tone-success);
+    border-radius: 999px;
+    color: var(--fkp-tone-success);
+    font-size: 0.85em;
+}
+.fkp-history__diff-wrap { width: 0; min-width: 100%; overflow-x: auto; }
+.fkp-history__diff { width: 100%; }
+.fkp-history__diff td { overflow-wrap: anywhere; vertical-align: top; }
+
+@media (max-width: 599px) {
+    .fkp-history__facts { grid-template-columns: minmax(0, 1fr); }
+    .fkp-history__facts dd { margin-bottom: var(--fkp-space-2); }
+}
+`;
+
+// src/forkop/tabs/history/index.ts
+var HistoryTab = {
+  render: render5,
+  initController: initController5,
+  styles: styles7
+};
+
+// src/forkop/tabs/autotune/render.ts
+function render6() {
+  const card3 = (title, body, actions) => E("section", { class: "fkp-autotune__card" }, [
+    E("div", { class: "fkp-autotune__head" }, [
+      E("h3", { class: "fkp-autotune__title" }, title),
+      ...actions ? [actions] : []
+    ]),
+    ...body
+  ]);
+  return E("div", { id: "autotune-status", class: "fkp-autotune" }, [
+    card3(
+      _("Mode and state"),
+      [E("div", { id: "autotune-state", role: "status" }, _("Loading\u2026"))],
+      E("div", { id: "autotune-state-actions", class: "fkp-actions" })
+    ),
+    card3(_("DPI rule groups"), [
+      E(
+        "p",
+        { class: "fkp-autotune__hint" },
+        _(
+          "A group is one Zapret DPI rule. Forkop X changes only the strategy of an existing rule, for all its targets at once. It never creates or deletes rules and never turns DPI bypass off."
+        )
+      ),
+      E("div", { id: "autotune-groups" }, _("Loading\u2026"))
+    ]),
+    card3(
+      _("Targets"),
+      [E("div", { id: "autotune-targets" }, _("Loading\u2026"))],
+      E("div", { id: "autotune-target-actions", class: "fkp-actions" })
+    ),
+    card3(_("Autotune history"), [
+      E("div", { id: "autotune-history" }, _("Loading\u2026"))
+    ])
+  ]);
+}
+
+// src/forkop/tabs/autotune/domainPicker.ts
+var MAX_PINNED = 8;
+var MAX_ROWS = 300;
+function visibleDomains(domains, pinned, query, limit = MAX_ROWS) {
+  const q = query.trim().toLowerCase();
+  const matches = (d) => !q || d.includes(q);
+  const first = pinned.filter(matches);
+  const rest = domains.filter((d) => matches(d) && !pinned.includes(d));
+  const all = [...first, ...rest];
+  return {
+    shown: all.slice(0, limit),
+    hidden: Math.max(all.length - limit, 0)
+  };
+}
+function createDomainPicker(initial, load, errorText) {
+  const pinned = [...initial];
+  let domains = [];
+  let tag = null;
+  let note = "";
+  const search = E("input", {
+    class: "cbi-input-text",
+    type: "search",
+    placeholder: _("Search domains"),
+    autocomplete: "off"
+  });
+  const box = E("div", { class: "fkp-autotune__domains" });
+  const counter2 = E("div", {
+    class: "fkp-autotune__field-hint"
+  });
+  const render7 = () => {
+    const { shown, hidden } = visibleDomains(domains, pinned, search.value);
+    box.replaceChildren(
+      ...shown.map((domain) => {
+        const checked = pinned.includes(domain);
+        const check = E("input", {
+          type: "checkbox",
+          checked: checked ? true : void 0,
+          disabled: !checked && pinned.length >= MAX_PINNED ? true : void 0
+        });
+        check.addEventListener("change", () => {
+          const at = pinned.indexOf(domain);
+          if (check.checked && at < 0) pinned.push(domain);
+          if (!check.checked && at >= 0) pinned.splice(at, 1);
+          render7();
+        });
+        return E("label", { class: "fkp-autotune__domain" }, [
+          check,
+          " ",
+          domain,
+          ...checked && tag !== null && domains.length && !domains.includes(domain) ? [
+            " ",
+            E(
+              "span",
+              { class: "fkp-autotune__muted" },
+              `(${_("not in the list")})`
+            )
+          ] : []
+        ]);
+      }),
+      ...shown.length ? [] : [
+        E(
+          "div",
+          { class: "fkp-autotune__muted" },
+          note || _("Nothing found")
+        )
+      ]
+    );
+    const parts = [
+      _("Selected %d of %d").replace("%d", String(pinned.length)).replace("%d", String(MAX_PINNED))
+    ];
+    if (hidden)
+      parts.push(_("%d more: refine the search").replace("%d", String(hidden)));
+    if (note && shown.length) parts.push(note);
+    counter2.textContent = parts.join(" \xB7 ");
+  };
+  search.addEventListener("input", render7);
+  return {
+    element: E("div", {}, [search, box, counter2]),
+    selected: () => [...pinned],
+    // Load the domains of a list; choosing another list clears the choice.
+    async show(next) {
+      if (next === tag) return;
+      if (tag !== null) pinned.splice(0);
+      tag = next;
+      domains = [];
+      note = _("Loading\u2026");
+      render7();
+      const result = await load(next);
+      if (tag !== next) return;
+      domains = result.domains;
+      note = result.error ? errorText(result.error) : result.truncated ? _("The list is long: only its first 2000 domains can be chosen.") : "";
+      render7();
+    }
+  };
+}
+
+// src/forkop/tabs/autotune/model.ts
+var MODES = ["off", "recommend", "auto"];
+function modeLabel(mode) {
+  switch (mode) {
+    case "recommend":
+      return _("Recommendations only");
+    case "auto":
+      return _("Automatic");
+    default:
+      return _("Off");
+  }
+}
+function modeDescription(mode) {
+  switch (mode) {
+    case "recommend":
+      return _(
+        "Forkop X measures the targets on schedule and shows recommendations. It does not change rules."
+      );
+    case "auto":
+      return _(
+        "Forkop X measures the targets on schedule and applies a confirmed recommendation by itself, with a production check and automatic rollback."
+      );
+    default:
+      return _(
+        "Scheduled measurements are off. An administrator can still check targets manually."
+      );
+  }
+}
+function strategyLabel(id) {
+  if (!id) return "\u2014";
+  if (id === "direct") return _("No bypass (direct)");
+  if (id === "default") return _("Default strategy");
+  return id;
+}
+function currentStrategyLabel(current, custom) {
+  if (custom) return _("Custom strategy");
+  if (!current) return _("Not determined");
+  return strategyLabel(current);
+}
+function confidenceLabel(confidence) {
+  switch (confidence) {
+    case "high":
+      return _("high");
+    case "medium":
+      return _("medium");
+    case "low":
+      return _("low");
+    default:
+      return "\u2014";
+  }
+}
+function stabilityView(stability) {
+  switch (stability) {
+    case "stable":
+      return { label: _("Stable"), tone: "success" };
+    case "unstable":
+      return { label: _("Unstable"), tone: "warning" };
+    case "failed":
+      return { label: _("Failed"), tone: "error" };
+    case "unsupported":
+      return { label: _("Not supported"), tone: "muted" };
+    default:
+      return { label: _("Not checked"), tone: "neutral" };
+  }
+}
+function targetReasonText(reason) {
+  switch (reason) {
+    case "direct_stable":
+      return _("Works without bypass.");
+    case "direct_failed_candidate_stable":
+      return _("Does not work without bypass; a stable strategy was found.");
+    case "direct_unstable_candidate_stable":
+      return _("Unstable without bypass; a stable strategy was found.");
+    case "candidate_more_reliable_than_direct":
+      return _("The strategy is more reliable than no bypass.");
+    case "materially_faster_than_direct":
+    case "materially_faster":
+      return _("The strategy is noticeably faster.");
+    case "simplest_stable":
+      return _(
+        "Several strategies are stable with similar latency; the simplest one was chosen."
+      );
+    case "candidate_bypassed":
+      return _("The target is reachable only through a bypass strategy.");
+    case "no_stable_candidate":
+      return _("No strategy is stable. The current strategy is kept.");
+    case "all_failed":
+    case "target_unreachable":
+      return _(
+        "The target is unreachable in every way; the problem may not be DPI."
+      );
+    case "target_ip_mismatch":
+    case "target_unresolved":
+      return _(
+        "The target address could not be determined reliably during the check."
+      );
+    case "isolation_unavailable":
+    case "route_unavailable":
+      return _("A safe isolated check is not possible right now.");
+    case "autotune_in_progress":
+    case "lock_unavailable":
+      return _("Another check was running.");
+    case "resolver_missing":
+      return _(
+        "No DNS server for measurements: set a plain IPv4 DNS server in Forkop X or on the target."
+      );
+    default:
+      return reason ? _("The check gave no usable result.") : "";
+  }
+}
+function outsideReasonText(reason) {
+  switch (reason) {
+    case "target_disabled":
+      return _("The target is disabled.");
+    case "target_unresolved":
+      return _("The router could not resolve the address.");
+    case "target_not_fakeip_routed":
+      return _(
+        "The router does not route this address through FakeIP, so Forkop X cannot check a strategy change for it."
+      );
+    case "rule_owner_undecidable":
+      return _(
+        "The rule that routes it cannot be determined unambiguously (for example, a remote list comes first)."
+      );
+    case "dpi_identity_unproven":
+      return _("The DPI rule that routes it could not be identified safely.");
+    case "provider_not_supported":
+      return _(
+        "It goes through a Zapret2 or ByeDPI rule; autotune supports Zapret rules only."
+      );
+    case "routed_through_connection":
+      return _(
+        "It goes through a proxy or VPN rule. DPI autotune does not apply."
+      );
+    case "no_dpi_rule":
+      return _(
+        "It goes directly and is not in a DPI rule. No bypass is configured for it."
+      );
+    case "bypassed":
+      return _("It is excluded from Forkop X routing.");
+    case "blocked":
+      return _("It is blocked by a rule.");
+    case "not_a_dpi_rule":
+    case "outbound_without_rule":
+      return _("It is not routed by a DPI rule.");
+    case "list_not_local":
+    case "list_file_missing":
+    case "list_unreadable":
+    case "list_has_no_domains":
+    case "list_domains_unresolved":
+      return listErrorText(reason);
+    default:
+      return _("It is not in a DPI rule.");
+  }
+}
+var DEVICE_LIMITED_TEXT = () => _(
+  "The rule is limited to devices: the result holds for them. Forkop X checks a change with router requests sent through the queue of this rule."
+);
+function decisionText(reason) {
+  switch (reason) {
+    case "mode_not_auto":
+      return _("Forkop X does not apply recommendations in this mode.");
+    case "manual_run":
+      return _(
+        "Manual checks only measure; changes are applied only on schedule."
+      );
+    case "not_confirmed":
+      return _("The recommendation is not confirmed yet.");
+    case "confidence_too_low":
+      return _("Automatic apply requires high confidence.");
+    case "custom_strategy_kept":
+      return _("The rule has a custom strategy; Forkop X keeps it.");
+    case "candidate_in_cooldown":
+      return _(
+        "This strategy was rolled back recently; it waits for the cooldown."
+      );
+    case "state_recovered":
+      return _(
+        "The autotune state was restored after damage; automatic apply waits for the cooldown."
+      );
+    case "applies_disabled":
+      return _("Automatic applies are disabled by the policy (0 per day).");
+    case "daily_limit_reached":
+      return _("The daily limit of automatic applies is reached.");
+    case "one_apply_per_run":
+      return _(
+        "Another group was changed in this run; at most one change per run."
+      );
+    case "direct_not_applicable":
+      return _("Forkop X never turns DPI bypass off by itself.");
+    case "representative_not_measured":
+    case "no_recommendation":
+      return "";
+    default:
+      return "";
+  }
+}
+var CONFIG_EDITED_DURING_CHECK = "verification_failed:config_changed_during_transaction";
+var CONFIG_EDITED_DURING_ROLLBACK = "verification_failed:config_changed_during_rollback";
+var CONFIG_EDITED_DURING_APPLY = "apply_config_changed_during_transaction";
+function applyOutcomeView(status2, reason) {
+  switch (status2) {
+    case "applied":
+      return { label: _("Applied, check passed"), tone: "success" };
+    case "rolled_back":
+      if (reason === "operator_rollback")
+        return { label: _("Rolled back by an administrator"), tone: "neutral" };
+      return {
+        label: _("Check failed, rolled back automatically"),
+        tone: "warning"
+      };
+    case "no_change_required":
+      return { label: _("No change was needed"), tone: "neutral" };
+    case "not_applied":
+    case "stale":
+    case "busy":
+      return { label: _("Not applied"), tone: "neutral" };
+    case "needs_attention":
+      if (reason === CONFIG_EDITED_DURING_CHECK)
+        return {
+          label: _("Check failed, not rolled back: configuration edited"),
+          tone: "error"
+        };
+      if (reason === CONFIG_EDITED_DURING_ROLLBACK)
+        return {
+          label: _(
+            "Check failed, rollback did not finish: configuration edited"
+          ),
+          tone: "error"
+        };
+      if (reason === CONFIG_EDITED_DURING_APPLY)
+        return {
+          label: _("Apply did not finish: configuration edited"),
+          tone: "error"
+        };
+      return { label: _("Rollback did not finish"), tone: "error" };
+    default:
+      return { label: _("Outcome unknown"), tone: "error" };
+  }
+}
+function conflictText(result, hosts) {
+  const parts = (result.conflict ?? []).map(
+    (item) => `${hosts[item.target] ?? item.target}: ${strategyLabel(item.selected)}`
+  );
+  const base = result.reason === "candidate_not_stable_for_all" ? _("The best strategy is not stable for every target of the rule.") : _("Targets of this rule need different strategies.");
+  return [
+    base,
+    ...parts.length ? [parts.join("; ") + "."] : [],
+    _(
+      "A strategy is set for the whole rule, so Forkop X does not change it. You can split the targets into separate rules."
+    )
+  ];
+}
+function inconclusiveText(reason) {
+  if (reason === "not_measured" || reason === "no_targets" || !reason)
+    return _("No measurements yet.");
+  if (reason === "no_conclusive_result")
+    return _(
+      "The last check gave no usable result. The current strategy is kept."
+    );
+  return `${targetReasonText(reason)} ${_("The current strategy is kept.")}`;
+}
+function groupCards(status2, live2) {
+  const hosts = Object.fromEntries(
+    status2.targets.map((t) => [t.id, t.host ?? t.id])
+  );
+  const ids = /* @__PURE__ */ new Set([
+    ...Object.keys(live2?.groups ?? {}),
+    ...live2 ? [] : Object.keys(status2.groups ?? {})
+  ]);
+  return [...ids].sort().map((id) => {
+    const state = status2.groups?.[id] ?? null;
+    const now = live2?.groups[id] ?? null;
+    const targets = now?.targets ?? state?.targets ?? [];
+    const current = now?.current ?? state?.current ?? null;
+    const custom = now?.custom ?? null;
+    const deviceLimited = (now?.source_scoped ?? state?.source_scoped ?? false) === true;
+    const result = state?.result ?? now?.result ?? null;
+    const required = state?.required ?? status2.policy.confirmations;
+    const pending = state?.pending ?? null;
+    const ready = state?.ready === true;
+    const explanation = [];
+    let badge;
+    let recommended = null;
+    if (!result || !state?.last) {
+      badge = { label: _("Not checked"), tone: "neutral" };
+      explanation.push(_("No measurements yet."));
+    } else if (result.status === "recommendation") {
+      recommended = result.candidate;
+      badge = ready ? { label: _("Recommendation confirmed"), tone: "warning" } : { label: _("Confirming"), tone: "loading" };
+      const why = targetReasonText(result.reason);
+      if (why) explanation.push(why);
+      if (!ready)
+        explanation.push(
+          _(
+            "The strategy is changed only after %d checks in a row with the same result."
+          ).replace("%d", String(required))
+        );
+    } else if (result.status === "no_change") {
+      badge = { label: _("No change needed"), tone: "success" };
+      explanation.push(_("The current strategy is already the best."));
+    } else if (result.status === "direct_stable") {
+      badge = { label: _("Bypass not needed"), tone: "success" };
+      explanation.push(
+        _("The targets work without bypass."),
+        _(
+          "Forkop X never turns DPI bypass off by itself; remove the targets from the rule manually if you want."
+        )
+      );
+    } else if (result.status === "conflict") {
+      badge = { label: _("Conflict"), tone: "warning" };
+      explanation.push(...conflictText(result, hosts));
+    } else {
+      badge = { label: _("No data"), tone: "neutral" };
+      explanation.push(inconclusiveText(result.reason));
+    }
+    const decision = status2.policy.mode === "auto" && result?.status === "recommendation" ? decisionText(state?.decision?.reason) : "";
+    if (decision) explanation.push(decision);
+    if (custom && result?.status === "recommendation")
+      explanation.push(_("The rule has a custom strategy; Forkop X keeps it."));
+    if (deviceLimited && !explanation.includes(DEVICE_LIMITED_TEXT()))
+      explanation.push(DEVICE_LIMITED_TEXT());
+    const apply = state?.last_apply ?? null;
+    const nowSeconds = Math.floor(Date.now() / 1e3);
+    const cooling = (candidate) => Boolean(candidate && (state?.cooldowns?.[candidate] ?? 0) > nowSeconds);
+    const applyCandidate = status2.policy.mode === "recommend" && result?.status === "recommendation" && ready && !custom && result.candidate && result.candidate !== "direct" && !cooling(result.candidate) ? result.candidate : null;
+    return {
+      id,
+      title: now?.label || state?.label || id,
+      targetCount: targets.length,
+      badge,
+      current: currentStrategyLabel(current, custom),
+      deviceLimited,
+      recommended,
+      confidence: result?.status === "recommendation" || result?.status === "no_change" ? result.confidence : null,
+      explanation,
+      progress: pending && result?.status === "recommendation" ? { count: Math.min(pending.count, required), required } : null,
+      checkedAt: state?.last?.at ?? null,
+      lastApply: apply && apply.status !== "not_applied" ? {
+        at: apply.at,
+        candidate: apply.trigger === "manual" ? `${strategyLabel(apply.candidate)} (${_("manually")})` : strategyLabel(apply.candidate),
+        outcome: applyOutcomeView(apply.status, apply.reason)
+      } : null,
+      cooldowns: Object.entries(state?.cooldowns ?? {}).filter(([, until]) => until > nowSeconds).map(([candidate, until]) => ({
+        candidate: strategyLabel(candidate),
+        until
+      })),
+      applyCandidate,
+      manualHint: status2.policy.mode === "off" && result?.status === "recommendation" && ready,
+      targets: targets.map((target) => hosts[target] ?? target)
+    };
+  });
+}
+function candidateRows(summary) {
+  const order = {
+    stable: 0,
+    unstable: 1,
+    failed: 2
+  };
+  return summary.candidates.slice().sort(
+    (a, b) => (order[a.stability ?? ""] ?? 3) - (order[b.stability ?? ""] ?? 3) || (b.success_ratio ?? -1) - (a.success_ratio ?? -1)
+  ).map((candidate) => ({
+    name: strategyLabel(candidate.id),
+    result: typeof candidate.attempted === "number" && candidate.attempted > 0 ? `${candidate.success ?? 0} / ${candidate.attempted}` : "\u2014",
+    stability: stabilityView(candidate.stability),
+    latency: typeof candidate.median_tls_ms === "number" ? _("%d ms").replace(
+      "%d",
+      String(Math.round(candidate.median_tls_ms))
+    ) : "\u2014",
+    selected: candidate.id === summary.selected
+  }));
+}
+function ruleListName(tag, rule) {
+  if (/^inline-/.test(tag)) return _("custom list");
+  let name = tag.replace(/-ruleset$/, "").replace(/-community$/, "");
+  if (rule && name.startsWith(`${rule}-`)) name = name.slice(rule.length + 1);
+  return name || tag;
+}
+function ruleListLabel(tag, lists) {
+  const known = lists?.find((l) => l.tag === tag);
+  return known ? `${known.label}: ${ruleListName(tag, known.rule)}` : ruleListName(tag);
+}
+function listErrorText(reason) {
+  switch (reason) {
+    case "list_not_local":
+    case "list_file_missing":
+      return _(
+        "The list is not downloaded on the router; update the lists or save the rule."
+      );
+    case "list_unreadable":
+      return _("The list could not be read.");
+    case "list_has_no_domains":
+      return _(
+        "The list has no domain names to check (only keywords, regular expressions or addresses)."
+      );
+    case "list_domains_unresolved":
+      return _("No domain of the list has an address at the DNS server.");
+    default:
+      return reason ? _("The list could not be read.") : "";
+  }
+}
+function listNote(list) {
+  if (list.error) return listErrorText(list.error);
+  const parts = [
+    list.pinned ? _("Pinned domains: %d").replace("%d", String(list.members.length)) : _("Checked %d of %d domains").replace("%d", String(list.members.length)).replace("%d", String(list.total))
+  ];
+  if (list.missing.length)
+    parts.push(`${_("not in the list")}: ${list.missing.join(", ")}`);
+  if (list.skipped)
+    parts.push(
+      _("%d entries without a domain name are skipped").replace(
+        "%d",
+        String(list.skipped)
+      )
+    );
+  return parts.join("; ");
+}
+function targetRows(targets, lists) {
+  const members = (parent) => targets.filter((t) => t.parent === parent).map((t) => targetRow(t, lists, members));
+  return targets.filter((t) => t.parent === void 0).map((t) => targetRow(t, lists, members));
+}
+function listRow(target, lists, members) {
+  const list = target.list ?? null;
+  let result = _("Not checked");
+  let tone = "neutral";
+  if (!target.enabled) {
+    result = _("Disabled");
+    tone = "muted";
+  } else if (list?.error) {
+    result = _("Nothing to check");
+    tone = "warning";
+  } else if (list) {
+    result = _("Domains: %d").replace("%d", String(list.members.length));
+  }
+  return {
+    id: target.id,
+    host: `${_("List")} ${ruleListLabel(target.rule_set ?? "", lists)}`,
+    enabled: target.enabled,
+    resolver: target.resolver,
+    result,
+    tone,
+    checkedAt: null,
+    list: {
+      note: target.enabled && list ? listNote(list) : "",
+      members: target.enabled ? members(target.id) : []
+    }
+  };
+}
+function targetRow(target, lists, members) {
+  if (target.rule_set) return listRow(target, lists, members);
+  const last = target.last;
+  let result;
+  let tone = "neutral";
+  if (!target.enabled) {
+    result = _("Disabled");
+    tone = "muted";
+  } else if (!last) {
+    result = _("Not checked");
+  } else if (last.status === "selected" && last.selected) {
+    result = `${_("Best")}: ${strategyLabel(last.selected)} (${_("confidence")} ${confidenceLabel(last.confidence)})`;
+    tone = "success";
+  } else {
+    result = targetReasonText(last.reason) || _("No usable result");
+    tone = "warning";
+  }
+  return {
+    id: target.id,
+    host: target.host ?? target.id,
+    enabled: target.enabled,
+    resolver: target.resolver,
+    result,
+    tone,
+    checkedAt: last?.at ?? null,
+    list: null
+  };
+}
+function phaseShare(tune) {
+  if (!tune) return 0;
+  const done = Number(tune.done) || 0;
+  const total = Number(tune.total) || 0;
+  switch (tune.phase) {
+    case "preparing":
+      return 0.05;
+    case "measuring":
+      return 0.05 + (total ? 0.75 * Math.min(done / total, 1) : 0);
+    case "cleaning":
+      return 0.8;
+    case "holding":
+      return 0.8 + 0.15 * Math.min(
+        (Number(tune.waited_s) || 0) / (Number(tune.timeout_s) || 300),
+        1
+      );
+    default:
+      return 0;
+  }
+}
+function tunePhaseText(tune) {
+  switch (tune?.phase) {
+    case "preparing":
+      return _("preparing the isolated check");
+    case "measuring":
+      return _("probes: %d of %d").replace("%d", String(tune.done ?? 0)).replace("%d", String(tune.total ?? 0));
+    case "cleaning":
+      return _("probes done, removing the temporary rules");
+    case "holding":
+      return _("waiting for probe connections to close: %d s (up to %d s)").replace("%d", String(tune.waited_s ?? 0)).replace("%d", String(tune.timeout_s ?? 300));
+    default:
+      return _("starting");
+  }
+}
+function durationText(seconds) {
+  if (seconds < 60) return _("less than a minute");
+  return _("about %d min").replace("%d", String(Math.round(seconds / 60)));
+}
+function runItemText(item) {
+  switch (item.state) {
+    case "running":
+      return { text: _("Checking now"), tone: "loading" };
+    case "pending":
+      return { text: _("Waiting"), tone: "neutral" };
+    case "skipped":
+      return { text: targetReasonText(item.reason), tone: "warning" };
+    default:
+      if (item.status === "selected" && item.selected)
+        return {
+          text: `${_("Best")}: ${strategyLabel(item.selected)} (${_("confidence")} ${confidenceLabel(item.confidence ?? null)})`,
+          tone: "success"
+        };
+      return {
+        text: targetReasonText(item.reason) || _("No usable result"),
+        tone: "warning"
+      };
+  }
+}
+function runProgressView(worker, nowSeconds) {
+  const progress = worker?.state === "running" ? worker.progress : void 0;
+  if (!progress || !progress.items.length) return null;
+  const items = progress.items;
+  const weight = items.reduce((sum, i) => sum + Math.max(i.expected_s, 1), 0);
+  const running = items.find((i) => i.state === "running") ?? null;
+  const share = phaseShare(worker?.tune);
+  let doneWeight = 0;
+  for (const item of items)
+    if (item.state === "done" || item.state === "skipped")
+      doneWeight += Math.max(item.expected_s, 1);
+    else if (item === running)
+      doneWeight += Math.max(item.expected_s, 1) * share;
+  const elapsed = running?.started_at !== void 0 ? Math.max(nowSeconds - running.started_at, 0) : 0;
+  const left = items.filter((i) => i.state === "pending").reduce((sum, i) => sum + i.expected_s, 0) + (running ? Math.max(running.expected_s - elapsed, 15) : 0);
+  const position = running ? items.indexOf(running) + 1 : Math.min(progress.done + 1, items.length);
+  return {
+    percent: Math.min(Math.round(100 * doneWeight / weight), 99),
+    title: _("Target %d of %d").replace("%d", String(position)).replace("%d", String(items.length)) + (running ? `: ${running.host}` : ""),
+    phase: running ? tunePhaseText(worker?.tune) : "",
+    remaining: left > 0 ? durationText(left) : "",
+    items: items.map((item) => ({
+      host: item.host,
+      state: item.state,
+      ...runItemText(item)
+    }))
+  };
+}
+function workerView(worker) {
+  if (!worker) return null;
+  if (worker.state === "running")
+    return worker.phase === "applying" ? { label: _("Applying a strategy"), tone: "loading" } : { label: _("Checking targets"), tone: "loading" };
+  if (worker.state === "crashed")
+    return {
+      label: _("The last check was interrupted"),
+      tone: "warning"
+    };
+  switch (worker.result) {
+    case "completed":
+      return { label: _("Last check completed"), tone: "success" };
+    case "interrupted":
+      return { label: _("The last check was interrupted"), tone: "warning" };
+    case "skipped":
+      return {
+        label: `${_("Last check postponed")}: ${blockerText(worker.reason)}`,
+        tone: "neutral"
+      };
+    default:
+      return { label: _("The last check failed"), tone: "error" };
+  }
+}
+function blockerText(reason) {
+  switch (reason) {
+    case "dpi_guard_present":
+      return _("DPI protection is active");
+    // A guard a failed service change kept: only a restart removes it
+    // (UC-019).
+    case "runtime_guard_active":
+      return _("a failed change left the DPI guard in place; restart Forkop X");
+    case "snapshot_operation_active":
+      return _("a snapshot operation is in progress");
+    case "autotune_in_progress":
+      return _("another check is running");
+    case "apply_unresolved":
+      return _("a previous apply is not resolved");
+    case "service_stopped":
+      return _("Forkop X is stopped; start it first");
+    default:
+      return reason ? _("the service is busy") : _("unknown reason");
+  }
+}
+function mutationErrorText(reason) {
+  switch (reason) {
+    case "uncommitted_uci_changes":
+      return _(
+        "There are unsaved configuration changes. Save or reset them in Settings first."
+      );
+    case "autotune_worker_running":
+      return _("A check is already running.");
+    case "invalid_host":
+      return _("Enter a domain name, for example youtube.com.");
+    case "invalid_resolver":
+      return _("The DNS server must be an IPv4 address.");
+    case "too_many_targets":
+      return _("The maximum number of targets is reached.");
+    case "invalid_rule_set":
+    case "host_and_rule_set":
+      return _("Choose a list of a DPI rule.");
+    case "invalid_sample":
+      return _("Check 1 to 8 domains of the list.");
+    case "invalid_pin":
+      return _("Pinned domains must be domain names, at most 8.");
+    case "number_out_of_range":
+    case "duration_out_of_range":
+    case "invalid_number":
+    case "invalid_duration":
+      return _("The value is outside the allowed range.");
+    default:
+      return _("The change was not saved.");
+  }
+}
+function targetIdFor(host, taken, prefix = "t_") {
+  const base = (prefix + host.toLowerCase().replace(/[^a-z0-9]+/g, "_")).slice(0, 28).replace(/_+$/, "");
+  let id = base || "t";
+  for (let n = 2; taken.includes(id); n++) id = `${base}_${n}`;
+  return id;
+}
+var INTERVAL_CHOICES = ["1h", "3h", "6h", "12h", "1d"];
+var COOLDOWN_CHOICES = ["6h", "12h", "1d", "2d", "7d"];
+function durationLabel(value) {
+  const match = /^(\d+)([hd])$/.exec(value);
+  if (!match) return value;
+  return match[2] === "h" ? _("%d h").replace("%d", match[1]) : _("%d d").replace("%d", match[1]);
+}
+function durationChoices(presets, current) {
+  return presets.includes(current) ? presets : [...presets, current];
+}
+function applyConfirmation(card3) {
+  const candidate = strategyLabel(card3.applyCandidate);
+  return {
+    title: _("Apply %s?").replace("%s", candidate),
+    message: `${_('The strategy of the DPI rule "%s" will be changed.').replace("%s", card3.title)} ${_("The change affects the whole group:")}`,
+    consequences: card3.targets.length ? card3.targets : ["\u2014"],
+    notes: [
+      `${_("Now")}: ${card3.current}. ${_("Will be")}: ${candidate}.`,
+      card3.deviceLimited ? _(
+        "Forkop X will create a configuration snapshot, reload the service and check the new strategy with router requests sent through the queue of this rule. If the check fails, the previous configuration is restored automatically."
+      ) : _(
+        "Forkop X will create a configuration snapshot, reload the service and check the real production path. If the check fails, the previous configuration is restored automatically."
+      )
+    ],
+    confirmLabel: _("Apply")
+  };
+}
+function applyPhaseLabel(progress) {
+  switch (progress?.apply_phase) {
+    case "checking":
+      return _("Checking the configuration before the change");
+    case "applying":
+      return _("Creating a snapshot and reloading the service");
+    case "verifying":
+      return _("Checking the real production path");
+    case "rolling_back":
+      return _("Restoring the previous configuration");
+  }
+  if (progress?.phase === "applying") return _("Preparing the change");
+  return _("Checking the recommendation");
+}
+var STALE_REASONS = [
+  "recommendation_stale",
+  "rule_changed",
+  "strategy_changed",
+  "targets_changed",
+  "owner_changed",
+  "recommendation_changed",
+  "measurement_unavailable",
+  "plan_candidate_differs"
+];
+var BUSY_REASONS = ["service_action_in_progress", "reload_pending"];
+function strategyShapeText(reason) {
+  switch (reason) {
+    case "tcp443_profile_shared":
+      return _(
+        "The rule strategy handles HTTPS together with other traffic in one profile; Forkop X does not split it. Give HTTPS (--filter-tcp=443) its own profile."
+      );
+    case "no_tcp443_profile":
+      return _("The rule strategy has no HTTPS (TCP/443) profile.");
+    case "strategy_unparsed":
+      return _(
+        "The rule strategy writes a filter as two words (--filter-tcp 443); write it as --filter-tcp=443."
+      );
+    case "strategy_empty":
+      return _("The rule has no strategy.");
+    case "candidate_not_tcp443":
+      return _("The recommended strategy is not an HTTPS (TCP/443) strategy.");
+    default:
+      return null;
+  }
+}
+function refusalText(reason) {
+  const shape = strategyShapeText(
+    (reason ?? "").replace(/^plan_not_applicable:/, "")
+  );
+  if (shape) return `${_("The strategy was not applied")}. ${shape}`;
+  switch (reason) {
+    case "not_confirmed":
+      return _("The recommendation is not confirmed yet.");
+    case "no_recommendation":
+      return _("There is no recommendation to apply.");
+    case "conflict":
+      return _("Targets of this rule need different strategies.");
+    case "direct_not_applicable":
+      return _("Forkop X never turns DPI bypass off by itself.");
+    case "candidate_unsupported":
+      return _("This strategy is not supported by the installed Zapret.");
+    case "confidence_too_low":
+      return _(
+        "The confidence of the recommendation is below the policy minimum."
+      );
+    case "candidate_in_cooldown":
+      return _(
+        "This strategy was rolled back recently; it waits for the cooldown."
+      );
+    case "custom_strategy_kept":
+      return _("The rule has a custom strategy; Forkop X keeps it.");
+    case "mode_off":
+    case "mode_not_recommend":
+    case "mode_changed":
+      return _(
+        'Manual apply is available only in "Recommendations only" mode.'
+      );
+    case "state_recovered":
+      return _(
+        "The autotune state was restored after damage. Run the check again."
+      );
+    case "resolver_missing":
+      return targetReasonText(reason);
+    case "autotune_worker_running":
+    case "autotune_in_progress":
+      return _("Another autotune operation is running.");
+    case "dpi_guard_present":
+    case "runtime_guard_active":
+    case "snapshot_operation_active":
+    case "apply_unresolved":
+      return `${_("The strategy was not applied")}: ${blockerText(reason)}.`;
+    default:
+      return reason && /^(reload|restart|start|stop|service)_|_pending$|_running$/.test(reason) ? `${_("The strategy was not applied")}: ${blockerText(reason)}.` : `${_("The strategy was not applied")}.`;
+  }
+}
+function applyResultView(result, candidate) {
+  const name = strategyLabel(candidate);
+  const outcome = result?.result ?? "";
+  const reason = result?.reason ?? null;
+  const stale = {
+    tone: "warning",
+    text: _(
+      "The recommendation is outdated: the configuration changed after the check. Run the check again."
+    ),
+    attention: false
+  };
+  switch (outcome) {
+    case "applied":
+      return {
+        tone: "success",
+        text: _("Strategy %s applied and checked.").replace("%s", name),
+        attention: false
+      };
+    case "rolled_back":
+      return {
+        tone: "warning",
+        text: _(
+          "The new strategy did not pass the check. Forkop X restored the previous configuration automatically."
+        ),
+        attention: false
+      };
+    case "no_change_required":
+      return {
+        tone: "neutral",
+        text: _("This strategy is already active; nothing was changed."),
+        attention: false
+      };
+    case "stale":
+      if (BUSY_REASONS.includes(reason ?? "") || reason === "service_stopped" || reason === "runtime_guard_active")
+        return { tone: "warning", text: refusalText(reason), attention: false };
+      if (reason === "config_not_last_known_good")
+        return {
+          tone: "warning",
+          text: _(
+            "The strategy was not applied: the current configuration is not yet the last known working one. Forkop X records it once it starts or reloads with it; while a rule still uses a strategy that did not pass its check, it is not recorded."
+          ),
+          attention: false
+        };
+      return stale;
+    case "failed":
+      if (reason === "reload_queued_recovered")
+        return {
+          tone: "warning",
+          text: _(
+            "The new strategy was not applied: the service was busy and only queued the reload. The previous configuration is kept."
+          ),
+          attention: false
+        };
+      if (reason === "reload_failed_recovered")
+        return {
+          tone: "warning",
+          text: _(
+            "The new strategy was not applied: the service reload failed and the previous configuration was restored automatically."
+          ),
+          attention: false
+        };
+      if (reason !== "interrupted_after_apply")
+        return {
+          tone: "error",
+          text: _(
+            "The strategy could not be applied. The previous configuration is kept."
+          ),
+          attention: false
+        };
+      break;
+    case "refused":
+    case "not_applied":
+      if (STALE_REASONS.includes(reason ?? "")) return stale;
+      return { tone: "warning", text: refusalText(reason), attention: false };
+    case "needs_attention":
+      if (reason === CONFIG_EDITED_DURING_CHECK)
+        return {
+          tone: "error",
+          text: _(
+            'The new strategy did not pass the check, but the configuration was changed during the check, so Forkop X kept that change and did not roll back. The rule may still use the new strategy: check it, or restore the "Before autotune" snapshot in History and recovery.'
+          ),
+          attention: true
+        };
+      if (reason === CONFIG_EDITED_DURING_ROLLBACK)
+        return {
+          tone: "error",
+          text: _(
+            'The new strategy did not pass the check. Forkop X began to restore the "Before autotune" snapshot, but the configuration was changed meanwhile, and Forkop X kept that change. It is not known whether Forkop X now runs the snapshot or the change: check the rule, or restore the snapshot you need in History and recovery.'
+          ),
+          attention: true
+        };
+      if (reason === CONFIG_EDITED_DURING_APPLY)
+        return {
+          tone: "error",
+          text: _(
+            "Applying the new strategy did not finish: its reload did not succeed, and the configuration was changed meanwhile. Forkop X kept that change instead of rolling back. Check the rule, or restore the snapshot you need in History and recovery."
+          ),
+          attention: true
+        };
+      break;
+    case "unknown":
+      break;
+    default:
+      if (result?.status === "busy")
+        return {
+          tone: "warning",
+          text: refusalText("autotune_worker_running"),
+          attention: false
+        };
+      if (!outcome && result)
+        return { tone: "error", text: refusalText(reason), attention: false };
+  }
+  return {
+    tone: "error",
+    text: _("Automatic recovery did not finish."),
+    attention: true
+  };
+}
+function changeName(apply, groupTitle) {
+  const candidate = strategyLabel(apply.candidate);
+  return groupTitle ? _('%s in the rule "%t"').replace("%s", candidate).replace("%t", groupTitle) : candidate;
+}
+function unresolvedChangeText(apply, groupTitle) {
+  const reason = apply.reason ?? "";
+  const text = reason === "lkg_confirm_failed" ? _(
+    "The last change (%s) passed its check, but it could not be recorded as the last known working configuration."
+  ) : reason.startsWith("verification_failed") ? _(
+    "The last change (%s) failed its check, and the automatic rollback did not finish."
+  ) : reason.startsWith("operator_rollback") ? _("The rollback of the last change (%s) did not finish.") : _("The last change (%s) was not checked to the end.");
+  return text.replace("%s", changeName(apply, groupTitle));
+}
+function recordedApplyView(apply, groupTitle) {
+  if (!apply || apply.in_progress) return null;
+  if (apply.resolved === null)
+    return {
+      tone: "warning",
+      text: _("The state of the last autotune change could not be read."),
+      attention: false
+    };
+  if (apply.diagnosis === "state_unreadable")
+    return {
+      tone: "error",
+      text: apply.rollback ? _(
+        "The record of the last autotune change is damaged. Checks and changes wait until an administrator rolls it back: Forkop X then makes sure the last known working configuration is active."
+      ) : _(
+        "The record of the last autotune change is damaged, and the last known working configuration is missing. Restore a snapshot in History and recovery: it becomes the last known working one, and the change can then be rolled back here."
+      ),
+      attention: true
+    };
+  if (apply.resolved === false) {
+    if (apply.diagnosis === "candidate_active")
+      return {
+        tone: "error",
+        text: `${unresolvedChangeText(apply, groupTitle)} ${apply.rollback ? _("Checks and changes wait until it is rolled back.") : _(
+          "The snapshot to return to is missing: restore a snapshot in History and recovery. Checks and changes wait until then."
+        )}`,
+        attention: true
+      };
+    if (apply.diagnosis === "in_transaction")
+      return {
+        tone: "error",
+        text: _(
+          "A configuration change did not finish and its protection is still active. Restore a snapshot in History and recovery."
+        ),
+        attention: true
+      };
+    return {
+      tone: "warning",
+      text: _("The last autotune change is not resolved."),
+      attention: true
+    };
+  }
+  if (apply.unverified_strategy)
+    return {
+      tone: "warning",
+      text: _(
+        "The last change (%s) was not confirmed by its check, and the configuration was changed since; the rule still uses that strategy. Until you choose another strategy for the rule, turn the rule off or restore a snapshot in History and recovery, Forkop X does not record this configuration as the last known working one, and autotune applies nothing."
+      ).replace("%s", changeName(apply, groupTitle)),
+      attention: true
+    };
+  if (apply.rollback)
+    return {
+      tone: "neutral",
+      text: _(
+        "The last change (%s) can be rolled back to the configuration before it."
+      ).replace("%s", changeName(apply, groupTitle)),
+      attention: false
+    };
+  return null;
+}
+function rollbackConfirmation(apply, groupTitle) {
+  if (apply.diagnosis === "state_unreadable" || !apply.candidate)
+    return {
+      title: _("Roll back the last autotune change?"),
+      message: _("The record of the last autotune change is damaged."),
+      consequences: [
+        _(
+          "Forkop X restores the last known working configuration if the current one differs from it, and reloads the service."
+        ),
+        _(
+          'Every change made since the last known working configuration is undone, your own edits included. The current configuration is kept as a "Before restore" snapshot in History and recovery.'
+        ),
+        _("The damaged record is kept aside for inspection.")
+      ],
+      notes: [],
+      confirmLabel: _("Roll back")
+    };
+  return {
+    title: _("Roll back %s?").replace("%s", strategyLabel(apply.candidate)),
+    message: groupTitle ? _(
+      'The strategy of the DPI rule "%s" returns to the one before autotune.'
+    ).replace("%s", groupTitle) : _("The strategy returns to the one before autotune."),
+    consequences: [
+      _(
+        'Forkop X restores the "Before autotune" snapshot, reloads the service and checks that the previous strategy works.'
+      ),
+      _(
+        "This strategy is not applied again during the pause after a rollback."
+      )
+    ],
+    notes: [],
+    confirmLabel: _("Roll back")
+  };
+}
+function rollbackResultView(result) {
+  if (!result)
+    return {
+      tone: "warning",
+      text: _(
+        "The router did not report the outcome of the rollback; it may still be running. This page shows it once the rollback ends."
+      ),
+      attention: false
+    };
+  if (result.status === "ok" && result.reason === "apply_state_unreadable")
+    return {
+      tone: "success",
+      text: result.restored ? _(
+        "The last known working configuration is restored; the damaged record is set aside."
+      ) : _(
+        "The damaged record is set aside; the configuration already was the last known working one."
+      ),
+      attention: false
+    };
+  if (result.status === "ok")
+    return {
+      tone: "success",
+      text: _("The configuration before the change is restored."),
+      attention: false
+    };
+  if (result.status === "busy")
+    return {
+      tone: "warning",
+      text: refusalText("autotune_worker_running"),
+      attention: false
+    };
+  if (result.result === "needs_attention" && result.reason === "operator_rollback:config_changed_during_rollback")
+    return {
+      tone: "error",
+      text: _(
+        'The rollback did not finish: the configuration was changed while the "Before autotune" snapshot was being restored, and Forkop X kept that change. It is not known whether Forkop X now runs the snapshot or the change: check the rule, or restore the snapshot you need in History and recovery.'
+      ),
+      attention: true
+    };
+  if (result.result === "needs_attention")
+    return {
+      tone: "error",
+      text: _("The rollback did not finish. Open History and recovery."),
+      attention: true
+    };
+  switch (result.reason) {
+    // Also when the configuration was edited right before the restore
+    // (UC-017): the restore refused before any change.
+    case "rollback_needs_candidate_config":
+    case "rollback_not_started:config_changed_during_transaction":
+      return {
+        tone: "warning",
+        text: _(
+          "The configuration was changed after the apply, so nothing was rolled back. Restore a snapshot in History and recovery if needed."
+        ),
+        attention: false
+      };
+    case "pre_apply_snapshot_missing":
+      return {
+        tone: "error",
+        text: _(
+          "The snapshot to return to is missing; nothing was rolled back."
+        ),
+        attention: false
+      };
+    case "last_known_working_missing":
+      return {
+        tone: "error",
+        text: _(
+          "The last known working configuration is missing; nothing was rolled back. Restore a snapshot in History and recovery first."
+        ),
+        attention: false
+      };
+    // Changes staged on the router with uci would ride along (UC-068);
+    // also the rollback of an unreadable record, which names the refusal
+    // without the prefix.
+    case "rollback_not_started:uncommitted_uci_changes":
+    case "rollback_uncommitted_uci_changes":
+      return {
+        tone: "warning",
+        text: _(
+          'Nothing was rolled back: the router has uncommitted uci changes of Forkop X (made with "uci set" without a commit). Commit or revert them, then roll back again.'
+        ),
+        attention: false
+      };
+    case "nothing_to_roll_back":
+    case "no_recorded_apply":
+      return {
+        tone: "neutral",
+        text: _("There is nothing to roll back."),
+        attention: false
+      };
+    case "service_stopped":
+    case "service_action_in_progress":
+      return {
+        tone: "warning",
+        text: `${_("Nothing was rolled back")}: ${blockerText(result.reason)}.`,
+        attention: false
+      };
+    case "restore_guard_active":
+      return {
+        tone: "warning",
+        text: `${_("Nothing was rolled back")}: ${blockerText("dpi_guard_present")}.`,
+        attention: false
+      };
+    // The restore refuses before any change while a failed service change
+    // keeps its guard; a restart removes it (UC-019).
+    case "runtime_guard_active":
+    case "rollback_not_started:runtime_guard_active":
+      return {
+        tone: "warning",
+        text: `${_("Nothing was rolled back")}: ${blockerText("runtime_guard_active")}.`,
+        attention: false
+      };
+    case "snapshot_operation_in_progress":
+      return {
+        tone: "warning",
+        text: `${_("Nothing was rolled back")}: ${blockerText("snapshot_operation_active")}.`,
+        attention: false
+      };
+  }
+  if (result.reason?.startsWith("rollback_not_started"))
+    return {
+      tone: "warning",
+      text: `${_("Nothing was rolled back")}.`,
+      attention: false
+    };
+  return { tone: "error", text: _("The rollback failed."), attention: false };
+}
+
+// src/forkop/tabs/autotune/initController.ts
+var REFRESH_INTERVAL_MS2 = 15e3;
+var RUNNING_REFRESH_INTERVAL_MS = 3e3;
+var statusLoadedAt = 0;
+var GROUPS_REFRESH_INTERVAL_MS = 12e4;
+var JOB_POLL_INTERVAL_MS = 2e3;
+var JOB_TIMEOUT_MS = 20 * 60 * 1e3;
+var HISTORY_LIMIT = 5;
+var mounted2 = false;
+var mountId2 = 0;
+var refreshTimer2 = null;
+var status = null;
+var statusFailed = false;
+var live = null;
+var liveFailed = false;
+var liveLoadedAt = 0;
+var liveLoading = false;
+var history3 = null;
+var historyFailed2 = false;
+var busy = false;
+var runningScope = null;
+var applying = null;
+var applyNotice = null;
+var rollingBack = false;
+function locked() {
+  return busy || Boolean(runningScope) || Boolean(applying) || rollingBack;
+}
+function replace2(id, ...nodes) {
+  const container = document.getElementById(id);
+  if (container)
+    preserveScrollForPage(() => container.replaceChildren(...nodes));
+}
+function formatTime2(timestamp) {
+  return new Date(timestamp * 1e3).toLocaleString();
+}
+function timeNode(timestamp) {
+  return E(
+    "span",
+    { class: "fkp-autotune__time", title: formatTime2(timestamp) },
+    formatRelativeTime(timestamp)
+  );
+}
+async function loadStatus() {
+  const id = mountId2;
+  statusLoadedAt = Date.now();
+  const [statusResponse, historyResponse] = await Promise.allSettled([
+    ForkopShellMethods.autotuneStatus(),
+    ForkopShellMethods.getHistory()
+  ]);
+  if (!mounted2 || id !== mountId2) return;
+  const next = statusResponse.status === "fulfilled" && statusResponse.value.success ? statusResponse.value.data : null;
+  status = next && next.status === "ok" && next.policy ? next : null;
+  statusFailed = !status;
+  const events = historyResponse.status === "fulfilled" && historyResponse.value.success ? historyResponse.value.data : null;
+  history3 = events && Array.isArray(events.events) ? events : null;
+  historyFailed2 = !history3;
+  resumeApply();
+  renderAll2();
+}
+async function loadGroups() {
+  if (liveLoading) return;
+  const id = mountId2;
+  liveLoading = true;
+  try {
+    const response = await ForkopShellMethods.autotuneGroups();
+    if (!mounted2 || id !== mountId2) return;
+    const data = response.success ? response.data : null;
+    live = data && data.status === "ok" && data.groups ? data : null;
+    liveFailed = !live;
+    liveLoadedAt = Date.now();
+  } finally {
+    liveLoading = false;
+  }
+  if (mounted2 && id === mountId2) renderAll2();
+}
+async function loadAll2() {
+  await Promise.all([loadStatus(), loadGroups()]);
+}
+async function mutate(action, success) {
+  if (locked()) return false;
+  busy = true;
+  renderAll2();
+  let ok = false;
+  try {
+    const result = await action();
+    const data = result.success ? result.data : null;
+    ok = data?.status === "ok";
+    if (ok) showToast(success, "success");
+    else showToast(mutationErrorText(data?.reason), "error", 8e3);
+  } catch (error) {
+    logger.error("[AUTOTUNE]", "action failed", error);
+    showToast(mutationErrorText(void 0), "error");
+  } finally {
+    busy = false;
+  }
+  await loadAll2();
+  return ok;
+}
+async function setMode(mode) {
+  if (!status || status.policy.mode === mode) return;
+  if (mode === "auto") {
+    const confirmed = await confirmAction({
+      title: _("Turn on automatic mode?"),
+      message: _(
+        "Forkop X will change the strategy of existing DPI rules by itself, only after several confirmations in a row, with a production check and automatic rollback."
+      ),
+      consequences: [
+        _(
+          "It never creates or deletes rules, never turns DPI bypass off and never moves targets between rules."
+        ),
+        _("At most %d change(s) per day; a rolled back strategy waits %s.").replace("%d", String(status.policy.max_applies_per_day)).replace("%s", durationLabel(status.policy.cooldown)),
+        _("Changes are made only by scheduled checks, one group at a time.")
+      ],
+      confirmLabel: _("Turn on")
+    });
+    if (!confirmed) return;
+  }
+  await mutate(
+    () => ForkopShellMethods.autotunePolicySet("mode", mode),
+    _("Autotune mode changed")
+  );
+}
+async function pollJob(jobId) {
+  const started = Date.now();
+  while (mounted2 && Date.now() - started < JOB_TIMEOUT_MS) {
+    await new Promise((resolve) => setTimeout(resolve, JOB_POLL_INTERVAL_MS));
+    const response = await ForkopShellMethods.autotuneRunStatus(jobId);
+    const job = response.success ? response.data.job : void 0;
+    if (!job) continue;
+    if (job.state === "finished") {
+      const result = job.result;
+      if (result?.status === "ok" && result.result === "completed")
+        showToast(_("Check completed"), "success");
+      else if (result?.status === "busy")
+        showToast(_("A check is already running."), "warning", 6e3);
+      else if (result?.result === "skipped")
+        showToast(
+          _("The check was postponed. See the state above."),
+          "warning",
+          8e3
+        );
+      else showToast(_("The check did not complete"), "error", 8e3);
+      return;
+    }
+    if (job.state === "lost") {
+      showToast(_("The check stopped unexpectedly"), "error", 8e3);
+      return;
+    }
+    if (mounted2) void loadStatus();
+  }
+}
+function toastType(tone) {
+  return tone === "neutral" ? "info" : tone;
+}
+async function pollApply() {
+  const started = Date.now();
+  while (mounted2 && applying && Date.now() - started < JOB_TIMEOUT_MS) {
+    const current = applying;
+    const response = await ForkopShellMethods.autotuneRunStatus(current.job);
+    const job = response.success ? response.data.job : void 0;
+    if (!mounted2 || applying !== current) return;
+    if (job && (job.state === "finished" || job.state === "lost")) {
+      const view = applyResultView(
+        job.state === "finished" ? job.result : null,
+        job.result?.candidate ?? current.candidate
+      );
+      applying = null;
+      applyNotice = { group: current.group, view };
+      showToast(
+        view.text,
+        toastType(view.tone),
+        view.attention ? 15e3 : 1e4
+      );
+      await loadAll2();
+      return;
+    }
+    if (job?.progress) {
+      current.progress = job.progress;
+      renderAll2();
+    }
+    await new Promise((resolve) => setTimeout(resolve, JOB_POLL_INTERVAL_MS));
+  }
+}
+function resumeApply() {
+  const worker = status?.worker;
+  if (applying || !worker || worker.state !== "running" || worker.kind !== "apply" || !worker.job)
+    return;
+  applying = {
+    group: worker.group ?? worker.scope ?? "",
+    candidate: worker.candidate ?? null,
+    job: worker.job,
+    progress: null
+  };
+  void pollApply();
+}
+async function applyGroup(card3) {
+  if (locked() || !card3.applyCandidate) return;
+  const confirmed = await confirmAction(applyConfirmation(card3));
+  if (!confirmed || locked()) return;
+  applyNotice = null;
+  busy = true;
+  renderAll2();
+  try {
+    const response = await ForkopShellMethods.autotuneApplyAsync(card3.id);
+    const data = response.success ? response.data : null;
+    if (data?.status === "ok" && data.job) {
+      applying = {
+        group: card3.id,
+        candidate: card3.applyCandidate,
+        job: data.job,
+        progress: null
+      };
+    } else if (data?.status === "busy") {
+      showToast(_("Another autotune operation is running."), "warning", 6e3);
+    } else {
+      showToast(_("Could not start the apply"), "error", 8e3);
+    }
+  } catch (error) {
+    logger.error("[AUTOTUNE]", "apply failed", error);
+    showToast(_("Could not start the apply"), "error", 8e3);
+  } finally {
+    busy = false;
+  }
+  renderAll2();
+  if (applying) await pollApply();
+}
+function recordedGroupTitle(apply) {
+  if (!apply.group) return null;
+  return live?.groups[apply.group]?.label ?? status?.groups?.[apply.group]?.label ?? apply.group;
+}
+async function rollbackApply() {
+  const apply = status?.apply;
+  if (locked() || !apply?.rollback) return;
+  const confirmed = await confirmAction(
+    rollbackConfirmation(apply, recordedGroupTitle(apply))
+  );
+  if (!confirmed || locked()) return;
+  rollingBack = true;
+  renderAll2();
+  try {
+    const response = await ForkopShellMethods.autotuneRollback();
+    const view = rollbackResultView(response.success ? response.data : null);
+    showToast(view.text, toastType(view.tone), view.attention ? 15e3 : 1e4);
+  } catch (error) {
+    logger.error("[AUTOTUNE]", "rollback failed", error);
+    const view = rollbackResultView(null);
+    showToast(view.text, toastType(view.tone), 1e4);
+  } finally {
+    rollingBack = false;
+  }
+  if (mounted2) await loadAll2();
+}
+async function runCheck(scope) {
+  if (locked()) return;
+  runningScope = scope;
+  renderAll2();
+  try {
+    const response = await ForkopShellMethods.autotuneRunAsync(scope);
+    const data = response.success ? response.data : null;
+    if (data?.status === "ok" && data.job) {
+      showToast(
+        _(
+          "Check started. Targets are measured in isolation; production traffic is not changed."
+        ),
+        "info",
+        6e3
+      );
+      await pollJob(data.job);
+    } else if (data?.status === "busy") {
+      showToast(_("A check is already running."), "warning", 6e3);
+    } else {
+      showToast(_("Could not start the check"), "error", 8e3);
+    }
+  } catch (error) {
+    logger.error("[AUTOTUNE]", "run failed", error);
+    showToast(_("Could not start the check"), "error", 8e3);
+  } finally {
+    runningScope = null;
+  }
+  if (mounted2) await loadAll2();
+}
+function field2(label, control, hint) {
+  return [
+    E("label", {}, label),
+    control,
+    ...hint ? [E("div", { class: "fkp-autotune__field-hint" }, hint)] : []
+  ];
+}
+function select(name, choices, value) {
+  return E(
+    "select",
+    { class: "cbi-input-select", name },
+    choices.map(
+      ([key, label]) => E(
+        "option",
+        { value: key, selected: key === value ? true : void 0 },
+        label
+      )
+    )
+  );
+}
+function numberInput(name, value, min, max) {
+  return E("input", {
+    class: "cbi-input-text",
+    type: "number",
+    name,
+    min: String(min),
+    max: String(max),
+    step: "1",
+    value: String(value)
+  });
+}
+function modalActions(onSave, saveLabel) {
+  return E("div", { class: "fkp-confirm__actions" }, [
+    E(
+      "button",
+      { type: "button", class: "btn cbi-button", click: () => ui.hideModal() },
+      _("Cancel")
+    ),
+    E(
+      "button",
+      { type: "button", class: "btn cbi-button-action", click: onSave },
+      saveLabel
+    )
+  ]);
+}
+function showPolicyEditor() {
+  if (!status) return;
+  const policy = status.policy;
+  const controls = {
+    interval: select(
+      "interval",
+      durationChoices(INTERVAL_CHOICES, policy.interval).map((v) => [
+        v,
+        durationLabel(v)
+      ]),
+      policy.interval
+    ),
+    confirmations: numberInput("confirmations", policy.confirmations, 2, 10),
+    min_confidence: select(
+      "min_confidence",
+      [
+        ["high", confidenceLabel("high")],
+        ["medium", confidenceLabel("medium")]
+      ],
+      policy.min_confidence
+    ),
+    max_applies_per_day: numberInput(
+      "max_applies_per_day",
+      policy.max_applies_per_day,
+      0,
+      5
+    ),
+    cooldown: select(
+      "cooldown",
+      durationChoices(COOLDOWN_CHOICES, policy.cooldown).map((v) => [
+        v,
+        durationLabel(v)
+      ]),
+      policy.cooldown
+    ),
+    probes: numberInput("probes", policy.probes, 3, 7)
+  };
+  const save = async () => {
+    const changes = [];
+    for (const [key, control] of Object.entries(controls)) {
+      const current = String(policy[key]);
+      if (control.value !== current) changes.push([key, control.value]);
+    }
+    ui.hideModal();
+    if (!changes.length) return;
+    for (const [key, value] of changes) {
+      const ok = await mutate(
+        () => ForkopShellMethods.autotunePolicySet(key, value),
+        _("Policy saved")
+      );
+      if (!ok) break;
+    }
+  };
+  ui.showModal(_("Autotune policy"), [
+    E("div", { class: "fkp-autotune__form" }, [
+      ...field2(_("Check every"), controls.interval),
+      ...field2(
+        _("Confirmations"),
+        controls.confirmations,
+        _("The same result this many checks in a row (2\u201310).")
+      ),
+      ...field2(
+        _("Minimum confidence"),
+        controls.min_confidence,
+        _(
+          "For recommendations. Automatic apply always requires high confidence."
+        )
+      ),
+      ...field2(
+        _("Automatic changes per day"),
+        controls.max_applies_per_day,
+        _("0\u20135; 0 turns automatic changes off.")
+      ),
+      ...field2(
+        _("Pause after a rollback"),
+        controls.cooldown,
+        _(
+          "A rolled back strategy is not applied again before this time passes."
+        )
+      ),
+      ...field2(
+        _("Probes per strategy"),
+        controls.probes,
+        _("3\u20137 attempts per strategy and target in each check.")
+      )
+    ]),
+    modalActions(() => void save(), _("Save"))
+  ]);
+}
+function showTargetEditor(target) {
+  if (!status) return;
+  const lists = status.lists ?? [];
+  const kind = E("select", { class: "cbi-input-select", name: "kind" }, [
+    E("option", { value: "host" }, _("Domain")),
+    E(
+      "option",
+      { value: "list", disabled: lists.length ? void 0 : true },
+      _("List of a rule")
+    )
+  ]);
+  kind.value = target?.rule_set ? "list" : "host";
+  const ruleSet = E("select", { class: "cbi-input-select", name: "rule_set" }, [
+    ...lists.map(
+      (l) => E("option", { value: l.tag }, ruleListLabel(l.tag, lists))
+    ),
+    // A configured list the routing no longer sends to a DPI rule.
+    ...target?.rule_set && !lists.some((l) => l.tag === target.rule_set) ? [
+      E(
+        "option",
+        { value: target.rule_set },
+        ruleListLabel(target.rule_set, lists)
+      )
+    ] : []
+  ]);
+  if (target?.rule_set) ruleSet.value = target.rule_set;
+  const sample = E("input", {
+    class: "cbi-input-text",
+    type: "number",
+    min: "1",
+    max: "8",
+    name: "sample",
+    value: String(target?.sample ?? 3)
+  });
+  const choice = select(
+    "domain_choice",
+    [
+      ["auto", _("Automatically")],
+      ["manual", _("Choose from the list")]
+    ],
+    target?.pins?.length ? "manual" : "auto"
+  );
+  const picker = createDomainPicker(
+    target?.pins ?? [],
+    async (tag) => {
+      const response = await ForkopShellMethods.autotuneListDomains(tag);
+      const data = response.success ? response.data : null;
+      return data?.status === "ok" ? {
+        domains: data.domains ?? [],
+        truncated: data.truncated === true,
+        error: null
+      } : {
+        domains: [],
+        truncated: false,
+        error: data?.reason ?? "list_unreadable"
+      };
+    },
+    listErrorText
+  );
+  const host = E("input", {
+    class: "cbi-input-text",
+    type: "text",
+    name: "host",
+    value: target?.host ?? "",
+    placeholder: "youtube.com",
+    autocomplete: "off"
+  });
+  const resolver = E("input", {
+    class: "cbi-input-text",
+    type: "text",
+    name: "resolver",
+    value: target?.resolver ?? "",
+    placeholder: _("Router DNS"),
+    autocomplete: "off"
+  });
+  const enabled = E("input", {
+    type: "checkbox",
+    name: "enabled",
+    checked: target ? target.enabled ? true : void 0 : true
+  });
+  const save = async () => {
+    const isList = kind.value === "list";
+    const value = host.value.trim().toLowerCase();
+    if (!isList && !value) {
+      showToast(mutationErrorText("invalid_host"), "error");
+      return;
+    }
+    if (isList && !ruleSet.value) {
+      showToast(mutationErrorText("invalid_rule_set"), "error");
+      return;
+    }
+    const manual = choice.value === "manual";
+    if (isList && manual && !picker.selected().length) {
+      showToast(_("Choose at least one domain of the list."), "error");
+      return;
+    }
+    ui.hideModal();
+    const taken = status?.targets.map((t) => t.id) ?? [];
+    const id = target?.id ?? (isList ? targetIdFor(ruleSet.value.replace(/-ruleset$/, ""), taken, "l_") : targetIdFor(value, taken));
+    await mutate(
+      () => ForkopShellMethods.autotuneTargetSet(
+        id,
+        isList ? "" : value,
+        enabled.checked,
+        resolver.value.trim(),
+        isList ? {
+          ruleSet: ruleSet.value,
+          sample: sample.value.trim(),
+          pins: manual ? picker.selected() : []
+        } : void 0
+      ),
+      _("Target saved")
+    );
+  };
+  const hostFields = field2(
+    _("Domain"),
+    host,
+    _("A site or service checked through the DPI rule that routes it.")
+  );
+  const listFields = [
+    ...field2(
+      _("List"),
+      ruleSet,
+      _(
+        "A list of a DPI rule. Each check takes a few of its domains; keywords and regular expressions are skipped."
+      )
+    ),
+    ...field2(_("Which domains to check"), choice)
+  ];
+  const autoFields = field2(
+    _("Domains to check"),
+    sample,
+    _(
+      "1\u20138 domains, spread evenly over the list; a domain without an address is replaced by the next one."
+    )
+  );
+  const manualFields = field2(
+    _("Domains of the list"),
+    picker.element,
+    _("Up to 8 domains; exactly these are checked.")
+  );
+  const show = (els, visible) => {
+    for (const el of els)
+      el.style.display = visible ? "" : "none";
+  };
+  const showKind = () => {
+    const isList = kind.value === "list";
+    const manual = choice.value === "manual";
+    show(hostFields, !isList);
+    show(listFields, isList);
+    show(autoFields, isList && !manual);
+    show(manualFields, isList && manual);
+    if (isList && manual && ruleSet.value) void picker.show(ruleSet.value);
+  };
+  kind.addEventListener("change", showKind);
+  choice.addEventListener("change", showKind);
+  ruleSet.addEventListener("change", showKind);
+  showKind();
+  ui.showModal(target ? _("Edit target") : _("Add target"), [
+    E("div", { class: "fkp-autotune__form" }, [
+      ...field2(
+        _("What to check"),
+        kind,
+        lists.length ? _(
+          "A domain, or a list of a DPI rule measured through a few of its domains."
+        ) : _("No DPI rule has a downloaded list; only domains can be added.")
+      ),
+      ...hostFields,
+      ...listFields,
+      ...autoFields,
+      ...manualFields,
+      ...field2(
+        _("DNS server for checks"),
+        resolver,
+        _(
+          "Optional IPv4 address. By default the first IPv4 DNS server of Forkop X is used."
+        )
+      ),
+      ...field2(_("Enabled"), enabled)
+    ]),
+    modalActions(() => void save(), _("Save"))
+  ]);
+}
+async function removeTarget(target) {
+  const confirmed = await confirmAction({
+    title: _("Remove target?"),
+    message: `${target.host ?? ruleListLabel(target.rule_set ?? target.id, status?.lists)}. ${_("Its measurements are deleted as well. Routing rules are not changed.")}`,
+    confirmLabel: _("Remove"),
+    danger: true
+  });
+  if (!confirmed) return;
+  await mutate(
+    () => ForkopShellMethods.autotuneTargetRemove(target.id),
+    _("Target removed")
+  );
+}
+function showCandidates(target) {
+  const last = target.last;
+  if (!last) return;
+  const rows = candidateRows(last);
+  ui.showModal(`${target.host ?? target.id}: ${_("last check")}`, [
+    E(
+      "p",
+      { class: "fkp-autotune__muted" },
+      `${formatTime2(last.at)} \xB7 ${_("measured in isolation from production traffic")}`
+    ),
+    rows.length ? E("div", { class: "fkp-autotune__table-wrap" }, [
+      E("table", { class: "table fkp-autotune__table" }, [
+        E("tr", { class: "tr table-titles" }, [
+          E("th", { class: "th" }, _("Strategy")),
+          E("th", { class: "th" }, _("Successful")),
+          E("th", { class: "th" }, _("Stability")),
+          E("th", { class: "th" }, _("TLS, median"))
+        ]),
+        ...rows.map(
+          (row) => E("tr", { class: "tr" }, [
+            E(
+              "td",
+              { class: "td" },
+              row.selected ? `${row.name} \u2605` : row.name
+            ),
+            E("td", { class: "td" }, row.result),
+            E("td", { class: "td" }, renderStatus(row.stability)),
+            E("td", { class: "td" }, row.latency)
+          ])
+        )
+      ])
+    ]) : E("p", {}, _("No strategies were measured")),
+    E("div", { class: "fkp-confirm__actions" }, [
+      E(
+        "button",
+        {
+          type: "button",
+          class: "btn cbi-button",
+          click: () => ui.hideModal()
+        },
+        _("Close")
+      )
+    ])
+  ]);
+}
+function policySummary(policy) {
+  return [
+    _("every %s").replace("%s", durationLabel(policy.interval)),
+    _("%d confirmations").replace("%d", String(policy.confirmations)),
+    _("up to %d automatic change(s) per day").replace(
+      "%d",
+      String(policy.max_applies_per_day)
+    ),
+    _("pause after a rollback %s").replace(
+      "%s",
+      durationLabel(policy.cooldown)
+    )
+  ].join(" \xB7 ");
+}
+function renderState2() {
+  const readonly = isReadonlyMode();
+  if (!status) {
+    replace2(
+      "autotune-state",
+      statusFailed ? renderErrorState(
+        _("Autotune state is unavailable"),
+        () => void loadAll2()
+      ) : renderLoadingState2()
+    );
+    replace2("autotune-state-actions");
+    return;
+  }
+  const policy = status.policy;
+  const worker = workerView(status.worker);
+  const facts = [
+    [
+      _("Mode"),
+      readonly ? modeLabel(policy.mode) : E(
+        "div",
+        {
+          class: "fkp-autotune__modes",
+          role: "group",
+          "aria-label": _("Mode")
+        },
+        MODES.map(
+          (mode) => E(
+            "button",
+            {
+              type: "button",
+              class: "btn cbi-button",
+              "aria-pressed": mode === policy.mode ? "true" : "false",
+              disabled: locked() ? true : void 0,
+              click: () => void setMode(mode)
+            },
+            modeLabel(mode)
+          )
+        )
+      )
+    ],
+    [
+      "",
+      E("p", { class: "fkp-autotune__muted" }, modeDescription(policy.mode))
+    ],
+    [_("Policy"), policySummary(policy)]
+  ];
+  if (rollingBack)
+    facts.push([
+      _("State"),
+      renderStatus({
+        label: _("Rolling back the last change"),
+        tone: "loading"
+      })
+    ]);
+  else if (applying)
+    facts.push([
+      _("State"),
+      renderStatus({ label: _("Applying a strategy"), tone: "loading" })
+    ]);
+  else if (runningScope || status.worker?.state === "running") {
+    const run = runProgressView(status.worker, Math.floor(Date.now() / 1e3));
+    facts.push([
+      _("State"),
+      run ? renderRunProgress(run) : renderStatus(
+        worker ?? { label: _("Checking targets"), tone: "loading" }
+      )
+    ]);
+  } else if (worker && status.worker?.finished_at)
+    facts.push([
+      _("Last check"),
+      E("span", { class: "fkp-autotune__row" }, [
+        renderStatus(worker),
+        timeNode(status.worker.finished_at)
+      ])
+    ]);
+  else if (worker) facts.push([_("Last check"), renderStatus(worker)]);
+  else facts.push([_("Last check"), _("Not checked yet")]);
+  if (policy.mode !== "off" && status.next_run_at)
+    facts.push([_("Next scheduled check"), formatTime2(status.next_run_at)]);
+  if (status.recovered_at)
+    facts.push([
+      _("Warning"),
+      renderStatus({
+        label: _(
+          "The autotune state was damaged and has been reset; automatic changes wait for the pause after a rollback."
+        ),
+        tone: "warning"
+      })
+    ]);
+  const recorded = status.apply ? recordedApplyView(status.apply, recordedGroupTitle(status.apply)) : null;
+  if (recorded)
+    facts.push([
+      _("Last change"),
+      recorded.attention ? E("div", { class: "fkp-autotune__alert", role: "alert" }, [
+        E("strong", {}, _("Action required")),
+        E("p", {}, recorded.text),
+        ...readonly && status.apply?.rollback ? [
+          E(
+            "p",
+            { class: "fkp-autotune__muted" },
+            _("An administrator can roll it back.")
+          )
+        ] : []
+      ]) : renderStatus({ label: recorded.text, tone: recorded.tone })
+    ]);
+  if (status.errors.length)
+    facts.push([
+      _("Warning"),
+      renderStatus({
+        label: _(
+          "Some autotune settings are invalid; safe defaults are used for them."
+        ),
+        tone: "warning"
+      })
+    ]);
+  replace2(
+    "autotune-state",
+    E(
+      "dl",
+      { class: "fkp-autotune__facts" },
+      facts.flatMap(([label, value]) => [
+        E("dt", {}, label),
+        E("dd", {}, value)
+      ])
+    )
+  );
+  replace2(
+    "autotune-state-actions",
+    ...readonly ? [] : [
+      E(
+        "button",
+        {
+          type: "button",
+          class: "btn cbi-button",
+          disabled: locked() ? true : void 0,
+          click: () => showPolicyEditor()
+        },
+        _("Policy\u2026")
+      ),
+      E(
+        "button",
+        {
+          type: "button",
+          class: "btn cbi-button-action",
+          disabled: locked() || !status.targets.length ? true : void 0,
+          title: !status.targets.length ? _("Add a target first") : void 0,
+          click: () => void runCheck("all")
+        },
+        runningScope === "all" ? _("Checking\u2026") : _("Check all now")
+      ),
+      ...status.apply?.rollback ? [
+        E(
+          "button",
+          {
+            type: "button",
+            class: "btn cbi-button-negative",
+            disabled: locked() ? true : void 0,
+            click: () => void rollbackApply()
+          },
+          rollingBack ? _("Rolling back\u2026") : _("Roll back the last change\u2026")
+        )
+      ] : []
+    ]
+  );
+}
+function renderRunProgress(run) {
+  const icon = {
+    done: "\u2713",
+    skipped: "!",
+    running: "\u2026",
+    pending: "\xB7"
+  };
+  const bar = E("div", { class: "fkp-autotune__bar" }, [
+    E("div", { style: `width: ${run.percent}%` })
+  ]);
+  bar.setAttribute("role", "progressbar");
+  bar.setAttribute("aria-valuemin", "0");
+  bar.setAttribute("aria-valuemax", "100");
+  bar.setAttribute("aria-valuenow", String(run.percent));
+  return E("div", { class: "fkp-autotune__run" }, [
+    E("div", { class: "fkp-autotune__row" }, [
+      renderStatus({ label: _("Checking targets"), tone: "loading" }),
+      E("strong", {}, `${run.percent}%`),
+      ...run.remaining ? [
+        E(
+          "span",
+          { class: "fkp-autotune__muted" },
+          `${_("left")}: ${run.remaining}`
+        )
+      ] : []
+    ]),
+    bar,
+    E("div", {}, [
+      E("strong", {}, run.title),
+      ...run.phase ? [" \u2014 ", run.phase] : []
+    ]),
+    E(
+      "ul",
+      { class: "fkp-autotune__run-items" },
+      run.items.map(
+        (item) => E(
+          "li",
+          {
+            class: `fkp-autotune__run-item fkp-autotune__run-item--${item.state}`
+          },
+          [
+            E(
+              "span",
+              { class: "fkp-autotune__run-icon" },
+              icon[item.state] ?? "\xB7"
+            ),
+            E("span", { class: "fkp-autotune__what" }, item.host),
+            renderStatus({ label: item.text, tone: item.tone })
+          ]
+        )
+      )
+    ),
+    E(
+      "p",
+      { class: "fkp-autotune__muted" },
+      _(
+        "Each target is measured in isolation; production traffic is not changed. After the probes Forkop X waits until their connections close, which can take a few minutes on a blocked site."
+      )
+    )
+  ]);
+}
+function renderProgress(progress) {
+  return E("span", { class: "fkp-autotune__row" }, [
+    E(
+      "span",
+      { class: "fkp-autotune__progress" },
+      Array.from(
+        { length: progress.required },
+        (_unused, index) => E("span", {
+          class: `fkp-autotune__dot${index < progress.count ? " fkp-autotune__dot--on" : ""}`
+        })
+      )
+    ),
+    _("Confirmation %d / %d").replace("%d", String(progress.count)).replace("%d", String(progress.required))
+  ]);
+}
+function renderApplyNotice(view) {
+  if (!view.attention)
+    return renderStatus({ label: view.text, tone: view.tone });
+  return E("div", { class: "fkp-autotune__alert", role: "alert" }, [
+    E("strong", {}, _("Action required")),
+    E("p", {}, view.text),
+    E(
+      "button",
+      {
+        type: "button",
+        class: "btn cbi-button-action",
+        click: () => openForkopPage("history")
+      },
+      _("Open History and recovery")
+    )
+  ]);
+}
+function renderGroup(card3) {
+  const readonly = isReadonlyMode();
+  const facts = [[_("Now"), card3.current]];
+  if (card3.recommended)
+    facts.push([_("Recommended"), strategyLabel(card3.recommended)]);
+  if (card3.confidence)
+    facts.push([_("Confidence"), confidenceLabel(card3.confidence)]);
+  if (card3.progress)
+    facts.push([_("Confirmation"), renderProgress(card3.progress)]);
+  if (card3.checkedAt) facts.push([_("Checked"), timeNode(card3.checkedAt)]);
+  if (card3.lastApply)
+    facts.push([
+      _("Last change"),
+      E("span", { class: "fkp-autotune__row" }, [
+        `${card3.lastApply.candidate}:`,
+        renderStatus(card3.lastApply.outcome),
+        timeNode(card3.lastApply.at)
+      ])
+    ]);
+  for (const cooldown of card3.cooldowns)
+    facts.push([
+      _("Pause"),
+      _("%s is not applied again before %t").replace("%s", cooldown.candidate).replace("%t", formatTime2(cooldown.until))
+    ]);
+  facts.push([_("Targets"), card3.targets.join(", ") || "\u2014"]);
+  return E("li", { class: "fkp-autotune__group" }, [
+    E("div", { class: "fkp-autotune__row" }, [
+      E(
+        "span",
+        { class: "fkp-autotune__name" },
+        `${card3.title} \xB7 ${_("Zapret rule")}`
+      ),
+      renderStatus(card3.badge)
+    ]),
+    E(
+      "dl",
+      { class: "fkp-autotune__facts" },
+      facts.flatMap(([label, value]) => [
+        E("dt", {}, label),
+        E("dd", {}, value)
+      ])
+    ),
+    ...card3.explanation.map(
+      (text) => E("p", { class: "fkp-autotune__text" }, text)
+    ),
+    ...card3.manualHint ? [
+      E(
+        "p",
+        { class: "fkp-autotune__muted" },
+        _(
+          'Autotune is off. To apply the recommendation, switch to "Recommendations only" and apply it here, or to "Automatic".'
+        )
+      )
+    ] : [],
+    ...applying?.group === card3.id ? [
+      renderStatus({
+        label: applyPhaseLabel(applying.progress),
+        tone: "loading"
+      })
+    ] : [],
+    ...applyNotice?.group === card3.id ? [renderApplyNotice(applyNotice.view)] : [],
+    ...readonly ? [] : [
+      E("div", { class: "fkp-actions" }, [
+        ...card3.applyCandidate ? [
+          E(
+            "button",
+            {
+              type: "button",
+              class: "btn cbi-button-action",
+              disabled: locked() ? true : void 0,
+              click: () => void applyGroup(card3)
+            },
+            _("Apply %s").replace(
+              "%s",
+              strategyLabel(card3.applyCandidate)
+            )
+          )
+        ] : [],
+        E(
+          "button",
+          {
+            type: "button",
+            class: "btn cbi-button",
+            disabled: locked() ? true : void 0,
+            click: () => void runCheck(card3.id)
+          },
+          runningScope === card3.id ? _("Checking\u2026") : _("Check now")
+        ),
+        E(
+          "button",
+          {
+            type: "button",
+            class: "btn cbi-button",
+            click: () => openForkopPage("rules")
+          },
+          _("Open rules")
+        )
+      ])
+    ]
+  ]);
+}
+function renderGroups() {
+  if (!status) {
+    replace2(
+      "autotune-groups",
+      statusFailed ? renderEmptyState(_("No data")) : renderLoadingState2()
+    );
+    return;
+  }
+  const cards = groupCards(status, live);
+  const notes = [];
+  if (!live && liveLoading)
+    notes.push(
+      E(
+        "p",
+        { class: "fkp-autotune__muted" },
+        _("Determining which rule routes each target\u2026")
+      )
+    );
+  if (liveFailed)
+    notes.push(
+      E(
+        "p",
+        { class: "fkp-autotune__muted" },
+        _(
+          "Could not determine the current rule of each target; results of the last check are shown."
+        )
+      )
+    );
+  const outside = live?.outside ?? [];
+  replace2(
+    "autotune-groups",
+    ...notes,
+    cards.length ? E("ul", { class: "fkp-autotune__list" }, cards.map(renderGroup)) : renderEmptyState(
+      status.targets.length ? live || liveFailed ? _("No target is routed through a Zapret DPI rule") : _("Loading\u2026") : _("No targets yet"),
+      status.targets.length ? void 0 : _(
+        "Add the sites that go through your DPI rules, for example youtube.com."
+      )
+    ),
+    ...outside.length ? [
+      E("details", {}, [
+        E(
+          "summary",
+          {},
+          _("Targets outside DPI rules (%d)").replace(
+            "%d",
+            String(outside.length)
+          )
+        ),
+        E(
+          "ul",
+          { class: "fkp-autotune__list" },
+          outside.map(
+            (item) => E("li", { class: "fkp-autotune__item" }, [
+              E("span", { class: "fkp-autotune__what" }, [
+                E(
+                  "strong",
+                  {},
+                  status?.targets.find((t) => t.id === item.id)?.rule_set ? ruleListLabel(item.host, status?.lists) : item.host
+                ),
+                " \u2014 ",
+                outsideReasonText(item.reason)
+              ])
+            ])
+          )
+        )
+      ])
+    ] : []
+  );
+}
+function renderTargets() {
+  const readonly = isReadonlyMode();
+  replace2(
+    "autotune-target-actions",
+    ...readonly || !status ? [] : [
+      E(
+        "button",
+        {
+          type: "button",
+          class: "btn cbi-button",
+          disabled: locked() ? true : void 0,
+          click: () => showTargetEditor()
+        },
+        _("Add target")
+      )
+    ]
+  );
+  if (!status) {
+    replace2(
+      "autotune-targets",
+      statusFailed ? renderEmptyState(_("No data")) : renderLoadingState2()
+    );
+    return;
+  }
+  const byId = new Map(status.targets.map((t) => [t.id, t]));
+  const rows = targetRows(status.targets, status.lists);
+  const memberItem = (row) => {
+    const target = byId.get(row.id);
+    return E("li", { class: "fkp-autotune__item" }, [
+      E("span", { class: "fkp-autotune__what" }, [row.host]),
+      renderStatus({ label: row.result, tone: row.tone }),
+      ...row.checkedAt ? [timeNode(row.checkedAt)] : [],
+      ...target.last && target.last.candidates.length ? [
+        E("span", { class: "fkp-actions" }, [
+          E(
+            "button",
+            {
+              type: "button",
+              class: "btn cbi-button",
+              click: () => showCandidates(target)
+            },
+            _("Details")
+          )
+        ])
+      ] : []
+    ]);
+  };
+  replace2(
+    "autotune-targets",
+    rows.length ? E(
+      "ul",
+      { class: "fkp-autotune__list" },
+      rows.map((row) => {
+        const target = byId.get(row.id);
+        return E("li", { class: "fkp-autotune__item" }, [
+          E("span", { class: "fkp-autotune__what" }, [
+            E("strong", {}, row.host),
+            ...row.resolver ? [
+              " ",
+              E(
+                "span",
+                { class: "fkp-autotune__muted" },
+                `DNS ${row.resolver}`
+              )
+            ] : []
+          ]),
+          renderStatus({ label: row.result, tone: row.tone }),
+          ...row.checkedAt ? [timeNode(row.checkedAt)] : [],
+          E("span", { class: "fkp-actions" }, [
+            ...target.last && target.last.candidates.length ? [
+              E(
+                "button",
+                {
+                  type: "button",
+                  class: "btn cbi-button",
+                  click: () => showCandidates(target)
+                },
+                _("Details")
+              )
+            ] : [],
+            ...readonly ? [] : [
+              renderOverflowMenu(_("Target actions"), [
+                {
+                  label: _("Edit\u2026"),
+                  onClick: () => showTargetEditor(target),
+                  disabled: locked()
+                },
+                {
+                  label: _("Remove\u2026"),
+                  onClick: () => void removeTarget(target),
+                  disabled: locked(),
+                  danger: true
+                }
+              ])
+            ]
+          ]),
+          ...row.list ? [
+            E("div", { class: "fkp-autotune__members" }, [
+              ...row.list.note ? [
+                E(
+                  "p",
+                  { class: "fkp-autotune__muted" },
+                  row.list.note
+                )
+              ] : [],
+              ...row.list.members.length ? [
+                E(
+                  "ul",
+                  { class: "fkp-autotune__list" },
+                  row.list.members.map(memberItem)
+                )
+              ] : []
+            ])
+          ] : []
+        ]);
+      })
+    ) : renderEmptyState(
+      _("No targets yet"),
+      readonly ? void 0 : _("Autotune checks only the sites listed here.")
+    )
+  );
+}
+function renderHistory2() {
+  if (!history3) {
+    replace2(
+      "autotune-history",
+      historyFailed2 ? renderErrorState(_("History is unavailable"), () => void loadAll2()) : renderLoadingState2()
+    );
+    return;
+  }
+  const items = historyItems(history3.events, "autotune").slice(
+    0,
+    HISTORY_LIMIT
+  );
+  replace2(
+    "autotune-history",
+    items.length ? E(
+      "ul",
+      { class: "fkp-autotune__list" },
+      items.map(
+        (item) => E("li", { class: "fkp-autotune__item" }, [
+          E(
+            "span",
+            { class: "fkp-autotune__time", title: item.time },
+            item.relative
+          ),
+          E("span", { class: "fkp-autotune__what" }, item.title),
+          renderStatus(item.outcome)
+        ])
+      )
+    ) : renderEmptyState(_("No autotune events yet")),
+    E("div", { class: "fkp-actions" }, [
+      E(
+        "button",
+        {
+          type: "button",
+          class: "btn cbi-button",
+          click: () => openForkopPage("history")
+        },
+        _("All events")
+      )
+    ])
+  );
+}
+function renderAll2() {
+  renderState2();
+  renderGroups();
+  renderTargets();
+  renderHistory2();
+}
+function onPageMount6() {
+  onPageUnmount6();
+  mounted2 = true;
+  mountId2 += 1;
+  renderAll2();
+  void loadAll2();
+  refreshTimer2 = setInterval(() => {
+    if (busy) return;
+    const running = status?.worker?.state === "running";
+    if (Date.now() - statusLoadedAt >= (running ? RUNNING_REFRESH_INTERVAL_MS : REFRESH_INTERVAL_MS2))
+      void loadStatus();
+    if (Date.now() - liveLoadedAt > GROUPS_REFRESH_INTERVAL_MS)
+      void loadGroups();
+  }, RUNNING_REFRESH_INTERVAL_MS);
+}
+function onPageUnmount6() {
+  mounted2 = false;
+  mountId2 += 1;
+  applying = null;
+  if (refreshTimer2) clearInterval(refreshTimer2);
+  refreshTimer2 = null;
+}
+var initialized2 = false;
+async function initController6() {
+  if (initialized2) return;
+  initialized2 = true;
+  onMount("autotune-status").then(() => {
+    store.subscribe(
+      (next, prev, diff) => {
+        if (diff.tabService && next.tabService.current !== prev.tabService.current) {
+          if (next.tabService.current === "autotune") onPageMount6();
+          else onPageUnmount6();
+        }
+      }
+    );
+    if (store.get().tabService.current === "autotune" || isActiveLuciTab("autotune")) {
+      onPageMount6();
+    }
+  });
+}
+
+// src/forkop/tabs/autotune/styles.ts
+var styles8 = `
+.fkp-autotune {
+    display: flex;
+    flex-direction: column;
+    gap: var(--fkp-space-3);
+    min-width: 0;
+}
+.fkp-autotune__card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--fkp-space-2);
+    min-width: 0;
+    padding: var(--fkp-space-3) var(--fkp-space-4);
+    border: 1px solid var(--fkp-border);
+    border-radius: 6px;
+}
+.fkp-autotune__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--fkp-space-2);
+}
+.fkp-autotune__title { margin: 0; font-size: 1.05em; min-width: 0; overflow-wrap: anywhere; }
+.fkp-autotune__hint,
+.fkp-autotune__muted { margin: 0; color: var(--fkp-tone-neutral); overflow-wrap: anywhere; }
+.fkp-autotune__text { margin: 0; overflow-wrap: anywhere; }
+.fkp-autotune__alert {
+    padding: var(--fkp-space-2) var(--fkp-space-3);
+    border: 1px solid var(--fkp-tone-error);
+    border-left-width: 4px;
+    border-radius: 6px;
+    overflow-wrap: anywhere;
+}
+.fkp-autotune__alert p { margin: var(--fkp-space-1) 0 var(--fkp-space-2); }
+.fkp-autotune__modes { display: flex; flex-wrap: wrap; gap: var(--fkp-space-1); }
+.fkp-autotune__modes .btn[aria-pressed="true"] {
+    font-weight: 600;
+    border-color: var(--fkp-tone-loading);
+    outline: 2px solid var(--fkp-tone-loading);
+    outline-offset: 1px;
+}
+.fkp-autotune__facts {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: var(--fkp-space-1) var(--fkp-space-4);
+    margin: 0;
+}
+.fkp-autotune__facts dt { font-weight: 600; }
+.fkp-autotune__facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.fkp-autotune__list { margin: 0; padding: 0; list-style: none; }
+.fkp-autotune__group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--fkp-space-2);
+    min-width: 0;
+    padding: var(--fkp-space-3) 0;
+    border-top: 1px solid var(--fkp-border);
+}
+.fkp-autotune__group:first-child { border-top: 0; padding-top: 0; }
+.fkp-autotune__row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--fkp-space-1) var(--fkp-space-3);
+    min-width: 0;
+}
+.fkp-autotune__name { font-weight: 600; flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
+.fkp-autotune__progress { display: inline-flex; gap: 3px; vertical-align: middle; }
+/* A running check. */
+.fkp-autotune__run { display: grid; gap: var(--fkp-space-1); min-width: 0; }
+.fkp-autotune__bar { height: 6px; border-radius: 3px; background: var(--fkp-border); overflow: hidden; max-width: 480px; }
+.fkp-autotune__bar > div { height: 100%; background: var(--fkp-tone-loading); transition: width 0.5s; }
+.fkp-autotune__run-items { list-style: none; margin: 0; padding: 0; }
+.fkp-autotune__run-item { display: flex; flex-wrap: wrap; align-items: center; gap: var(--fkp-space-1) var(--fkp-space-2); padding: 2px 0; min-width: 0; }
+.fkp-autotune__run-item--pending { color: var(--fkp-tone-neutral); }
+.fkp-autotune__run-icon { width: 1em; text-align: center; flex: none; }
+.fkp-autotune__run-item .fkp-autotune__what { flex: 0 1 16em; }
+.fkp-autotune__dot {
+    width: 0.7em;
+    height: 0.7em;
+    border-radius: 50%;
+    border: 1px solid var(--fkp-tone-loading);
+}
+.fkp-autotune__dot--on { background: var(--fkp-tone-loading); }
+.fkp-autotune__item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--fkp-space-1) var(--fkp-space-3);
+    padding: var(--fkp-space-2) 0;
+    border-top: 1px solid var(--fkp-border);
+    min-width: 0;
+}
+.fkp-autotune__item:first-child { border-top: 0; }
+/* Choosing pinned domains of a list: a scrollable list of checkboxes. */
+.fkp-autotune__domains { max-height: 240px; overflow-y: auto; margin-top: var(--fkp-space-1); padding: var(--fkp-space-1) var(--fkp-space-2); border: 1px solid var(--fkp-border); border-radius: 4px; }
+.fkp-autotune__domain { display: flex; align-items: center; gap: var(--fkp-space-1); padding: 2px 0; overflow-wrap: anywhere; font-weight: normal; }
+/* The domains of a list target, under it and indented. */
+.fkp-autotune__members { flex: 1 1 100%; min-width: 0; padding-left: var(--fkp-space-3); border-left: 2px solid var(--fkp-border); }
+.fkp-autotune__what { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }
+.fkp-autotune__time { color: var(--fkp-tone-neutral); min-width: 0; }
+.fkp-autotune__table-wrap { width: 0; min-width: 100%; overflow-x: auto; }
+.fkp-autotune__table { width: 100%; }
+.fkp-autotune__table td { overflow-wrap: anywhere; vertical-align: top; }
+.fkp-autotune__form {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: var(--fkp-space-2) var(--fkp-space-3);
+    align-items: center;
+}
+.fkp-autotune__form input,
+.fkp-autotune__form select { width: 100%; min-width: 0; box-sizing: border-box; }
+/* The checkboxes of the domain list keep their own size; the domain reads left to right. */
+.fkp-autotune__form .fkp-autotune__domain { text-align: left; justify-content: flex-start; width: 100%; }
+.fkp-autotune__form .fkp-autotune__domain input { width: auto; flex: none; margin: 0; }
+.fkp-autotune__field-hint { grid-column: 2; margin-top: calc(-1 * var(--fkp-space-1)); color: var(--fkp-tone-neutral); font-size: 0.9em; }
+
+@media (max-width: 599px) {
+    .fkp-autotune__facts,
+    .fkp-autotune__form { grid-template-columns: minmax(0, 1fr); }
+    .fkp-autotune__facts dd { margin-bottom: var(--fkp-space-2); }
+    .fkp-autotune__field-hint { grid-column: 1; }
+}
+`;
+
+// src/forkop/tabs/autotune/index.ts
+var AutotuneTab = {
+  render: render6,
+  initController: initController6,
+  styles: styles8
+};
+
+// src/forkop/ui/styles.ts
+var styles9 = `
+:root {
+    --fkp-space-1: 4px;
+    --fkp-space-2: 8px;
+    --fkp-space-3: 12px;
+    --fkp-space-4: 16px;
+    --fkp-space-5: 24px;
+    --fkp-tone-success: var(--success-color-medium, #2e7d32);
+    --fkp-tone-warning: var(--warn-color-medium, #b26a00);
+    --fkp-tone-error: var(--error-color-medium, #c62828);
+    --fkp-tone-loading: var(--primary-color-high, #1565c0);
+    --fkp-tone-neutral: var(--text-color-medium, #616161);
+    --fkp-tone-muted: var(--text-color-low, #9e9e9e);
+    --fkp-border: var(--border-color-medium, rgba(127, 127, 127, 0.35));
+}
+
+.fkp-status {
+    display: inline-block;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 1px var(--fkp-space-2);
+    border: 1px solid currentColor;
+    border-radius: 999px;
+    font-size: 0.9em;
+    line-height: 1.5;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+.fkp-status--success { color: var(--fkp-tone-success); }
+.fkp-status--warning { color: var(--fkp-tone-warning); }
+.fkp-status--error { color: var(--fkp-tone-error); }
+.fkp-status--loading { color: var(--fkp-tone-loading); }
+.fkp-status--neutral { color: var(--fkp-tone-neutral); }
+.fkp-status--muted { color: var(--fkp-tone-muted); }
+
+.fkp-provenance {
+    display: inline-block;
+    padding: 0 var(--fkp-space-1);
+    border: 1px dashed var(--fkp-border);
+    border-radius: 4px;
+    font-size: 0.8em;
+    color: var(--fkp-tone-neutral);
+    white-space: normal;
+}
+
+.fkp-state {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--fkp-space-2);
+    padding: var(--fkp-space-3) 0;
+    min-width: 0;
+}
+.fkp-state__title { font-weight: 600; overflow-wrap: anywhere; }
+.fkp-state__hint { color: var(--fkp-tone-neutral); overflow-wrap: anywhere; }
+.fkp-state--error .fkp-state__title { color: var(--fkp-tone-error); }
+.fkp-state--loading .fkp-state__title { color: var(--fkp-tone-loading); font-weight: normal; }
+
+.fkp-tech { margin-top: var(--fkp-space-2); max-width: 100%; }
+.fkp-tech > summary { cursor: pointer; color: var(--fkp-tone-neutral); }
+.fkp-tech__content {
+    max-height: 320px;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-size: 0.85em;
+}
+
+.fkp-confirm__consequences { margin: var(--fkp-space-2) 0 var(--fkp-space-3) var(--fkp-space-5); }
+.fkp-confirm__actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--fkp-space-2);
+}
+
+.fkp-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--fkp-space-2);
+    min-width: 0;
+}
+.fkp-menu {
+    position: relative;
+    display: inline-block;
+}
+.fkp-menu > summary {
+    list-style: none;
+    cursor: pointer;
+    min-width: 32px;
+    text-align: center;
+}
+.fkp-menu > summary::-webkit-details-marker { display: none; }
+.fkp-menu__list {
+    position: absolute;
+    right: 0;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    min-width: max-content;
+    max-width: min(320px, 90vw);
+    margin-top: var(--fkp-space-1);
+    padding: var(--fkp-space-1) 0;
+    border: 1px solid var(--fkp-border);
+    border-radius: 6px;
+    background: var(--background-color-high, #fff);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+.fkp-menu__item {
+    padding: var(--fkp-space-2) var(--fkp-space-4);
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    white-space: normal;
+    cursor: pointer;
+}
+.fkp-menu__item:hover:not([disabled]) { background: var(--background-color-medium, rgba(127,127,127,0.12)); }
+.fkp-menu__item[disabled] { opacity: 0.5; cursor: default; }
+.fkp-action-danger-text {
+    color: var(--fkp-tone-error) !important;
+}
+`;
+
 // src/styles.ts
 var GlobalStyles = `
+${styles9}
 ${DashboardTab.styles}
 ${DiagnosticTab.styles}
 ${MonitoringTab.styles}
 ${UpdatesTab.styles}
+${HistoryTab.styles}
+${AutotuneTab.styles}
 ${PartialStyles}
 
 
@@ -14657,6 +21436,14 @@ ${PartialStyles}
     background-color: #dc3545;
 }
 
+.toast-warning {
+    background-color: #b26a00;
+}
+
+.toast-info {
+    background-color: #1565c0;
+}
+
 .toast.visible {
     opacity: 1;
     transform: translateY(0);
@@ -14683,6 +21470,7 @@ function injectGlobalStyles() {
 if (typeof structuredClone !== "function")
   globalThis.structuredClone = (obj) => JSON.parse(JSON.stringify(obj));
 return baseclass.extend({
+  AutotuneTab,
   BOOTSTRAP_DNS_SERVER_OPTIONS,
   DEFAULT_LATENCY_TEST_URL,
   DNS_SERVER_OPTIONS,
@@ -14692,17 +21480,22 @@ return baseclass.extend({
   FORKOP_ACTION_PROVIDERS_AVAILABILITY_EVENT,
   FORKOP_UCI_PACKAGE,
   ForkopShellMethods,
+  HistoryTab,
   LATENCY_TEST_URL_OPTIONS,
   MonitoringTab,
   SECONDARY_RULESET_OPTIONS,
   UpdatesTab,
   applyUiStateToStore,
   bulkValidate,
+  confirmAction,
   coreService,
+  domainListLabel,
   getClashUIUrl,
   getProxyUrlName,
   injectGlobalStyles,
   parseValueList,
+  setForkopPage,
+  setReadonlyMode,
   showToast,
   store,
   validateBootstrapDNS,

@@ -1,4 +1,4 @@
-import { renderSections, renderWidget } from './partials';
+import { renderSections } from './partials';
 
 export function render() {
   return E(
@@ -10,86 +10,41 @@ export function render() {
     [
       E(
         'div',
-        {
-          class: 'fkp_dashboard-page__service-stopped',
-          role: 'status',
-        },
-        _(
-          'Forkop service is stopped. Start the service to display the dashboard.',
-        ),
+        { id: 'dashboard-overview', role: 'status' },
+        E('p', { class: 'fkp-overview__hint' }, _('Loading…')),
       ),
-      E('div', { class: 'fkp_dashboard-page__content' }, [
-        // Widgets section
-        E('div', { class: 'fkp_dashboard-page__widgets-section' }, [
-          E(
-            'div',
-            { id: 'dashboard-widget-traffic' },
-            renderWidget({
-              loading: true,
-              failed: false,
-              title: '',
-              items: [],
-            }),
-          ),
-          E(
-            'div',
-            { id: 'dashboard-widget-traffic-total' },
-            renderWidget({
-              loading: true,
-              failed: false,
-              title: '',
-              items: [],
-            }),
-          ),
-          E(
-            'div',
-            { id: 'dashboard-widget-system-info' },
-            renderWidget({
-              loading: true,
-              failed: false,
-              title: '',
-              items: [],
-            }),
-          ),
-          E(
-            'div',
-            { id: 'dashboard-widget-service-info' },
-            renderWidget({
-              loading: true,
-              failed: false,
-              title: '',
-              items: [],
-            }),
-          ),
-        ]),
-        // All outbounds
-        E(
-          'div',
-          { id: 'dashboard-sections-grid' },
-          renderSections({
-            loading: true,
-            failed: false,
-            section: {
-              code: '',
-              sectionName: '',
-              displayName: '',
-              outbounds: [],
-              withTagSelect: false,
-            },
-            onTestLatency: () => {},
-            onChooseOutbound: () => {},
-            onShowUrlTestInfo: () => {},
-            onShowPriorityInfo: () => {},
-            onUpdateSubscription: () => {},
-            latencyFetching: false,
-            latencyProgress: undefined,
-            subscriptionUpdating: false,
-            selectorSwitchingTag: undefined,
-            isPriorityMembersExpanded: () => false,
-            onPriorityMembersToggle: () => {},
-          }),
-        ),
-      ]),
     ],
   );
+}
+
+// Monitoring → Nodes: the same controller, node selection only.
+export function renderNodes() {
+  return E('div', { id: 'dashboard-status', class: 'fkp_dashboard-page' }, [
+    E(
+      'div',
+      { id: 'dashboard-sections-grid' },
+      renderSections({
+        loading: true,
+        failed: false,
+        section: {
+          code: '',
+          sectionName: '',
+          displayName: '',
+          outbounds: [],
+          withTagSelect: false,
+        },
+        onTestLatency: () => {},
+        onChooseOutbound: () => {},
+        onShowUrlTestInfo: () => {},
+        onShowPriorityInfo: () => {},
+        onUpdateSubscription: () => {},
+        latencyFetching: false,
+        latencyProgress: undefined,
+        subscriptionUpdating: false,
+        selectorSwitchingTag: undefined,
+        isPriorityMembersExpanded: () => false,
+        onPriorityMembersToggle: () => {},
+      }),
+    ),
+  ]);
 }

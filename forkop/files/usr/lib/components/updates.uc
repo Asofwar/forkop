@@ -5,6 +5,7 @@ let uci_core = require("core.uci");
 let connections = require("config.connections");
 let core_ip = require("core.ip");
 let core_url = require("core.url");
+let process_identity = require("core.process_identity");
 const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || "forkop";
 const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
 const STATE_UC = getenv("FORKOP_STATE_UC") || LIB_DIR + "/service/state.uc";
@@ -522,8 +523,11 @@ function validate_staged_list_download(path, format) {
     return ok;
 }
 
+// The lock owner is this ucode process. `sh -c 'echo $PPID'` names it only
+// when /bin/sh execs its last command (busybox ash); dash reports a shell
+// that has already exited, so every lock this worker holds looks stale.
 function owner_pid() {
-    let pid = trim(command_output_from_args([ "sh", "-c", "echo $PPID" ]));
+    let pid = as_string(fs.readlink("/proc/self"));
     return match(pid, /^[0-9]+$/) != null ? pid : "0";
 }
 
@@ -1106,11 +1110,6 @@ function remove_files(paths) {
             remove_file(path);
 }
 
-function runtime_pid_running(pid) {
-    pid = as_string(pid);
-    return match(pid, /^[0-9]+$/) != null && command_success_from_args([ "kill", "-0", pid ]);
-}
-
 function whitespace_items(value) {
     let result = [];
     if (type(value) == "array") {
@@ -1234,17 +1233,26 @@ function service_state_success(args) {
     return module_success(command_args);
 }
 
-function acquire_runtime_lock(lock_dir, wait) {
+function acquire_runtime_lock(lock_dir, wait, timeout) {
     return service_state_success([
         wait ? "acquire-runtime-dir-lock-wait" : "acquire-runtime-dir-lock",
         lock_dir,
         owner_pid(),
-        "300"
+        timeout == null ? "300" : as_string(timeout)
     ]);
 }
 
 function release_runtime_lock(lock_dir) {
-    service_state_success([ "release-runtime-dir-lock", lock_dir ]);
+    service_state_success([ "release-runtime-dir-lock", lock_dir, owner_pid() ]);
+}
+
+// A start or reload in progress may still be bringing the sing-box service
+// proxy up: downloads through it wait until reload.lock is free once.
+function wait_for_runtime_lock_release() {
+    if (!acquire_runtime_lock(RELOAD_LOCK_DIR, true))
+        return false;
+    release_runtime_lock(RELOAD_LOCK_DIR);
+    return true;
 }
 
 function unsigned_number(value) {
@@ -1802,6 +1810,7 @@ function set_subscription_running_job_pid(path, pid) {
     let value = object_or_empty(read_json_file(path));
     if (value.running === true) {
         value.pid = pid;
+        value.pid_ticks = process_identity.start_ticks(pid);
         return write_state_file(path, value);
     }
 
@@ -1970,9 +1979,18 @@ function subscription_cleanup_jobs() {
     }
 }
 
-function pid_running(pid) {
-    pid = as_string(pid);
-    return job_pid_valid(pid) && command_success_from_args([ "kill", "-0", pid ]);
+// A job names its worker by pid and start ticks, so a PID that a dead worker
+// left behind and another process now holds does not keep the job running
+// (UC-014). A job written before start ticks were recorded has the pid only.
+function job_worker_running(value) {
+    value = object_or_empty(value);
+    let pid = as_string(value.pid || "");
+    if (!job_pid_valid(pid))
+        return false;
+    if (value.pid_ticks == null)
+        return command_success_from_args([ "kill", "-0", pid ]);
+    let ticks = as_string(value.pid_ticks);
+    return ticks != "" && process_identity.start_ticks(pid) == ticks;
 }
 
 function write_subscription_stale_job_state(path) {
@@ -2000,7 +2018,7 @@ function refresh_subscription_running_job_state(path) {
         return;
     }
 
-    if (pid_running(pid))
+    if (job_worker_running(value))
         return;
     if (within_grace)
         return;
@@ -2009,7 +2027,7 @@ function refresh_subscription_running_job_state(path) {
     value = read_json_file(path);
     if (type(value) != "object" || value.running !== true)
         return;
-    if (pid_running(pid))
+    if (job_worker_running(value))
         return;
 
     write_subscription_stale_job_state(path);
@@ -2388,14 +2406,14 @@ function refresh_component_running_job_state(path) {
         return;
     }
 
-    if (pid_running(pid) || within_grace)
+    if (job_worker_running(value) || within_grace)
         return;
 
     command_success_from_args([ "sleep", "1" ]);
     value = read_json_file(path);
     if (type(value) != "object" || value.running !== true)
         return;
-    if (pid_running(pid))
+    if (job_worker_running(value))
         return;
 
     write_component_stale_job_state(path);
@@ -2472,6 +2490,7 @@ function set_component_running_job_pid(path, pid) {
     let value = object_or_empty(read_json_file(path));
     if (value.running === true) {
         value.pid = pid;
+        value.pid_ticks = process_identity.start_ticks(pid);
         return write_state_file(path, value);
     }
 
@@ -3088,7 +3107,24 @@ function list_preflight_entries(sections) {
     return entries;
 }
 
-function prepare_list_downloads(sections, proxy_address) {
+function abandon_list_downloads(url) {
+    log_message("Failed to preflight list source " + safe_remote_source_identity(url) + "; keeping the active generation", "error");
+    command_success_from_args([ "rm", "-rf", list_download_staging_dir ]);
+    list_download_staging_dir = "";
+    list_download_cache = {};
+    return false;
+}
+
+// unlocked: the downloads run before reload.lock is taken (UC-057). A DNS
+// failover switch or a subscription update may then hold the lock and
+// restart the service proxy the downloads go through. The first source that
+// fails through the proxy waits until the lock is free, without holding it,
+// and is downloaded once more. Any further failure, and a failed direct
+// download, which does not depend on the proxy, fails the update at once:
+// no download runs under reload.lock, and a proxy that is really down does
+// not cost a full download budget for every source.
+function prepare_list_downloads(sections, proxy_address, unlocked) {
+    let proxy_retry = unlocked && as_string(proxy_address) != "";
     list_download_cache = {};
     list_download_metadata = [];
     list_download_sequence = 0;
@@ -3103,14 +3139,15 @@ function prepare_list_downloads(sections, proxy_address) {
     for (let entry in list_preflight_entries(sections)) {
         list_download_sequence++;
         let path = list_download_staging_dir + "/source-" + as_string(list_download_sequence);
-        if (!download_to_file_network(entry.url, path, proxy_address) ||
-            !validate_staged_list_download(path, entry.format)) {
-            log_message("Failed to preflight list source " + safe_remote_source_identity(entry.url) + "; keeping the active generation", "error");
-            command_success_from_args([ "rm", "-rf", list_download_staging_dir ]);
-            list_download_staging_dir = "";
-            list_download_cache = {};
-            return false;
+        let downloaded = download_to_file_network(entry.url, path, proxy_address);
+        if (!downloaded && proxy_retry) {
+            proxy_retry = false;
+            log_message("List source " + safe_remote_source_identity(entry.url) + " failed through the service proxy; retrying it once the runtime lock is free", "warn");
+            downloaded = wait_for_runtime_lock_release() &&
+                download_to_file_network(entry.url, path, proxy_address);
         }
+        if (!downloaded || !validate_staged_list_download(path, entry.format))
+            return abandon_list_downloads(entry.url);
         list_download_cache[entry.url] = path;
         push(list_download_metadata, {
             name: "source-" + as_string(list_download_sequence),
@@ -3602,16 +3639,36 @@ function import_subnets_from_remote_subnet_lists(section, settings) {
     return ok;
 }
 
+// The modes that run list_update() and so own LIST_UPDATE_PID_FILE.
+const LIST_UPDATE_WORKER_MODES = [ "list-update", "list-update-if-due", "list-update-after-start", "prepare-list-cache" ];
+
+function list_update_worker_argv(mode) {
+    return [ "ucode", "-L", LIB_DIR, LIB_DIR + "/components/updates.uc", mode ];
+}
+
+// The list worker is recorded by pid and start ticks and recognized by its
+// command line (core/process_identity.uc). A PID that a killed worker left
+// in the pidfile and another process now holds is not a running worker: it
+// neither skips list updates nor gets signalled on stop (UC-014).
+function list_update_worker_pid() {
+    for (let mode in LIST_UPDATE_WORKER_MODES) {
+        let pid = process_identity.matches(LIST_UPDATE_PID_FILE, "ucode", list_update_worker_argv(mode), true, false);
+        if (pid != "")
+            return pid;
+    }
+    return "";
+}
+
 function list_update_pid_begin() {
-    let existing_pid = trim(as_string(fs.readfile(LIST_UPDATE_PID_FILE) || ""));
+    let existing_pid = list_update_worker_pid();
     let current_pid = owner_pid();
-    if (existing_pid != "" && existing_pid != current_pid && runtime_pid_running(existing_pid)) {
+    if (existing_pid != "" && existing_pid != current_pid) {
         log_message("Another lists update is already running, skipping", "info");
         return false;
     }
 
     ensure_parent_dir(LIST_UPDATE_PID_FILE);
-    write_file(LIST_UPDATE_PID_FILE, current_pid + "\n");
+    process_identity.record(LIST_UPDATE_PID_FILE, current_pid);
     return true;
 }
 
@@ -3793,6 +3850,9 @@ function finish_list_update(status, applied, generation_changed) {
     let ruleset_request = trim(file_first_line_value(RULESET_REFRESH_AFTER_LIST_FILE));
     let ruleset_changed = false;
     remove_file(RULESET_REFRESH_AFTER_LIST_FILE);
+    // The rule-set refresh below downloads; like the other rule-set
+    // refreshes it runs without reload.lock (UC-057).
+    release_runtime_lock(RELOAD_LOCK_DIR);
 
     // When both list families changed, refresh remote sing-box rule sets while
     // the old service proxy is still alive and coalesce everything into the
@@ -3817,7 +3877,6 @@ function finish_list_update(status, applied, generation_changed) {
             log_message("Remote rule-set refresh failed; keeping its last-known-good cache", "warn");
     }
     list_update_pid_end();
-    release_runtime_lock(RELOAD_LOCK_DIR);
 
     // A successful generation reload reads the newest UCI state itself, so it
     // subsumes a queued reload instead of launching pending + list-content as
@@ -3937,29 +3996,42 @@ function list_update() {
     if (!list_update_pid_begin())
         exit(0);
 
-    // Share the same lock as lifecycle reloads.  Waiting here is intentional:
-    // a startup or config reload must settle before this worker opens requests
-    // through the sing-box service proxy.  Conversely, init.d queues reloads
-    // that arrive while this lock is held, and finish_list_update() runs them.
-    if (!list_update_prepare_only && !acquire_runtime_lock(RELOAD_LOCK_DIR, true)) {
-        log_message("Lists update skipped because Forkop reload did not release the runtime lock", "warn");
-        list_update_pid_end();
-        exit(1);
-    }
-
+    // The DNS probe and the downloads run before reload.lock is taken
+    // (UC-057): the probe alone can take a minute on a dead resolver, and
+    // while the lock is held DNS failover cannot switch servers and runtime
+    // recovery waits. The sources go to a private staging directory; only
+    // the transaction that turns them into the active generation runs under
+    // the lock, and the signature check below discards a generation whose
+    // sources changed meanwhile. A startup owns the lock itself and prepares
+    // the generation inside it (list_update_prepare_only).
     list_mirror_download_state = {};
     let settings = uci_settings();
     list_update_signature_at_start = current_list_update_signature();
     if (list_update_signature_at_start == "")
         finish_list_update(1, false);
     let proxy_address = service_proxy_address(settings, "lists");
+    if (proxy_address != "" && !list_update_prepare_only && !wait_for_runtime_lock_release()) {
+        log_message("Lists update skipped because Forkop reload did not release the runtime lock", "warn");
+        finish_list_update(1, false);
+    }
     if (!dns_probe_passed(proxy_address)) {
         finish_list_update(1, false);
     }
     log_message("Downloading and processing lists", "info");
     let sections = uci_sections("section");
-    if (!prepare_list_downloads(sections, proxy_address))
+    if (!prepare_list_downloads(sections, proxy_address, !list_update_prepare_only))
         finish_list_update(1, false);
+
+    // Share the same lock as lifecycle reloads for the transaction. init.d
+    // queues reloads that arrive while this worker runs, with or without
+    // the lock (service/initd.uc list_update_worker_running), and
+    // finish_list_update() runs them after list_update_pid_end().
+    if (!list_update_prepare_only && !acquire_runtime_lock(RELOAD_LOCK_DIR, true)) {
+        log_message("Lists update skipped because Forkop reload did not release the runtime lock", "warn");
+        // Runs the reloads queued during the downloads as well.
+        finish_list_update(1, false);
+    }
+
     if (!begin_list_ruleset_snapshot()) {
         log_message("Could not snapshot the active rule sets; aborting the list transaction", "error");
         finish_list_update(1, false);
@@ -4061,10 +4133,11 @@ function list_update_if_due() {
 }
 
 function stop_list_update() {
-    let pid = trim(as_string(fs.readfile(LIST_UPDATE_PID_FILE) || ""));
-    if (pid != "" && runtime_pid_running(pid)) {
-        command_success_from_args([ "kill", pid ]);
-        log_message("Stopped list_update", "info");
+    for (let mode in LIST_UPDATE_WORKER_MODES) {
+        if (process_identity.signal(LIST_UPDATE_PID_FILE, "ucode", list_update_worker_argv(mode), true, "TERM")) {
+            log_message("Stopped list_update", "info");
+            break;
+        }
     }
     remove_file(LIST_UPDATE_PID_FILE);
 }
@@ -4156,8 +4229,40 @@ function run_pending_reload_if_requested() {
     service_state_success([ "run-pending-reload-if-requested", PENDING_RELOAD_FILE, SERVICE_INIT ]);
 }
 
-function subscription_prepare_cache_request(force, target_section, target_source_index) {
+// Responses fetched before reload.lock was taken (UC-057), or "" when the
+// fetch failed and the update downloads under the lock as before.
+let subscription_prefetch_dir = "";
+
+function subscription_prefetch(force, target_section, target_source_index) {
+    let dir = trim(command_output_from_args([ "mktemp", "-d" ]));
+    if (dir == "")
+        return "";
     let result = subscription_cache_capture([
+        "prefetch-request",
+        force ? "1" : "0",
+        as_string(target_section),
+        as_string(target_source_index),
+        dir
+    ]);
+    if (result.status != 0) {
+        command_success_from_args([ "rm", "-rf", dir ]);
+        return "";
+    }
+    return dir;
+}
+
+function subscription_prefetch_discard() {
+    if (subscription_prefetch_dir != "")
+        command_success_from_args([ "rm", "-rf", subscription_prefetch_dir ]);
+    subscription_prefetch_dir = "";
+}
+
+function subscription_prepare_cache_request(force, target_section, target_source_index) {
+    let env = subscription_cache_env();
+    if (subscription_prefetch_dir != "")
+        env.FORKOP_SUBSCRIPTION_PREFETCH_DIR = subscription_prefetch_dir;
+    let result = module_env_capture(env, [
+        LIB_DIR + "/subscription/cache.uc",
         "update-request",
         force ? "1" : "0",
         as_string(target_section),
@@ -4199,6 +4304,20 @@ function subscription_discard_config_stage(stage_path, backup_path) {
         remove_file(backup_path);
 }
 
+// This update holds reload.lock, and a stop waits for it only for a bounded
+// time: sing-box and its workers are started only while no stop was requested
+// and Forkop runs at all (service/state.uc; UC-012).
+function subscription_runtime_start_allowed() {
+    return service_state_success([ "runtime-apply-allowed", core_constants.NFT_TABLE_NAME ]);
+}
+
+// Once the update has found Forkop running and taken sing-box down under
+// reload.lock, only a stop request (recorded before a stop proceeds, with or
+// without the lock) keeps it down; a transient nft error must not.
+function subscription_stop_requested() {
+    return service_state_success([ "stop-requested" ]);
+}
+
 function subscription_restore_previous_runtime(backup_path, transition_timeout) {
     if (!service_state_success([ "stop-managed-sing-box-runtime", transition_timeout ]))
         return false;
@@ -4207,10 +4326,14 @@ function subscription_restore_previous_runtime(backup_path, transition_timeout) 
         !module_success([ LIB_DIR + "/singbox/runtime.uc", "restore-config-stage", backup_path ]))
         return false;
 
+    if (subscription_stop_requested())
+        return true;
     return service_state_success([ "start-managed-sing-box-runtime", transition_timeout ]);
 }
 
 function subscription_start_auxiliary_runtimes() {
+    if (subscription_stop_requested())
+        return true;
     if (!module_success([ PRIORITY_UC, "start-runtime" ]))
         return false;
     return module_success([ DNS_FAILOVER_UC, "start-runtime" ]);
@@ -4232,6 +4355,23 @@ function subscription_update_common_locked(force, target_section, target_source_
     let failed = prepared.failed;
     if (updated == 0)
         return true;
+
+    // The cache is what the next start reads; the runtime of a stopped Forkop
+    // is not brought up for it.
+    if (!subscription_runtime_start_allowed()) {
+        // A sing-box that runs without an explicit stop, although the table
+        // check failed (a transient nft error): the committed cache would
+        // stay unapplied, since the next update finds nothing new. A queued
+        // reload applies it once this update has released its locks; it
+        // leaves a runtime that is stopped meanwhile alone.
+        if (!subscription_stop_requested() && service_state_success([ "sing-box-service-running" ])) {
+            mark_pending_reload("subscription_update");
+            log_message("Subscription cache was updated, but the Forkop runtime could not be checked; a reload was queued to apply it", "warn");
+            return true;
+        }
+        log_message("Subscription cache was updated; Forkop is stopped, so its runtime was left unchanged", "info");
+        return true;
+    }
 
     log_message("Reloading sing-box to apply updated subscriptions", "info");
     let validation = module_capture([ LIB_DIR + "/config/validator.uc", "validate-runtime" ]);
@@ -4262,8 +4402,7 @@ function subscription_update_common_locked(force, target_section, target_source_
     let transition_timeout = as_string(getenv("FORKOP_SING_BOX_RELOAD_PID_TIMEOUT") || "15");
     if (!service_state_success([ "stop-managed-sing-box-runtime", transition_timeout ])) {
         subscription_discard_config_stage(staged_config_path, backup_config_path);
-        module_success([ PRIORITY_UC, "start-runtime" ]);
-        module_success([ DNS_FAILOVER_UC, "start-runtime" ]);
+        subscription_start_auxiliary_runtimes();
         log_message("Refusing subscription runtime update: the previous sing-box runtime did not stop safely", "error");
         return false;
     }
@@ -4277,6 +4416,14 @@ function subscription_update_common_locked(force, target_section, target_source_
             log_message("Subscription runtime update rollback failed; sing-box remains stopped", "fatal");
         log_message("Failed to publish sing-box configuration after subscription update", "error");
         return false;
+    }
+    // A stop requested while this update held reload.lock tears the runtime
+    // down as soon as the lock is released: leave sing-box stopped.
+    if (subscription_stop_requested()) {
+        remove_file(backup_config_path);
+        subscription_discard_config_stage(staged_config_path, "");
+        log_message("Forkop is stopping; the updated subscriptions were saved and sing-box stays stopped", "info");
+        return true;
     }
     if (!service_state_success([
         "start-managed-sing-box-runtime",
@@ -4305,7 +4452,15 @@ function subscription_update_common_locked(force, target_section, target_source_
     }
     remove_file(backup_config_path);
     subscription_discard_config_stage(staged_config_path, "");
-    if (!write_current_reload_state_clean())
+    // This update applied the sing-box configuration only. A reload queued
+    // before or during it has not been applied (init.d queues every reload
+    // while a list update runs, with or without reload.lock): recording the
+    // current configuration as applied would leave that reload nothing to do,
+    // and a list source changed during a list update would never be
+    // downloaded. The queued reload records the state once it applied it.
+    if (file_exists_value(PENDING_RELOAD_FILE))
+        log_message("A queued reload has not been applied yet; leaving the recorded reload state to it", "info");
+    else if (!write_current_reload_state_clean())
         return false;
 
     let proxy_signature_after = current_proxy_outbounds_signature(sing_box_config_path);
@@ -4327,29 +4482,80 @@ function subscription_update_common_locked(force, target_section, target_source_
     return true;
 }
 
+const SUBSCRIPTION_LOCK_WAIT_SECONDS = int(getenv("FORKOP_SUBSCRIPTION_LOCK_WAIT_SECONDS") || "300");
+
+// Takes reload.lock and then subscription-update.lock: the global lock order
+// (service/state.uc). A start holds reload.lock around start_main, which then
+// waits for subscription-update.lock; an update holding that lock while it
+// waits for reload.lock would wait on the start in turn.
+//
+// Who holds subscription-update.lock while this update holds reload.lock
+// holds it without reload.lock: the deferred subscription bootstrap retry
+// (subscription/cache.uc), which downloads under it for as long as its
+// requests take. A forced update does not wait for it inside reload.lock,
+// which would hold back a DNS failover switch, every reload, a restore and
+// an autotune apply meanwhile (UC-057). It releases reload.lock, waits until
+// subscription-update.lock is free while it holds nothing else (it takes the
+// lock and lets go of it at once), and takes both in order again. What the
+// update decides from the cache and the runtime it decides under both locks,
+// after the wait. The waits after the first reload.lock share one bound.
+//
+// Returns "" with both locks held, or the reason for a forced update's
+// queued reload when it did not get them.
+function acquire_subscription_update_locks(force) {
+    if (!acquire_runtime_lock(RELOAD_LOCK_DIR, force))
+        return "reload_busy";
+
+    let deadline = null;
+    while (!acquire_runtime_lock(SUBSCRIPTION_UPDATE_LOCK_DIR, false)) {
+        release_runtime_lock(RELOAD_LOCK_DIR);
+        // Reloads that arrived while this update held reload.lock were only
+        // queued; apply them now, before this update waits or gives up.
+        run_pending_reload_if_requested();
+        if (!force)
+            return "subscription_update_busy";
+        if (deadline == null) {
+            deadline = now_seconds() + SUBSCRIPTION_LOCK_WAIT_SECONDS;
+            log_message("Another subscription download holds the subscription update lock; waiting for it without the reload lock", "info");
+        }
+        let remaining = deadline - now_seconds();
+        if (remaining <= 0 || !acquire_runtime_lock(SUBSCRIPTION_UPDATE_LOCK_DIR, true, remaining))
+            return "subscription_update_busy";
+        release_runtime_lock(SUBSCRIPTION_UPDATE_LOCK_DIR);
+        // The wait may get the lock only as the bound runs out; reload.lock
+        // is then still tried once (a wait of 0 s is a single attempt).
+        remaining = deadline - now_seconds();
+        if (!acquire_runtime_lock(RELOAD_LOCK_DIR, true, remaining > 0 ? remaining : 0))
+            return "reload_busy";
+    }
+    return "";
+}
+
 function subscription_update_common(force, target_section, target_source_index) {
     if (!subscription_cache_success([ "ensure-runtime-dirs" ]))
         exit(1);
 
     force = !!force;
-    if (!acquire_runtime_lock(SUBSCRIPTION_UPDATE_LOCK_DIR, force)) {
-        log_message("Subscription update is already running", "info");
-        if (force)
-            mark_pending_reload("subscription_update_busy");
-        return force ? 1 : 0;
-    }
+    // The downloads run before any lock is taken (UC-057): under reload.lock
+    // every retry and request profile of every source would hold back DNS
+    // failover and runtime recovery. They write nothing but a private
+    // directory; the cache is committed from it under both locks below.
+    subscription_prefetch_dir = subscription_prefetch(force, target_section, target_source_index);
 
-    if (!acquire_runtime_lock(RELOAD_LOCK_DIR, force)) {
-        release_runtime_lock(SUBSCRIPTION_UPDATE_LOCK_DIR);
-        log_message("Forkop reload is already running; skipping subscription update", "info");
+    let busy = acquire_subscription_update_locks(force);
+    if (busy != "") {
+        subscription_prefetch_discard();
+        log_message(busy == "reload_busy" ? "Forkop reload is already running; skipping subscription update" :
+            "Subscription update is already running", "info");
         if (force)
-            mark_pending_reload("reload_busy");
+            mark_pending_reload(busy);
         return force ? 1 : 0;
     }
 
     let ok = subscription_update_common_locked(force, target_section, target_source_index);
-    release_runtime_lock(RELOAD_LOCK_DIR);
+    subscription_prefetch_discard();
     release_runtime_lock(SUBSCRIPTION_UPDATE_LOCK_DIR);
+    release_runtime_lock(RELOAD_LOCK_DIR);
     run_pending_reload_if_requested();
     if (ok && subscription_outbounds_changed)
         module_background([ DIAGNOSTICS_UC, "automatic-latency-test", "new" ]);

@@ -31,6 +31,11 @@ const RELOAD_STATE_FILE = getenv("FORKOP_RELOAD_STATE_FILE") || RUNTIME_STATE_DI
 const RELOAD_STATE_SNAPSHOT_FILE = getenv("FORKOP_RELOAD_STATE_SNAPSHOT_FILE") || RUNTIME_STATE_DIR + "/reload-state.snapshot." + clock()[0] + "." + clock()[1];
 const PENDING_RELOAD_FILE = getenv("FORKOP_PENDING_RELOAD_FILE") || RUNTIME_STATE_DIR + "/reload.pending";
 const LIST_UPDATE_RELOAD_FILE = getenv("FORKOP_LIST_UPDATE_RELOAD_FILE") || RUNTIME_STATE_DIR + "/list-update.reload";
+// Present while the live nft table lacks the list generation of the current
+// configuration: a start without it, or a reload that left the rebuild to
+// the list worker's list-content reload. Nothing may be rendered from that
+// table meanwhile (killswitch/runtime.uc, UC-209).
+const RUNTIME_LISTS_PENDING_FILE = getenv("FORKOP_RUNTIME_LISTS_PENDING_FILE") || RUNTIME_STATE_DIR + "/runtime-lists.pending";
 const RULESET_REFRESH_AFTER_LIST_FILE = getenv("FORKOP_RULESET_REFRESH_AFTER_LIST_FILE") || RUNTIME_STATE_DIR + "/ruleset-refresh-after-list";
 const START_IN_PROGRESS_FILE = getenv("FORKOP_START_IN_PROGRESS_FILE") || RUNTIME_STATE_DIR + "/start.in-progress";
 const START_FAILURE_FILE = getenv("FORKOP_START_FAILURE_FILE") || RUNTIME_STATE_DIR + "/start.failure";
@@ -1124,6 +1129,10 @@ function start_main() {
         log_message("Candidate nftables policy could not be applied; the active policy was left unchanged", "fatal");
         return start_phase_failed("nft-candidate-apply", 1);
     }
+    if (start_lists_complete)
+        remove_file(RUNTIME_LISTS_PENDING_FILE);
+    else
+        write_file(RUNTIME_LISTS_PENDING_FILE, "start\n");
 
     status = singbox_init_config();
     if (status != 0)
@@ -2420,7 +2429,19 @@ function reload(reason) {
         remove_file(dpi_singbox_backup);
     discard_dpi_snapshot();
     discard_dnsmasq_reload_config();
-    killswitch_sync(reason == "" ? "reload" : "reload " + reason);
+    // A changed list source left the nft rebuild to the list worker's
+    // list-content reload: until then the live table is the previous one
+    // under the new rule order, and that reload refreshes the kill-switch
+    // (UC-209).
+    if (plan.changed_list == 1 && plan.needs_list_update == 1) {
+        write_file(RUNTIME_LISTS_PENDING_FILE, "reload\n");
+        log_message("Kill-switch refresh deferred until the list generation is applied", "info");
+    }
+    else {
+        if (plan.needs_nft_rebuild == 1)
+            remove_file(RUNTIME_LISTS_PENDING_FILE);
+        killswitch_sync(reason == "" ? "reload" : "reload " + reason);
+    }
 
     // Clear the durable retry request only after the complete local apply
     // committed its reload state. A failed candidate/guarded transition

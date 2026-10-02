@@ -82,6 +82,13 @@ const RELOAD_LOCK_DIR = getenv("FORKOP_RELOAD_LOCK_DIR") || "/var/run/forkop.rel
 const PENDING_RELOAD_FILE = getenv("FORKOP_PENDING_RELOAD_FILE") || RUNTIME_STATE_DIR + "/reload.pending";
 const SERVICE_INIT = getenv("FORKOP_SERVICE_INIT") || "/etc/init.d/forkop";
 const STATE_UC = LIB_DIR + "/service/state.uc";
+// What the last successful start or reload applied (service/state.uc), and
+// the mark of a live table that lacks the list generation of the current
+// configuration until the list-content reload (service/lifecycle.uc).
+const RELOAD_STATE_FILE = getenv("FORKOP_RELOAD_STATE_FILE") || RUNTIME_STATE_DIR + "/reload-state";
+const RUNTIME_LISTS_PENDING_FILE = getenv("FORKOP_RUNTIME_LISTS_PENDING_FILE") || RUNTIME_STATE_DIR + "/runtime-lists.pending";
+// The reload state fields the live ForkopTable is built from.
+const RUNTIME_SIGNATURES = [ "nft_signature", "list_signature" ];
 // Attempts, 500 ms apart, to take a held lock; tests bound it.
 const LOCK_ATTEMPTS = int(getenv("FORKOP_KILLSWITCH_LOCK_ATTEMPTS") || "120");
 const INTERFACE_SET = "ks_interfaces";
@@ -1154,13 +1161,48 @@ function teardown(reason) {
     return ok;
 }
 
+function reload_state_fields(text) {
+    let result = {};
+    for (let line in split(as_string(text), "\n")) {
+        let equals = index(line, "=");
+        if (equals > 0)
+            result[substr(line, 0, equals)] = substr(line, equals + 1);
+    }
+    return result;
+}
+
+// The policy is rendered from the configuration in UCI (rules and their
+// order) and the sets of the live table. Why they would not describe the
+// same runtime, or "" (UC-209). Only a manual refresh can meet committed
+// changes that wait for a reload; start and reload apply what they render.
+function runtime_behind_config(manual) {
+    if (fs.stat(RUNTIME_LISTS_PENDING_FILE) != null)
+        return "Forkop has not applied the list generation of its configuration yet";
+    let applied = fs.readfile(RELOAD_STATE_FILE);
+    if (!manual || applied == null)
+        return "";
+    let tmp = trim(capture([ "mktemp" ]).output);
+    if (tmp == "")
+        return "";
+    let current = run_quiet(module_args(STATE_UC, [ "capture-reload-state", tmp, "1" ])) ? fs.readfile(tmp) : null;
+    fs.unlink(tmp);
+    if (current == null)
+        return "";
+    applied = reload_state_fields(applied);
+    current = reload_state_fields(current);
+    for (let key in RUNTIME_SIGNATURES)
+        if (as_string(applied[key]) != as_string(current[key]))
+            return "the configuration changed since Forkop last applied it; reload Forkop first";
+    return "";
+}
+
 function protection_present() {
     return fs.stat(NFT_POLICY) != null || fs.stat(LEGACY_NFT_INCLUDE) != null ||
         fs.stat(DNS_BLOCKED_FILE) != null || read_state().active === true || ks_table_present() ||
         run_quiet([ "nft", "list", "table", "inet", LEGACY_GUARD_TABLE ]);
 }
 
-function sync_locked(reason) {
+function sync_locked(reason, manual) {
     let settings = config_settings();
     let sections = config_sections();
     let names = protected_section_names(sections);
@@ -1176,6 +1218,14 @@ function sync_locked(reason) {
 
     if (!live_table_present()) {
         record_error("Forkop runtime table " + LIVE_TABLE + " is not present; keeping the previous protection");
+        return 1;
+    }
+
+    let behind = runtime_behind_config(manual);
+    if (behind != "") {
+        record_error(behind + "; keeping the previous protection");
+        if (manual)
+            warn("Kill-switch not refreshed: " + behind + "\n");
         return 1;
     }
 
@@ -1296,7 +1346,7 @@ function with_lock(callback, options) {
 }
 
 function sync(reason, reload_lock_held) {
-    return with_lock(function() { return sync_locked(reason || "manual"); },
+    return with_lock(function() { return sync_locked(reason || "manual", !reload_lock_held); },
         { reload_lock_held, apply_pending: true });
 }
 

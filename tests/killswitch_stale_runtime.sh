@@ -1,0 +1,157 @@
+#!/usr/bin/env bash
+# The kill-switch is rendered from the configuration in UCI (rules and their
+# order) and the set contents of the live ForkopTable. Both must describe
+# the same runtime (UC-209): while committed changes wait for a reload, or a
+# reload left the rebuild of the table to the list worker's list-content
+# reload, a refresh would put the new rule order on top of the old sets and
+# could reject traffic the running Forkop deliberately sends directly. Such a
+# refresh keeps the previous protection instead.
+set -eo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+FORKOP_LIB="$ROOT_DIR/forkop/files/usr/lib"
+KS_UC="$FORKOP_LIB/killswitch/runtime.uc"
+STATE_UC="$FORKOP_LIB/service/state.uc"
+WORK_DIR="$(mktemp -d)"
+
+cleanup() {
+  rm -rf "$WORK_DIR"
+}
+trap cleanup EXIT
+
+fail() {
+  printf 'FAIL: %s\n' "$1" >&2
+  printf 'policy:\n' >&2
+  cat "$POLICY" >&2 2>/dev/null || true
+  printf 'state.json:\n' >&2
+  cat "$KILLSWITCH_STATE_DIR/state.json" >&2 2>/dev/null || true
+  exit 1
+}
+
+mkdir -p "$WORK_DIR/bin" "$WORK_DIR/run"
+cat >"$WORK_DIR/bin/nft" <<'NFT'
+#!/usr/bin/env bash
+case "$1 $2" in
+  "list table")
+    [ "$4" = "ForkopTable" ] && exit 0
+    [ "$4" = "ForkopKillswitch" ] && { [ -e "$WORK_DIR/ks-present" ]; exit $?; }
+    exit 1 ;;
+  "list set")
+    printf 'table inet ForkopTable {\n\tset %s {\n\t\ttype ipv4_addr\n' "$5"
+    case "$5" in
+      forkop_rule_byp_subnets|forkop_rule_vpn_subnets) printf '\t\telements = { 93.184.216.0/24 }\n' ;;
+    esac
+    printf '\t}\n}\n'
+    exit 0 ;;
+  "-c -f") exit 0 ;;
+  "-f "*) cp "$2" "$WORK_DIR/live.nft"; touch "$WORK_DIR/ks-present"; exit 0 ;;
+esac
+exit 0
+NFT
+for name in logger dnsmasq-init killswitch-init; do
+  printf '#!/bin/sh\nprintf "%%s\\n" "$*" >>"%s/%s.log"\n' "$WORK_DIR" "$name" >"$WORK_DIR/bin/$name"
+done
+chmod 0755 "$WORK_DIR/bin/"*
+
+export WORK_DIR
+export PATH="$WORK_DIR/bin:$PATH"
+export FORKOP_LIB
+export FORKOP_UCI_STATE_FILE="$WORK_DIR/uci.state"
+export FORKOP_RUNTIME_STATE_DIR="$WORK_DIR/run"
+export FORKOP_RELOAD_LOCK_DIR="$WORK_DIR/run/reload.lock"
+export FORKOP_RELOAD_STATE_FILE="$WORK_DIR/run/reload-state"
+export KILLSWITCH_STATE_DIR="$WORK_DIR/ks"
+export KILLSWITCH_NFT_INCLUDE="$WORK_DIR/nftables.d/90-forkop-killswitch.nft"
+export KILLSWITCH_CACHE_DIR="$WORK_DIR/cache"
+export DNSMASQ_INIT="$WORK_DIR/bin/dnsmasq-init"
+export FORKOP_KILLSWITCH_INIT="$WORK_DIR/bin/killswitch-init"
+
+POLICY="$KILLSWITCH_STATE_DIR/policy.nft"
+LISTS_PENDING="$FORKOP_RUNTIME_STATE_DIR/runtime-lists.pending"
+
+cat >"$WORK_DIR/sing-box.json" <<'JSON'
+{ "outbounds": [ { "type": "direct", "tag": "vpn-out" } ],
+  "route": { "rules": [ { "action": "route", "outbound": "vpn-out", "domain_suffix": [ "vpn.example" ] } ], "rule_set": [] } }
+JSON
+# The bypass section sends 93.184.216.0/24 directly while it comes first.
+write_config() {
+  local first="$1" second="$2"
+  {
+    printf 'forkop.settings=settings\n'
+    printf 'forkop.settings.source_network_interfaces=br-lan\n'
+    printf 'forkop.settings.config_path=%s\n' "$WORK_DIR/sing-box.json"
+    for name in "$first" "$second"; do
+      printf 'forkop.%s=section\n' "$name"
+      if [ "$name" = byp ]; then
+        printf 'forkop.byp.action=bypass\n'
+      else
+        printf 'forkop.vpn.action=connection\nforkop.vpn.kill_switch=1\n'
+      fi
+      printf 'forkop.%s.ip_cidr=93.184.216.0/24\n' "$name"
+    done
+    printf 'dhcp.@dnsmasq[0]=dnsmasq\ndhcp.@dnsmasq[0].server=127.0.0.42\n'
+  } >"$FORKOP_UCI_STATE_FILE"
+}
+# What a successful start or reload records for the configuration it applied.
+applied() {
+  ucode -L "$FORKOP_LIB" "$STATE_UC" capture-reload-state "$FORKOP_RELOAD_STATE_FILE" 1 ||
+    fail "the reload state could not be captured"
+}
+ks() { ucode -L "$FORKOP_LIB" "$KS_UC" "$@"; }
+bypass_first() {
+  awk '/forkop_rule_byp_subnets return/ { b = NR } /ks_vpn jump ks_reject/ { v = NR } END { exit !(b && v && b < v) }' "$POLICY"
+}
+
+# The running Forkop applied: bypass first.
+write_config byp vpn
+applied
+ks sync manual || fail "a manual refresh of the applied configuration failed"
+bypass_first || fail "the policy must keep the bypass verdict first"
+cp "$POLICY" "$WORK_DIR/policy.applied"
+
+# Committed, not reloaded yet: the protected section moved first.
+write_config vpn byp
+if ks sync manual 2>"$WORK_DIR/sync.err"; then
+  fail "a manual refresh must not render a configuration the running Forkop has not applied"
+fi
+cmp -s "$POLICY" "$WORK_DIR/policy.applied" || fail "the previous protection must stay while the configuration waits for a reload"
+grep -Fq 'reload' "$KILLSWITCH_STATE_DIR/state.json" || fail "the kept protection must say that a reload is needed"
+grep -Fq 'reload Forkop first' "$WORK_DIR/sync.err" || fail "a manual refresh must tell why it kept the protection"
+printf 'ok - a manual refresh waits for the reload of a committed change\n'
+
+# The reload applied it.
+applied
+ks sync manual || fail "a manual refresh after the reload failed"
+bypass_first && fail "the refreshed policy must follow the applied order"
+grep -Fq '"last_error": ""' "$KILLSWITCH_STATE_DIR/state.json" || fail "a successful refresh must clear the error"
+printf 'ok - a manual refresh follows the applied configuration\n'
+
+# A reload whose list source changed leaves the rebuild of the table to the
+# list worker (service/lifecycle.uc records it). No refresh, manual or from
+# a reload that rebuilds nothing, may run before the list-content reload.
+write_config byp vpn
+applied
+cp "$POLICY" "$WORK_DIR/policy.applied"
+printf 'reload\n' >"$LISTS_PENDING"
+if ks sync manual 2>"$WORK_DIR/sync.err"; then
+  fail "a manual refresh must wait for the list generation of the table"
+fi
+if ks sync reload reload-lock-held; then
+  fail "a reload that rebuilt nothing must not refresh before the list generation is applied"
+fi
+cmp -s "$POLICY" "$WORK_DIR/policy.applied" || fail "the previous protection must stay until the list generation is applied"
+grep -Fq 'list generation' "$KILLSWITCH_STATE_DIR/state.json" || fail "the kept protection must name the pending list generation"
+rm -f "$LISTS_PENDING"
+ks sync "reload list-content" reload-lock-held || fail "the refresh of the list-content reload failed"
+bypass_first || fail "the policy must follow the configuration the table was rebuilt from"
+printf 'ok - no refresh runs before the list generation is applied\n'
+
+# Without a protected section the protection is lifted whatever the runtime.
+write_config byp vpn
+sed -i '/kill_switch/d' "$FORKOP_UCI_STATE_FILE"
+printf 'reload\n' >"$LISTS_PENDING"
+ks sync manual || fail "lifting the protection must not wait for the runtime"
+[ ! -e "$POLICY" ] || fail "the protection must be lifted"
+printf 'ok - lifting the protection never waits\n'
+
+printf 'killswitch_stale_runtime: PASS\n'

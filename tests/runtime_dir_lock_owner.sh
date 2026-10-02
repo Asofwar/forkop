@@ -100,10 +100,10 @@ process_gone "$DEAD" || fail "the dead owner still runs"
 # CONTENDER is "state:<owner>" (service/state.uc) or "initd:<owner>" (the
 # in-process lock of service/initd.uc, as init.d reload takes it).
 race() {
-  local round="$1" setup="$2" gate="$WORK_DIR/gate" contender kind owner pids=() winners=0 winner=""
+  local round="$1" setup="$2" gate="$WORK_DIR/gate" contender kind owner pids=() winners=0 winner="" deadline
   shift 2
   reset_lock
-  rm -f "$gate" "$WORK_DIR"/rc.* "$FORKOP_PENDING_RELOAD_FILE"
+  rm -f "$gate" "$WORK_DIR"/rc.* "$WORK_DIR"/ready.* "$FORKOP_PENDING_RELOAD_FILE"
   case "$setup" in
     free) ;;
     dead) mkdir "$LOCK" && : >"$LOCK/owner.$DEAD.$(start_ticks "$$")" ;;
@@ -114,6 +114,7 @@ race() {
     owner="${contender#*:}"
     (
       status=0
+      : >"$WORK_DIR/ready.$owner"
       while [ ! -e "$gate" ]; do :; done
       if [ "$kind" = initd ]; then
         initd reload-begin-fixture badwan_interface_up "$owner" 1 1 "" >/dev/null 2>&1 || status=$?
@@ -124,7 +125,15 @@ race() {
     ) &
     pids+=("$!")
   done
-  sleep 0.05
+  # The gate opens once every contender spins on it, not after a fixed
+  # delay: a contender that starts late misses the race, and the ones that
+  # started early burn CPU the other tests need.
+  deadline=$((SECONDS + 10))
+  for contender in "$@"; do
+    while [ ! -e "$WORK_DIR/ready.${contender#*:}" ]; do
+      [ "$SECONDS" -lt "$deadline" ] || fail "round $round ($setup): contender ${contender#*:} did not start"
+    done
+  done
   : >"$gate"
   wait "${pids[@]}"
   for contender in "$@"; do

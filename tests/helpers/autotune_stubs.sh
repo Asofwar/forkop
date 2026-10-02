@@ -39,8 +39,13 @@ export NFQWS_STUB_QUEUE_FILE="$FORKOP_AUTOTUNE_PROC_QUEUE"
 
 # nfqws stand-in: a real binary named nfqws so /proc identity checks apply.
 # It binds the queue of its --qnum (a line in the queue file) and a watcher
-# releases that line when it dies, as the kernel would.
+# releases that line when it dies, as the kernel would. The watcher learns of
+# the death from the end of a pipe that only the stand-in holds open (the
+# kernel closes it when the process exits, a zombie included) instead of
+# polling for it: the stand-ins of a case live for seconds, and a watcher that
+# polled every 50 ms with two forks per round took more CPU than the case.
 cat > "$WORK/nfqws.c" <<'C'
+#include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -70,8 +75,16 @@ int main(int argc, char **argv) {
     snprintf(add, sizeof add, "flock '%s.lock' sh -c 'printf \" %%d %%8d     0 2 65531     0     0 %%8d  1\\n\" %d %d 0 >> \"%s\"'", qfile, queue, getpid(), qfile);
     if (system(add) != 0) return 1;
     char script[1024];
-    snprintf(script, sizeof script, "while kill -0 %d 2>/dev/null && [ \"$(cut -d' ' -f3 /proc/%d/stat)\" != Z ]; do sleep 0.05; done; flock '%s.lock' sed -i '/^ %d  *%d /d' '%s'", getpid(), getpid(), qfile, queue, getpid(), qfile);
-    if (fork() == 0) { sigprocmask(SIG_SETMASK, &old, NULL); setsid(); execl("/bin/sh", "sh", "-c", script, (char *)0); _exit(1); }
+    snprintf(script, sizeof script, "cat >/dev/null; flock '%s.lock' sed -i '/^ %d  *%d /d' '%s'", qfile, queue, getpid(), qfile);
+    int alive[2];
+    if (pipe(alive) != 0) return 1;
+    if (fork() == 0) {
+      /* The watcher reads until the stand-in, the only writer, has exited. */
+      close(alive[1]); dup2(alive[0], 0); close(alive[0]);
+      sigprocmask(SIG_SETMASK, &old, NULL); setsid(); execl("/bin/sh", "sh", "-c", script, (char *)0); _exit(1);
+    }
+    close(alive[0]);
+    fcntl(alive[1], F_SETFD, FD_CLOEXEC);
     sigprocmask(SIG_SETMASK, &old, NULL);
   }
   for (;;) pause();

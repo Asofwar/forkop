@@ -22,6 +22,8 @@ LIB="$ROOT_DIR/forkop/files/usr/lib"
 WORK_DIR="$(mktemp -d)"
 # shellcheck source=tests/helpers/wait.sh
 . "$ROOT_DIR/tests/helpers/wait.sh"
+# shellcheck source=tests/helpers/case_groups.sh
+. "$ROOT_DIR/tests/helpers/case_groups.sh"
 
 pids=()
 cleanup() {
@@ -44,6 +46,9 @@ fail() {
   exit 1
 }
 
+# The fixture of a group of cases: stand-ins and state under its own
+# $WORK_DIR.
+update_fixture() {
 RUN="$WORK_DIR/run"
 SUBS="$WORK_DIR/sing-box/subscriptions"
 PERSISTENT="$WORK_DIR/persistent/subscription-cache"
@@ -81,6 +86,7 @@ printf '#!/bin/sh\nexit 0\n' >"$WORK_DIR/bin/logger"
 printf '#!/bin/sh\nexit 1\n' >"$WORK_DIR/bin/nft"
 printf '#!/bin/sh\nexit 1\n' >"$WORK_DIR/bin/ubus"
 chmod +x "$WORK_DIR/bin/"*
+}
 
 state() { ucode -L "$LIB" "$LIB/service/state.uc" "$@"; }
 events_with() { grep -c -- "$1" "$EVENTS" 2>/dev/null || true; }
@@ -152,6 +158,7 @@ finish_case() {
   UPDATE_STATUS="$status"
 }
 
+cases_1() {
 # 1. The response fetched before the lock is committed without another
 #    download under the lock.
 start_case "https://sub.test/alpha"
@@ -160,7 +167,9 @@ finish_case
 [ "$UPDATE_STATUS" = 0 ] || fail "the subscription update failed with status $UPDATE_STATUS: $(cat "$WORK_DIR/update.log")"
 [ "$(cached_host)" = "@alpha.example.com" ] || fail "the subscription update did not commit the fetched response"
 [ "$(events_with 'lock=update')" = 0 ] || fail "the subscription update downloaded again under reload.lock"
+}
 
+cases_2() {
 # 2. A failed fetch is not retried under the lock.
 : >"$CURL_FAIL"
 start_case "https://sub.test/alpha"
@@ -170,7 +179,9 @@ rm -f "$CURL_FAIL"
 [ "$UPDATE_STATUS" != 0 ] || fail "a subscription update whose download failed reported success"
 [ ! -e "$SUBS/alpha-subscription-1.json" ] || fail "a failed subscription download produced a cache"
 [ "$(events_with 'lock=update')" = 0 ] || fail "a failed subscription download was retried under reload.lock"
+}
 
+cases_3() {
 # 3. A source changed after the fetch is downloaded under the lock, and only
 #    the response for the current source is committed.
 start_case "https://sub.test/alpha"
@@ -180,7 +191,9 @@ finish_case
 [ "$UPDATE_STATUS" = 0 ] || fail "the subscription update of a changed source failed: $(cat "$WORK_DIR/update.log")"
 [ "$(cached_host)" = "@bravo.example.com" ] || fail "a response fetched for a replaced source was committed"
 grep -qx 'curl https://sub.test/bravo lock=update' "$EVENTS" || fail "the changed source was not downloaded"
+}
 
+cases_4() {
 # 4. An update of an invalid source index, which the update refuses, fetches
 #    nothing beforehand.
 start_case "https://sub.test/alpha" x
@@ -191,5 +204,20 @@ finish_case
 if grep -q '^curl ' "$EVENTS"; then
   fail "the update of an invalid source index downloaded"
 fi
+}
+
+# The cases run at once, each in a work directory of its own: a waiting
+# update polls reload.lock every 2 s, so one after another they took most
+# of 20 s. The update of a case is told apart by its own lock path.
+case_group() {
+  WORK_DIR="$(mktemp -d)"
+  EVENTS="$WORK_DIR/events"
+  pids=()
+  trap cleanup EXIT
+  trap 'exit 1' HUP INT TERM
+  update_fixture
+  "cases_$1"
+}
+run_case_groups "$WORK_DIR/case-groups" case_group 1 2 3 4
 
 printf 'subscription update lock scope checks passed\n'

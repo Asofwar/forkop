@@ -11,10 +11,13 @@ LIB="$ROOT/forkop/files/usr/lib"
 . "$ROOT/tests/helpers/autotune_stubs.sh"
 # shellcheck source=tests/helpers/wait.sh
 . "$ROOT/tests/helpers/wait.sh"
+# shellcheck source=tests/helpers/case_groups.sh
+. "$ROOT/tests/helpers/case_groups.sh"
 # A detached nfqws double is visible to the orphan scan only once it has
 # exec'd; wait for that instead of a fixed delay.
 nfqws_started() { pgrep -f "$1" >/dev/null; }
 
+cases_1() {
 # --- catalog -------------------------------------------------------------
 reset_state
 ucode -L "$LIB" "$LIB/autotune/catalog.uc" validate > "$WORK/catalog.json"
@@ -42,6 +45,7 @@ json 'a.equal(r.status, "unsupported"); a.equal(r.reason, "nfqws_dry_run_rejecte
 [ ! -e "$NFT_STATE/last.nft" ] || fail "unsupported candidate created nft state"
 assert_clean "unsupported"
 ok "unsupported strategy"
+}
 
 # --- probe classifier through the full isolated path ---------------------
 expect_class() {
@@ -54,12 +58,15 @@ expect_class() {
   assert_clean "$1"
   ok "classify $1 -> $2"
 }
+cases_2() {
 expect_class success success ok ok ok
 expect_class moved success ok ok ok
 expect_class forbidden success ok ok ok
 expect_class refused tcp_reset reset not_attempted not_attempted
 expect_class unreachable connect_failure failed not_attempted not_attempted
 expect_class connect_timeout connect_timeout timeout not_attempted not_attempted
+}
+cases_3() {
 expect_class tls tls_failure ok failed not_attempted
 expect_class tls_timeout tls_failure ok timeout not_attempted
 expect_class reset tcp_reset ok reset not_attempted
@@ -124,7 +131,9 @@ reset_state; export DIG_STUB_ANSWER=''; run_probe multisplit
 json 'a.equal(r.probes[0].detail, "no_address");' "$WORK/out.json"
 assert_clean "dns"
 ok "dns failure"
+}
 
+cases_4() {
 # --- failures during setup ---------------------------------------------
 reset_state; export NFQWS_STUB_EXIT=1; run_probe multisplit
 json 'a.equal(r.status, "failed"); a.equal(r.reason, "nfqws_start_failed"); a.equal(r.cleanup.status, "clean"); a.equal(r.probes.length, 0);' "$WORK/out.json"
@@ -150,7 +159,9 @@ reset_state; export NFQWS_STUB_IGNORE_TERM=1; run_probe multisplit 1
 json 'a.equal(r.status, "completed"); a.ok(r.cleanup.actions.includes("pidfile:killed"), r.cleanup.actions);' "$WORK/out.json"
 assert_clean "term ignored"
 ok "cleanup escalates to KILL for an identified nfqws"
+}
 
+cases_5() {
 # --- preconditions -------------------------------------------------------
 refused() {
   run_probe multisplit
@@ -303,6 +314,7 @@ unset CURL_STUB_SLEEP; iso cleanup
 json 'a.equal(r.status, "clean"); a.ok(r.actions.includes("pidfile:stopped")); a.ok(r.actions.includes("table:removed"));' "$WORK/out.json"
 assert_clean "SIGKILL"
 ok "killed run recovered by cleanup (stale lock reclaimed)"
+}
 
 # --- production bypass contract (checked before any probe path exists) -----
 no_probe_path() {
@@ -310,6 +322,7 @@ no_probe_path() {
   ! pgrep -f "$WORK/bin/nfqws --qnum" >/dev/null || fail "$1: nfqws started"
   assert_clean "$1"
 }
+cases_6() {
 reset_state; mutate_ruleset "$NFT_STATE/ruleset.json" remove-bypass; run_probe multisplit 1
 json 'a.equal(r.status, "unsupported"); a.equal(r.reason, "isolation_unavailable"); a.equal(r.isolation.unavailable, "bypass_contract");
   a.ok(r.contract.violations.some((v) => v.code === "bypass_rule_missing")); a.equal(r.probes.length, 0); a.equal(r.timeline.length, 0);' "$WORK/out.json"
@@ -364,6 +377,8 @@ a.equal(typeof r.teardown.counters_at_stop.probe.packets, "number"); a.equal(typ
 ' "$WORK/out.json"
 assert_clean "hold"
 ok "table kept (drop-only) until the probe sockets are gone, then removed"
+}
+cases_7() {
 reset_state; export CURL_STUB_SOCKET=30 FORKOP_AUTOTUNE_HOLD_TIMEOUT=1; run_probe multisplit 1
 json 'a.equal(r.status, "failed"); a.equal(r.reason, "isolation_hold_timeout"); a.equal(r.teardown.hold.settled, false);
   a.ok(r.cleanup.actions.includes("hold:timeout")); a.ok(r.cleanup.actions.includes("table:kept")); a.equal(r.cleanup.status, "failed");' "$WORK/out.json"
@@ -400,6 +415,8 @@ reset_state; export NFT_STUB_FAIL_REPLACE=1; run_probe multisplit 1
 json 'a.equal(r.status, "failed"); a.ok(r.cleanup.actions.includes("probe_rule:failed")); a.equal(r.cleanup.status, "failed");' "$WORK/out.json"
 unset NFT_STUB_FAIL_REPLACE; iso cleanup; assert_clean "release failure"
 ok "failed release of the candidate queue is reported, cleanup recovers"
+}
+cases_8() {
 reset_state; export CURL_STUB_SOCKET=4 FORKOP_AUTOTUNE_HOLD_TIMEOUT=10
 ucode -L "$LIB" "$LIB/autotune/isolation.uc" run multisplit example.com 1 192.0.2.53 > "$WORK/out.json" &
 runner=$!
@@ -460,5 +477,21 @@ reset_state; run_probe multisplit 1
 json 'a.equal(r.status, "completed"); a.equal(r.production.unchanged, true); a.match(r.production.before.forkop_table_hash, /^[0-9a-f]{64}$/);
   a.deepEqual(r.production.before.queues, ["4000:29676"]); a.equal(r.production.before.zapret_children.length, 1);' "$WORK/out.json"
 ok "live counter changes are not a production change"
+}
+
+# The groups of cases run at once, each on stand-ins of its own (a fresh
+# $WORK from autotune_stubs.sh): a probe run waits whole seconds at its
+# steps, so one after another they took minutes.
+GROUP_DIR="$WORK/case-groups"
+case_group() {
+  # shellcheck source=tests/helpers/autotune_stubs.sh
+  . "$ROOT/tests/helpers/autotune_stubs.sh"
+  "cases_$1"
+  printf '%s\n' "$pass" >"$GROUP_DIR/$1.count"
+}
+run_case_groups "$GROUP_DIR" case_group 1 2 3 4 5 6 7 8
+for group in 1 2 3 4 5 6 7 8; do
+  pass=$((pass + $(cat "$GROUP_DIR/$group.count")))
+done
 
 printf 'autotune_isolation: PASS (%d checks)\n' "$pass"

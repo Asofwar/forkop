@@ -15,7 +15,7 @@ set -euo pipefail
 # was refused, every reload only queued, a restore and an autotune apply were
 # refused as busy.
 #
-# 1. The retry holds its lock for 20 s when a forced update comes: the update
+# 1. The retry holds its lock when a forced update comes: the update
 #    waits for it without reload.lock, a DNS failover switch applies
 #    meanwhile, and the update then takes both locks in order and completes.
 # 2. A start supersedes the retry (it prepares the caches and retries the
@@ -316,12 +316,15 @@ exclusive() {
   ' "$EVENTS" >"$WORK_DIR/exclusive.out" || fail "$(cat "$WORK_DIR/exclusive.out")"
 }
 
-# 1. The retry downloads under subscription-update.lock for 20 s when a
-#    forced update comes. The update waits for it without reload.lock: a DNS
-#    failover switch applies meanwhile. Once the retry is done, the update
-#    takes reload.lock and then subscription-update.lock and completes.
+# 1. The retry downloads under subscription-update.lock when a forced update
+#    comes. The update waits for it without reload.lock: a DNS failover
+#    switch applies meanwhile. Once the retry is done, the update takes
+#    reload.lock and then subscription-update.lock and completes. The retry
+#    holds its lock until worker.gate opens after these checks; the update
+#    waits for it in a single call, so a longer download would add nothing
+#    but time.
 reset_case
-launch_worker 20
+launch_worker 0
 launch_update
 printf '{}\n' >"$WORK_DIR/candidate.json"
 status=0

@@ -5,14 +5,20 @@ ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 LIB_DIR="$ROOT_DIR/forkop/files/usr/lib"
 SUPERVISOR="$ROOT_DIR/tests/fixtures/dpi_snapshot_supervisor.uc"
 CLI="$ROOT_DIR/tests/fixtures/dpi_snapshot_cli.uc"
+# The state directories of the run, and of each group of cases below.
+make_state_dirs() {
 STATE_DIR="$(mktemp -d)"
 PID_DIR="$STATE_DIR/pid"
 CHILD_DIR="$STATE_DIR/child-pid"
 LOG_DIR="$STATE_DIR/log"
 SNAPSHOT="$STATE_DIR/previous.json"
 mkdir -p "$PID_DIR" "$CHILD_DIR" "$LOG_DIR"
+}
+make_state_dirs
 # shellcheck source=tests/helpers/wait.sh
 . "$ROOT_DIR/tests/helpers/wait.sh"
+# shellcheck source=tests/helpers/case_groups.sh
+. "$ROOT_DIR/tests/helpers/case_groups.sh"
 
 cleanup() {
     for file in "$PID_DIR"/*.pid "$CHILD_DIR"/*.pid; do
@@ -32,6 +38,8 @@ live_supervisors() {
         '$1 ~ /(^|\/)ucode$/ && $4 == fixture && $5 == "supervisor" && index($9, children) == 1 { count++ } END { print count+0 }'
 }
 
+# The snapshot of a running supervisor that the cases restore: normal.json.
+record_normal_snapshot() {
 ucode -L "$LIB_DIR" "$SUPERVISOR" supervisor example 4000 old "$CHILD_DIR/example.pid" >"$LOG_DIR/example.log" 2>&1 &
 old_pid=$!
 echo "$old_pid" > "$PID_DIR/example.pid"
@@ -44,7 +52,9 @@ cp "$SNAPSHOT" "$STATE_DIR/normal.json"
 kill "$old_pid" "$(cat "$CHILD_DIR/example.pid")"
 wait "$old_pid" 2>/dev/null || true
 rm -f "$PID_DIR/example.pid" "$CHILD_DIR/example.pid"
+}
 
+cases_1() {
 ucode -L "$LIB_DIR" "$CLI" restore "$LIB_DIR" "$SUPERVISOR" "$PID_DIR" "$CHILD_DIR" "$LOG_DIR" "$SNAPSHOT"
 new_pid="$(head -n 1 "$PID_DIR/example.pid")"
 [ "$new_pid" != "$old_pid" ] || exit 1
@@ -151,7 +161,9 @@ fi
 [ ! -e "$PID_DIR/example.pid" ] || { echo 'temporary identity failure left a supervisor pidfile' >&2; exit 1; }
 rmdir "$LOG_DIR/.restore-example.identity"
 rm -f "$CHILD_DIR/example.pid" "$CHILD_DIR/example.pid.observed"
+}
 
+cases_2() {
 # The same failure must find a child even before its pidfile exists.
 node - "$STATE_DIR/normal.json" "$SNAPSHOT" <<'NODE'
 const fs = require('fs');
@@ -172,7 +184,9 @@ if [ "$(live_supervisors)" -ne 0 ] ||
 fi
 rmdir "$LOG_DIR/.restore-nochild.identity"
 rm -f "$CHILD_DIR/nochild.pid.observed"
+}
 
+cases_3() {
 # A later launch failure must remove the first supervisor and its child.
 for fail_position in 2 3; do
 node - "$STATE_DIR/normal.json" "$SNAPSHOT" "$fail_position" <<'NODE'
@@ -194,7 +208,9 @@ fi
 [ ! -e "$PID_DIR/second.pid" ] || { echo 'partial restore kept the second supervisor' >&2; exit 1; }
 [ "$(live_supervisors)" -eq 0 ] || { echo 'partial restore left a supervisor running' >&2; exit 1; }
 done
+}
 
+cases_4() {
 # A failed identity record cannot strand a launched supervisor.
 node - "$STATE_DIR/normal.json" "$SNAPSHOT" <<'NODE'
 const fs = require('fs');
@@ -212,7 +228,9 @@ rmdir "$PID_DIR/blocked.pid"
 [ ! -e "$PID_DIR/example.pid" ] || { echo 'record failure kept the first supervisor' >&2; exit 1; }
 [ ! -e "$CHILD_DIR/example.pid" ] || { echo 'record failure kept the first child' >&2; exit 1; }
 [ "$(live_supervisors)" -eq 0 ] || { echo 'record failure left a supervisor running' >&2; exit 1; }
+}
 
+cases_5() {
 # A child without a pidfile is found only while still descended from this launch.
 node - "$STATE_DIR/normal.json" "$SNAPSHOT" <<'NODE'
 const fs = require('fs');
@@ -255,5 +273,18 @@ kill -0 "$foreign"
 kill "$foreign"
 wait "$foreign" 2>/dev/null || true
 rm -f "$PID_DIR/foreign.pid"
+}
+
+# The groups of cases run at once, each in state directories of its own
+# with its own normal.json: a restore waits whole seconds for the
+# supervisors it stops and starts, so one after another they took most of
+# a minute. live_supervisors counts only the group's own supervisors.
+case_group() {
+    make_state_dirs
+    trap cleanup EXIT HUP INT TERM
+    record_normal_snapshot
+    "cases_$1"
+}
+run_case_groups "$STATE_DIR/case-groups" case_group 1 2 3 4 5
 
 printf 'dpi_runtime_snapshot: PASS\n'

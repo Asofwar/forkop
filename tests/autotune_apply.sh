@@ -13,10 +13,14 @@ REAL_UCODE="$(command -v ucode)"
 . "$ROOT/tests/helpers/autotune_stubs.sh"
 # shellcheck source=tests/helpers/wait.sh
 . "$ROOT/tests/helpers/wait.sh"
+# shellcheck source=tests/helpers/case_groups.sh
+. "$ROOT/tests/helpers/case_groups.sh"
 # An interrupt must land while apply runs its (slowed) DNS checks, not before
 # the runner even started: wait for its first dig call instead of a fixed delay.
 checks_started() { grep -q '^dig' "$STUB_LOG/dig.log" 2>/dev/null; }
 
+# The fixture of a group of cases: stand-ins and state under its $WORK.
+apply_fixture() {
 export REAL_UCODE STATE="$WORK/state" WAIT_HELPER="$ROOT/tests/helpers/wait.sh"
 export FORKOP_CONFIG_FILE="$WORK/config/forkop"
 export FORKOP_SNAPSHOT_DIR="$WORK/snapshots" FORKOP_SNAPSHOT_HASH_DIR="$WORK/hash"
@@ -229,6 +233,7 @@ print(sprintf("%J\n", { ready: !broken, conflict: false, expected_process_count:
     supervisor_process_count: 2 }));
 UC
 chmod +x "$WORK/bin/ucode" "$WORK/bin/forkop" "$WORK/bin/nft" "$WORK/bin/curl" "$WORK/bin/dig" "$WORK/bin/uci" "$WORK/reload" "$STATE/start-dpi"
+}
 
 # A short provider default with the three profiles of the real one (HTTP, TLS, QUIC).
 export ZAPRET_DEFAULT_NFQWS_OPT='--filter-tcp=80 --dpi-desync=fake --new --filter-tcp=443 --dpi-desync=fake --dpi-desync-fooling=badsum --new --filter-udp=443 --dpi-desync=fake'
@@ -332,6 +337,7 @@ crash_in_verification() {
 }
 plan_ready() { selection multisplit; at plan "$WORK/selection.json"; cp "$WORK/out.json" "$WORK/plan.json"; }
 
+cases_1() {
 # 1. plan is read-only
 reset_apply; plan_ready
 json '
@@ -503,7 +509,9 @@ json 'a.equal(r.status, "rolled_back"); a.equal(r.verification.checks.find((x) =
 reset_apply; plan_ready; export BREAK_FIRST_RELOAD=1; at apply "$WORK/plan.json"
 json 'a.equal(r.status, "rolled_back"); a.equal(r.verification.checks.find((x) => x.name === "zapret_runtime_ready").ok, false); a.equal(r.verification.traffic, null);' "$WORK/out.json"
 ok "24 verification proves the rule path (queue counters, FakeIP, runtime), not only HTTP success"
+}
 
+cases_2() {
 # 13. verification failure + restore needs_attention -> needs_attention
 reset_apply; plan_ready; export PROD_PLAN=reset; echo "0 1 1" > "$STATE/reload.plan"; at apply "$WORK/plan.json"
 json 'a.equal(r.status, "needs_attention"); a.equal(r.rollback.status, "needs_attention"); a.equal(r.applied, false);' "$WORK/out.json"
@@ -656,7 +664,9 @@ reset_apply; export UCI_EXTRA_CHANGE=1; selection multisplit; at plan "$WORK/sel
 json 'a.equal(r.status, "failed"); a.equal(r.reason, "mutation_not_exact");' "$WORK/out.json"
 [ "$(chash)" = "$PRE_HASH" ] || fail "plan changed the config"
 ok "mapping limits: undecidable owner, non-DPI owner, mixed/default strategy, list rule above, inexact mutation -> no plan"
+}
 
+cases_3() {
 # 16. concurrent apply -> busy
 reset_apply; plan_ready; export RELOAD_SLEEP=2
 ucode -L "$LIB" "$LIB/autotune/apply.uc" apply "$WORK/plan.json" > "$WORK/first.json" &
@@ -769,7 +779,9 @@ for content in '' 'garbage{' '[]' '"x"'; do
   [ "$(lkg)" = "$PRE_LKG" ] || fail "'$content': confirmed although the apply record is unreadable"
 done
 ok "20b unreadable or empty apply record -> last-known-working is not confirmed"
+}
 
+cases_4() {
 # 20c. A crash during verification leaves the record in phase verifying for
 #      good. While the candidate is active it blocks autotune (the operator
 #      rolls back); once the configuration is no longer the candidate (a
@@ -924,7 +936,9 @@ manager_status; json 'a.equal(r.apply.rollback, true);' "$WORK/mstatus.json"
 at rollback; json 'a.equal(r.status, "rolled_back"); a.equal(r.rollback.status, "not_needed");' "$WORK/out.json"
 at status; json 'a.equal(r.resolved, true);' "$WORK/out.json"
 ok "20g rollback offered only with a snapshot to return to; an unreadable record without last-known-working is settled after a restore in History"
+}
 
+cases_5() {
 # Review hardening -------------------------------------------------------------
 
 # Sing-box semantics: disable_quic reject rule (fixture) is skipped for TCP;
@@ -1063,7 +1077,9 @@ json 'a.equal(r.status, "needs_attention"); a.equal(r.reason, "lkg_confirm_faile
 at apply "$WORK/plan.json"; json 'a.equal(r.status, "failed"); a.equal(r.reason, "previous_apply_unresolved");' "$WORK/out.json"
 at rollback; json 'a.equal(r.status, "rolled_back");' "$WORK/out.json"
 ok "LKG confirmation failure -> needs_attention (LKG unchanged), blocks new applies, explicit rollback restores"
+}
 
+cases_6() {
 # A config edit during verification is never confirmed as last-known-working.
 reset_apply; plan_ready; export PROD_SLEEP=1
 ucode -L "$LIB" "$LIB/autotune/apply.uc" apply "$WORK/plan.json" > "$WORK/out.json" &
@@ -1178,7 +1194,9 @@ json 'a.equal(r.status, "failed", JSON.stringify(r).slice(0, 400)); a.equal(r.re
 at rollback; json 'a.equal(r.status, "rolled_back");' "$WORK/out.json"
 [ "$(chash)" = "$PRE_HASH" ] || fail "rollback after group signal"
 ok "SIGHUP/SIGINT to the process group during reload -> transaction completes, verdict missing, explicit rollback"
+}
 
+cases_7() {
 # Second review ----------------------------------------------------------------
 
 sbrule() { # sbrule <index> <json rule>: insert a route rule into the generated config
@@ -1284,7 +1302,9 @@ at rollback; json 'a.equal(r.status, "failed"); a.equal(r.reason, "pre_apply_sna
 json 'a.equal(r.phase, "applied");' "$FORKOP_AUTOTUNE_APPLY_STATE"
 at status; json 'a.equal(r.resolved, true);' "$WORK/out.json"
 ok "operator rollback without the pre-apply snapshot -> refused, record stays applied"
+}
 
+cases_8() {
 # A hangup of the whole group during the checks -> interruption, not a stale
 # reason. (Background jobs of a non-interactive shell start with SIGINT
 # ignored, which apply.uc keeps; SIGHUP models the dropped SSH session.)
@@ -1391,7 +1411,9 @@ json 'a.equal(r.status, "needs_attention"); a.equal(r.reason, "apply_failed:snap
 [ "$(chash)" = "$PRE_HASH" ] || fail "config changed"
 at status; json 'a.equal(r.resolved, false); a.equal(r.diagnosis, "in_transaction");' "$WORK/out.json"
 ok "transaction killed with the guard installed -> needs_attention (in_transaction), not a resolved failure"
+}
 
+cases_9() {
 # A rule limited to devices (source_ip_cidr) owns the target for those devices.
 # sing-box sends nothing of the router into it, so the verification marks the
 # router's own requests with the route mark of the rule (a temporary table)
@@ -1475,5 +1497,21 @@ print(d.view({ action: "zapret", nfqws_opt: substr(opt, 0, index(opt, "'")) }).d
 UC
 [ "$(ucode -L "$LIB" "$WORK/view.uc" "$FORKOP_CONFIG_FILE")" = multisplit ] || fail "the spliced default is not known as the candidate"
 ok "default strategy: only its TCP/443 profile replaced, applied, known as the candidate"
+}
 
+# The groups of cases run at once, each on a fixture of its own (a fresh
+# $WORK from autotune_stubs.sh): the apply waits whole seconds at its
+# steps, so one after another they took minutes.
+GROUP_DIR="$WORK/case-groups"
+case_group() {
+  # shellcheck source=tests/helpers/autotune_stubs.sh
+  . "$ROOT/tests/helpers/autotune_stubs.sh"
+  apply_fixture
+  "cases_$1"
+  printf '%s\n' "$pass" >"$GROUP_DIR/$1.count"
+}
+run_case_groups "$GROUP_DIR" case_group 1 2 3 4 5 6 7 8 9
+for group in 1 2 3 4 5 6 7 8 9; do
+  pass=$((pass + $(cat "$GROUP_DIR/$group.count")))
+done
 printf 'autotune_apply: PASS (%d checks)\n' "$pass"

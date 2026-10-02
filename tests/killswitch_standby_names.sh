@@ -73,6 +73,7 @@ write_sing_box_config() {
     { "action": "route", "outbound": "main-out", "domain_suffix": [ "vpn.example" ] },
     { "action": "route", "outbound": "Zapret-out", "domain_suffix": [ "dpi.example" ] },
     { "action": "route", "outbound": "other-out", "domain_suffix": [ "other-vpn.example" ] },
+    { "action": "route", "outbound": "other-out", "source_ip_cidr": [ "192.168.1.50/32" ], "domain_suffix": [ "device.other.example" ] },
     { "action": "route", "outbound": "other-out", "rule_set": [ "other-list" ] }
   ], "rule_set": [ { "tag": "other-list", "type": "local", "format": "source", "path": "$1" } ] } }
 JSON
@@ -113,7 +114,27 @@ for name in direct.example dpi.example; do
   fi
 done
 grep -Fqx 'server=1.1.1.1' "$WORK_DIR/standby.conf" || fail "the standby resolver must keep the ordinary upstream"
+# dnsmasq answers every client alike: a device-limited rule is not blocked
+# for all clients, and the warning says so.
+if grep -Fq 'device.other.example' "$WORK_DIR/standby.conf"; then
+  fail "the standby resolver must not block a device-limited rule for every client"
+fi
+grep -Fq '1 domains of device-limited rules of other VPN sections' "$KILLSWITCH_STATE_DIR/state.json" ||
+  fail "the device-limited names the standby resolver does not block must be reported"
 printf 'ok - the standby resolver blocks the names of every VPN section\n'
+
+# The standby list can hold every name of large lists and changes with them;
+# every refresh regenerates it, so it stays in RAM, never on flash (the
+# state directory). Until the first refresh after a boot the standby blocks
+# the protected names.
+if grep -rlF 'other-vpn.example' "$KILLSWITCH_STATE_DIR"; then
+  fail "the standby list must not be written to flash"
+fi
+mv "$KILLSWITCH_CACHE_DIR" "$WORK_DIR/cache.before-reboot"
+ks standby-config "$WORK_DIR/standby.conf" || fail "the standby configuration could not be written after a reboot"
+grep -Fqx 'server=/vpn.example/' "$WORK_DIR/standby.conf" || fail "after a reboot the standby resolver must block the protected names"
+mv "$WORK_DIR/cache.before-reboot" "$KILLSWITCH_CACHE_DIR"
+printf 'ok - the standby list is kept in RAM\n'
 
 grep -Fqx 'server=/vpn.example/' "$BLOCKED" || fail "a stopped Forkop must block the protected names"
 if grep -Fq 'other' "$BLOCKED"; then
@@ -121,21 +142,24 @@ if grep -Fq 'other' "$BLOCKED"; then
 fi
 printf 'ok - a stopped Forkop blocks the protected names only\n'
 
-# A VPN section whose list is not downloaded yet cannot be listed: the
-# standby keeps at least the protected names, and says so.
+# A list of an unprotected VPN section that is not downloaded yet cannot be
+# listed: the standby still blocks every name it can read, and says so.
 printf '{"version":1,"rules":[]}\n' >"$WORK_DIR/empty-0123456789ab.json"
 write_sing_box_config "$WORK_DIR/empty-0123456789ab.json"
 ks sync reload || fail "the sync with an unprotected list not downloaded yet failed"
 ks standby-config "$WORK_DIR/standby.conf" || fail "the standby configuration could not be written"
-grep -Fqx 'server=/vpn.example/' "$WORK_DIR/standby.conf" || fail "the standby resolver must keep the protected names"
-grep -Fq 'standby' "$KILLSWITCH_STATE_DIR/state.json" || fail "the incomplete standby list must be reported"
-printf 'ok - an unreadable unprotected list keeps the protected names in the standby\n'
+for name in vpn.example other-vpn.example; do
+  grep -Fqx "server=/$name/" "$WORK_DIR/standby.conf" ||
+    fail "an unreadable list must not take $name out of the standby list"
+done
+grep -Fq 'not downloaded yet' "$KILLSWITCH_STATE_DIR/state.json" || fail "the incomplete standby list must be reported"
+printf 'ok - an unreadable unprotected list keeps the other names in the standby\n'
 
 # Lifting the protection removes the standby list with it.
 sed -i '/kill_switch/d' "$FORKOP_UCI_STATE_FILE"
 ks sync reload || fail "lifting the protection failed"
-if ls "$KILLSWITCH_STATE_DIR"/*.servers >/dev/null 2>&1; then
-  fail "no block list may outlive the protection: $(ls "$KILLSWITCH_STATE_DIR")"
+if ls "$KILLSWITCH_STATE_DIR"/*.servers "$KILLSWITCH_CACHE_DIR"/*.servers >/dev/null 2>&1; then
+  fail "no block list may outlive the protection: $(ls "$KILLSWITCH_STATE_DIR" "$KILLSWITCH_CACHE_DIR")"
 fi
 printf 'ok - lifting the protection removes the standby list\n'
 

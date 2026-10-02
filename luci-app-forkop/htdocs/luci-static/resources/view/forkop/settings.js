@@ -413,7 +413,7 @@ function createSettingsContent(sections, capabilities) {
     "_kill_switch_status",
     _("VPN kill-switch"),
     _(
-      "Enable it per Connection section. While Forkop or the VPN is down, protected traffic is rejected instead of leaving directly; other traffic is not affected.",
+      "Enable it per Connection section. While Forkop or the VPN is down, protected traffic is rejected instead of leaving directly; other traffic is not affected. If sing-box dies, a standby resolver keeps DNS working and blocks the names of every VPN section: large domain lists take memory on the router and time on every start and reload.",
     ),
   );
   o.rawhtml = true;

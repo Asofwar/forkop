@@ -58,8 +58,11 @@ const CACHE_DIR = constant_value("KILLSWITCH_CACHE_DIR", "/tmp/forkop-killswitch
 const FAKEIP_RANGE = constant_value("SB_FAKEIP_INET4_RANGE", "198.18.0.0/15");
 const FAKEIP6_RANGE = constant_value("SB_FAKEIP_INET6_RANGE", "fc00::/18");
 const DNS_BLOCKED_FILE = STATE_DIR + "/dns-blocked.servers";
-// The standby resolver's: the names of every VPN section (UC-211).
-const STANDBY_BLOCKED_FILE = STATE_DIR + "/standby-blocked.servers";
+// The standby resolver's: the names of every VPN section (UC-211). It can
+// hold every name of large lists and changes with them; every refresh
+// regenerates it, so it is kept in RAM, not on flash. Until the first
+// refresh after a boot the standby blocks the protected names.
+const STANDBY_BLOCKED_FILE = CACHE_DIR + "/standby-blocked.servers";
 // dnsmasq reads it (dns/apply.uc keeps it empty while it forwards to sing-box).
 const DNS_SERVERS_FILE = STATE_DIR + "/dnsmasq.servers";
 const DNSMASQ_INIT = getenv("DNSMASQ_INIT") || "/etc/init.d/dnsmasq";
@@ -662,12 +665,19 @@ function rule_unrestricted(rule) {
 // clients therefore blocks nothing through DNS; one that excludes some
 // clients blocks its names for them as well (the fail-closed side for all
 // the others), and both are reported (UC-193).
-function render_dns_from_config(config, protected_names, memo) {
+//
+// An unreadable list fails the render, except in the rules of the sections
+// named in optional_names: their readable names are blocked all the same,
+// and the rest is counted (unreadable).
+function render_dns_from_config(config, protected_names, memo, optional_names) {
     let result = {
         ok: false, error: "", content: "", domains: 0, exceptions: 0, shadowed: 0,
         invalid: 0, uncovered_keyword: 0, uncovered_regex: 0, uncovered_inverted: 0,
-        client_limited: 0, excluded_devices: 0, sections: {}
+        client_limited: 0, excluded_devices: 0, unreadable: 0, unreadable_error: "", sections: {}
     };
+    let optional = {};
+    for (let name in array_or_empty(optional_names))
+        optional[name] = true;
     config = object_or_empty(config);
     let route = object_or_empty(config.route);
     let rules = route.rules;
@@ -716,9 +726,14 @@ function render_dns_from_config(config, protected_names, memo) {
             continue;
         let rule = item.rule;
         let acc = route_rule_matchers(rule, definitions, memo);
-        if (acc.error != "") {
+        if (acc.error != "" && !optional[item.section]) {
             result.error = acc.error;
             return result;
+        }
+        if (acc.error != "") {
+            result.unreadable++;
+            if (result.unreadable_error == "")
+                result.unreadable_error = acc.error;
         }
         // dnsmasq answers every client alike. A rule limited to some clients
         // must not take its names away from everybody else; those clients
@@ -1149,10 +1164,21 @@ function sync_dns(settings, protected_names, config, vpn_names, unrouted) {
     // Without the kill-switch a dead sing-box fails every VPN section, not
     // only the protected ones: dnsmasq still forwards to it. The standby
     // resolver that keeps other names working meanwhile must not resolve
-    // theirs either (UC-211).
-    let standby = render_dns_from_config(config, vpn_names, memo);
+    // theirs either (UC-211). An unreadable list of an unprotected section
+    // leaves out only its own names.
+    let protected = {};
+    for (let name in protected_names)
+        protected[name] = true;
+    let standby = render_dns_from_config(config, vpn_names, memo,
+        filter(vpn_names, (name) => !protected[name]));
     if (!standby.ok)
         rendered.standby_error = standby.error;
+    else if (standby.unreadable > 0)
+        rendered.standby_unreadable = sprintf("%d rules of other VPN sections have lists that cannot be read (%s); their names are not blocked",
+            standby.unreadable, standby.unreadable_error);
+    // dnsmasq answers every client alike (render_dns_from_config).
+    if (standby.ok && standby.client_limited > rendered.client_limited)
+        rendered.standby_client_limited = standby.client_limited - rendered.client_limited;
     let standby_content = standby.ok ? standby.content : rendered.content;
     prune_ruleset_cache();
 
@@ -1160,7 +1186,7 @@ function sync_dns(settings, protected_names, config, vpn_names, unrouted) {
         !write_durable(DNS_BLOCKED_FILE, rendered.content))
         return { ok: false, error: "could not write " + DNS_BLOCKED_FILE };
     if (as_string(fs.readfile(STANDBY_BLOCKED_FILE)) != standby_content &&
-        !write_durable(STANDBY_BLOCKED_FILE, standby_content))
+        !write_atomic(STANDBY_BLOCKED_FILE, standby_content))
         rendered.standby_error = "could not write " + STANDBY_BLOCKED_FILE;
     if (!dns_refresh())
         return { ok: false, error: "dnsmasq could not be refreshed" };
@@ -1286,6 +1312,11 @@ function sync_locked(reason, manual) {
         if (dns_result.standby_error)
             push(warnings, "the standby resolver for a dead sing-box blocks the protected names only, not those of the other VPN sections: " +
                 as_string(dns_result.standby_error));
+        if (dns_result.standby_unreadable)
+            push(warnings, "the standby resolver for a dead sing-box: " + as_string(dns_result.standby_unreadable));
+        if (dns_result.standby_client_limited > 0)
+            push(warnings, sprintf("%d domains of device-limited rules of other VPN sections are not blocked by the standby resolver for a dead sing-box (DNS is shared by all clients)",
+                dns_result.standby_client_limited));
         if (dns_result.excluded_devices > 0)
             push(warnings, sprintf("%d domains of rules with excluded devices are blocked through DNS for the excluded devices as well (it is shared by all clients) while Forkop is stopped",
                 dns_result.excluded_devices));

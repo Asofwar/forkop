@@ -2476,20 +2476,9 @@ function upgrade_bounded_stop(script) {
     return command_status("sh -c " + shell_quote(command));
 }
 
-// The package manager replaces the binary underneath a running sing-box, and
-// the new Forkop then waits for a runtime that can no longer be identified.
-// Retire the old processes first, but only ones procd demonstrably owns: an
-// unrelated sing-box must never be signalled from here. A refused stop of
-// Forkop (status 2: another sing-box makes the ownership of its runtime
-// ambiguous) leaves it running untouched: the upgrade does not go on, and its
-// failure does not start the Forkop it never stopped (UC-196, UC-197).
-function stop_old_sing_box_before_forkop_upgrade() {
-    if (file_exists(SERVICE_INIT)) {
-        if (upgrade_bounded_stop(SERVICE_INIT) == 2)
-            return false;
-        forkop_stopped_for_upgrade = true;
-    }
-
+// The old sing-box processes, once Forkop is stopped for the upgrade: none
+// left, or every one procd owns stopped.
+function stop_old_sing_box_processes_for_upgrade() {
     let processes = upgrade_sing_box_processes();
     if (processes == null)
         return false;
@@ -2519,6 +2508,26 @@ function stop_old_sing_box_before_forkop_upgrade() {
         command_success_from_args([ "sleep", "1" ]);
     }
     return false;
+}
+
+// The package manager replaces the binary underneath a running sing-box, and
+// the new Forkop then waits for a runtime that can no longer be identified.
+// Retire the old processes first, but only ones procd demonstrably owns: an
+// unrelated sing-box must never be signalled from here. A refused stop of
+// Forkop (status 2: another sing-box makes the ownership of its runtime
+// ambiguous) leaves it running untouched: the upgrade does not go on, and its
+// failure does not start the Forkop it never stopped (UC-196, UC-197).
+const FORKOP_UPGRADE_STOP_REFUSED = "Forkop was not stopped: another sing-box process makes the ownership of its runtime ambiguous; the upgrade was not started";
+const FORKOP_UPGRADE_OLD_SING_BOX = "Old sing-box processes have ambiguous ownership or did not stop";
+
+// The reason the upgrade cannot go on, or "".
+function stop_old_sing_box_before_forkop_upgrade() {
+    if (file_exists(SERVICE_INIT)) {
+        if (upgrade_bounded_stop(SERVICE_INIT) == 2)
+            return FORKOP_UPGRADE_STOP_REFUSED;
+        forkop_stopped_for_upgrade = true;
+    }
+    return stop_old_sing_box_processes_for_upgrade() ? "" : FORKOP_UPGRADE_OLD_SING_BOX;
 }
 
 // Keep one archive of the working configuration. Installing a different
@@ -2603,9 +2612,10 @@ function install_forkop(requested_version) {
     // currently installed package's prerm.
     capture_managed_upgrade_sing_box_marker();
 
-    if (!stop_old_sing_box_before_forkop_upgrade()) {
+    error = stop_old_sing_box_before_forkop_upgrade();
+    if (error != "") {
         discard_staged_forkop_package_set();
-        action_fail("forkop", "install", "Old sing-box processes have ambiguous ownership or did not stop", FORKOP_VERSION, latest_version);
+        action_fail("forkop", "install", error, FORKOP_VERSION, latest_version);
     }
 
     error = install_forkop_package_set(latest_version, backend_file, app_file, i18n_file);

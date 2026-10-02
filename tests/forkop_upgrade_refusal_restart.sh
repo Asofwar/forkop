@@ -129,6 +129,7 @@ for pm in apk opkg; do
     upgrade_harness_flag stop_status 2
     case="$pm refused stop"
     upgrade_harness_run && fail "$case: the upgrade went on after Forkop's stop was refused"
+    expect_message "$case" "Forkop was not stopped: another sing-box process makes the ownership of its runtime ambiguous"
     upgrade_harness_running || fail "$case: Forkop does not run after its refused stop"
     if grep -Eq '^(start|restart)' "$UPGRADE_STATE/init.log" ||
         grep -q '^start-and-wait' "$UPGRADE_STATE/initd.log"; then

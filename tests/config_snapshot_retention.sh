@@ -106,7 +106,7 @@ done
 manual_before="$(manual_ids)"
 config m9; run create manual
 [ "$code" != 0 ] && [ "$(field status)" = failed ] && [ "$(field reason)" = manual_limit_reached ] &&
-  [ "$(field limit)" = 8 ] || fail "ninth manual snapshot: $(answer)"
+  [ "$(field limit)" = 8 ] && [ "$(field manual)" = 8 ] || fail "ninth manual snapshot: $(answer)"
 [ "$(store)" = "8 8" ] && [ "$(manual_ids)" = "$manual_before" ] || fail "the refused manual snapshot changed the store: $(store)"
 ! grep -q '^health:' "$STATE/events" || fail "a refused manual snapshot was recorded: $(events)"
 ok "manual snapshots stop at 8 with manual_limit_reached; nothing is removed or recorded"
@@ -209,7 +209,8 @@ legacy="$(manual_ids)"
 config m10
 
 config m11; run create manual
-[ "$(field status)" = failed ] && [ "$(field reason)" = manual_limit_reached ] || fail "manual snapshot over the cap: $(answer)"
+[ "$(field status)" = failed ] && [ "$(field reason)" = manual_limit_reached ] && [ "$(field limit)" = 8 ] &&
+  [ "$(field manual)" = 10 ] || fail "manual snapshot over the cap: $(answer)"
 [ "$(manual_ids)" = "$legacy" ] || fail "a refused manual snapshot removed one"
 
 config s1; run create automatic
@@ -245,6 +246,20 @@ config s6; run create automatic
   fail "rotation after the autotune rollback: $(answer), store $(store)"
 [ "$(manual_ids)" = "$legacy" ] || fail "a manual snapshot taken before the cap was removed"
 ok "upgrade with 10 manual snapshots: autotune applied, confirmed and rolled back; no manual snapshot removed"
+
+# The refusal names how many manual snapshots there are, so the page can say
+# how many to delete: three here, before a new one is taken.
+for n in 1 2; do
+  run delete "170000000${n}_$n"
+  [ "$(field status)" = deleted ] || fail "delete of manual snapshot $n: $(answer)"
+  config "m1$n"; run create manual
+  [ "$(field status)" = failed ] && [ "$(field reason)" = manual_limit_reached ] && [ "$(field manual)" = $((10 - n)) ] ||
+    fail "manual snapshot with $((10 - n)) manual snapshots: $(answer)"
+done
+run delete 1700000003_3
+config m13; run create manual
+[ "$(field status)" = created ] || fail "manual snapshot after three deletions: $(answer)"
+ok "upgrade with 10 manual snapshots: the refusal counts them until three are deleted"
 
 # 5. The before-autotune snapshot that a rollback of the recorded autotune
 #    apply returns to (autotune/apply.uc) is kept like the last-known-working

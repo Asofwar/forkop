@@ -603,6 +603,27 @@ describe('snapshot refusals', () => {
     expect(limit.text).toContain('at most 8 manual snapshots');
     expect(limit.text).toContain('Delete a manual snapshot');
     expect(limit.text).toContain('before a restore, Save & Apply or autotune');
+    // At the limit one deletion makes room.
+    const atLimit = createSnapshotToast({
+      status: 'failed',
+      reason: 'manual_limit_reached',
+      limit: 8,
+      manual: 8,
+    });
+    expect(atLimit.text).toBe(limit.text);
+    // Manual snapshots kept from before the limit: the toast says how many
+    // must go, not one.
+    const over = createSnapshotToast({
+      status: 'failed',
+      reason: 'manual_limit_reached',
+      limit: 8,
+      manual: 10,
+    });
+    expect(over.type).toBe('warning');
+    expect(over.text).toContain('at most 8 manual snapshots');
+    expect(over.text).toContain('There are 10 manual snapshots now');
+    expect(over.text).toContain('delete 3 you no longer need');
+    expect(over.text).not.toContain('Delete a manual snapshot');
 
     expect(createSnapshotToast({ status: 'created' })).toEqual({
       text: 'Snapshot saved',
@@ -672,5 +693,22 @@ describe('snapshot refusals', () => {
     expect(inherited.text).toContain(
       'DPI guard of an earlier restore stays active',
     );
+  });
+
+  it('says that the guard of an earlier restore stays after a refusal', () => {
+    const edited = restoreResultToast({
+      status: 'failed',
+      reason: 'concurrent_change',
+      guard: 'active',
+    });
+    expect(edited.type).toBe('warning');
+    expect(edited.text).toContain('changed while the restore was starting');
+    expect(edited.text).toContain(
+      'DPI guard of an earlier restore stays active',
+    );
+    expect(
+      restoreResultToast({ status: 'failed', reason: 'concurrent_change' })
+        .text,
+    ).not.toContain('DPI guard');
   });
 });

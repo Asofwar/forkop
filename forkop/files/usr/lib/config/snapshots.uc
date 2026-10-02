@@ -246,9 +246,11 @@ function create(kind, reason, dedupe, keep) {
         for (let item in list_snapshots())
             if (item.config_hash == hash && (dedupe === true || item.reason == dedupe)) return { status: "existing", snapshot: item };
     // A manual snapshot never takes a reserved place, and never pushes out
-    // another manual one: the user deletes one first (the page says so).
-    if (kind == "manual" && manual_count(list_snapshots()) >= MANUAL_LIMIT)
-        return { status: "failed", reason: "manual_limit_reached", limit: MANUAL_LIMIT };
+    // another manual one: the user deletes one first, or more while more are
+    // left from before the limit (the page says how many).
+    let manual = kind == "manual" ? manual_count(list_snapshots()) : 0;
+    if (manual >= MANUAL_LIMIT)
+        return { status: "failed", reason: "manual_limit_reached", limit: MANUAL_LIMIT, manual };
     if (!trim_retention(keep, kind != "manual")) return { status: "failed", reason: "retention_full" };
     let id = sprintf("%d_%d", clock()[0], clock()[1]);
     let version = trim(capture([ BIN, "show_version" ]));

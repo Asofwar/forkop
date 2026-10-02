@@ -17964,14 +17964,21 @@ function createSnapshotToast(result) {
     case "failed":
       switch (result.reason) {
         // Nothing removes a manual snapshot to make room: the user does.
-        case "manual_limit_reached":
+        // More than one has to go while more are left from before the
+        // limit (an upgrade): the toast says how many.
+        case "manual_limit_reached": {
+          const limit = result.limit ?? MANUAL_SNAPSHOT_LIMIT;
+          const excess = (result.manual ?? limit) - limit + 1;
           return {
-            text: _(
+            text: excess > 1 ? _(
+              "Snapshot not saved: at most %d manual snapshots are kept, so that the automatic snapshots taken before a restore, Save & Apply or autotune always have room. There are %d manual snapshots now: delete %d you no longer need, then try again."
+            ).replace("%d", String(limit)).replace("%d", String(result.manual)).replace("%d", String(excess)) : _(
               "Snapshot not saved: at most %d manual snapshots are kept, so that the automatic snapshots taken before a restore, Save & Apply or autotune always have room. Delete a manual snapshot you no longer need, then try again."
-            ).replace("%d", String(result.limit ?? MANUAL_SNAPSHOT_LIMIT)),
+            ).replace("%d", String(limit)),
             type: "warning",
             duration: 12e3
           };
+        }
         case "config_unavailable":
           return {
             text: _(
@@ -18110,7 +18117,12 @@ function restoreResultToast(result) {
         };
       {
         const refusal = restoreRefusalText(result.reason);
-        if (refusal) return { text: refusal, type: "warning", duration: 1e4 };
+        if (refusal)
+          return {
+            text: result.guard === "active" ? `${refusal} ${_("The DPI guard of an earlier restore stays active.")}` : refusal,
+            type: "warning",
+            duration: 1e4
+          };
       }
       if (result.runtime === "stopped")
         return {

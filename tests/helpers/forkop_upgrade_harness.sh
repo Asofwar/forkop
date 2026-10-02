@@ -87,20 +87,41 @@ if (ARGV[0] == "write-managed-upgrade-sing-box-marker") {
 exit(1);
 UCODE
 
-    # The init script records every call with the source of a stop. Flags:
-    # stop_status (exit status of a stop: 2 is a refusal), start_fail.
+    # The init script records every call with the source of a stop. A stop
+    # records its request as service/initd.uc does (by=<source>; a stop made
+    # while the user's stop is in effect stays the user's; a refused stop
+    # records none), a start removes it. A start refuses, as
+    # service/lifecycle.uc start_inner does, while the upgrade marker is
+    # stale, and consumes it. Flags: stop_status (exit status of a stop: 2 is
+    # a refusal), start_fail, marker_stale (the package manager ran longer
+    # than the marker's age).
     cat >"$UPGRADE_INIT" <<'SH'
 #!/bin/sh
 state="$UPGRADE_STATE"
+request="$FORKOP_RUNTIME_STATE_DIR/stop.requested"
 printf '%s source=%s\n' "$*" "${FORKOP_STOP_SOURCE:-}" >>"$state/init.log"
 case "$1" in
     stop)
         status="$(cat "$state/flags/stop_status" 2>/dev/null || echo 0)"
+        [ "$status" -ne 2 ] || exit 2
+        case "${FORKOP_STOP_SOURCE:-}" in
+            package|component) source="$FORKOP_STOP_SOURCE" ;;
+            *) source=user ;;
+        esac
+        [ ! -e "$request" ] || grep -Eq '^by=(package|component)$' "$request" || source=user
+        mkdir -p "$FORKOP_RUNTIME_STATE_DIR"
+        printf 'requested\nby=%s\n' "$source" >"$request"
         [ "$status" -ne 0 ] || rm -f "$state/running"
         exit "$status"
         ;;
     start|restart)
+        if [ -e "$state/flags/marker_stale" ] && [ -e "$FORKOP_MANAGED_UPGRADE_SING_BOX_MARKER" ]; then
+            rm -f "$FORKOP_MANAGED_UPGRADE_SING_BOX_MARKER"
+            printf 'start refused: stale managed upgrade marker\n' >>"$state/init.log"
+            exit 1
+        fi
         [ ! -e "$state/flags/start_fail" ] || exit 1
+        rm -f "$request"
         : >"$state/running"
         ;;
 esac
@@ -120,7 +141,9 @@ SH
     # Release servers: fold8 serves the release to install, GitHub the
     # metadata of the installed one. A package file names the package and
     # version it holds, whatever the file is called. Flags: github_down,
-    # download_fail_<version>.
+    # download_fail_<version>; while the upgrade asks GitHub (before Forkop
+    # is stopped for it), user_stop_on_github has the user stop Forkop and
+    # crash_on_github takes it down without a stop.
     cat >"$UPGRADE_BIN/curl" <<'SH'
 #!/bin/sh
 state="$UPGRADE_STATE"
@@ -140,6 +163,8 @@ case "$url" in
         cat "$state/latest.json" >"$out"
         ;;
     https://api.github.com/repos/*/releases/tags/1.0.0)
+        [ ! -e "$state/flags/user_stop_on_github" ] || env -u FORKOP_STOP_SOURCE "$FORKOP_SERVICE_INIT" stop
+        [ ! -e "$state/flags/crash_on_github" ] || rm -f "$state/running"
         [ ! -e "$state/flags/github_down" ] || exit 22
         cat "$state/previous.json" >"$out"
         ;;

@@ -91,6 +91,20 @@ for pm in apk opkg; do
         [ ! -e "$UPGRADE_MARKER" ] || fail "$case: the refused upgrade left its managed upgrade marker behind"
     done
 
+    # --- Forkop goes down while the upgrade prepares, which then refuses ---
+    # The upgrade never stopped it: its refusal does not start it either.
+    upgrade_harness_reset "$pm"
+    upgrade_harness_flag crash_on_github
+    upgrade_harness_flag github_down
+    case="$pm down before refusal"
+    upgrade_harness_run && fail "$case: the refused upgrade was reported as installed"
+    expect_message "$case" "Previous Forkop release packages are unavailable"
+    if grep -Eq '^(start|restart)' "$UPGRADE_STATE/init.log" ||
+        grep -q '^start-and-wait' "$UPGRADE_STATE/initd.log"; then
+        fail "$case: the refused upgrade started the Forkop it never stopped"
+    fi
+    untouched "$case"
+
     # --- the stop of the old sing-box fails after Forkop was stopped -------
     upgrade_harness_reset "$pm"
     upgrade_harness_flag sing_box_ambiguous
@@ -126,7 +140,9 @@ for pm in apk opkg; do
 
     # --- the install and its rollback fail ---------------------------------
     # The half-installed set keeps its archives for the next attempt; the
-    # Forkop that ran before the upgrade is started again meanwhile.
+    # Forkop that ran before the upgrade is started again meanwhile. The
+    # package manager ran longer than the upgrade marker's age: the marker
+    # names no transition any more and must not refuse that start (UC-217).
     upgrade_harness_reset "$pm"
     if [ "$pm" = apk ]; then
         upgrade_harness_flag fail_new_forkop
@@ -135,11 +151,14 @@ for pm in apk opkg; do
     fi
     upgrade_harness_flag fail_old_luci-app-forkop
     upgrade_harness_flag fail_old_forkop
+    upgrade_harness_flag marker_stale
     case="$pm failed rollback"
     upgrade_harness_run && fail "$case: the failed upgrade was reported as installed"
     expect_message "$case" "recovery archives retained"
     grep -Fxq 'start-and-wait start' "$UPGRADE_STATE/initd.log" ||
         fail "$case: Forkop was not started again with start-and-wait"
+    ! grep -q '^start refused' "$UPGRADE_STATE/init.log" ||
+        fail "$case: the stale upgrade marker refused the start"
     upgrade_harness_running || fail "$case: Forkop does not run after the failed upgrade"
     expect_no_user_stop "$case"
     [ -s "$UPGRADE_RECOVERY_DIR/pending" ] || fail "$case: the pending rollback was dropped"

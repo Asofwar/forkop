@@ -28,6 +28,13 @@ fail() {
     exit 1
 }
 
+# The rollback puts back the Forkop that ran before the upgrade and awaits
+# its start (start-and-wait, UC-013): one start, and no other start after it.
+rollback_started_forkop() {
+    grep -Fxq 'start-and-wait start' "$UPGRADE_STATE/initd.log" &&
+        [ "$(grep -c '^start' "$UPGRADE_STATE/init.log")" -eq 1 ]
+}
+
 previous_set_installed() {
     [ "$(upgrade_harness_version forkop)" = 1.0.0-r1 ] &&
         [ "$(upgrade_harness_version luci-app-forkop)" = 1.0.0-r1 ] &&
@@ -49,6 +56,7 @@ case "$(upgrade_harness_message)" in
 esac
 previous_set_installed || fail "apk: the previous release is not installed again after the rollback"
 upgrade_harness_running || fail "apk: Forkop does not run again after the rollback"
+rollback_started_forkop || fail "apk: the rollback did not start Forkop with start-and-wait"
 [ ! -e "$UPGRADE_RECOVERY_DIR" ] || fail "apk: the completed rollback left its recovery state behind"
 grep -Eq '^apk add .*--force-reinstall .*/backend\.apk' "$UPGRADE_STATE/pm.log" ||
     fail "apk: the previous release was not staged and restored as .apk archives"
@@ -65,6 +73,7 @@ case "$(upgrade_harness_message)" in
 esac
 previous_set_installed || fail "opkg: the previous release is not installed again after the rollback"
 upgrade_harness_running || fail "opkg: Forkop does not run again after the rollback"
+rollback_started_forkop || fail "opkg: the rollback did not start Forkop with start-and-wait"
 [ ! -e "$UPGRADE_RECOVERY_DIR" ] || fail "opkg: the completed rollback left its recovery state behind"
 grep -Eq '^opkg install .*--force-reinstall .*/backend\.ipk' "$UPGRADE_STATE/pm.log" ||
     fail "opkg: the previous release was not staged and restored as .ipk archives"

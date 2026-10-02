@@ -88,6 +88,50 @@ FORKOP_RT_TABLES="$RT" ucode -L "$LIB" "$LIB/service/package.uc" remove-rt-table
 [ -L "$RT" ] && [ "$(cat "$WORK/usr-share/rt_tables")" = '254 main' ] || fail "the removal replaced the rt_tables symlink or missed its target"
 ok "rt_tables is replaced whole by a rename, its mode and other entries kept"
 
+# A full overlay takes the write of a small file and keeps none of it: the
+# copy is read back before it replaces rt_tables, which stays as it was.
+if ! unshare -rm true 2>/dev/null; then
+  printf 'NOTE: no user and mount namespaces; the full-overlay rt_tables checks are skipped\n'
+else
+  rm -f "$RT"
+  {
+    printf '%s\n' '255 local' '254 main'
+    for i in $(seq 1 60); do printf '%s vendor-table-%s\n' "$((i + 10))" "$i"; done
+  } >"$WORK/rt_tables.full"
+  # With table forkop for the removal, without it for the start.
+  { cat "$WORK/rt_tables.full"; printf '105 forkop\n'; } >"$WORK/rt_tables.forkop"
+  cat >"$WORK/rt-full.sh" <<'SH'
+mount -t tmpfs -o size=16k tmpfs "$WORK/etc/iproute2" || exit 90
+RT="$WORK/etc/iproute2/rt_tables"
+cp "$WORK/rt_tables.full" "$RT"
+dd if=/dev/zero of="$WORK/etc/iproute2/fill" bs=1k 2>/dev/null
+ucode -L "$LIB" "$LIB/nft/apply.uc" ensure-tproxy-route-rule forkop 0x00100000 "$RT"
+printf '%s\n' "$?" >"$WORK/rt-full.start"
+cp "$RT" "$WORK/rt-full.after-start"
+rm -f "$WORK/etc/iproute2/fill"
+cp "$WORK/rt_tables.forkop" "$RT"
+dd if=/dev/zero of="$WORK/etc/iproute2/fill" bs=1k 2>/dev/null
+FORKOP_RT_TABLES="$RT" ucode -L "$LIB" "$LIB/service/package.uc" remove-rt-tables-entry
+printf '%s\n' "$?" >"$WORK/rt-full.remove"
+cp "$RT" "$WORK/rt-full.after-remove"
+ls -A "$WORK/etc/iproute2" >"$WORK/rt-full.list"
+exit 0
+SH
+  status=0
+  export LIB WORK
+  unshare -rm sh "$WORK/rt-full.sh" >"$WORK/rt-full.out" 2>&1 || status=$?
+  [ "$status" = 0 ] || fail "the full-overlay rt_tables run failed ($status): $(cat "$WORK/rt-full.out")"
+  [ "$(cat "$WORK/rt-full.start")" != 0 ] || fail "a start on a full overlay reported that rt_tables names its table"
+  cmp -s "$WORK/rt_tables.full" "$WORK/rt-full.after-start" ||
+    fail "a start on a full overlay damaged rt_tables ($(wc -c <"$WORK/rt-full.after-start") bytes left)"
+  [ "$(cat "$WORK/rt-full.remove")" != 0 ] || fail "a package removal on a full overlay reported success"
+  cmp -s "$WORK/rt_tables.forkop" "$WORK/rt-full.after-remove" ||
+    fail "a package removal on a full overlay damaged rt_tables ($(wc -c <"$WORK/rt-full.after-remove") bytes left)"
+  [ "$(sort "$WORK/rt-full.list" | tr '\n' ' ')" = 'fill rt_tables ' ] ||
+    fail "a full overlay left a copy of rt_tables behind: $(cat "$WORK/rt-full.list")"
+  ok "a full overlay fails the rt_tables update and leaves rt_tables whole"
+fi
+
 # ---- 2. the package feeds -----------------------------------------------------
 
 cat >"$WORK/bin/curl" <<'SH'

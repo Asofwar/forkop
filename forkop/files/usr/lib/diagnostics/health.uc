@@ -15,6 +15,10 @@ const RELOAD_LOCK = getenv("FORKOP_RELOAD_LOCK_DIR") || "/var/run/forkop.reload.
 // outgrows its cap it is rewritten once to the newest HISTORY_KEEP records,
 // flushed to flash before and after the rename (UC-025).
 const HISTORY_FILE = getenv("FORKOP_HISTORY_FILE") || "/etc/forkop/history.jsonl";
+// Serializes the records of concurrent writers (UC-073): a rotation reads the
+// journal and replaces it, an append between the two would be lost. An
+// flock, released by the kernel when its holder dies.
+const HISTORY_LOCK = RUNTIME_DIR + "/history.lock";
 const HISTORY_MAX = 200;
 const HISTORY_MAX_BYTES = 65536;
 const HISTORY_KEEP = 150;
@@ -95,14 +99,28 @@ function history_events(all) {
     return !all && length(result) > HISTORY_MAX ? slice(result, length(result) - HISTORY_MAX) : result;
 }
 
+// The journal ends in the middle of a line: an append that a power cut or a
+// full flash cut short.
+function history_torn() {
+    let file = fs.open(HISTORY_FILE, "r");
+    if (!file)
+        return false;
+    let torn = file.seek(-1, 2) && file.read(1) != "\n";
+    file.close();
+    return torn;
+}
+
+// Called under HISTORY_LOCK. A torn last line is ended first, so that it
+// costs only its own record, never the next one (UC-073).
 function append_history(event) {
     let dir = replace(HISTORY_FILE, /\/[^\/]*$/, "");
     if (dir != "" && fs.stat(dir) == null)
         fs.mkdir(dir, 0755);
+    let torn = history_torn();
     let file = fs.open(HISTORY_FILE, "a");
     if (!file)
         return false;
-    file.write(sprintf("%J\n", event));
+    file.write((torn ? "\n" : "") + sprintf("%J\n", event));
     file.close();
 
     let stat = fs.stat(HISTORY_FILE);
@@ -131,6 +149,13 @@ function record_event(kind, status, trigger, candidate) {
         return 1;
     fs.mkdir(RUNTIME_DIR, 0700);
     let event = event_view({ kind, status, timestamp: int(clock()[0]), trigger, candidate });
+    // Both journals are read, changed and replaced: one writer at a time.
+    // Without the lock (an unwritable runtime directory) as before.
+    let lock = fs.open(HISTORY_LOCK, "ae");
+    if (lock && !lock.lock("x")) {
+        lock.close();
+        lock = null;
+    }
     // The journal is best effort: a full or read-only flash must not stop
     // health from recording the event.
     append_history(event);
@@ -139,12 +164,17 @@ function record_event(kind, status, trigger, candidate) {
     while (length(events) > 10)
         shift(events);
     let path = sprintf("%s.%d.tmp", EVENT_FILE, clock()[1]);
+    let result = 0;
     if (fs.writefile(path, sprintf("%J\n", { events })) == null ||
         !fs.chmod(path, 0600) || !fs.rename(path, EVENT_FILE)) {
         fs.unlink(path);
-        return 1;
+        result = 1;
     }
-    return 0;
+    if (lock) {
+        lock.lock("u");
+        lock.close();
+    }
+    return result;
 }
 
 function as_string(value) {

@@ -1062,6 +1062,18 @@ function start_and_wait(action, reason, timeout, ui_job) {
     return 0;
 }
 
+// init.d restart: a sing-box that Forkop does not own outlives the stop,
+// and the start after it refuses the ambiguous runtime, so the restart
+// could only take Forkop down. It is refused before the stop, as
+// `forkop restart` refuses (service/lifecycle.uc restart).
+function restart_blocked() {
+    if (module_status(LIB_DIR + "/service/state.uc", [ "foreign-sing-box-present" ]) != 0)
+        return false;
+    command_success_from_args([ "logger", "-t", SERVICE_NAME,
+        "[fatal] Refusing Forkop restart: a sing-box process that Forkop does not own is running, so Forkop could not start again after its stop" ]);
+    return true;
+}
+
 function stop_plan(owner_pid, bin_ok) {
     let job_id = begin_external_service_action("stop", "initd", owner_pid);
     bin_ok = bin_ok == null ? file_executable(BIN_PATH) : bool_text(bin_ok);
@@ -1362,6 +1374,8 @@ else if (mode == "start-plan-fixture") {
     };
     start_plan(ARGV[1], ARGV[5] || "0", settings, ARGV[6] == null ? "1" : ARGV[6]);
 }
+else if (mode == "restart-blocked")
+    exit(restart_blocked() ? 0 : 1);
 else if (mode == "stop-plan")
     stop_plan(ARGV[1], null);
 else if (mode == "stop-plan-fixture")

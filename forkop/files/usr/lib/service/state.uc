@@ -975,6 +975,19 @@ function sing_box_service_registered() {
     }
 }
 
+// A sing-box that Forkop does not own runs (UC-213). Forkop's explicit stop
+// leaves it running, and the start after that stop refuses the ambiguous
+// runtime.
+function foreign_sing_box_present() {
+    let owned = owned_sing_box_processes(forkop_sing_box_config_path());
+    for (let exe_path in fs.glob("/proc/[0-9]*/exe")) {
+        let pid = split(as_string(exe_path), "/")[2];
+        if (owned[pid] == null && sing_box_exe_path(fs.readlink(exe_path)))
+            return true;
+    }
+    return false;
+}
+
 // procd respawns its instance until its 'sing-box' service is deleted. Every
 // stop of that service deletes it already, so one that is not registered is
 // a stopped service, not a failure (UC-194).
@@ -2235,6 +2248,8 @@ else if (mode == "reload-sing-box-runtime")
     reload_sing_box_runtime(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
 else if (mode == "stop-owned-sing-box-runtime")
     exit(stop_owned_sing_box_and_wait(ARGV[1]) ? 0 : 1);
+else if (mode == "foreign-sing-box-present")
+    exit(foreign_sing_box_present() ? 0 : 1);
 else if (mode == "owned-sing-box-process-count")
     print(length(owned_sing_box_processes(forkop_sing_box_config_path())), "\n");
 else if (mode == "managed-upgrade-marker-fresh")

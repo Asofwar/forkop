@@ -259,27 +259,33 @@ for module in config/validator service/reload subscription/cache singbox/priorit
   printf '%s\nexit(mode == "runtime-list-cache-active" ? 1 : 0);\n' "$fake_header" >"$LIB/$module.uc"
 done
 
-# /etc/init.d/forkop as rc.common runs it: stop() is stop_service and then
-# procd_kill; restart() is stop() and then start().
+# /etc/init.d/forkop as rc.common runs it: restart() is stop() and then
+# start() unless the script defines its own; for a procd script stop() is
+# stop_service and then procd_kill.
 cat >"$WORK_DIR/rc" <<'SH'
 #!/usr/bin/env bash
 action="$1"
 shift
 initscript="$REAL_INITD"
+restart() {
+  trap '' TERM
+  stop "$@"
+  trap - TERM
+  start "$@"
+}
 # shellcheck disable=SC1090
 . "$REAL_INITD"
 FORKOP_LIB="$LIB"
 FORKOP_INITD_UC="$REAL_LIB/service/initd.uc"
+stop() {
+  stop_service "$@"
+  echo 'procd_kill forkop' >>"$EVENTS"
+}
+start() {
+  echo 'start reached' >>"$EVENTS"
+}
 case "$action" in
-  stop)
-    stop_service "$@"
-    echo 'procd_kill forkop' >>"$EVENTS"
-    ;;
-  restart)
-    stop_service "$@"
-    echo 'procd_kill forkop' >>"$EVENTS"
-    echo 'start reached' >>"$EVENTS"
-    ;;
+  stop | restart) "$action" "$@" ;;
   disable) ;;
   *) exit 64 ;;
 esac
@@ -398,6 +404,37 @@ foreign_pid=$LAST_DOUBLE
 gone "$stray_pid" || fail "an explicit stop left a stray sing-box that runs Forkop's configuration"
 alive "$foreign_pid" || fail "an explicit stop signalled a sing-box that Forkop does not own"
 [ ! -e "$NFT_TABLE_FILE" ] || fail "an explicit stop left ForkopTable next to a stray runtime"
+
+# 2b. A restart next to another program's sing-box is refused before its
+#     stop: that sing-box outlives the stop, and the start after it refuses
+#     the ambiguous runtime, so the restart could only take Forkop down
+#     (as `forkop restart`, service/lifecycle.uc). Its refusal changes
+#     nothing.
+reset_case
+runtime_up
+procd_instance
+forkop_pid=$LAST_DOUBLE
+foreign_sing_box
+foreign_pid=$LAST_DOUBLE
+[ "$(rc restart)" != 0 ] || fail "a restart next to another program's sing-box reported success"
+no_event '^start reached$' || fail "a restart next to another program's sing-box went on to its start"
+alive "$forkop_pid" || fail "a refused restart stopped Forkop's sing-box"
+alive "$foreign_pid" || fail "a refused restart signalled another program's sing-box"
+[ -e "$NFT_TABLE_FILE" ] || fail "a refused restart removed ForkopTable"
+no_event '^dns ' || fail "a refused restart changed DNS"
+[ ! -e "$STOP_MARKER" ] || fail "a refused restart recorded a stop: $(cat "$STOP_MARKER")"
+[ -e "$START_RECORD" ] || fail "a refused restart ended the explicit start"
+grep -q 'Refusing Forkop restart' "$SYSLOG" || fail "the refused restart is not logged"
+
+# A restart with only Forkop's own sing-box processes (here a stray one
+# outside procd) goes on: its stop ends them and its start is reached.
+reset_case
+runtime_up
+stray_runtime
+stray_pid=$LAST_DOUBLE
+[ "$(rc restart)" = 0 ] || fail "a restart of a stray Forkop runtime failed"
+wait_until 10 gone "$stray_pid" || fail "a restart left a stray sing-box that runs Forkop's configuration"
+has_event '^start reached$' || fail "a restart of a stray Forkop runtime did not reach its start"
 
 # 3b. A sing-box with a configuration at Forkop's path is Forkop's only when
 #     it runs Forkop's executable in Forkop's mount namespace: the sing-box

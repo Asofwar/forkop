@@ -79,6 +79,19 @@ stop_service() {
     [ "$status" -eq 0 ] || exit "$status"
 }
 
+restart() {
+    # A sing-box of another program outlives the stop, and the start after it
+    # refuses the ambiguous runtime: refuse the restart before the stop
+    # instead of taking Forkop down (service/initd.uc restart-blocked).
+    if initd_ucode restart-blocked; then
+        return 1
+    fi
+    trap '' TERM
+    stop "$@"
+    trap - TERM
+    start "$@"
+}
+
 reload_service() {
     local reason="$1"
     local result status

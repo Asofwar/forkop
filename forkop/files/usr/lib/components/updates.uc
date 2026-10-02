@@ -1673,6 +1673,19 @@ function write_crontab_text(text, current) {
     }
 
     let ok = command_success_from_args([ "crontab", tmp ]);
+    // BusyBox crontab ignores a failed copy into the crontab directory,
+    // renames what it got over the crontab and exits 0: a nearly full
+    // overlay leaves the crontab cut short or empty. Only a crontab that
+    // reads back as text counts; otherwise the previous one is put back (the
+    // space of the replaced crontab is free again).
+    if (ok && fs.readfile(CRONTAB_FILE) !== as_string(text)) {
+        ok = false;
+        let restored = fs.writefile(tmp, as_string(current)) != null && fs.readfile(tmp) === as_string(current) &&
+            command_success_from_args([ "crontab", tmp ]) && fs.readfile(CRONTAB_FILE) === as_string(current);
+        log_message("Could not write " + CRONTAB_FILE + (restored ?
+            "; the previous scheduled jobs were put back" :
+            "; the scheduled jobs may be incomplete"), "error");
+    }
     fs.unlink(tmp);
     return ok;
 }

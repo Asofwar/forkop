@@ -362,6 +362,16 @@ function cron_write(enabled) {
         return { status: "failed", reason: "tempfile_unavailable" };
     }
     let ok = success([ CRONTAB, tmp ]);
+    // BusyBox crontab ignores a failed copy into the crontab directory,
+    // renames what it got over the crontab and exits 0: a nearly full overlay
+    // leaves the crontab cut short or empty. The previous one is put back then
+    // (the space of the replaced crontab is free again).
+    if (ok && fs.readfile(CRONTAB_FILE) !== text) {
+        let restored = fs.writefile(tmp, existing) != null && fs.readfile(tmp) === existing &&
+            success([ CRONTAB, tmp ]) && fs.readfile(CRONTAB_FILE) === existing;
+        fs.unlink(tmp);
+        return { status: "failed", reason: "crontab_incomplete", restored };
+    }
     fs.unlink(tmp);
     return ok ? { status: "ok", enabled, changed: true } : { status: "failed", reason: "crontab_failed" };
 }

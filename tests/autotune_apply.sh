@@ -511,6 +511,14 @@ json 'a.equal(r.status, "rolled_back"); a.equal(r.verification.checks.find((x) =
 ok "24 verification proves the rule path (queue counters, FakeIP, runtime), not only HTTP success"
 }
 
+# History journal of the fixture, one line per event; used by groups 2 and 4,
+# so it is defined at top level (each group runs in a subshell of its own).
+journal() {
+  node -e 'const fs=require("fs");const f=process.argv[1];if(!fs.existsSync(f))process.exit(0);
+    for(const l of fs.readFileSync(f,"utf8").split("\n").filter(Boolean)){const e=JSON.parse(l);
+    console.log([e.kind,e.status,e.trigger||"",e.candidate||""].join(":"))}' "$STATE/health/history.jsonl"
+}
+
 cases_2() {
 # 13. verification failure + restore needs_attention -> needs_attention
 reset_apply; plan_ready; export PROD_PLAN=reset; echo "0 1 1" > "$STATE/reload.plan"; at apply "$WORK/plan.json"
@@ -581,11 +589,6 @@ ok "13b rollback restore failed or queued, candidate put back -> needs_attention
 #      candidate, recorded once the old strategy is proven again (a restore
 #      that fails or whose proof fails is no success), never a restore; one
 #      refused before it started is none.
-journal() {
-  node -e 'const fs=require("fs");const f=process.argv[1];if(!fs.existsSync(f))process.exit(0);
-    for(const l of fs.readFileSync(f,"utf8").split("\n").filter(Boolean)){const e=JSON.parse(l);
-    console.log([e.kind,e.status,e.trigger||"",e.candidate||""].join(":"))}' "$STATE/health/history.jsonl"
-}
 reset_apply; plan_ready; rm -rf "$STATE/health"; at apply "$WORK/plan.json"
 json 'a.equal(r.status, "applied");' "$WORK/out.json"
 [ -z "$(journal)" ] || fail "the transaction recorded events of its own: $(journal)"

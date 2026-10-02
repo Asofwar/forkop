@@ -9050,7 +9050,7 @@ function createSectionContent(section) {
     "kill_switch",
     _("VPN kill-switch"),
     _(
-      "Block this section's traffic instead of sending it directly when the VPN, sing-box or Forkop itself is not running. Applies to forwarded client traffic, survives a Forkop stop, firewall reloads and reboots. Earlier Zapret and Bypass sections keep working.",
+      "Block this section's traffic instead of sending it directly when the VPN, sing-box or Forkop itself is not running. Applies to forwarded client traffic, survives a Forkop stop, firewall reloads and reboots. Earlier Zapret and Bypass sections keep working. For a section with a subscription, changing it restarts sing-box: a section whose subscription could not be loaded is rejected only while it is protected.",
     ),
   );
   // Unchecked means absent: saving an untouched rule must not write "0".

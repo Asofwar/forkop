@@ -8,7 +8,10 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB="$ROOT/forkop/files/usr/lib"
 # shellcheck source=tests/helpers/autotune_stubs.sh
 . "$ROOT/tests/helpers/autotune_stubs.sh"
+# shellcheck source=tests/helpers/case_groups.sh
+. "$ROOT/tests/helpers/case_groups.sh"
 
+cases_1() {
 # --- scoring and selection (pure) --------------------------------------------
 cat > "$WORK/cases.js" <<'JS'
 const fs = require('fs');
@@ -119,10 +122,12 @@ pass=$((pass + $(cat "$WORK/pure.count")))
 ucode -L "$LIB" "$LIB/autotune/select.uc" schedule direct,multisplit,fake,fakedsplit 3 > "$WORK/sched.json"
 json 'a.deepEqual(r, [["direct","multisplit","fake","fakedsplit"],["multisplit","fake","fakedsplit","direct"],["fake","fakedsplit","direct","multisplit"]]);' "$WORK/sched.json"
 ok "schedule rotates the base order each round"
+}
 
 # --- tuning runs through the isolated path ------------------------------------
 tune() { ucode -L "$LIB" "$LIB/autotune/isolation.uc" tune example.com "$@" > "$WORK/out.json" || true; }
 
+cases_2() {
 # 13. one resolution, one pinned IP for every candidate; interleaving; selection
 reset_state
 CURL_STUB_PLAN="direct=reset,4600=success:120,4601=success:118" FORKOP_AUTOTUNE_PROGRESS="$WORK/progress.json" tune 3 192.0.2.53 multisplit,fake
@@ -154,7 +159,9 @@ reset_state; CURL_STUB_PLAN="direct=success:100,4600=success:95,4601=success:90"
 json 'a.equal(r.status, "selected"); a.equal(r.selected, "direct"); a.equal(r.reason, "direct_stable"); a.equal(r.cleanup.status, "clean");' "$WORK/out.json"
 assert_clean "tune direct"
 ok "direct stable end to end -> direct"
+}
 
+cases_3() {
 # 9. supported + unsupported: unsupported excluded, not counted as failure
 reset_state; export NFQWS_STUB_REJECT=fakedsplit
 CURL_STUB_PLAN="direct=reset,4600=success:120" tune 3 192.0.2.53 multisplit,fakedsplit,udp_fake,nosuch
@@ -171,6 +178,8 @@ ok "9 unsupported candidates excluded with their reason, never probed or failed"
 reset_state; CURL_STUB_PLAN="direct=reset,4600=tls,4601=reset" tune 3 192.0.2.53 multisplit,fake
 json 'a.equal(r.status, "inconclusive"); a.equal(r.reason, "all_failed"); a.equal(r.selected, null); a.equal(r.cleanup.status, "clean");' "$WORK/out.json"
 ok "all candidates failed -> inconclusive"
+}
+cases_4() {
 reset_state; CURL_STUB_PLAN="direct=connect_timeout,4600=connect_timeout,4601=connect_timeout" tune 3 192.0.2.53 multisplit,fake
 json 'a.equal(r.status, "inconclusive"); a.equal(r.reason, "target_unreachable"); a.equal(r.unreachable_round, 1); a.equal(r.probes.length, 3); a.equal(r.cleanup.status, "clean");' "$WORK/out.json"
 [ "$(wc -l < "$STUB_LOG/dig.log")" = 1 ] || fail "unreachable target was re-resolved"
@@ -200,7 +209,9 @@ tune max:2 192.0.2.53 multisplit; json 'a.equal(r.status, "refused"); a.equal(r.
 tune 3 192.0.2.53 udp_fake; json 'a.equal(r.status, "refused"); a.equal(r.reason, "no_supported_dpi_candidate");' "$WORK/out.json"
 [ ! -e "$NFT_STATE/last.nft" ] || fail "refused run created nft state"
 ok "probe count 3..7, bounded probe total, at least one DPI candidate"
+}
 
+cases_5() {
 # "max:<n>" (the manager's policy value): the whole catalog with the default
 # policy does not fit the source ports of one run; the count per candidate is
 # lowered instead of refusing the run.
@@ -214,7 +225,9 @@ assert_clean "max probes"
 reset_state; tune max:5 192.0.2.53 multisplit,fake
 json 'a.equal(r.probes_per_candidate, 5, "nothing is lowered when the run fits"); a.equal(r.probes.length, 15);' "$WORK/out.json"
 ok "max:<n> lowers the probes per candidate to fit the run, never below 3"
+}
 
+cases_6() {
 # 14. interruption -> cleanup, no selection
 reset_state; export CURL_STUB_SLEEP=1
 ucode -L "$LIB" "$LIB/autotune/isolation.uc" tune example.com 3 192.0.2.53 multisplit,fake > "$WORK/out.json" &
@@ -240,5 +253,21 @@ json 'a.equal(r.status, "selected"); a.equal(r.production.unchanged, true); a.eq
 kill -0 "$PROD_NFQWS" || fail "production nfqws stand-in signalled"
 assert_clean "no mutation"
 ok "16 production untouched: only the temporary table is created, switched and deleted"
+}
+
+# The groups of cases run at once, each on stand-ins of its own (a fresh
+# $WORK from autotune_stubs.sh): a tuning run waits whole seconds at its
+# steps, so one after another they took a minute.
+GROUP_DIR="$WORK/case-groups"
+case_group() {
+  # shellcheck source=tests/helpers/autotune_stubs.sh
+  . "$ROOT/tests/helpers/autotune_stubs.sh"
+  "cases_$1"
+  printf '%s\n' "$pass" >"$GROUP_DIR/$1.count"
+}
+run_case_groups "$GROUP_DIR" case_group 1 2 3 4 5 6
+for group in 1 2 3 4 5 6; do
+  pass=$((pass + $(cat "$GROUP_DIR/$group.count")))
+done
 
 printf 'autotune_select: PASS (%d checks)\n' "$pass"

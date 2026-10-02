@@ -952,9 +952,12 @@ function managed_sing_box_service_text() {
 }
 
 // Read back and flushed before and after the rename (core/durable.uc): a
-// full overlay took the write and left an empty init script in place.
+// full overlay took the write and left an empty init script in place. The
+// copy is named after this process, which lives until the rename, as the
+// copy of singbox/runtime.uc is: a start removes the copies whose writer is
+// gone (owner_pid() names a short-lived shell, gone at once).
 function install_managed_sing_box_service_script() {
-    return durable.durable_replace("/etc/init.d/sing-box.forkop." + owner_pid(), "/etc/init.d/sing-box",
+    return durable.durable_replace("/etc/init.d/sing-box.forkop." + fs.readlink("/proc/self"), "/etc/init.d/sing-box",
         managed_sing_box_service_text(), 0755);
 }
 

@@ -76,19 +76,20 @@ printf 'in progress\n' >"/etc/init.d/sing-box.forkop.$$"
 printf '#!/bin/sh\n# an older managed script\n' >/etc/init.d/sing-box
 # The copy being installed is named after its writer, which lives until the
 # rename: another start must find that writer alive and keep the copy. The
-# flush before the rename (core/durable.uc) records whether the pid in the
-# name of the copy is the writer.
+# flush before the rename (core/durable.uc) records in $OWNER whether the
+# pid in the name of the copy is the writer (its command line names
+# $WRITER).
 mkdir -p "$WORK/sync-bin"
 cat >"$WORK/sync-bin/sync" <<'SYNC'
 #!/bin/sh
 for copy in /etc/init.d/sing-box.forkop.*; do
   [ -f "$copy" ] && [ "$copy" != "/etc/init.d/sing-box.forkop.$LIVE" ] || continue
   pid="${copy##*.}"
-  if grep -q 'runtime\.uc' "/proc/$pid/cmdline" 2>/dev/null; then echo writer; else echo "not the writer: $pid"; fi >>"$WORK/initd.copy-owner"
+  if grep -q "$WRITER" "/proc/$pid/cmdline" 2>/dev/null; then echo writer; else echo "not the writer: $pid"; fi >>"$OWNER"
 done
 SYNC
 chmod 0755 "$WORK/sync-bin/sync"
-(PATH="$WORK/sync-bin:$PATH" LIVE=$$ configure)
+(PATH="$WORK/sync-bin:$PATH" LIVE=$$ WRITER='runtime\.uc' OWNER="$WORK/initd.copy-owner" configure)
 printf '%s\n' "$dead" >"$WORK/initd.dead"
 printf '%s\n' "$$" >"$WORK/initd.live"
 # A copy a crash left while the script itself is current (another writer
@@ -99,6 +100,10 @@ wait "$dead" || true
 printf 'stale\n' >"/etc/init.d/sing-box.forkop.$dead"
 configure
 printf '%s\n' "$dead" >"$WORK/initd.dead2"
+# The copy a component install (components/action.uc) writes is named after
+# its writer as well.
+(PATH="$WORK/sync-bin:$PATH" LIVE=$$ WRITER='action\.uc' OWNER="$WORK/initd.action-owner" \
+  ucode -L "$LIB" "$LIB/components/action.uc" install-managed-sing-box-service-fixture)
 SH
   unshare -rm sh "$WORK/initd-check.sh" >"$WORK/initd.out" 2>&1 ||
     fail "configure-service failed: $(cat "$WORK/initd.out")"
@@ -113,6 +118,8 @@ SH
   [ -e "$WORK/initd/sing-box.forkop.$(cat "$WORK/initd.live")" ] || fail "a copy of a writer still at work was removed"
   [ "$(cat "$WORK/initd.copy-owner" 2>/dev/null)" = writer ] ||
     fail "the copy of the init script is not named after its writer: $(cat "$WORK/initd.copy-owner" 2>/dev/null)"
+  [ "$(cat "$WORK/initd.action-owner" 2>/dev/null)" = writer ] ||
+    fail "the copy a component install writes is not named after its writer: $(cat "$WORK/initd.action-owner" 2>/dev/null)"
   ok "the managed init script is written only when it changes, stale copies are removed"
 fi
 

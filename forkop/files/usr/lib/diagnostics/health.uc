@@ -19,6 +19,10 @@ const HISTORY_FILE = getenv("FORKOP_HISTORY_FILE") || "/etc/forkop/history.jsonl
 // journal and replaces it, an append between the two would be lost. An
 // flock, released by the kernel when its holder dies.
 const HISTORY_LOCK = RUNTIME_DIR + "/history.lock";
+// Its holder may sit in the rotation's sync(1), slow with much dirty data,
+// and start, reload and autotune record their events synchronously: a
+// record waits this long, then goes without the lock.
+const HISTORY_LOCK_WAIT_MS = int(getenv("FORKOP_HISTORY_LOCK_WAIT_MS") || "5000");
 const HISTORY_MAX = 200;
 const HISTORY_MAX_BYTES = 65536;
 const HISTORY_KEEP = 150;
@@ -110,9 +114,10 @@ function history_torn() {
     return torn;
 }
 
-// Called under HISTORY_LOCK. A torn last line is ended first, so that it
-// costs only its own record, never the next one (UC-073).
-function append_history(event) {
+// Called under HISTORY_LOCK; without it rotate is false. A torn last line
+// is ended first, so that it costs only its own record, never the next one
+// (UC-073).
+function append_history(event, rotate) {
     let dir = replace(HISTORY_FILE, /\/[^\/]*$/, "");
     if (dir != "" && fs.stat(dir) == null)
         fs.mkdir(dir, 0755);
@@ -123,6 +128,8 @@ function append_history(event) {
     file.write((torn ? "\n" : "") + sprintf("%J\n", event));
     file.close();
 
+    if (!rotate)
+        return true;
     let stat = fs.stat(HISTORY_FILE);
     let events = history_events(true) || [];
     if ((stat != null && stat.size <= HISTORY_MAX_BYTES) && length(events) <= HISTORY_MAX)
@@ -150,15 +157,24 @@ function record_event(kind, status, trigger, candidate) {
     fs.mkdir(RUNTIME_DIR, 0700);
     let event = event_view({ kind, status, timestamp: int(clock()[0]), trigger, candidate });
     // Both journals are read, changed and replaced: one writer at a time.
-    // Without the lock (an unwritable runtime directory) as before.
+    // Without the lock (an unwritable runtime directory) as before. A lock
+    // held longer than HISTORY_LOCK_WAIT_MS: the event is recorded without
+    // it, but the journal is not rotated under its holder.
     let lock = fs.open(HISTORY_LOCK, "ae");
-    if (lock && !lock.lock("x")) {
-        lock.close();
-        lock = null;
+    let rotate = lock == null;
+    for (let waited = 0; lock != null && !rotate; waited += 50) {
+        if (lock.lock("xn"))
+            rotate = true;
+        else if (waited >= HISTORY_LOCK_WAIT_MS) {
+            lock.close();
+            lock = null;
+        }
+        else
+            sleep(50);
     }
     // The journal is best effort: a full or read-only flash must not stop
     // health from recording the event.
-    append_history(event);
+    append_history(event, rotate);
     let events = event_state();
     push(events, event);
     while (length(events) > 10)

@@ -8,7 +8,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB="$ROOT/forkop/files/usr/lib"
 HEALTH="$LIB/diagnostics/health.uc"
 WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT HUP INT TERM
+holder=""
+trap '[ -z "$holder" ] || kill "$holder" 2>/dev/null || true; rm -rf "$WORK"' EXIT HUP INT TERM
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 
 mkdir -p "$WORK/bin" "$WORK/etc" "$WORK/run"
@@ -72,5 +73,38 @@ done
 for tmp in "$WORK"/etc/*.tmp; do
   [ ! -e "$tmp" ] || fail "a rotation left its temporary file: ${tmp##*/}"
 done
+
+# ---- a lock held too long ----------------------------------------------------
+# A record waits for the lock a bounded time: its holder may sit in a slow
+# sync(1), and start, reload and autotune record their events synchronously.
+# Then the event is recorded without the lock and without a rotation, which
+# would replace the journal under the holder.
+: > "$FORKOP_HISTORY_FILE"
+i=0
+while [ "$i" -lt 200 ]; do
+  printf '{"kind":"reload","status":"success","timestamp":%d}\n' "$i" >> "$FORKOP_HISTORY_FILE"
+  i=$((i + 1))
+done
+LOCK="$FORKOP_RUNTIME_STATE_DIR/history.lock" READY="$WORK/holder.ready" \
+  ucode -e 'let fs = require("fs"); let f = fs.open(getenv("LOCK"), "a"); f.lock("x"); fs.writefile(getenv("READY"), "1"); sleep(30000);' &
+holder=$!
+n=0
+until [ -e "$WORK/holder.ready" ]; do
+  n=$((n + 1))
+  [ "$n" -lt 200 ] || fail "the lock holder did not start"
+  sleep 0.05
+done
+status=0
+FORKOP_HISTORY_LOCK_WAIT_MS=300 timeout 10 ucode -L "$LIB" "$HEALTH" record restore success || status=$?
+[ "$status" -eq 0 ] || fail "a record behind a held lock did not finish (status $status)"
+kill "$holder" 2>/dev/null || true
+wait "$holder" 2>/dev/null || true
+holder=""
+[ "$(kinds | tail -n 1)" = "restore:success:" ] || fail "a record behind a held lock was lost: $(kinds | tail -n 1)"
+[ "$(wc -l < "$FORKOP_HISTORY_FILE")" -eq 201 ] || fail "a record without the lock rotated the journal: $(wc -l < "$FORKOP_HISTORY_FILE") lines"
+# With the lock free again, the next record rotates.
+record reload failure
+[ "$(wc -l < "$FORKOP_HISTORY_FILE")" -le 150 ] || fail "the next record did not rotate the journal: $(wc -l < "$FORKOP_HISTORY_FILE") lines"
+[ "$(kinds | tail -n 2 | tr '\n' ' ')" = "restore:success: reload:failure: " ] || fail "the rotation lost records: $(kinds | tail -n 2 | tr '\n' ' ')"
 
 printf 'history_journal_append: PASS\n'

@@ -1712,15 +1712,21 @@ function write_crontab_text(text, current) {
     // BusyBox crontab ignores a failed copy into the crontab directory,
     // renames what it got over the crontab and exits 0: a nearly full
     // overlay leaves the crontab cut short or empty. Only a crontab that
-    // reads back as text counts. One that holds the new text cut short is
-    // this failed write: the previous one is put back (the space of the
-    // replaced crontab is free again). Anything else is a change someone
-    // else made since crontab ran, which putting the previous one back would
-    // erase: it stays, and the rewrite fails.
+    // reads back as text counts. One that still holds the previous text
+    // was not written at all (on a full overlay crontab cannot even create
+    // its copy, and still exits 0): nothing to put back. One that holds the
+    // new text cut short is this failed write: the previous one is put back
+    // (the space of the replaced crontab is free again). Anything else is a
+    // change someone else made since crontab ran, which putting the
+    // previous one back would erase: it stays, and the rewrite fails.
     let written = ok ? fs.readfile(CRONTAB_FILE) : null;
     if (ok && written !== as_string(text)) {
         ok = false;
-        if (!crontab_cut_short(written, text)) {
+        if (as_string(written) === as_string(current)) {
+            log_message("Could not write " + CRONTAB_FILE + " (is the overlay full?); " +
+                "it was left unchanged", "error");
+        }
+        else if (!crontab_cut_short(written, text)) {
             log_message("Could not write " + CRONTAB_FILE + ": another writer changed it meanwhile; " +
                 "its scheduled jobs were left as that writer saved them", "error");
         }

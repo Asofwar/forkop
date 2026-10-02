@@ -386,12 +386,18 @@ function cron_rewrite(enabled) {
     let ok = success([ CRONTAB, tmp ]);
     // BusyBox crontab ignores a failed copy into the crontab directory,
     // renames what it got over the crontab and exits 0: a nearly full overlay
-    // leaves the crontab cut short or empty. A crontab that holds the new text
+    // leaves the crontab cut short or empty. A crontab that still holds the
+    // previous text was not written at all (on a full overlay crontab cannot
+    // even create its copy): nothing to put back. One that holds the new text
     // cut short is this failed write: the previous one is put back (the space
     // of the replaced crontab is free again). Anything else is a change
     // someone else made since crontab ran: it stays.
     let written = ok ? fs.readfile(CRONTAB_FILE) : null;
     if (ok && written !== text) {
+        if (as_string(written) === existing) {
+            fs.unlink(tmp);
+            return { status: "failed", reason: "crontab_not_written" };
+        }
         if (written == null || length(written) >= length(text) || substr(text, 0, length(written)) !== written) {
             fs.unlink(tmp);
             return { status: "failed", reason: "crontab_changed" };
@@ -409,6 +415,7 @@ const CRON_FAILURES = {
     crontab_unreadable: "the crontab cannot be read",
     tempfile_unavailable: "the new crontab could not be staged in " + TMP_DIR,
     crontab_failed: "crontab failed",
+    crontab_not_written: "the crontab was not written (is the overlay full?); it was left unchanged",
     crontab_incomplete: "the crontab was cut short (is the overlay full?)",
     crontab_changed: "another writer changed the crontab meanwhile; it was left as that writer saved it"
 };

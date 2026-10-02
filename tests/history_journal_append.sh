@@ -7,9 +7,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB="$ROOT/forkop/files/usr/lib"
 HEALTH="$LIB/diagnostics/health.uc"
+# shellcheck source=tests/helpers/owned_processes.sh
+. "$ROOT/tests/helpers/owned_processes.sh"
 WORK="$(mktemp -d)"
 holder=""
-trap '[ -z "$holder" ] || kill "$holder" 2>/dev/null || true; rm -rf "$WORK"' EXIT HUP INT TERM
+trap '[ -z "$holder" ] || owned_kill TERM "$holder" || true; rm -rf "$WORK"' EXIT HUP INT TERM
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 
 mkdir -p "$WORK/bin" "$WORK/etc" "$WORK/run"
@@ -97,7 +99,7 @@ done
 status=0
 FORKOP_HISTORY_LOCK_WAIT_MS=300 timeout 10 ucode -L "$LIB" "$HEALTH" record restore success || status=$?
 [ "$status" -eq 0 ] || fail "a record behind a held lock did not finish (status $status)"
-kill "$holder" 2>/dev/null || true
+owned_kill TERM "$holder" || true
 wait "$holder" 2>/dev/null || true
 holder=""
 [ "$(kinds | tail -n 1)" = "restore:success:" ] || fail "a record behind a held lock was lost: $(kinds | tail -n 1)"

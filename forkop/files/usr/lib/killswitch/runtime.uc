@@ -204,6 +204,14 @@ function config_settings() {
     return object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));
 }
 
+// core/uci reads a configuration libuci cannot load (a parse error after a
+// hand edit, no cursor) as one without sections. Only one that was read can
+// show that no section is protected any more; migration always keeps the
+// settings section.
+function config_readable() {
+    return uci_core.load(CONFIG_NAME) && uci_core.exists(CONFIG_NAME + ".settings");
+}
+
 function section_protected(section) {
     section = object_or_empty(section);
     return bool_option(section, "enabled", true) &&
@@ -1076,8 +1084,15 @@ function sync_locked(reason) {
     let settings = config_settings();
     let sections = config_sections();
     let names = protected_section_names(sections);
-    if (length(names) == 0)
-        return protection_present() ? (teardown("no section has the kill-switch enabled") ? 0 : 1) : 0;
+    if (length(names) == 0) {
+        if (!protection_present())
+            return 0;
+        if (!config_readable()) {
+            record_error("the Forkop configuration could not be read; keeping the previous protection");
+            return 1;
+        }
+        return teardown("no section has the kill-switch enabled") ? 0 : 1;
+    }
 
     if (!live_table_present()) {
         record_error("Forkop runtime table " + LIVE_TABLE + " is not present; keeping the previous protection");

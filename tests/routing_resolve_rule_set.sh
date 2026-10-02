@@ -5,6 +5,10 @@ set -euo pipefail
 # ("sing-box rule-set match") about the local list file the generated config
 # names. A list it cannot ask about (remote, missing file, failing command,
 # a target that is not a plain host/address) stays undecidable: never guessed.
+#
+# The stand-in for sing-box (helpers/sing_box_rule_set_stub.uc) answers the
+# way the real binary does: a hit is printed on stderr ("match rules.[i]:"),
+# stdout stays empty and the exit status is 0 with or without a hit (UC-198).
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB="$ROOT_DIR/forkop/files/usr/lib"
@@ -13,24 +17,20 @@ trap 'rm -rf "$WORK"' EXIT HUP INT TERM
 
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 
-# Stub of "sing-box rule-set match -f <format> <path> <value>": a list file
-# holds one matching value per line; "!fail" makes the command fail.
 cat >"$WORK/sing-box" <<EOF
 #!/bin/sh
-printf '%s\n' "\$*" >>"$WORK/calls"
-[ "\$1 \$2 \$3" = "rule-set match -f" ] || exit 2
-[ "\$4" = binary ] || [ "\$4" = source ] || exit 2
-grep -qx '!fail' "\$5" && { echo "FATAL read rule-set" >&2; exit 1; }
-grep -qxF "\$6" "\$5" && echo "match rules.[0]: domain/domain_suffix=<binary>"
-exit 0
+exec ucode -- "$ROOT_DIR/tests/helpers/sing_box_rule_set_stub.uc" "\$@"
 EOF
 chmod +x "$WORK/sing-box"
 export FORKOP_RULESET_MATCH_BIN="$WORK/sing-box"
+export RULESET_STUB_CALLS="$WORK/calls"
 
-printf 'youtube.com\nwww.youtube.com\n' >"$WORK/youtube.srs"
-printf 'example.org\n' >"$WORK/other.srs"
-printf '203.0.113.7\n' >"$WORK/addresses.srs"
-printf '!fail\n' >"$WORK/broken.srs"
+# A "binary" list of the stand-in is "SRS" + source JSON.
+binary_list() { printf 'SRS\n%s\n' "$2" >"$WORK/$1"; }
+binary_list youtube.srs '{ "version": 3, "rules": [ { "domain_suffix": [ "youtube.com" ] } ] }'
+binary_list other.srs '{ "version": 3, "rules": [ { "domain": [ "example.org" ] } ] }'
+printf '%s\n' '{ "version": 3, "rules": [ { "ip_cidr": [ "203.0.113.7/32" ] } ] }' >"$WORK/addresses.json"
+printf 'not a rule-set\n' >"$WORK/broken.srs"
 
 cat >"$WORK/forkop" <<'EOF'
 config settings 'settings'
@@ -67,7 +67,7 @@ expect() { # name json want
 
 sets="[ { \"type\": \"local\", \"tag\": \"yt\", \"format\": \"binary\", \"path\": \"$WORK/youtube.srs\" },
   { \"type\": \"local\", \"tag\": \"other\", \"format\": \"binary\", \"path\": \"$WORK/other.srs\" },
-  { \"type\": \"local\", \"tag\": \"addresses\", \"format\": \"source\", \"path\": \"$WORK/addresses.srs\" },
+  { \"type\": \"local\", \"tag\": \"addresses\", \"format\": \"source\", \"path\": \"$WORK/addresses.json\" },
   { \"type\": \"local\", \"tag\": \"broken\", \"format\": \"binary\", \"path\": \"$WORK/broken.srs\" },
   { \"type\": \"local\", \"tag\": \"absent\", \"format\": \"binary\", \"path\": \"$WORK/absent.srs\" },
   { \"type\": \"remote\", \"tag\": \"remote\", \"format\": \"binary\", \"url\": \"https://lists.invalid/x.srs\" } ]"
@@ -104,7 +104,7 @@ expect static_hit "{ \"host\": \"youtube.com\", \"rule_set\": $sets, \"rules\": 
 # A real-address connection is matched by the address as well as the host.
 addr='{ "action": "route", "inbound": [ "tproxy-in" ], "rule_set": "addresses", "outbound": "youtube-out" }'
 expect address_hit "{ \"host\": \"plain.test\", \"ip\": \"203.0.113.7\", \"fakeip\": false, \"rule_set\": $sets, \"rules\": [ $addr ] }" "$zapret"
-grep -qx "rule-set match -f source $WORK/addresses.srs 203.0.113.7" "$WORK/calls" || fail "address_hit: the address was not asked"
+grep -qx "rule-set match -f source $WORK/addresses.json 203.0.113.7" "$WORK/calls" || fail "address_hit: the address was not asked"
 # A FakeIP connection reaches sing-box as the name: its address is not asked.
 expect fakeip_address "{ \"host\": \"plain.test\", \"ip\": \"198.18.0.9\", \"rule_set\": $sets, \"rules\": [ $addr ] }" \
     '{ "status": "decided", "reason": null, "rule": null, "section": null, "kind": "direct" }'
@@ -121,5 +121,17 @@ expect unsafe_host "{ \"host\": \"you\$(id)tube.com\", \"rule_set\": $sets, \"ru
 [ ! -s "$WORK/calls" ] || fail "unsafe_host: sing-box was called"
 # No list declaration at all (older callers): as before.
 expect no_declaration "{ \"host\": \"youtube.com\", \"rules\": [ $yt ] }" "$undecided"
+
+# The stand-in keeps the real output contract: the hit on stderr only.
+[ -z "$("$WORK/sing-box" rule-set match -f binary "$WORK/youtube.srs" youtube.com 2>/dev/null)" ] ||
+    fail "stub: a hit was printed on stdout"
+"$WORK/sing-box" rule-set match -f binary "$WORK/youtube.srs" youtube.com 2>&1 >/dev/null |
+    grep -q '^match rules\.\[0\]: ' || fail "stub: the hit was not printed on stderr"
+# Anything else sing-box prints is not an answer it is known to give:
+# undecidable, with or without a hit.
+export RULESET_STUB_NOISE='WARN[0000] an unexpected message'
+expect noise_with_hit "{ \"host\": \"youtube.com\", \"rule_set\": $sets, \"rules\": [ $yt ] }" "$undecided"
+expect noise_without_hit "{ \"host\": \"nothing.test\", \"rule_set\": $sets, \"rules\": [ $yt ] }" "$undecided"
+unset RULESET_STUB_NOISE
 
 echo "routing_resolve_rule_set: ok"

@@ -203,17 +203,31 @@ function local_rule_sets(config) {
     return result;
 }
 
+// The answer of "sing-box rule-set match": one line "match rules.[<i>]: ..."
+// per matching rule, printed with Go's builtin println, i.e. on stderr; no
+// line at all when nothing matches (the exit status is 0 either way). Any
+// other output is not an answer: "unknown".
+function rule_set_answer(output) {
+    let answer = "no";
+    for (let line in split(as_string(output), "\n")) {
+        if (line == "") continue;
+        if (substr(line, 0, 13) != "match rules.[") return "unknown";
+        answer = "match";
+    }
+    return answer;
+}
+
 // Whether a list holds the value, asked of sing-box itself: "match", "no",
-// or "unknown" when it cannot be asked (no local file, a failing command).
-// sing-box prints the matching rule and exits 0 either way.
+// or "unknown" when it cannot be asked (no local file, a failing command,
+// output that is not an answer).
 function rule_set_holds(entry, value) {
     if (entry == null || fs.stat(entry.path) == null) return "unknown";
     let pipe = fs.popen(join(" ", map([ RULESET_MATCH_BIN, "rule-set", "match", "-f", entry.format, entry.path, value ], shell_quote)) +
-        " 2>/dev/null", "r");
+        " 2>&1", "r");
     if (pipe == null) return "unknown";
     let output = as_string(pipe.read("all"));
     if (pipe.close() != 0) return "unknown";
-    return index(output, "match") >= 0 ? "match" : "no";
+    return rule_set_answer(output);
 }
 
 // The values a list is asked about: the name a FakeIP connection reaches

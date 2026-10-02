@@ -26,6 +26,8 @@ REAL_UCODE="$(command -v ucode)"
 WORK_DIR="$(mktemp -d)"
 # shellcheck source=tests/helpers/wait.sh
 . "$ROOT_DIR/tests/helpers/wait.sh"
+# shellcheck source=tests/helpers/case_groups.sh
+. "$ROOT_DIR/tests/helpers/case_groups.sh"
 
 actors=()
 cleanup() {
@@ -52,6 +54,9 @@ fail() {
   exit 1
 }
 
+# The fixture of a group of cases: stand-ins, locks and state under its
+# own $WORK_DIR.
+retry_fixture() {
 mkdir -p "$WORK_DIR/bin" "$WORK_DIR/run/forkop" "$WORK_DIR/tmp"
 printf 'forkop.settings=settings\n' >"$WORK_DIR/uci.state"
 
@@ -181,6 +186,7 @@ esac
 exec "$REAL_UCODE" "$@"
 SH
 chmod +x "$WORK_DIR/bin/"* "$WORK_DIR/rc"
+}
 
 initd() { "$REAL_UCODE" -L "$LIB" "$LIB/service/initd.uc" "$@"; }
 
@@ -287,6 +293,7 @@ started_once() {
   fi
 }
 
+cases_1() {
 # 1. An automatic start (boot, postinst, component restart: init.d start
 #    under procd) that loses the race for reload.lock is retried once the
 #    holder has released it. Autostart is off on this host: the deferred
@@ -326,7 +333,9 @@ retry_worker_running || fail "the deferred start scheduled no retry"
 initd cancel-scheduled-start-retry >/dev/null 2>&1 || fail "cancelling a scheduled start retry failed"
 release_reload_lock
 started_once "start deferred across init.d disable"
+}
 
+cases_2() {
 # 2. An explicit stop during the deferral wins: the deferred start does not
 #    run after the holder has released the lock.
 reset_case
@@ -358,7 +367,9 @@ wait_until 20 group_done "$START_ACTOR" || fail "the retried start is still at w
 no_event '^forkop start' || fail "a retried start ran after an explicit stop"
 [ ! -e "$WORK_DIR/runtime.up" ] || fail "Forkop runs after an explicit stop"
 [ ! -e "$STATE_DIR/start.retry" ] || fail "the stop left the deferred start pending"
+}
 
+cases_3() {
 # 2c. WAN-up during the deferral after a stop does not start Forkop either.
 reset_case
 hold_reload_lock
@@ -396,7 +407,9 @@ wait_until 15 start_deferred || fail "the WAN-up retry did not give up waiting f
 logged 'recovery attempt failed' && fail "a deferred WAN-up retry was logged as a failed recovery"
 release_reload_lock
 started_once "WAN-up retry"
+}
 
+cases_4() {
 # 4b. A start that runs while another start is deferred serves it: the
 #     deferred start's retry ends before that start releases reload.lock.
 #     Otherwise the retry, waiting for the lock, may take it next, find its
@@ -454,7 +467,9 @@ wait_until 10 test -e "$WORK_DIR/wait.status" || fail "start-and-wait kept waiti
 release_reload_lock
 wait_until 20 group_done "$START_ACTOR" || fail "the deferred start is still at work after the stop"
 no_event '^forkop start' || fail "a deferred start ran after an explicit stop"
+}
 
+cases_5() {
 # 6. A UI start: its job stays running and says that the start is deferred,
 #    then finishes as success once the retried start has run.
 export FORKOP_UI_STATE_DIR="$WORK_DIR/ui-state"
@@ -534,5 +549,21 @@ UI_JOB="$FORKOP_UI_SERVICE_ACTION_DIR/$job.json"
 wait_until 10 job_finished || fail "the UI stop job waited for a process that the stop left in the background: $(cat "$UI_JOB")"
 rm -f "$WORK_DIR/stop.background"
 grep -q '"success": *true' "$UI_JOB" || fail "the UI stop did not finish as success: $(cat "$UI_JOB")"
+}
+
+# The groups of cases run at once, each in a work directory of its own: the
+# start, its retry and the lock holder wait real (scaled) seconds, so one
+# after another they took a minute. The processes of a group are told
+# apart by its work and state directory (start_work_running).
+case_group() {
+  WORK_DIR="$(mktemp -d)"
+  EVENTS="$WORK_DIR/events"
+  actors=()
+  trap cleanup EXIT
+  trap 'exit 1' HUP INT TERM
+  retry_fixture
+  "cases_$1"
+}
+run_case_groups "$WORK_DIR/case-groups" case_group 1 2 3 4 5
 
 printf 'deferred start retry checks passed\n'

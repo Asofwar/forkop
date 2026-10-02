@@ -1425,24 +1425,25 @@ function dns_redirect(mode) {
 // loaded and the system's own tool), and the file is replaced only while it
 // holds what the edit read. A libuci commit would also commit what someone
 // staged for dhcp with `uci set` (UC-236). A file that someone else changed
-// meanwhile is read again.
+// meanwhile is read again. "detached", "absent" (dhcp does not name the
+// block list), or null when the edit failed.
 function detach_dns_servers_file() {
     for (let attempt = 1; attempt <= 5; attempt++) {
         let dhcp = uci_core.session("dhcp", DNSMASQ_CONFIG_FILE, UCI_CLI);
         if (dhcp == null)
-            return false;
+            return null;
         if (dhcp.get(DNSMASQ_SERVERSFILE_OPTION) != DNS_SERVERS_FILE) {
             dhcp.close();
-            return false;
+            return "absent";
         }
         if (dhcp.delete(DNSMASQ_SERVERSFILE_OPTION) && dhcp.commit())
-            return true;
+            return "detached";
         let conflict = dhcp.conflict();
         dhcp.close();
         if (!conflict)
-            return false;
+            return null;
     }
-    return false;
+    return null;
 }
 
 function lift_orphaned() {
@@ -1451,9 +1452,19 @@ function lift_orphaned() {
         run_quiet([ "nft", "delete", "table", "inet", KS_TABLE ]);
     let detached = detach_dns_servers_file();
     for (let path in [ DNS_SERVERS_FILE, DNS_BLOCKED_FILE, STANDBY_BLOCKED_FILE, EXEMPT_FILE, NFT_POLICY, LEGACY_NFT_INCLUDE ])
-        fs.unlink(path);
+        if (path != DNS_SERVERS_FILE || detached != null)
+            fs.unlink(path);
+    // dnsmasq does not start with a servers file that is gone: the block
+    // list that dhcp still names is emptied instead, which lifts its blocks
+    // all the same, and the option is left for the administrator.
+    if (detached == null) {
+        let emptied = fs.writefile(DNS_SERVERS_FILE, "") != null;
+        log_message("Kill-switch: could not detach the block list " + DNS_SERVERS_FILE + " from dnsmasq" +
+            (emptied ? "; it was emptied instead" : " or empty it") +
+            ". Remove option serversfile from dhcp.@dnsmasq[0]", "error");
+    }
     remove_exempt_configs(CACHE_DIR);
-    if (detached)
+    if (detached != "absent")
         run_quiet([ DNSMASQ_INIT, "restart" ]);
     // procd would keep the standby dnsmasq; this ends the watcher as well.
     run_quiet([ "ubus", "call", "service", "delete", sprintf("%J", { name: "forkop-killswitch" }) ]);

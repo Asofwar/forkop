@@ -1100,7 +1100,20 @@ function createEnvironment({
     handleKeydown() {},
   });
   const ui = {
-    DynamicList: uiAbstract.extend({}),
+    // ui.DynamicList: choices maps the values offered below the list (and
+    // the labels of its items) to their labels.
+    DynamicList: uiAbstract.extend({
+      getValue() {
+        return toArray(this.value);
+      },
+      clearChoices() {
+        this.choices = {};
+      },
+      addChoices(values, labels) {
+        this.choices ??= {};
+        for (const value of values) this.choices[value] = labels?.[value] ?? value;
+      },
+    }),
     Textarea: uiAbstract.extend({}),
     Dropdown: uiAbstract.extend({}),
     Select: uiAbstract.extend({}),

@@ -9403,11 +9403,13 @@ function createSectionContent(section) {
     writeSecondaryRulesetReferences(section_id, []);
   };
 
+  // The localized names of the lists (Stage 6.10), not the catalog's own
+  // (UC-226).
   hideSelectedRulesetChoices(
     builtInRulesetOption,
-    Object.entries(main.DOMAIN_LIST_OPTIONS).map(([value, label]) => ({
+    Object.keys(main.DOMAIN_LIST_OPTIONS).map((value) => ({
       value,
-      label: _(label),
+      label: main.domainListLabel(value),
     })),
   );
   hideSelectedRulesetChoices(

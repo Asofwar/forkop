@@ -154,6 +154,40 @@ for script in ipk-prerm apk-pre-upgrade apk-pre-deinstall sdk-prerm; do
   grep -Fq "$WORK_DIR/bin/forkop package_prerm" "$WORK_DIR/$script" || fail "could not read the $script package script"
 done
 
+# An SDK package never runs Package/forkop/prerm itself
+# (include/package-pack.mk): the ipk's prerm is "default_prerm $0 $@", which
+# sources it as prerm-pkg in a subshell (package/base-files/files/lib/
+# functions.sh), and the apk's pre-deinstall runs default_prerm and then the
+# same text without its #! line. Both run under /bin/sh.
+mkdir -p "$WORK_DIR/opkg-info"
+cp "$WORK_DIR/sdk-prerm" "$WORK_DIR/opkg-info/forkop.prerm-pkg"
+cat >"$WORK_DIR/functions.sh" <<'SH'
+default_prerm() {
+	[ -z "$pkgname" ] && local pkgname="$(basename ${1%.*})"
+	local ret=0
+	if [ -f "$OPKG_INFO/${pkgname}.prerm-pkg" ]; then
+		( . "$OPKG_INFO/${pkgname}.prerm-pkg" )
+		ret=$?
+	fi
+	return $ret
+}
+SH
+cat >"$WORK_DIR/opkg-info/forkop.prerm" <<'SH'
+#!/bin/sh
+. "$WORK_DIR/functions.sh"
+default_prerm $0 $@
+SH
+{
+  cat <<'SH'
+#!/bin/sh
+. "$WORK_DIR/functions.sh"
+export pkgname="forkop"
+default_prerm
+SH
+  sed '/^\s*#!/d' "$WORK_DIR/sdk-prerm"
+} >"$WORK_DIR/sdk-pre-deinstall"
+export OPKG_INFO="$WORK_DIR/opkg-info"
+
 # opkg runs the installed prerm as "prerm upgrade <new version>"; apk runs
 # the incoming package's pre-upgrade as "pre-upgrade <new> <old>".
 run_script() {
@@ -161,6 +195,13 @@ run_script() {
   shift
   : >"$WORK_DIR/cli.log"
   ucode "$WORK_DIR/$script" "$@" || fail "$script $* failed"
+}
+
+run_sh_script() {
+  local script="$1"
+  shift
+  : >"$WORK_DIR/cli.log"
+  sh "$script" "$@" || fail "$script $* failed"
 }
 
 # ---- opkg ----------------------------------------------------------------------
@@ -174,8 +215,24 @@ run_script ipk-prerm upgrade 1.0.31
 assert_lifted "downgrade to a release without the kill-switch (opkg)"
 
 arm
-run_script sdk-prerm upgrade 1.0.30
-assert_lifted "downgrade to a release without the kill-switch (SDK package)"
+run_sh_script "$WORK_DIR/opkg-info/forkop.prerm" upgrade 1.0.40
+grep -Fqx 'package_prerm upgrade 1.0.40' "$WORK_DIR/cli.log" ||
+  fail "the SDK prerm must pass the new version on: $(cat "$WORK_DIR/cli.log")"
+assert_kept "upgrade to a release with the kill-switch (SDK package, opkg)"
+
+run_sh_script "$WORK_DIR/opkg-info/forkop.prerm" upgrade 1.0.30
+assert_lifted "downgrade to a release without the kill-switch (SDK package, opkg)"
+
+arm
+run_sh_script "$WORK_DIR/opkg-info/forkop.prerm" remove
+grep -Fqx 'package_prerm remove' "$WORK_DIR/cli.log" || fail "the SDK prerm must reach package_prerm: $(cat "$WORK_DIR/cli.log")"
+assert_lifted "package removal (SDK package, opkg)"
+
+# apk passes the removed version; a pre-deinstall only ever removes.
+arm
+run_sh_script "$WORK_DIR/sdk-pre-deinstall" 1.0.40
+grep -Fqx 'package_prerm remove' "$WORK_DIR/cli.log" || fail "the SDK pre-deinstall must reach package_prerm: $(cat "$WORK_DIR/cli.log")"
+assert_lifted "package removal (SDK package, apk)"
 
 arm
 run_script ipk-prerm upgrade

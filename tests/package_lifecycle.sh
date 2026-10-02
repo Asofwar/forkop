@@ -49,8 +49,13 @@ fi
 if grep -n -E 'grep -q "105 forkop"|sed -i "/105 forkop|forkop_dont_touch_dhcp=.*uci|cp /etc/config/forkop|rm -f /tmp/luci-indexcache|killall -HUP rpcd' "$FORKOP_MAKEFILE" "$BUILD_SCRIPT" >/dev/null; then
   fail "package scripts must not keep backend/LuCI lifecycle business logic in shell"
 fi
-grep -Fq '#!/usr/bin/ucode' "$FORKOP_MAKEFILE" ||
-  fail "forkop Makefile package hooks must use ucode entrypoints"
+# OpenWrt sources the SDK package's prerm and postinst from /bin/sh
+# (default_prerm, default_postinst); killswitch_owner_package.sh runs the
+# prerm that way.
+for hook in prerm postinst; do
+  [ "$(awk -v start="define Package/forkop/$hook" '$0 == start { getline; print; exit }' "$FORKOP_MAKEFILE")" = '#!/bin/sh' ] ||
+    fail "forkop Makefile $hook must be a shell script: OpenWrt sources it from /bin/sh"
+done
 grep -Fq '/usr/bin/forkop package_prerm' "$FORKOP_MAKEFILE" ||
   fail "forkop Makefile prerm must delegate cleanup to package_prerm"
 grep -Fq '/usr/bin/forkop package_postinst' "$FORKOP_MAKEFILE" ||

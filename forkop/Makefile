@@ -40,19 +40,26 @@ define Build/Compile
 endef
 
 define Package/forkop/prerm
-#!/usr/bin/ucode
+#!/bin/sh
 
-// opkg runs "prerm upgrade <new version>" or "prerm remove": the new
-// version tells whether the incoming release can lift the kill-switch.
-let version = ARGV[1] || "";
-if (match(version, /^[A-Za-z0-9.~+_-]+$$/) == null)
-	version = "";
-if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "")
-	system("/usr/bin/forkop package_prerm " + (ARGV[0] || "") + " " + version + " >/dev/null 2>&1");
-
-exit(0);
+# OpenWrt never runs this file itself: the ipk's prerm sources it from
+# default_prerm, where opkg's "prerm remove" or "prerm upgrade <new
+# version>" arrive as $$2 and $$3, and apk appends it to the pre-deinstall
+# script, which runs only for a removal. The new version tells whether the
+# incoming release can lift the kill-switch.
+[ -n "$${IPKG_INSTROOT}" ] && exit 0
+forkop_action=remove
+forkop_version=
+if [ "$$2" = upgrade ]; then
+	forkop_action=upgrade
+	forkop_version="$$3"
+	case "$$forkop_version" in
+		*[!A-Za-z0-9.~+_-]*) forkop_version= ;;
+	esac
+fi
+/usr/bin/forkop package_prerm "$$forkop_action" $${forkop_version:+"$$forkop_version"} >/dev/null 2>&1
+exit 0
 endef
-
 define Package/forkop/postinst
 #!/bin/sh
 

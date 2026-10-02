@@ -31,6 +31,7 @@ let lock_held = false;
 let forkop_was_running = false;
 let last_logged_output = "";
 let forkop_stopped_for_sing_box_change = false;
+let forkop_stopped_for_upgrade = false;
 let managed_upgrade_marker_written = false;
 
 function as_string(value) {
@@ -364,6 +365,25 @@ function restart_forkop_after_failed_sing_box_change() {
         updates_log("Forkop did not start again after the failed sing-box component change", "error");
 }
 
+// Forkop's own stop for an in-app upgrade is followed by a start. When the
+// upgrade fails after that stop, nothing else brings back the Forkop that was
+// running: a reload does not start a stopped runtime (D-15). It is started
+// here and its start awaited (UC-196, UC-013), unless the package scripts or
+// the rollback already did. The upgrade marker names no transition any more,
+// and a stale one would refuse this start (UC-217). Only a start: the stop of
+// an init.d restart would be recorded as the user's.
+function restart_forkop_after_failed_upgrade() {
+    if (!forkop_stopped_for_upgrade || !forkop_was_running || !file_exists(SERVICE_INIT))
+        return;
+    forkop_stopped_for_upgrade = false;
+    if (forkop_status_running_with_timeout())
+        return;
+    remove_managed_upgrade_sing_box_marker();
+    updates_log("Starting Forkop again after the failed Forkop upgrade");
+    if (!forkop_start_and_wait("start"))
+        updates_log("Forkop did not start again after the failed Forkop upgrade", "error");
+}
+
 function action_success(component, action, message, current_version, latest_version, changed, status, release_url) {
     updates_response(true, component, action, message, current_version, latest_version, changed || 0, status || "", release_url || "");
     cleanup_action();
@@ -373,6 +393,7 @@ function action_success(component, action, message, current_version, latest_vers
 function action_fail(component, action, message, current_version, latest_version, status, release_url) {
     updates_log(message, "error");
     restart_forkop_after_failed_sing_box_change();
+    restart_forkop_after_failed_upgrade();
     updates_response(false, component, action, message, current_version || "", latest_version || "", 0, status || "", release_url || "");
     cleanup_action();
     exit(1);
@@ -2159,23 +2180,19 @@ function forkop_recovery_files(with_i18n, extension) {
     return files;
 }
 
+// The service state from before the upgrade. Stopping a Forkop that the
+// package scripts started is Forkop's own stop for the upgrade, not the
+// user's (D-15); a start is awaited (UC-013).
 function restore_forkop_opkg_service(was_running) {
     if (!was_running) {
         if (!forkop_status_running_with_timeout())
             return true;
-        return command_success_from_args([ SERVICE_INIT, "stop" ]) &&
+        return command_success_from_args(forkop_stop_for_component_change_args()) &&
             !forkop_status_running_with_timeout();
     }
     if (forkop_status_running_with_timeout())
         return true;
-    if (!command_success_from_args([ SERVICE_INIT, "start" ]))
-        return false;
-    for (let attempt = 0; attempt < 45; attempt++) {
-        if (forkop_status_running_with_timeout())
-            return true;
-        command_success_from_args([ "sleep", "4" ]);
-    }
-    return false;
+    return forkop_start_and_wait("start");
 }
 
 function finish_forkop_opkg_recovery(service_state) {
@@ -2252,7 +2269,11 @@ function forkop_package_set_space_error(new_files, staged_files) {
     return "";
 }
 
-function install_forkop_package_set(latest_version, backend_file, app_file, i18n_file) {
+// Every refusal of the upgrade, before Forkop is stopped for it (UC-196):
+// the installed set, the previous release and its staging, the dry run of
+// both sets and the free space. Nothing is installed yet; the staged set has
+// no recovery marker until install_forkop_package_set records one.
+function prepare_forkop_package_set(backend_file, app_file, i18n_file) {
     let with_i18n = i18n_file != "";
     if (file_exists(FORKOP_OPKG_RECOVERY_DIR + "/pending"))
         return "Forkop package-set recovery is pending; a fresh component action is required";
@@ -2295,6 +2316,24 @@ function install_forkop_package_set(latest_version, backend_file, app_file, i18n
         command_success_from_args([ "rm", "-rf", FORKOP_OPKG_RECOVERY_DIR ]);
         return space_error;
     }
+    return "";
+}
+
+// A staged set that no recovery marker claims is dropped with the action
+// that staged it: nothing was installed from it.
+function discard_staged_forkop_package_set() {
+    if (file_exists(FORKOP_OPKG_RECOVERY_DIR) && !file_exists(FORKOP_OPKG_RECOVERY_DIR + "/pending"))
+        command_success_from_args([ "rm", "-rf", FORKOP_OPKG_RECOVERY_DIR ]);
+}
+
+// The set that prepare_forkop_package_set staged and checked, installed
+// once Forkop is stopped for it, and rolled back to the staged previous
+// release when the install leaves it incomplete.
+function install_forkop_package_set(latest_version, backend_file, app_file, i18n_file) {
+    let with_i18n = i18n_file != "";
+    let new_files = [ backend_file, app_file ];
+    if (with_i18n)
+        push(new_files, i18n_file);
     let marker_tmp = FORKOP_OPKG_RECOVERY_DIR + "/pending.new";
     if (!write_file(marker_tmp, FORKOP_VERSION + "\t" + latest_version + "\t" + (with_i18n ? "1" : "0") + "\t" + (forkop_was_running ? "1" : "0") + "\n") ||
         !fs.rename(marker_tmp, FORKOP_OPKG_RECOVERY_DIR + "/pending")) {
@@ -2410,16 +2449,22 @@ function upgrade_bounded_stop(script) {
         "( sleep " + seconds + "; kill $pid 2>/dev/null || true ) & watcher=$!; " +
         "wait $pid 2>/dev/null; rc=$?; kill $watcher 2>/dev/null || true; " +
         "wait $watcher 2>/dev/null || true; exit $rc";
-    return command_status("sh -c " + shell_quote(command)) == 0;
+    return command_status("sh -c " + shell_quote(command));
 }
 
 // The package manager replaces the binary underneath a running sing-box, and
 // the new Forkop then waits for a runtime that can no longer be identified.
 // Retire the old processes first, but only ones procd demonstrably owns: an
-// unrelated sing-box must never be signalled from here.
+// unrelated sing-box must never be signalled from here. A refused stop of
+// Forkop (status 2: another sing-box makes the ownership of its runtime
+// ambiguous) leaves it running untouched: the upgrade does not go on, and its
+// failure does not start the Forkop it never stopped (UC-196, UC-197).
 function stop_old_sing_box_before_forkop_upgrade() {
-    if (file_exists(SERVICE_INIT))
-        upgrade_bounded_stop(SERVICE_INIT);
+    if (file_exists(SERVICE_INIT)) {
+        if (upgrade_bounded_stop(SERVICE_INIT) == 2)
+            return false;
+        forkop_stopped_for_upgrade = true;
+    }
 
     let processes = upgrade_sing_box_processes();
     if (processes == null)
@@ -2524,16 +2569,26 @@ function install_forkop(requested_version) {
         updates_log("Forkop configuration backup: " + backup);
     }
 
+    // Every refusal comes before Forkop is stopped for the upgrade: a refused
+    // upgrade leaves Forkop running (UC-196).
+    let error = prepare_forkop_package_set(backend_file, app_file, i18n_file);
+    if (error != "")
+        action_fail("forkop", "install", error, FORKOP_VERSION, latest_version);
+
     // Capture the exact managed sing-box process before apk/opkg runs the
     // currently installed package's prerm.
     capture_managed_upgrade_sing_box_marker();
 
-    if (!stop_old_sing_box_before_forkop_upgrade())
+    if (!stop_old_sing_box_before_forkop_upgrade()) {
+        discard_staged_forkop_package_set();
         action_fail("forkop", "install", "Old sing-box processes have ambiguous ownership or did not stop", FORKOP_VERSION, latest_version);
+    }
 
-    let error = install_forkop_package_set(latest_version, backend_file, app_file, i18n_file);
+    error = install_forkop_package_set(latest_version, backend_file, app_file, i18n_file);
     if (error != "")
         action_fail("forkop", "install", error, FORKOP_VERSION, latest_version);
+    // The new release is installed: its start follows below.
+    forkop_stopped_for_upgrade = false;
 
     remove_file("/var/luci-indexcache");
     command_success("rm -f /var/luci-indexcache* /tmp/luci-indexcache* 2>/dev/null");

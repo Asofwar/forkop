@@ -386,9 +386,16 @@ function cron_write(enabled) {
     let ok = success([ CRONTAB, tmp ]);
     // BusyBox crontab ignores a failed copy into the crontab directory,
     // renames what it got over the crontab and exits 0: a nearly full overlay
-    // leaves the crontab cut short or empty. The previous one is put back then
-    // (the space of the replaced crontab is free again).
-    if (ok && fs.readfile(CRONTAB_FILE) !== text) {
+    // leaves the crontab cut short or empty. A crontab that holds the new text
+    // cut short is this failed write: the previous one is put back (the space
+    // of the replaced crontab is free again). Anything else is a change
+    // someone else made since crontab ran: it stays.
+    let written = ok ? fs.readfile(CRONTAB_FILE) : null;
+    if (ok && written !== text) {
+        if (written == null || length(written) >= length(text) || substr(text, 0, length(written)) !== written) {
+            fs.unlink(tmp);
+            return { status: "failed", reason: "crontab_changed" };
+        }
         let restored = fs.writefile(tmp, existing) != null && fs.readfile(tmp) === existing &&
             success([ CRONTAB, tmp ]) && fs.readfile(CRONTAB_FILE) === existing;
         fs.unlink(tmp);

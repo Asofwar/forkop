@@ -1684,6 +1684,14 @@ function read_crontab() {
 
 // crontab rewrites the file on flash and signals crond: only when Forkop's
 // jobs change, not on every start and stop (UC-159).
+// written is what a write of text left when it was cut short: a part of
+// text from its start (the whole crontab is written in one copy). A crontab
+// that is gone is not: crontab never removes it.
+function crontab_cut_short(written, text) {
+    text = as_string(text);
+    return written != null && length(written) < length(text) && substr(text, 0, length(written)) === written;
+}
+
 function write_crontab_text(text, current) {
     if (as_string(text) === as_string(current))
         return true;
@@ -1704,15 +1712,25 @@ function write_crontab_text(text, current) {
     // BusyBox crontab ignores a failed copy into the crontab directory,
     // renames what it got over the crontab and exits 0: a nearly full
     // overlay leaves the crontab cut short or empty. Only a crontab that
-    // reads back as text counts; otherwise the previous one is put back (the
-    // space of the replaced crontab is free again).
-    if (ok && fs.readfile(CRONTAB_FILE) !== as_string(text)) {
+    // reads back as text counts. One that holds the new text cut short is
+    // this failed write: the previous one is put back (the space of the
+    // replaced crontab is free again). Anything else is a change someone
+    // else made since crontab ran, which putting the previous one back would
+    // erase: it stays, and the rewrite fails.
+    let written = ok ? fs.readfile(CRONTAB_FILE) : null;
+    if (ok && written !== as_string(text)) {
         ok = false;
-        let restored = fs.writefile(tmp, as_string(current)) != null && fs.readfile(tmp) === as_string(current) &&
-            command_success_from_args([ "crontab", tmp ]) && fs.readfile(CRONTAB_FILE) === as_string(current);
-        log_message("Could not write " + CRONTAB_FILE + (restored ?
-            "; the previous scheduled jobs were put back" :
-            "; the scheduled jobs may be incomplete"), "error");
+        if (!crontab_cut_short(written, text)) {
+            log_message("Could not write " + CRONTAB_FILE + ": another writer changed it meanwhile; " +
+                "its scheduled jobs were left as that writer saved them", "error");
+        }
+        else {
+            let restored = fs.writefile(tmp, as_string(current)) != null && fs.readfile(tmp) === as_string(current) &&
+                command_success_from_args([ "crontab", tmp ]) && fs.readfile(CRONTAB_FILE) === as_string(current);
+            log_message("Could not write " + CRONTAB_FILE + (restored ?
+                "; the previous scheduled jobs were put back" :
+                "; the scheduled jobs may be incomplete"), "error");
+        }
     }
     fs.unlink(tmp);
     return ok;

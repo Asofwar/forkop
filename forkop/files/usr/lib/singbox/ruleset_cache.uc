@@ -323,14 +323,20 @@ function entry_is_due(entry, runtime_manifest) {
     return now - last >= interval;
 }
 
+// Every start and reload materializes the config: a manifest that already
+// holds the text stays as it is, no flash write. A replacement is read back
+// before the rename: a full overlay takes a small write and keeps none of it
+// (UC-241).
 function write_manifest(manifest) {
+    let text = sprintf("%J\n", manifest);
+    if (fs.readfile(MANIFEST_PATH) === text)
+        return true;
     let stamp = clock();
     let temporary = MANIFEST_PATH + "." + as_string(stamp[0]) + "." + as_string(stamp[1]) + ".tmp";
     fs.unlink(temporary);
-    let text = sprintf("%J\n", manifest);
     let bytes = length(text) + 4095;
     if (!persistent_cache_can_store(MANIFEST_PATH, bytes) || fs.writefile(temporary, text) == null ||
-        !command_success([ "chmod", "0600", temporary ])) {
+        fs.readfile(temporary) !== text || !command_success([ "chmod", "0600", temporary ])) {
         fs.unlink(temporary);
         return false;
     }

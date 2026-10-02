@@ -22,7 +22,7 @@
     "call": "%d connections now",
     "key": "%d connections now",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:316"
+      "src/forkop/tabs/dashboard/overview.ts:326"
     ]
   },
   {
@@ -88,21 +88,21 @@
     "call": "%d node groups",
     "key": "%d node groups",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:309"
+      "src/forkop/tabs/dashboard/overview.ts:319"
     ]
   },
   {
     "call": "%d rules",
     "key": "%d rules",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:307"
+      "src/forkop/tabs/dashboard/overview.ts:317"
     ]
   },
   {
     "call": "%d rules · %d node groups",
     "key": "%d rules · %d node groups",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:303"
+      "src/forkop/tabs/dashboard/overview.ts:313"
     ]
   },
   {
@@ -256,28 +256,28 @@
     "call": "A configuration change is being applied. Traffic that needs DPI bypass may be blocked until it finishes.",
     "key": "A configuration change is being applied. Traffic that needs DPI bypass may be blocked until it finishes.",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:114"
+      "src/forkop/tabs/dashboard/overview.ts:124"
     ]
   },
   {
     "call": "A configuration change was not confirmed. Traffic that needs DPI bypass may be blocked; see the recovery details for the next step.",
     "key": "A configuration change was not confirmed. Traffic that needs DPI bypass may be blocked; see the recovery details for the next step.",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:118"
+      "src/forkop/tabs/dashboard/overview.ts:128"
     ]
   },
   {
     "call": "A configuration restore did not finish: restore the last known good snapshot to finish it.",
     "key": "A configuration restore did not finish: restore the last known good snapshot to finish it.",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:401"
+      "src/forkop/tabs/dashboard/overview.ts:411"
     ]
   },
   {
     "call": "A configuration restore did not finish. Traffic that needs DPI bypass stays blocked until you restore the last known good snapshot.",
     "key": "A configuration restore did not finish. Traffic that needs DPI bypass stays blocked until you restore the last known good snapshot.",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:110"
+      "src/forkop/tabs/dashboard/overview.ts:120"
     ]
   },
   {
@@ -298,14 +298,14 @@
     "call": "A failed change left the DPI guard in place: restart Forkop X to remove it.",
     "key": "A failed change left the DPI guard in place: restart Forkop X to remove it.",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:387"
+      "src/forkop/tabs/dashboard/overview.ts:397"
     ]
   },
   {
     "call": "A failed change left the DPI guard in place. Traffic that needs DPI bypass stays blocked until you restart Forkop X.",
     "key": "A failed change left the DPI guard in place. Traffic that needs DPI bypass stays blocked until you restart Forkop X.",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:106"
+      "src/forkop/tabs/dashboard/overview.ts:116"
     ]
   },
   {
@@ -773,7 +773,7 @@
     "call": "An interrupted package update is being recovered. Avoid changes until it completes.",
     "key": "An interrupted package update is being recovered. Avoid changes until it completes.",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:143"
+      "src/forkop/tabs/dashboard/overview.ts:153"
     ]
   },
   {
@@ -916,8 +916,8 @@
     "call": "Applying changes…",
     "key": "Applying changes…",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:182",
-      "src/forkop/tabs/dashboard/overview.ts:235"
+      "src/forkop/tabs/dashboard/overview.ts:192",
+      "src/forkop/tabs/dashboard/overview.ts:245"
     ]
   },
   {
@@ -1065,14 +1065,14 @@
     "call": "Autostart is off",
     "key": "Autostart is off",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:275"
+      "src/forkop/tabs/dashboard/overview.ts:285"
     ]
   },
   {
     "call": "Autostart is on",
     "key": "Autostart is on",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:275"
+      "src/forkop/tabs/dashboard/overview.ts:285"
     ]
   },
   {
@@ -1585,7 +1585,7 @@
     "call": "Change in progress",
     "key": "Change in progress",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:409"
+      "src/forkop/tabs/dashboard/overview.ts:419"
     ]
   },
   {
@@ -1835,7 +1835,7 @@
       "src/forkop/ui/status.ts:140",
       "src/forkop/tabs/autotune/initController.ts:993",
       "src/forkop/tabs/autotune/initController.ts:1215",
-      "src/forkop/tabs/dashboard/overview.ts:229",
+      "src/forkop/tabs/dashboard/overview.ts:239",
       "src/forkop/tabs/diagnostic/connectivityMatrix.ts:104",
       "src/forkop/tabs/diagnostic/dpiPlayground.ts:48",
       "src/forkop/tabs/diagnostic/siteCheck.ts:243",
@@ -1853,17 +1853,17 @@
     "call": "Checks failed",
     "key": "Checks failed",
     "places": [
-      "src/forkop/tabs/diagnostic/helpers/getMeta.ts:26",
-      "src/forkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:10"
+      "src/forkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:10",
+      "src/forkop/tabs/diagnostic/helpers/getMeta.ts:26"
     ]
   },
   {
     "call": "Checks passed",
     "key": "Checks passed",
     "places": [
-      "src/forkop/tabs/diagnostic/helpers/getMeta.ts:13",
       "src/forkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:23",
-      "src/forkop/tabs/diagnostic/checks/runFakeIPCheck.ts:43"
+      "src/forkop/tabs/diagnostic/checks/runFakeIPCheck.ts:43",
+      "src/forkop/tabs/diagnostic/helpers/getMeta.ts:13"
     ]
   },
   {
@@ -2711,7 +2711,7 @@
     "call": "Diagnostics has not been run yet",
     "key": "Diagnostics has not been run yet",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:283"
+      "src/forkop/tabs/dashboard/overview.ts:293"
     ]
   },
   {
@@ -3276,7 +3276,7 @@
     "call": "DPI protection is holding traffic",
     "key": "DPI protection is holding traffic",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:135"
+      "src/forkop/tabs/dashboard/overview.ts:145"
     ]
   },
   {
@@ -4009,7 +4009,7 @@
     "call": "Forkop X is running",
     "key": "Forkop X is running",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:251"
+      "src/forkop/tabs/dashboard/overview.ts:261"
     ]
   },
   {
@@ -4044,8 +4044,8 @@
     "call": "Forkop X kept or restored the previous configuration.",
     "key": "Forkop X kept or restored the previous configuration.",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:152",
-      "src/forkop/tabs/dashboard/overview.ts:431"
+      "src/forkop/tabs/dashboard/overview.ts:162",
+      "src/forkop/tabs/dashboard/overview.ts:441"
     ]
   },
   {
@@ -4066,7 +4066,7 @@
     "call": "Forkop X needs attention",
     "key": "Forkop X needs attention",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:238"
+      "src/forkop/tabs/dashboard/overview.ts:248"
     ]
   },
   {
@@ -4109,7 +4109,7 @@
     "call": "Forkop X stays stopped until you start it: reloads, restores and updates do not start it.",
     "key": "Forkop X stays stopped until you start it: reloads, restores and updates do not start it.",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:188"
+      "src/forkop/tabs/dashboard/overview.ts:198"
     ]
   },
   {
@@ -4123,14 +4123,14 @@
     "call": "Forkop X was not started since the router booted: reloads, restores and updates do not start it.",
     "key": "Forkop X was not started since the router booted: reloads, restores and updates do not start it.",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:200"
+      "src/forkop/tabs/dashboard/overview.ts:210"
     ]
   },
   {
     "call": "Forkop X was not stopped by the user: its start failed or it stopped unexpectedly.",
     "key": "Forkop X was not stopped by the user: its start failed or it stopped unexpectedly.",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:217"
+      "src/forkop/tabs/dashboard/overview.ts:227"
     ]
   },
   {
@@ -4285,7 +4285,7 @@
     "call": "Health state unavailable",
     "key": "Health state unavailable",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:258"
+      "src/forkop/tabs/dashboard/overview.ts:268"
     ]
   },
   {
@@ -4424,7 +4424,7 @@
     "call": "If the VPN kill-switch is enabled, its sections stay blocked until Forkop X is started.",
     "key": "If the VPN kill-switch is enabled, its sections stay blocked until Forkop X is started.",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:163"
+      "src/forkop/tabs/dashboard/overview.ts:173"
     ]
   },
   {
@@ -5097,8 +5097,8 @@
     "call": "Issues detected",
     "key": "Issues detected",
     "places": [
-      "src/forkop/tabs/diagnostic/helpers/getMeta.ts:20",
-      "src/forkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:17"
+      "src/forkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:17",
+      "src/forkop/tabs/diagnostic/helpers/getMeta.ts:20"
     ]
   },
   {
@@ -5301,7 +5301,7 @@
     "call": "Last diagnostics: %s",
     "key": "Last diagnostics: %s",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:279"
+      "src/forkop/tabs/dashboard/overview.ts:289"
     ]
   },
   {
@@ -5351,7 +5351,7 @@
     "call": "Last reload: %s",
     "key": "Last reload: %s",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:351"
+      "src/forkop/tabs/dashboard/overview.ts:361"
     ]
   },
   {
@@ -5955,7 +5955,7 @@
     "call": "no data",
     "key": "no data",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:332"
+      "src/forkop/tabs/dashboard/overview.ts:342"
     ]
   },
   {
@@ -6044,14 +6044,14 @@
     "call": "No recovery needed",
     "key": "No recovery needed",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:437"
+      "src/forkop/tabs/dashboard/overview.ts:447"
     ]
   },
   {
     "call": "No reload recorded yet",
     "key": "No reload recorded yet",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:358",
+      "src/forkop/tabs/dashboard/overview.ts:368",
       "src/forkop/tabs/history/model.ts:156"
     ]
   },
@@ -6307,7 +6307,7 @@
     "key": "Not running",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:143",
-      "src/forkop/tabs/dashboard/overview.ts:214",
+      "src/forkop/tabs/dashboard/overview.ts:224",
       "src/forkop/tabs/diagnostic/diagnostic.store.ts:131",
       "src/forkop/tabs/diagnostic/initController.ts:106",
       "src/forkop/tabs/diagnostic/initController.ts:330",
@@ -6328,7 +6328,7 @@
     "key": "Not started",
     "places": [
       "src/forkop/ui/status.ts:137",
-      "src/forkop/tabs/dashboard/overview.ts:198"
+      "src/forkop/tabs/dashboard/overview.ts:208"
     ]
   },
   {
@@ -6648,8 +6648,8 @@
     "call": "Package recovery has not finished",
     "key": "Package recovery has not finished",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:142",
-      "src/forkop/tabs/dashboard/overview.ts:421"
+      "src/forkop/tabs/dashboard/overview.ts:152",
+      "src/forkop/tabs/dashboard/overview.ts:431"
     ]
   },
   {
@@ -7015,7 +7015,7 @@
     "call": "Protection is active",
     "key": "Protection is active",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:413"
+      "src/forkop/tabs/dashboard/overview.ts:423"
     ]
   },
   {
@@ -7112,7 +7112,7 @@
     "call": "Recovery details",
     "key": "Recovery details",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:130",
+      "src/forkop/tabs/dashboard/overview.ts:140",
       "src/forkop/tabs/dashboard/overviewCards.ts:291"
     ]
   },
@@ -7368,7 +7368,7 @@
     "call": "Restart required",
     "key": "Restart required",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:383"
+      "src/forkop/tabs/dashboard/overview.ts:393"
     ]
   },
   {
@@ -7438,7 +7438,7 @@
     "call": "Restore required",
     "key": "Restore required",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:397"
+      "src/forkop/tabs/dashboard/overview.ts:407"
     ]
   },
   {
@@ -7710,7 +7710,7 @@
     "call": "Router DNS is not pointed to Forkop X",
     "key": "Router DNS is not pointed to Forkop X",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:269"
+      "src/forkop/tabs/dashboard/overview.ts:279"
     ]
   },
   {
@@ -7731,7 +7731,7 @@
     "call": "Routing is paused while Forkop X is stopped.",
     "key": "Routing is paused while Forkop X is stopped.",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:314"
+      "src/forkop/tabs/dashboard/overview.ts:324"
     ]
   },
   {
@@ -8315,14 +8315,14 @@
     "call": "sing-box is not running",
     "key": "sing-box is not running",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:265"
+      "src/forkop/tabs/dashboard/overview.ts:275"
     ]
   },
   {
     "call": "sing-box is running",
     "key": "sing-box is running",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:264"
+      "src/forkop/tabs/dashboard/overview.ts:274"
     ]
   },
   {
@@ -8442,7 +8442,7 @@
     "call": "Snapshots: %d",
     "key": "Snapshots: %d",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:362"
+      "src/forkop/tabs/dashboard/overview.ts:372"
     ]
   },
   {
@@ -8626,7 +8626,7 @@
     "call": "Starting…",
     "key": "Starting…",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:183",
+      "src/forkop/tabs/dashboard/overview.ts:193",
       "src/forkop/tabs/dashboard/overviewCards.ts:155",
       "src/forkop/tabs/shared/startService.ts:28",
       "src/forkop/tabs/shared/startService.ts:40"
@@ -8646,9 +8646,9 @@
     "call": "State unavailable",
     "key": "State unavailable",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:232",
-      "src/forkop/tabs/dashboard/overview.ts:343",
-      "src/forkop/tabs/dashboard/overview.ts:369"
+      "src/forkop/tabs/dashboard/overview.ts:242",
+      "src/forkop/tabs/dashboard/overview.ts:353",
+      "src/forkop/tabs/dashboard/overview.ts:379"
     ]
   },
   {
@@ -8699,7 +8699,7 @@
     "key": "Stopped by user",
     "places": [
       "src/forkop/ui/status.ts:136",
-      "src/forkop/tabs/dashboard/overview.ts:186"
+      "src/forkop/tabs/dashboard/overview.ts:196"
     ]
   },
   {
@@ -9265,7 +9265,7 @@
     "call": "The last change was rolled back automatically.",
     "key": "The last change was rolled back automatically.",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:254"
+      "src/forkop/tabs/dashboard/overview.ts:264"
     ]
   },
   {
@@ -9295,8 +9295,8 @@
     "call": "The last configuration change failed",
     "key": "The last configuration change failed",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:151",
-      "src/forkop/tabs/dashboard/overview.ts:428"
+      "src/forkop/tabs/dashboard/overview.ts:161",
+      "src/forkop/tabs/dashboard/overview.ts:438"
     ]
   },
   {
@@ -10226,9 +10226,9 @@
     "call": "Traffic goes through the router without Forkop X.",
     "key": "Traffic goes through the router without Forkop X.",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:193",
-      "src/forkop/tabs/dashboard/overview.ts:205",
-      "src/forkop/tabs/dashboard/overview.ts:224"
+      "src/forkop/tabs/dashboard/overview.ts:203",
+      "src/forkop/tabs/dashboard/overview.ts:215",
+      "src/forkop/tabs/dashboard/overview.ts:234"
     ]
   },
   {

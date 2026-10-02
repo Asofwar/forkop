@@ -19,7 +19,11 @@ const NFT_BATCH_FILE = getenv("FORKOP_NFT_BATCH_FILE") || "";
 // is most of an import on the router. The version changes with the format.
 const SUBNET_CACHE_DIR = getenv("FORKOP_NFT_SUBNET_CACHE_DIR") || "/var/run/forkop/nft-subnet-cache";
 const SUBNET_CACHE_VERSION = "1";
+// Bounded by entries and by size: the tmpfs is RAM and holds the candidate
+// batch, config.json and the list downloads too (UC-222). An entry is about
+// the size of its rule set's JSON (100k subnets: 1.7 MB).
 const SUBNET_CACHE_MAX = 32;
+const SUBNET_CACHE_MAX_BYTES = int(getenv("FORKOP_NFT_SUBNET_CACHE_MAX_BYTES") || "4194304");
 // Test-only candidate failure injection. Empty in production.
 const NFT_CANDIDATE_FAIL_PHASE = getenv("FORKOP_NFT_CANDIDATE_FAIL_PHASE") || "";
 // Route table registry; the same override service/package.uc honours. Tests
@@ -2215,38 +2219,54 @@ function nft_prepared_family_valid(p) {
         type(p.v6.chunks) == "array" && type(p.v6.invalid) == "array";
 }
 
+// A hit is a use: the entry's time moves on, so the entries the reloads
+// keep importing are not evicted before superseded ones (UC-222).
 function nft_subnet_cache_read(key) {
+    let path = SUBNET_CACHE_DIR + "/" + key + ".json";
     let data = null;
-    try { data = json(fs.readfile(SUBNET_CACHE_DIR + "/" + key + ".json") || ""); } catch (e) { data = null; }
+    try { data = json(fs.readfile(path) || ""); } catch (e) { data = null; }
     if (type(data) != "object" || !("unscoped" in data) || !("scoped" in data))
         return null;
     for (let part in [ data.unscoped, data.scoped ])
         if (part != null && !nft_prepared_family_valid(part))
             return null;
+    run_args_quiet([ "touch", "-c", path ]);
     return data;
 }
 
 // Best effort: a failed write only means the next import prepares again.
-// The oldest entries go when the cache grows beyond SUBNET_CACHE_MAX.
+// The least recently used entries go when the cache grows beyond
+// SUBNET_CACHE_MAX entries or SUBNET_CACHE_MAX_BYTES; an entry larger than
+// the whole limit is not kept.
 function nft_subnet_cache_write(key, prepared) {
+    let data = sprintf("%J", prepared);
+    if (length(data) > SUBNET_CACHE_MAX_BYTES)
+        return;
     if (!fs.stat(SUBNET_CACHE_DIR) && !run_args_quiet([ "mkdir", "-p", SUBNET_CACHE_DIR ]))
         return;
     let path = SUBNET_CACHE_DIR + "/" + key + ".json";
-    if (fs.writefile(path + ".tmp", sprintf("%J", prepared)) == null || !fs.rename(path + ".tmp", path)) {
+    if (fs.writefile(path + ".tmp", data) == null || !fs.rename(path + ".tmp", path)) {
         fs.unlink(path + ".tmp");
         return;
     }
     let entries = [];
+    let bytes = 0;
     for (let name in fs.lsdir(SUBNET_CACHE_DIR) || []) {
         let st = match(name, /\.json$/) != null ? fs.stat(SUBNET_CACHE_DIR + "/" + name) : null;
-        if (st != null)
-            push(entries, { name, mtime: st.mtime });
+        if (st != null) {
+            push(entries, { name, mtime: st.mtime, size: st.size });
+            bytes += st.size;
+        }
     }
-    if (length(entries) <= SUBNET_CACHE_MAX)
-        return;
     entries = sort(entries, (a, b) => a.mtime - b.mtime);
-    for (let i = 0; i < length(entries) - SUBNET_CACHE_MAX; i++)
+    let count = length(entries);
+    for (let i = 0; i < length(entries) && (count > SUBNET_CACHE_MAX || bytes > SUBNET_CACHE_MAX_BYTES); i++) {
+        if (entries[i].name == key + ".json")
+            continue;
         fs.unlink(SUBNET_CACHE_DIR + "/" + entries[i].name);
+        count--;
+        bytes -= entries[i].size;
+    }
 }
 
 function nft_apply_prepared_ruleset_subnets(prepared, label, table, common_set, ip_port_set, common6_set, ip_port6_set) {

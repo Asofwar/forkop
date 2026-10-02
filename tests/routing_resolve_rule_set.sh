@@ -33,7 +33,7 @@ binary_list() {
 }
 binary_list youtube.srs '{ "version": 3, "rules": [ { "domain_suffix": [ "youtube.com" ] } ] }'
 binary_list other.srs '{ "version": 3, "rules": [ { "domain": [ "example.org" ] } ] }'
-printf '%s\n' '{ "version": 3, "rules": [ { "ip_cidr": [ "203.0.113.7/32" ] } ] }' >"$WORK/addresses.json"
+printf '%s\n' '{ "version": 3, "rules": [ { "ip_cidr": [ "203.0.113.7/32", "2001:db8::/32" ] } ] }' >"$WORK/addresses.json"
 printf 'not a rule-set\n' >"$WORK/broken.srs"
 
 cat >"$WORK/forkop" <<'EOF'
@@ -109,6 +109,12 @@ expect static_hit "{ \"host\": \"youtube.com\", \"rule_set\": $sets, \"rules\": 
 addr='{ "action": "route", "inbound": [ "tproxy-in" ], "rule_set": "addresses", "outbound": "youtube-out" }'
 expect address_hit "{ \"host\": \"plain.test\", \"ip\": \"203.0.113.7\", \"fakeip\": false, \"rule_set\": $sets, \"rules\": [ $addr ] }" "$zapret"
 grep -qx "rule-set match -f source $WORK/addresses.json 203.0.113.7" "$WORK/calls" || fail "address_hit: the address was not asked"
+# An IPv6 address is asked as it is (the stand-in matches IPv6 prefixes as
+# the real binary does: routing_resolve_rule_set_real.sh).
+expect address6_hit "{ \"host\": \"plain.test\", \"ip\": \"2001:db8::7\", \"fakeip\": false, \"rule_set\": $sets, \"rules\": [ $addr ] }" "$zapret"
+grep -qx "rule-set match -f source $WORK/addresses.json 2001:db8::7" "$WORK/calls" || fail "address6_hit: the address was not asked"
+expect address6_miss "{ \"host\": \"plain.test\", \"ip\": \"2001:dead::7\", \"fakeip\": false, \"rule_set\": $sets, \"rules\": [ $addr ] }" \
+    '{ "status": "decided", "reason": null, "rule": null, "section": null, "kind": "direct" }'
 # A FakeIP connection reaches sing-box as the name: its address is not asked.
 expect fakeip_address "{ \"host\": \"plain.test\", \"ip\": \"198.18.0.9\", \"rule_set\": $sets, \"rules\": [ $addr ] }" \
     '{ "status": "decided", "reason": null, "rule": null, "section": null, "kind": "direct" }'

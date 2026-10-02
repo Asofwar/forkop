@@ -70,17 +70,45 @@ function read_list(path, list_format) {
     return value;
 }
 
-function ipv4(text) {
-    let m = match(as_string(text), /^([0-9]+)\.([0-9]+)\.([0-9]+)\.([0-9]+)$/);
-    return m == null ? null : ((int(m[1]) * 256 + int(m[2])) * 256 + int(m[3])) * 256 + int(m[4]);
+// An address as 16-bit groups: two for IPv4, eight for IPv6 (no embedded
+// IPv4 form); null for anything else.
+function address(text) {
+    text = lc(as_string(text));
+    let m = match(text, /^([0-9]+)\.([0-9]+)\.([0-9]+)\.([0-9]+)$/);
+    if (m != null) {
+        for (let i = 1; i <= 4; i++) if (int(m[i]) > 255) return null;
+        return [ int(m[1]) * 256 + int(m[2]), int(m[3]) * 256 + int(m[4]) ];
+    }
+    let halves = split(text, "::");
+    if (match(text, /^[0-9a-f:]+$/) == null || length(halves) > 2) return null;
+    let head = halves[0] == "" ? [] : split(halves[0], ":");
+    let tail = length(halves) < 2 || halves[1] == "" ? [] : split(halves[1], ":");
+    let missing = 8 - length(head) - length(tail);
+    if (length(halves) == 2 ? missing < 1 : missing != 0) return null;
+    let groups = [];
+    for (let g in head) push(groups, g);
+    for (let i = 0; i < missing; i++) push(groups, "0");
+    for (let g in tail) push(groups, g);
+    let result = [];
+    for (let g in groups) {
+        if (match(g, /^[0-9a-f]{1,4}$/) == null) return null;
+        let n = 0;
+        for (let i = 0; i < length(g); i++) n = n * 16 + index("0123456789abcdef", substr(g, i, 1));
+        push(result, n);
+    }
+    return result;
 }
 function in_cidr(ip, cidr) {
-    let m = match(as_string(cidr), /^([0-9.]+)(\/([0-9]+))?$/);
-    let a = ipv4(ip), b = m == null ? null : ipv4(m[1]);
-    if (a == null || b == null) return false;
-    let size = 1;
-    for (let i = 0; i < 32 - (m[3] ? int(m[3]) : 32); i++) size *= 2;
-    return int(a / size) == int(b / size);
+    let m = match(as_string(cidr), /^([0-9a-fA-F.:]+)(\/([0-9]+))?$/);
+    let a = address(ip), b = m == null ? null : address(m[1]);
+    if (a == null || b == null || length(a) != length(b)) return false;
+    let bits = m[3] ? int(m[3]) : length(a) * 16;
+    for (let i = 0; i < length(a) && bits > 0; i++, bits -= 16) {
+        let size = 1;
+        for (let k = 0; k < 16 - bits; k++) size *= 2;
+        if (int(a[i] / size) != int(b[i] / size)) return false;
+    }
+    return true;
 }
 
 function address_item(key, values, q) {
@@ -168,7 +196,7 @@ if (command == "match") {
         while (true) sleep(1000);
     if (getenv("RULESET_STUB_DELAY_MS")) sleep(int(getenv("RULESET_STUB_DELAY_MS")));
     if (getenv("RULESET_STUB_NOISE")) warn(getenv("RULESET_STUB_NOISE") + "\n");
-    let q = ipv4(value) != null ? { domain: "", ip: value } : { domain: lc(value), ip: null };
+    let q = address(value) != null ? { domain: "", ip: value } : { domain: lc(value), ip: null };
     reset_rule_cache();
     for (let i = 0; i < length(list.rules); i++)
         if (rule_matches(list.rules[i], q)) warn("match rules.[" + i + "]: " + describe(list.rules[i]) + "\n");

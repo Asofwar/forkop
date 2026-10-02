@@ -25,7 +25,7 @@ fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 # ---- the stand-in answers as the real binary does -------------------------
 
 list() { printf '%s\n' "$2" >"$WORK/$1.json"; }
-list plain '{ "version": 3, "rules": [ { "domain_suffix": [ "youtube.com" ] }, { "ip_cidr": [ "203.0.113.0/24" ] } ] }'
+list plain '{ "version": 3, "rules": [ { "domain_suffix": [ "youtube.com" ] }, { "ip_cidr": [ "203.0.113.0/24", "2001:db8::/32" ] } ] }'
 list port_first '{ "version": 3, "rules": [ { "domain_suffix": [ "a.test" ], "port": [ 443 ] }, { "ip_cidr": [ "203.0.113.0/24" ] } ] }'
 list address_first '{ "version": 3, "rules": [ { "ip_cidr": [ "203.0.113.0/24" ] }, { "domain_suffix": [ "a.test" ] } ] }'
 list logical '{ "version": 3, "rules": [ { "type": "logical", "mode": "and", "rules": [ { "domain_suffix": [ "x.test" ] }, { "port": [ 443 ] } ] }, { "domain": [ "inv.test" ], "invert": true }, { "type": "default", "domain": [ "d.test" ], "invert": false } ] }'
@@ -49,7 +49,7 @@ compared=0
 for name in plain port_first address_first logical mixed keyword; do
     for value in youtube.com www.youtube.com a.test www.a.test x.test inv.test d.test p.test kw.test re12.test \
         or1.test src.test sub.test a.sub.test .dot.test exact.test www.exact.test only-sub.test a.only-sub.test \
-        nothing.test 203.0.113.5 198.51.100.7 192.0.2.1; do
+        nothing.test 203.0.113.5 198.51.100.7 192.0.2.1 2001:db8::5 2001:db8:ffff::1 2001:dead::5 ::1; do
         real="$(answer "$SING_BOX" "$name" "$value")"
         stub="$(answer "$WORK/stub" "$name" "$value")"
         [ "$real" = "$stub" ] || fail "stand-in diverges on $name/$value: real [$real], stand-in [$stub]"
@@ -112,8 +112,11 @@ zapret='{ "status": "decided", "reason": null, "rule": 0, "section": "youtube", 
 
 # A list that holds the host owns it (it was "no" for every list: UC-198).
 expect list_hit "{ \"host\": \"www.youtube.com\", \"rule_set\": $sets, \"rules\": [ $yt ] }" "$zapret"
-# The real address as well (ip_cidr in the same list).
+# The real address as well (ip_cidr in the same list), IPv4 and IPv6.
 expect address_hit "{ \"host\": \"\", \"ip\": \"203.0.113.9\", \"fakeip\": false, \"rule_set\": $sets, \"rules\": [ $yt ] }" "$zapret"
+expect address6_hit "{ \"host\": \"\", \"ip\": \"2001:db8::5\", \"fakeip\": false, \"rule_set\": $sets, \"rules\": [ $yt ] }" "$zapret"
+expect address6_miss "{ \"host\": \"\", \"ip\": \"2001:dead::5\", \"fakeip\": false, \"rule_set\": $sets, \"rules\": [ $yt ] }" \
+    '{ "status": "decided", "reason": null, "rule": null, "section": null, "kind": "direct" }'
 # A list above that does not hold the host passes it on; one that does wins.
 expect list_miss_above "{ \"host\": \"www.youtube.com\", \"rule_set\": $sets, \"rules\": [ $other, $yt ] }" \
     '{ "status": "decided", "reason": null, "rule": 1, "section": "youtube", "kind": "rule" }'

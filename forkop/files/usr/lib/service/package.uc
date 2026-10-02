@@ -2,6 +2,7 @@
 
 let fs = require("fs");
 let uci_core = require("core.uci");
+let constants = require("core.constants");
 
 function as_string(value) {
     return value == null ? "" : "" + value;
@@ -243,6 +244,21 @@ function killswitch_outlives_package(action, version) {
     return command_success_from_args([ "sh", "-c", "command -v apk" ]);
 }
 
+// Forkop's interception: its nft table, or its fwmark rule at priority 105
+// that routes marked traffic to the table of its sing-box listener.
+function forkop_interception_present() {
+    if (command_success_from_args([ "nft", "-t", "list", "table", "inet", constants.NFT_TABLE_NAME || "ForkopTable" ]))
+        return true;
+    let lookup = constants.RT_TABLE_NAME || "forkop";
+    for (let family in [ "-4", "-6" ])
+        for (let line in split(command_capture_from_args([ "ip", family, "rule", "show" ]).output, "\n")) {
+            let rule = match(line, /^105:.*[ \t]lookup[ \t]+([^ \t]+)/);
+            if (rule != null && (rule[1] == lookup || rule[1] == "105"))
+                return true;
+        }
+    return false;
+}
+
 function prerm_cleanup(action, version) {
     if (env("IPKG_INSTROOT", "") != "")
         return true;
@@ -251,7 +267,7 @@ function prerm_cleanup(action, version) {
     if (!PACKAGE_TEST_MODE) {
         // Forkop's own stop for the package change, not the user's
         // (service/initd.uc stop_request_source).
-        command_success_from_args([ "env", "FORKOP_STOP_SOURCE=package", INIT_PATH, "stop" ]);
+        let stopped = command_success_from_args([ "env", "FORKOP_STOP_SOURCE=package", INIT_PATH, "stop" ]);
         // No start follows a removal: the explicit start ends with it, and
         // a reinstall that does not start Forkop shows it not started, not
         // as a start that failed (service/initd.uc EXPLICIT_START_FILE;
@@ -266,6 +282,15 @@ function prerm_cleanup(action, version) {
             command_success_from_args([ "ucode", "-L", LIB_DIR, KILLSWITCH_UC, "release",
                 as_string(action) == "remove" ? "package removal" :
                 "change to a release without the kill-switch (" + (as_string(version) || "unknown version") + ")" ]);
+        // A stop that failed or was refused (another sing-box makes
+        // ownership ambiguous) may have left Forkop's nft table and ip rule
+        // in place. Their listener, the managed sing-box, its DNS and the
+        // routing table name then stay too: without them the interception
+        // would black-hole traffic with nobody left to own it (UC-197).
+        if (!stopped && forkop_interception_present()) {
+            warn("Forkop did not stop and still intercepts traffic; its sing-box, DNS and routing were left in place.\n");
+            return false;
+        }
         restore_dnsmasq_if_needed();
         remove_managed_sing_box();
     }

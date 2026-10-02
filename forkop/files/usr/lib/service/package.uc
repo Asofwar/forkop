@@ -209,15 +209,14 @@ function remember_upgrade_state(action) {
 const LAST_RELEASE_WITHOUT_KILLSWITCH = [ 1, 0, 31 ];
 
 // true or false for an x.y.z[-...] release version, null when unknown.
-// 0.0.0 is no release: an SDK build without a release version carries it
-// (forkop/Makefile PKG_VERSION), and such a build of this tree has the
-// kill-switch.
+// 0.0.0 is no release: every SDK build without a release version carries it
+// (forkop/Makefile PKG_VERSION), also one that predates the kill-switch and
+// can never lift its DNS block list. It counts as a release without the
+// kill-switch; a build that has it protects again from its next start.
 function release_has_killswitch(version) {
     let parts = match(as_string(version), /^([0-9]+)\.([0-9]+)\.([0-9]+)/);
     if (parts == null)
         return null;
-    if (int(parts[1]) == 0 && int(parts[2]) == 0 && int(parts[3]) == 0)
-        return true;
     for (let i = 0; i < 3; i++) {
         let value = int(parts[i + 1]);
         if (value != LAST_RELEASE_WITHOUT_KILLSWITCH[i])

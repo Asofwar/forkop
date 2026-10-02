@@ -57,10 +57,13 @@ cat >"$WORK_DIR/bin/dig" <<'SH'
 #!/bin/sh
 [ -e "$WORK_DIR/sing-box-alive" ]
 SH
-# Forkop's own init script: running, and a stop only logs.
-cat >"$WORK_DIR/bin/forkop-init" <<'SH'
+# Forkop's own init script: running, and a stop does to dnsmasq what
+# `forkop stop` does on a Forkop that is already down (service/lifecycle.uc
+# stop_impl): the DNS block list goes back while the kill-switch is armed.
+cat >"$WORK_DIR/bin/forkop-init" <<SH
 #!/bin/sh
-printf '%s\n' "$*" >>"$WORK_DIR/forkop-init.log"
+printf '%s\n' "\$*" >>"\$WORK_DIR/forkop-init.log"
+[ "\$1" != stop ] || ucode -L "$FORKOP_LIB" "$FORKOP_LIB/dns/apply.uc" restore >/dev/null 2>&1
 exit 0
 SH
 # The installed /usr/bin/forkop the package scripts call: the real CLI.
@@ -84,7 +87,7 @@ export FORKOP_PACKAGE_UPGRADE_STATE="$WORK_DIR/package-was-running"
 export FORKOP_RT_TABLES="$WORK_DIR/rt_tables"
 export FORKOP_INIT="$WORK_DIR/bin/forkop-init"
 export FORKOP_BIN="$WORK_DIR/missing-forkop-bin"
-export FORKOP_DNS_APPLY_UC="$WORK_DIR/missing-dns-apply.uc"
+export FORKOP_DNS_APPLY_UC="$FORKOP_LIB/dns/apply.uc"
 export FORKOP_SING_BOX_INIT="$WORK_DIR/missing-sing-box-init"
 export FORKOP_KILLSWITCH_UC="$KS_UC"
 export KILLSWITCH_STATE_DIR="$WORK_DIR/ks"
@@ -107,6 +110,7 @@ uci_value() {
 arm() {
   cat >"$FORKOP_UCI_STATE_FILE" <<EOF
 forkop.settings=settings
+forkop.settings.shutdown_correctly=1
 forkop.main=section
 forkop.main.action=connection
 forkop.main.kill_switch=1
@@ -158,9 +162,20 @@ done
 # (include/package-pack.mk): the ipk's prerm is "default_prerm $0 $@", which
 # sources it as prerm-pkg in a subshell (package/base-files/files/lib/
 # functions.sh), and the apk's pre-deinstall runs default_prerm and then the
-# same text without its #! line. Both run under /bin/sh.
-mkdir -p "$WORK_DIR/opkg-info"
+# same text without its #! line. Both run under /bin/sh. default_prerm then
+# stops every init script of the package, and disables it unless opkg
+# upgrades it (PKG_UPGRADE): the kill-switch watcher is gone after that, so
+# nothing lifts a protection left behind. Here the init scripts are the
+# stubs under $INIT_ROOT.
+mkdir -p "$WORK_DIR/opkg-info" "$WORK_DIR/initroot/etc/init.d"
 cp "$WORK_DIR/sdk-prerm" "$WORK_DIR/opkg-info/forkop.prerm-pkg"
+grep -o '\$(1)/etc/init\.d/[A-Za-z0-9_.-]*' "$FORKOP_MAKEFILE" | sed 's/^\$(1)//' >"$WORK_DIR/opkg-info/forkop.list"
+grep -Fqx /etc/init.d/forkop-killswitch "$WORK_DIR/opkg-info/forkop.list" ||
+  fail "the SDK package must ship the kill-switch init script: $(cat "$WORK_DIR/opkg-info/forkop.list")"
+printf '#!/bin/sh\nexec "$WORK_DIR/bin/forkop-init" "$@"\n' >"$WORK_DIR/initroot/etc/init.d/forkop"
+printf '#!/bin/sh\nexec "$WORK_DIR/bin/killswitch-init" "$@"\n' >"$WORK_DIR/initroot/etc/init.d/forkop-killswitch"
+chmod 0755 "$WORK_DIR/initroot/etc/init.d/"*
+export INIT_ROOT="$WORK_DIR/initroot"
 cat >"$WORK_DIR/functions.sh" <<'SH'
 default_prerm() {
 	[ -z "$pkgname" ] && local pkgname="$(basename ${1%.*})"
@@ -169,6 +184,12 @@ default_prerm() {
 		( . "$OPKG_INFO/${pkgname}.prerm-pkg" )
 		ret=$?
 	fi
+	for i in $(grep -s "^/etc/init.d/" "$OPKG_INFO/${pkgname}.list"); do
+		if [ "$PKG_UPGRADE" != "1" ]; then
+			"$INIT_ROOT$i" disable
+		fi
+		"$INIT_ROOT$i" stop
+	done
 	return $ret
 }
 SH
@@ -215,19 +236,28 @@ run_script ipk-prerm upgrade 1.0.31
 assert_lifted "downgrade to a release without the kill-switch (opkg)"
 
 arm
-run_sh_script "$WORK_DIR/opkg-info/forkop.prerm" upgrade 1.0.40
+: >"$WORK_DIR/killswitch-init.log"
+PKG_UPGRADE=1 run_sh_script "$WORK_DIR/opkg-info/forkop.prerm" upgrade 1.0.40
 grep -Fqx 'package_prerm upgrade 1.0.40' "$WORK_DIR/cli.log" ||
   fail "the SDK prerm must pass the new version on: $(cat "$WORK_DIR/cli.log")"
+grep -Fqx stop "$WORK_DIR/killswitch-init.log" || fail "default_prerm must stop the kill-switch service"
 assert_kept "upgrade to a release with the kill-switch (SDK package, opkg)"
 
 # An SDK build without a release version is 0.0.0 (forkop/Makefile
-# PKG_VERSION): a build of this tree, which has the kill-switch.
-run_sh_script "$WORK_DIR/opkg-info/forkop.prerm" upgrade 0.0.0
+# PKG_VERSION), whatever its tree, so also a build that predates the
+# kill-switch: it can neither lift the protection nor detach the block list
+# from dnsmasq, and default_prerm has just stopped the watcher. The
+# protection is lifted, and no stop that follows the prerm attaches the
+# block list again.
+PKG_UPGRADE=1 run_sh_script "$WORK_DIR/opkg-info/forkop.prerm" upgrade 0.0.0
 grep -Fqx 'package_prerm upgrade 0.0.0' "$WORK_DIR/cli.log" ||
   fail "the SDK prerm must pass the development version on: $(cat "$WORK_DIR/cli.log")"
-assert_kept "upgrade to an SDK build without a release version (opkg)"
+[ -z "$(uci_value 'dhcp.@dnsmasq[0].serversfile')" ] ||
+  fail "downgrade to an SDK build that may predate the kill-switch: no DNS block list may stay attached to dnsmasq"
+assert_lifted "downgrade to an SDK build without a release version (opkg)"
 
-run_sh_script "$WORK_DIR/opkg-info/forkop.prerm" upgrade 1.0.30
+arm
+PKG_UPGRADE=1 run_sh_script "$WORK_DIR/opkg-info/forkop.prerm" upgrade 1.0.30
 assert_lifted "downgrade to a release without the kill-switch (SDK package, opkg)"
 
 arm

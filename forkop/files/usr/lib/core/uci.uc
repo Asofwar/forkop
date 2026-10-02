@@ -741,13 +741,16 @@ function commit_option(config_file, path, value, keep_existing, cli) {
     let own = OWN_OPTION_PACKAGE + "." + parts.section + "." + parts.option;
     let base = [ as_string(cli) || "uci", "-q", "-c", dir, "-t", dir + "/save" ];
     let result = "";
-    let handle = fs.open(as_string(config_file), "r");
+    // A symlink stays one: the file it points to is replaced, as a libuci
+    // commit does.
+    let file = fs.realpath(as_string(config_file));
+    let handle = file != null ? fs.open(file, "r") : null;
     let locked = handle != null && handle.lock("x");
     // The lock must be on the file that is replaced, not on one that another
     // commit renamed away since it was opened.
-    let current = locked ? fs.stat(config_file) : null;
+    let current = locked ? fs.stat(file) : null;
     let held = locked ? fs.stat("/proc/self/fd/" + handle.fileno()) : null;
-    let before = current != null && held != null && current.inode == held.inode ? fs.readfile(config_file) : null;
+    let before = current != null && held != null && current.inode == held.inode ? fs.readfile(file) : null;
     if (before != null && fs.mkdir(dir + "/save", 0700) && fs.writefile(copy, before) != null) {
         if (keep_existing && trim(command_text([ ...base, "get", own ])) != "")
             result = "kept";
@@ -757,12 +760,12 @@ function commit_option(config_file, path, value, keep_existing, cli) {
                  command_ok([ ...base, "commit", OWN_OPTION_PACKAGE ]) &&
                  replace(command_text([ ...base, "get", own ]), /\n$/, "") == as_string(value)) {
             let after = fs.readfile(copy);
-            let tmp = fs.dirname(config_file) + "/." + fs.basename(config_file) + ".forkop-" + as_string(fs.readlink("/proc/self"));
+            let tmp = fs.dirname(file) + "/." + fs.basename(file) + ".forkop-" + as_string(fs.readlink("/proc/self"));
             let out = after != null ? fs.open(tmp, "w", 0600) : null;
             let written = out != null && out.write(after) != null;
             if (out != null)
                 out.close();
-            if (written && fs.chmod(tmp, current.mode) && fs.rename(tmp, config_file))
+            if (written && fs.chmod(tmp, current.mode) && fs.rename(tmp, file))
                 result = "written";
             else
                 fs.unlink(tmp);
@@ -785,6 +788,9 @@ function commit_option(config_file, path, value, keep_existing, cli) {
 
 // The package name of the private copy session() edits.
 const SESSION_PACKAGE = "forkop_session";
+// How long a session commit waits for a file that other commits keep
+// replacing before it gives up (conflict).
+const SESSION_LOCK_SECONDS = 5;
 
 function list_equal(left, right) {
     if (length(left) != length(right))
@@ -795,47 +801,31 @@ function list_equal(left, right) {
     return true;
 }
 
-// The private copy of config_file a session edits through the uci CLI, while
-// it holds the lock libuci takes for a commit of that file: null when the
-// file cannot be read.
+// The private copy of config_file a session edits through the uci CLI: null
+// when the file cannot be read. A symlink stays one: the file it points to is
+// read and replaced, as a libuci commit does.
 function session_copy(package_name, config_file, cli) {
-    if (fs.stat(config_file) == null)
+    let file = fs.realpath(config_file);
+    let before = null;
+    let reader = file != null ? fs.open(file, "r") : null;
+    if (reader != null) {
+        // The lock a libuci read takes: no writer is half-way through.
+        if (reader.lock("s"))
+            before = reader.read("all");
+        reader.close();
+    }
+    if (before == null)
         return null;
     let dir = trim(command_text([ "mktemp", "-d" ]));
     if (dir == "" || fs.stat(dir) == null)
         return null;
     let copy = dir + "/" + SESSION_PACKAGE;
     let base = [ as_string(cli) || "uci", "-q", "-c", dir, "-t", dir + "/save" ];
-    let handle = null, before = null, current = null;
-    // The lock must be on the file that is replaced, not on one that another
-    // commit renamed away since it was opened.
-    for (let attempt = 0; attempt < 3 && before == null; attempt++) {
-        handle = fs.open(config_file, "r");
-        if (handle == null || !handle.lock("x")) {
-            if (handle != null)
-                handle.close();
-            handle = null;
-            break;
-        }
-        current = fs.stat(config_file);
-        let held = fs.stat("/proc/self/fd/" + handle.fileno());
-        if (current != null && held != null && current.inode == held.inode)
-            before = fs.readfile(config_file);
-        if (before == null) {
-            handle.lock("u");
-            handle.close();
-            handle = null;
-        }
-    }
+    let conflict = false;
     let release = function() {
-        if (handle != null) {
-            handle.lock("u");
-            handle.close();
-            handle = null;
-        }
         command_ok([ "rm", "-rf", dir ]);
     };
-    if (before == null || !fs.mkdir(dir + "/save", 0700) || fs.writefile(copy, before) == null) {
+    if (!fs.mkdir(dir + "/save", 0700) || fs.writefile(copy, before) == null) {
         release();
         return null;
     }
@@ -852,27 +842,64 @@ function session_copy(package_name, config_file, cli) {
             return false;
         return command_ok([ ...base, command, value == null ? target : target + "=" + as_string(value) ]);
     };
-    // config_file becomes the committed copy: written next to it and read
-    // back, then renamed over it, synced before and after the rename, and
-    // only while it is still the file that was copied.
+    // The lock libuci takes for a commit, on the file at that path now, not
+    // on one that another commit renamed away since it was opened: null when
+    // it cannot be had, or (conflict) when other commits kept replacing the
+    // file for SESSION_LOCK_SECONDS.
+    let lock_file = function() {
+        let deadline = time() + SESSION_LOCK_SECONDS;
+        for (;;) {
+            let lock = fs.open(file, "r");
+            if (lock == null || !lock.lock("x")) {
+                if (lock != null)
+                    lock.close();
+                return null;
+            }
+            let now = fs.stat(file);
+            let held = fs.stat("/proc/self/fd/" + lock.fileno());
+            if (now != null && held != null && now.inode == held.inode)
+                return lock;
+            lock.close();
+            if (time() > deadline) {
+                conflict = true;
+                return null;
+            }
+        }
+    };
+    // file becomes the committed copy, written next to it, read back and
+    // flushed first. The lock is held only to check that file still holds
+    // what the session read and to rename the copy over it, so readers and
+    // other commits of the package wait no longer than for a libuci commit.
+    // A file someone else changed meanwhile is left as it is (conflict).
     let replace_config = function() {
         let after = fs.readfile(copy);
-        let now = fs.stat(config_file);
-        let held = fs.stat("/proc/self/fd/" + handle.fileno());
-        if (after == null || now == null || held == null || now.inode != held.inode || fs.readfile(config_file) != before)
+        let now = fs.stat(file);
+        if (after == null || now == null)
             return false;
-        let tmp = fs.dirname(config_file) + "/." + fs.basename(config_file) + ".forkop-" + as_string(fs.readlink("/proc/self"));
+        if (after == before)
+            return true;
+        let tmp = fs.dirname(file) + "/." + fs.basename(file) + ".forkop-" + as_string(fs.readlink("/proc/self"));
         let out = fs.open(tmp, "w", 0600);
         let written = out != null && out.write(after) != null;
         if (out != null)
             out.close();
-        if (written && fs.readfile(tmp) == after && fs.chmod(tmp, now.mode) && command_ok([ "sync" ]) &&
-            fs.rename(tmp, config_file)) {
-            command_ok([ "sync" ]);
-            return true;
+        let renamed = false;
+        if (written && fs.readfile(tmp) == after && fs.chmod(tmp, now.mode) && command_ok([ "sync" ])) {
+            let lock = lock_file();
+            let current = lock != null ? lock.read("all") : null;
+            if (current != null && current != before)
+                conflict = true;
+            else if (current != null)
+                renamed = fs.rename(tmp, file);
+            if (lock != null)
+                lock.close();
         }
-        fs.unlink(tmp);
-        return false;
+        if (!renamed) {
+            fs.unlink(tmp);
+            return false;
+        }
+        command_ok([ "sync" ]);
+        return true;
     };
 
     return {
@@ -895,6 +922,7 @@ function session_copy(package_name, config_file, cli) {
             }
             return true;
         },
+        conflict: function() { return conflict; },
         release
     };
 }
@@ -949,11 +977,13 @@ function session_fixture(package_name) {
 // copy of config_file under a package name of its own through the uci CLI
 // (cli), and commit() replaces config_file with the committed copy. Changes
 // staged in /tmp/.uci or in a LuCI session stay staged, and what the session
-// reads is what config_file holds. From the start to commit() or close() it
-// holds the lock libuci takes on config_file, for reads too: nothing may read
-// the package through libuci (a dnsmasq restart) before. null when
-// config_file cannot be read. The fixture edits its state and logs
-// "commit <package>" for a commit that changes something.
+// reads is what config_file holds. No lock is held while the session edits:
+// commit() takes the lock libuci takes for a commit only to replace the file,
+// and only while the file still holds what the session read. When someone
+// else changed it meanwhile, commit() writes nothing and fails, and
+// conflict() is true: the caller starts its edit over. null when config_file
+// cannot be read. The fixture edits its state and logs "commit <package>"
+// for a commit that changes something.
 function session(package_name, config_file, cli) {
     package_name = as_string(package_name);
     let backend = fixture_enabled() ? session_fixture(package_name) : session_copy(package_name, as_string(config_file), cli);
@@ -1027,6 +1057,8 @@ function session(package_name, config_file, cli) {
             close();
             return ok;
         },
+        // The commit failed because someone else changed the file.
+        conflict: function() { return backend.conflict != null && backend.conflict(); },
         close
     };
 }

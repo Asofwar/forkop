@@ -139,6 +139,19 @@ grep -Eq '(^| )forkop(\.| |$)' "$WORK/uci.argv" && fail "uci touched the live pa
 grep -Fq -- "-c $WORK/etc " "$WORK/uci.argv" && fail "uci ran on the live configuration directory"
 [ -z "$(find "$WORK/etc" -name '.*')" ] || fail "a temporary file was left next to the configuration"
 
+# A configuration file that is a symlink stays one: the file it points to
+# gets the secret, as a libuci commit would write it.
+config linked
+mkdir -p "$WORK/store"
+mv "$WORK/etc/linked" "$WORK/store/linked"
+ln -s ../store/linked "$WORK/etc/linked"
+run_ensure linked
+grep -Fq 'result=ok guard=1' "$WORK/linked.out" || fail "a symlinked configuration got no secret: $(cat "$WORK/linked.out")"
+[ -L "$WORK/etc/linked" ] || fail "the symlinked configuration was replaced by a file"
+secret_of linked | grep -Eq '^[0-9a-f]{64}$' || fail "the file the configuration symlink points to has no secret"
+[ -z "$(find "$WORK/etc" "$WORK/store" -name '.*')" ] || fail "a temporary file was left next to the symlinked configuration"
+rm -f "$WORK/etc/linked"
+
 # A blank secret is no secret.
 config blank "	option yacd_secret_key '   '"
 run_ensure blank

@@ -35,6 +35,9 @@ function run(command) {
 // committed, saved only when something changes and without what someone
 // staged with `uci set` (UC-236). Other reads go through core.uci.
 let dhcp = null;
+// How often an operation starts over when someone else commits dhcp while it
+// edits the settings (the session's conflict()).
+const DHCP_EDIT_ATTEMPTS = 5;
 
 function uci_available() {
     return uci.available();
@@ -90,11 +93,7 @@ function log(message, level) {
     run("logger -t " + shell_quote("forkop") + " " + shell_quote("[" + level + "] " + as_string(message)));
 }
 
-// dnsmasq reads /etc/config/dhcp at its start: the edit ends first, and
-// with it the lock it holds on the file.
 function restart_dnsmasq() {
-    if (dhcp != null)
-        dhcp.close();
     return run("[ -x " + shell_quote(DNSMASQ_INIT) + " ] && " + shell_quote(DNSMASQ_INIT) + " restart");
 }
 
@@ -122,10 +121,15 @@ function dhcp_unreadable() {
 // fails (a full or read-only overlay) leaves the file as it was: dnsmasq is
 // not restarted, and the start, stop or failsafe that asked for the change
 // fails with it, so that its own error handling runs (UC-024).
+// The file someone else committed meanwhile is not overwritten: the
+// operation starts over from it (see the end of this file).
 function commit_dhcp() {
     if (dhcp != null && dhcp.commit())
         return true;
-    log("Could not save the dnsmasq settings in " + DNSMASQ_CONFIG_FILE, "error");
+    if (dhcp != null && dhcp.conflict())
+        log("The dnsmasq settings in " + DNSMASQ_CONFIG_FILE + " changed while Forkop edited them", "info");
+    else
+        log("Could not save the dnsmasq settings in " + DNSMASQ_CONFIG_FILE, "error");
     return false;
 }
 
@@ -436,29 +440,45 @@ function failsafe_restore() {
     return dnsmasq_restore("force", true);
 }
 
+function run_mode(mode) {
+    if (mode == "configure")
+        return dnsmasq_configure(ARGV[1]);
+    if (mode == "restore")
+        return dnsmasq_restore(ARGV[1]);
+    if (mode == "failsafe-restore")
+        return failsafe_restore();
+    if (mode == "has-forkop-dns")
+        return dnsmasq_has_forkop_dns();
+    if (mode == "has-managed-state")
+        return dnsmasq_has_forkop_managed_state();
+    if (mode == "default-config-complete")
+        return dnsmasq_default_config_is_complete();
+    if (mode == "killswitch-refresh")
+        return killswitch_dns_refresh();
+    if (mode == "killswitch-status")
+        return killswitch_dns_status();
+    return null;
+}
+
 let mode = ARGV[0] || "";
 let result = null;
 
-if (mode == "configure")
-    result = dnsmasq_configure(ARGV[1]);
-else if (mode == "restore")
-    result = dnsmasq_restore(ARGV[1]);
-else if (mode == "failsafe-restore")
-    result = failsafe_restore();
-else if (mode == "has-forkop-dns")
-    result = dnsmasq_has_forkop_dns();
-else if (mode == "has-managed-state")
-    result = dnsmasq_has_forkop_managed_state();
-else if (mode == "default-config-complete")
-    result = dnsmasq_default_config_is_complete();
-else if (mode == "killswitch-refresh")
-    result = killswitch_dns_refresh();
-else if (mode == "killswitch-status")
-    result = killswitch_dns_status();
-
-// An edit that ended without a commit (nothing to change) changes nothing.
-if (dhcp != null)
-    dhcp.close();
+// Each attempt decides from the file as it is then; the edit holds no lock
+// on it (core/uci.uc session).
+for (let attempt = 1; ; attempt++) {
+    result = run_mode(mode);
+    let conflict = dhcp != null && dhcp.conflict();
+    // An edit that ended without a commit (nothing to change) changes nothing.
+    if (dhcp != null)
+        dhcp.close();
+    dhcp = null;
+    if (!conflict)
+        break;
+    if (attempt >= DHCP_EDIT_ATTEMPTS) {
+        log("Could not save the dnsmasq settings in " + DNSMASQ_CONFIG_FILE + ": the file kept changing while Forkop edited it", "error");
+        break;
+    }
+}
 if (result != null)
     exit(result ? 0 : 1);
 

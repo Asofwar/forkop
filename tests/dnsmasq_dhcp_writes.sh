@@ -12,7 +12,10 @@ set -euo pipefail
 # set included. The edit works on a private copy of the committed file, so
 # what someone staged with `uci set` (in /tmp/.uci) is neither read nor
 # committed. A commit the overlay refuses (read-only or full) leaves the
-# file as it was and fails the operation.
+# file as it was and fails the operation. The edit holds no lock on the
+# file: a dhcp commit someone else makes meanwhile is not blocked, and the
+# operation starts over from it instead of overwriting it. A symlink stays
+# one.
 #
 # Part 1 runs the real dns/apply.uc on the UCI fixture; part 2 on a dhcp file
 # through the OpenWrt uci CLI (skipped without one: the test shim takes no
@@ -152,9 +155,14 @@ DHCP="$WORK/etc/dhcp"
 export FORKOP_DNSMASQ_CONFIG_FILE="$DHCP"
 # The CLI as Forkop runs it: every call is logged, and $WORK/host-uci stands
 # in for /tmp/.uci, which the real CLI merges into any commit of a package.
+# A read runs $WORK/foreign-hook first when it exists, with the directory of
+# the private copy (-c) the read is in.
 cat >"$WORK/bin/uci" <<SH
 #!/bin/sh
 printf '%s\n' "\$*" >>"$WORK/uci.argv"
+if [ -x "$WORK/foreign-hook" ]; then
+  case " \$* " in *" get "*) "$WORK/foreign-hook" "\$3" ;; esac
+fi
 exec "$UCI_REAL" -p "$WORK/host-uci" "\$@"
 SH
 chmod 0755 "$WORK/bin/uci"
@@ -258,5 +266,88 @@ else
   done
   ok "a read-only or full overlay fails the configure and keeps the dhcp file"
 fi
+
+no_leftovers() {
+  local dir file
+  for dir in "$@"; do
+    for file in "$dir"/.dhcp.*; do
+      [ ! -e "$file" ] || fail "temporary file $file left behind"
+    done
+  done
+}
+
+# /etc/config/dhcp as a symlink: the file it points to is written, as a
+# libuci commit does, and the link stays.
+mkdir -p "$WORK/store"
+cp "$WORK/dhcp.orig" "$WORK/store/dhcp"
+chmod 0644 "$WORK/store/dhcp"
+rm -f "$DHCP"
+ln -s ../store/dhcp "$DHCP"
+dns_apply configure force
+[ "$STATUS" = 0 ] || fail "configure through a dhcp symlink failed"
+[ -L "$DHCP" ] || fail "configure replaced the dhcp symlink with a file"
+grep -q "127.0.0.42" "$WORK/store/dhcp" || fail "configure did not save the file the dhcp symlink points to"
+dns_apply restore force
+[ "$STATUS" = 0 ] && [ -L "$DHCP" ] || fail "restore through a dhcp symlink failed or replaced the link"
+options "$DHCP" | cmp -s "$WORK/options.orig" - || fail "restore through a dhcp symlink did not put back the settings"
+no_leftovers "$WORK/etc" "$WORK/store"
+rm -f "$DHCP"
+cp "$WORK/dhcp.orig" "$DHCP"
+ok "a dhcp symlink stays a symlink and its target holds the settings"
+
+# Someone else commits dhcp (LuCI, another uci CLI) while an edit runs: the
+# commit is not blocked, and the edit starts over from the file as it is
+# then, so neither change is lost. foreign-hook commits dhcp.lan.foreign at
+# the first read of an edit, for $WORK/foreign.limit edits.
+mkdir -p "$WORK/foreign-uci"
+cat >"$WORK/foreign-hook" <<SH
+#!/bin/sh
+[ "\$(cat "$WORK/foreign.last" 2>/dev/null)" != "\$1" ] || exit 0
+printf '%s' "\$1" >"$WORK/foreign.last"
+n=\$((\$(cat "$WORK/foreign.count") + 1))
+[ "\$n" -le "\$(cat "$WORK/foreign.limit")" ] || exit 0
+printf '%s' "\$n" >"$WORK/foreign.count"
+timeout 3 sh -c '"\$1" -q -c "\$2" -t "\$3" set "dhcp.lan.foreign=\$4" && "\$1" -q -c "\$2" -t "\$3" commit dhcp' sh \
+  "$UCI_REAL" "$WORK/etc" "$WORK/foreign-uci" "\$(cat "$WORK/foreign.tag")\$n" ||
+  printf '%s\n' "\$n" >>"$WORK/foreign.blocked"
+SH
+chmod 0755 "$WORK/foreign-hook"
+foreign() {
+  printf '%s' "$1" >"$WORK/foreign.tag"
+  printf '%s' "$2" >"$WORK/foreign.limit"
+  printf 0 >"$WORK/foreign.count"
+  rm -f "$WORK/foreign.last" "$WORK/foreign.blocked"
+}
+foreign_value() { "$UCI_REAL" -q -c "$WORK/etc" get dhcp.lan.foreign || true; }
+
+foreign c 1
+dns_apply configure force
+[ ! -e "$WORK/foreign.blocked" ] || fail "a dhcp commit made during a configure was blocked until it timed out"
+[ "$STATUS" = 0 ] || fail "a configure during which dhcp was committed failed: $(cat "$WORK/syslog")"
+[ "$(foreign_value)" = c1 ] || fail "a configure lost a dhcp change committed during it: $(cat "$DHCP")"
+[ "$(host_uci get dhcp.@dnsmasq[0].server)" = 127.0.0.42 ] || fail "a configure during which dhcp was committed did not save its own settings"
+restarted || fail "a configure during which dhcp was committed did not restart dnsmasq"
+grep -q 'changed while Forkop edited' "$WORK/syslog" || fail "a configure that started over did not say why"
+foreign r 1
+dns_apply restore force
+[ "$STATUS" = 0 ] && [ ! -e "$WORK/foreign.blocked" ] || fail "a restore during which dhcp was committed failed or blocked the commit"
+[ "$(foreign_value)" = r1 ] || fail "a restore lost a dhcp change committed during it: $(cat "$DHCP")"
+options "$DHCP" | grep -v '^dhcp\.lan\.foreign=' | cmp -s "$WORK/options.orig" - ||
+  fail "a restore during which dhcp was committed did not put back the settings: $(cat "$DHCP")"
+no_leftovers "$WORK/etc"
+ok "a dhcp commit made during an edit is neither blocked nor lost"
+
+# A file that keeps changing is not overwritten: after a few attempts the
+# operation fails, says why, and dnsmasq is not restarted.
+foreign k 1000
+dns_apply configure force
+[ "$STATUS" != 0 ] || fail "a configure whose dhcp file kept changing reported success"
+restarted && fail "a configure whose dhcp file kept changing restarted dnsmasq"
+grep -q "127.0.0.42" "$DHCP" && fail "a configure whose dhcp file kept changing overwrote it"
+[ "$(foreign_value)" = "k$(cat "$WORK/foreign.count")" ] || fail "a configure overwrote a dhcp change committed during it"
+grep -q 'kept changing' "$WORK/syslog" || fail "a configure whose dhcp file kept changing did not say why"
+rm -f "$WORK/foreign-hook"
+no_leftovers "$WORK/etc"
+ok "an edit of a dhcp file that keeps changing fails without overwriting it"
 
 printf 'dnsmasq dhcp write checks passed\n'

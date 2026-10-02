@@ -19,6 +19,9 @@ const RUNTIME_STATE_DIR = getenv("FORKOP_RUNTIME_STATE_DIR") || "/var/run/forkop
 const MANAGED_UPGRADE_SING_BOX_MARKER = getenv("FORKOP_MANAGED_UPGRADE_SING_BOX_MARKER") || "/tmp/forkop-managed-upgrade-sing-box";
 const SYSTEM_INFO_CACHE_FILE = getenv("FORKOP_SYSTEM_INFO_CACHE_FILE") || RUNTIME_STATE_DIR + "/system-info.json";
 const COMPONENT_LOCK_DIR = getenv("UPDATES_LOCK_DIR") || RUNTIME_STATE_DIR + "/component-action.lock";
+// Written by every stop with who asked for it (service/initd.uc
+// mark_stop_requested), removed by an explicit start.
+const STOP_REQUESTED_FILE = getenv("FORKOP_STOP_REQUESTED_FILE") || RUNTIME_STATE_DIR + "/stop.requested";
 const FORKOP_OPKG_RECOVERY_DIR = getenv("FORKOP_OPKG_RECOVERY_DIR") || "/etc/forkop/opkg-package-set-recovery";
 const TMP_STALE_TTL_MINUTES = getenv("UPDATES_TMP_STALE_TTL_MINUTES") || "30";
 const TMP_FILE_STALE_TTL_MINUTES = getenv("UPDATES_TMP_FILE_STALE_TTL_MINUTES") || "10";
@@ -365,6 +368,18 @@ function restart_forkop_after_failed_sing_box_change() {
         updates_log("Forkop did not start again after the failed sing-box component change", "error");
 }
 
+// The user's stop holds Forkop down until an explicit start (D-15). A stop
+// made while the action ran stays the user's through Forkop's own stops for
+// the change (service/initd.uc stop_request_source); the start that puts
+// back the state noted when the action began must not undo it.
+function forkop_stopped_by_user() {
+    let request = fs.readfile(STOP_REQUESTED_FILE);
+    if (request == null)
+        return false;
+    let by = match(request, /(^|\n)by=([a-z]*)/);
+    return by == null || by[2] == "user";
+}
+
 // Forkop's own stop for an in-app upgrade is followed by a start. When the
 // upgrade fails after that stop, nothing else brings back the Forkop that was
 // running: a reload does not start a stopped runtime (D-15). It is started
@@ -378,6 +393,10 @@ function restart_forkop_after_failed_upgrade() {
     forkop_stopped_for_upgrade = false;
     if (forkop_status_running_with_timeout())
         return;
+    if (forkop_stopped_by_user()) {
+        updates_log("Forkop was stopped by the user during the upgrade; it is not started again");
+        return;
+    }
     remove_managed_upgrade_sing_box_marker();
     updates_log("Starting Forkop again after the failed Forkop upgrade");
     if (!forkop_start_and_wait("start"))
@@ -2182,7 +2201,8 @@ function forkop_recovery_files(with_i18n, extension) {
 
 // The service state from before the upgrade. Stopping a Forkop that the
 // package scripts started is Forkop's own stop for the upgrade, not the
-// user's (D-15); a start is awaited (UC-013).
+// user's (D-15); a start is awaited (UC-013). A stop by the user since then
+// holds (D-15).
 function restore_forkop_opkg_service(was_running) {
     if (!was_running) {
         if (!forkop_status_running_with_timeout())
@@ -2192,6 +2212,10 @@ function restore_forkop_opkg_service(was_running) {
     }
     if (forkop_status_running_with_timeout())
         return true;
+    if (forkop_stopped_by_user()) {
+        updates_log("Forkop was stopped by the user; the restored release is not started");
+        return true;
+    }
     return forkop_start_and_wait("start");
 }
 
@@ -2604,6 +2628,8 @@ function install_forkop(requested_version) {
     let restarted = true;
     if (forkop_was_running && forkop_status_running_with_timeout())
         updates_log("Forkop was restored by the package upgrade; final restart skipped");
+    else if (forkop_was_running && forkop_stopped_by_user())
+        updates_log("Forkop was stopped by the user during the upgrade; final start skipped");
     else
         restarted = restart_forkop_after_successful_change();
     clear_version_caches();

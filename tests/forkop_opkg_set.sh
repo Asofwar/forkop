@@ -76,6 +76,8 @@ function forkop_start_and_wait(action) {
 }
 function installed_package_version(name) { return versions[name] || ""; }
 function forkop_status_running_with_timeout() { return service_running; }
+// The user's stop during the upgrade: tests/forkop_upgrade_user_stop.sh.
+function forkop_stopped_by_user() { return false; }
 function previous_forkop_release(version) {
     check(version == FORKOP_VERSION, "wrong previous release");
     return { backend_name: "forkop_1.0.0.ipk", backend_url: "old-backend",

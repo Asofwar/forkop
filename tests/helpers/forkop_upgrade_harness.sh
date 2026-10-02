@@ -4,8 +4,10 @@
 # release servers (curl), the init script, `forkop get_status`, df and the
 # start-and-wait of service/initd.uc. The flow itself is the production code:
 # the harness is components/action.uc with its dispatch replaced, and only
-# the functions that would touch the host's /tmp or scan the host's processes
-# are overridden (other tests run sing-box doubles of their own).
+# the functions that would touch the host's /tmp, LuCI caches and rpcd or
+# scan the host's processes are overridden (other tests run sing-box doubles
+# of their own). The action's PATH holds the stand-ins and the host's tools
+# without a host apk or opkg: the router's package manager is the stand-in.
 #
 # Sourced by the tests that need it, after ROOT_DIR and WORK_DIR are set.
 # POSIX sh and bash compatible.
@@ -18,7 +20,8 @@
 #   upgrade_harness_running               Forkop runs
 #
 # Logs under $UPGRADE_STATE: init.log (init.d calls with FORKOP_STOP_SOURCE),
-# initd.log (service/initd.uc calls), pm.log (apk/opkg calls), curl.log.
+# initd.log (service/initd.uc calls), pm.log (apk/opkg calls), curl.log,
+# luci-refresh.log (the LuCI refresh after a completed upgrade).
 
 UPGRADE_LIB="$WORK_DIR/upgrade/lib"
 UPGRADE_BIN="$WORK_DIR/upgrade/bin"
@@ -29,6 +32,38 @@ UPGRADE_FORKOP="$WORK_DIR/upgrade/forkop"
 UPGRADE_RECOVERY_DIR="$WORK_DIR/upgrade/state/recovery"
 UPGRADE_MARKER="$WORK_DIR/upgrade/state/managed-upgrade-sing-box"
 UPGRADE_OUT="$WORK_DIR/upgrade/out.json"
+UPGRADE_HOST_BIN="$WORK_DIR/upgrade/host-bin"
+
+# The host's PATH, with every directory that holds an apk or opkg replaced by
+# a copy of its links without them.
+upgrade_harness_host_path() {
+    upgrade_path=""
+    upgrade_shadow_index=0
+    upgrade_saved_ifs="$IFS"
+    IFS=:
+    set -f
+    # shellcheck disable=SC2086 # split on ':' only
+    set -- $PATH
+    set +f
+    IFS="$upgrade_saved_ifs"
+    for upgrade_dir in "$@"; do
+        [ -n "$upgrade_dir" ] || continue
+        if [ -e "$upgrade_dir/apk" ] || [ -e "$upgrade_dir/opkg" ]; then
+            upgrade_shadow_index=$((upgrade_shadow_index + 1))
+            upgrade_shadow="$UPGRADE_HOST_BIN/$upgrade_shadow_index"
+            mkdir -p "$upgrade_shadow"
+            for upgrade_tool in "$upgrade_dir"/*; do
+                case "${upgrade_tool##*/}" in
+                    apk|opkg) ;;
+                    *) [ ! -x "$upgrade_tool" ] || ln -s "$upgrade_tool" "$upgrade_shadow/" 2>/dev/null || true ;;
+                esac
+            done
+            upgrade_dir="$upgrade_shadow"
+        fi
+        upgrade_path="${upgrade_path:+$upgrade_path:}$upgrade_dir"
+    done
+    printf '%s\n' "$upgrade_path"
+}
 
 upgrade_harness_setup() {
     upgrade_action_uc="$ROOT_DIR/forkop/files/usr/lib/components/action.uc"
@@ -56,6 +91,11 @@ function init_tmp_dir() {
 }
 function write_forkop_latest_version_cache(value, timestamp) {}
 function clear_version_caches() {}
+function refresh_luci_after_forkop_upgrade() {
+    let log = fs.open(HARNESS_STATE + "/luci-refresh.log", "a");
+    log.write("refresh\n");
+    log.close();
+}
 function upgrade_sing_box_processes() {
     return file_exists(HARNESS_STATE + "/flags/sing_box_ambiguous") ? null : {};
 }
@@ -301,6 +341,14 @@ SH
     printf '#!/bin/sh\nexit 0\n' >"$UPGRADE_BIN/sync"
     printf '#!/bin/sh\necho "{}"\n' >"$UPGRADE_BIN/ubus"
     chmod +x "$UPGRADE_BIN/df" "$UPGRADE_BIN/logger" "$UPGRADE_BIN/killall" "$UPGRADE_BIN/sync" "$UPGRADE_BIN/ubus"
+
+    upgrade_host_path="$(upgrade_harness_host_path)"
+    if PATH="$upgrade_host_path" command -v apk >/dev/null 2>&1 ||
+        PATH="$upgrade_host_path" command -v opkg >/dev/null 2>&1; then
+        printf 'FAIL: the host package manager is still on the harness PATH\n' >&2
+        exit 1
+    fi
+    UPGRADE_PATH="$UPGRADE_BIN:$upgrade_host_path"
 }
 
 # release_json VERSION EXT
@@ -343,7 +391,7 @@ upgrade_harness_unflag() {
 upgrade_harness_run() {
     upgrade_status=0
     env UPGRADE_STATE="$UPGRADE_STATE" \
-        PATH="$UPGRADE_BIN:$PATH" \
+        PATH="$UPGRADE_PATH" \
         FORKOP_LIB="$UPGRADE_LIB" \
         FORKOP_BIN="$UPGRADE_FORKOP" \
         FORKOP_SERVICE_INIT="$UPGRADE_INIT" \

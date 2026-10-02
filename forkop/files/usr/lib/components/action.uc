@@ -2550,6 +2550,17 @@ function save_forkop_configuration_backup(config_dir, backup_dir) {
     return backup;
 }
 
+// LuCI serves the new release's views and ACLs only once its caches are gone
+// and rpcd has reloaded.
+function refresh_luci_after_forkop_upgrade() {
+    remove_file("/var/luci-indexcache");
+    command_success("rm -f /var/luci-indexcache* /tmp/luci-indexcache* 2>/dev/null");
+    command_success("rm -rf /tmp/luci-modulecache/ 2>/dev/null");
+    if (file_exists("/etc/init.d/rpcd") && !command_success_from_args([ "/etc/init.d/rpcd", "reload" ]))
+        command_success_from_args([ "/etc/init.d/rpcd", "restart" ]);
+    command_success_from_args([ "killall", "-HUP", "rpcd" ]);
+}
+
 function verify_selected_release_downloads(selected, files, latest_version) {
     for (let file in files) {
         if (file == "")
@@ -2624,12 +2635,7 @@ function install_forkop(requested_version) {
     // The new release is installed: its start follows below.
     forkop_stopped_for_upgrade = false;
 
-    remove_file("/var/luci-indexcache");
-    command_success("rm -f /var/luci-indexcache* /tmp/luci-indexcache* 2>/dev/null");
-    command_success("rm -rf /tmp/luci-modulecache/ 2>/dev/null");
-    if (file_exists("/etc/init.d/rpcd") && !command_success_from_args([ "/etc/init.d/rpcd", "reload" ]))
-        command_success_from_args([ "/etc/init.d/rpcd", "restart" ]);
-    command_success_from_args([ "killall", "-HUP", "rpcd" ]);
+    refresh_luci_after_forkop_upgrade();
 
     // The backend package post-install hook has already restored a Forkop
     // instance that was running before this release upgrade. Avoid a second

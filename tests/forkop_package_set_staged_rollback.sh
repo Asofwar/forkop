@@ -41,6 +41,18 @@ previous_set_installed() {
         [ "$(upgrade_harness_version luci-i18n-forkop-ru)" = 1.0.0-r1 ]
 }
 
+# The router's package manager is the stand-in, also when the host has one:
+# a host apk on PATH must neither turn an opkg run into an apk run nor be
+# called at all.
+mkdir -p "$WORK_DIR/host-bin"
+cat >"$WORK_DIR/host-bin/apk" <<'SH'
+#!/bin/sh
+printf 'apk %s\n' "$*" >>"${0%/*}/called"
+exit 1
+SH
+chmod +x "$WORK_DIR/host-bin/apk"
+PATH="$WORK_DIR/host-bin:$PATH"
+
 upgrade_harness_setup
 
 # --- apk: the new set fails half-way and the previous release is restored --
@@ -99,5 +111,21 @@ esac
 previous_set_installed || fail "apk: the pending rollback did not restore the previous release"
 upgrade_harness_running || fail "apk: the pending rollback did not start the Forkop that ran before the upgrade"
 [ ! -e "$UPGRADE_RECOVERY_DIR" ] || fail "apk: the completed rollback left its recovery state behind"
+
+# --- the upgrade completes ----------------------------------------------------
+
+# The LuCI caches and rpcd are the router's: the harness records their
+# refresh instead of touching the host's.
+for pm in apk opkg; do
+    upgrade_harness_reset "$pm"
+    upgrade_harness_run || fail "$pm: the upgrade failed: $(upgrade_harness_message)"
+    [ "$(upgrade_harness_version forkop)" = 1.1.0-r1 ] || fail "$pm: the new release is not installed"
+    [ -s "$UPGRADE_STATE/luci-refresh.log" ] || fail "$pm: the LuCI refresh after the upgrade was not the harness's"
+done
+
+[ ! -e "$WORK_DIR/host-bin/called" ] || {
+    sed 's/^/  host: /' "$WORK_DIR/host-bin/called" >&2
+    fail "the host's package manager was called"
+}
 
 printf 'forkop_package_set_staged_rollback: PASS\n'

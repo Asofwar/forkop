@@ -5,7 +5,9 @@
 # a line boundary passes `nft -c` and would replace the live table without
 # the lost rules or set elements, and an empty guard batch "installs" no
 # guard. Every append is checked, and a short one fails the preparation
-# before the batch reaches nft (UC-223). A full tmpfs in a mount namespace.
+# before the batch reaches nft (UC-223). A full tmpfs in a mount namespace;
+# a batch on /dev/full (writes lost the same way) where no mount namespace
+# can be made.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -84,13 +86,23 @@ fi
 ! grep -q -- '-f ' "$NFT_LOG" || fail "an empty DPI guard batch reached nft: $(cat "$NFT_LOG")"
 SH
 
+# Everywhere: a batch on /dev/full takes every write and keeps nothing, as a
+# full tmpfs does, and write() and close() report success the same way.
+: >"$WORK/nft.log"
+if PATH="$WORK/bin:$PATH" NFT_LOG="$WORK/nft.log" FORKOP_NFT_BATCH_FILE=/dev/full \
+  ucode -L "$LIB" "$LIB/nft/apply.uc" nft-add-file-chunks-to-set "$WORK/subnets.txt" ForkopTable forkop_subnets ips '' 5000; then
+  fail "appends lost on /dev/full were reported as prepared"
+fi
+
 export WORK LIB
 if unshare --mount true 2>/dev/null; then
   unshare --mount bash "$WORK/full.sh" || fail "full tmpfs"
 elif unshare --user --map-root-user --mount true 2>/dev/null; then
   unshare --user --map-root-user --mount bash "$WORK/full.sh" || fail "full tmpfs"
 else
-  printf 'nft_batch_short_write: no mount namespace, the cases are skipped\n'
+  # Nothing above ran on a full tmpfs: say so instead of PASS.
+  printf 'SKIP: nft_batch_short_write: no mount namespace for a full tmpfs; only the /dev/full case ran\n'
+  exit 0
 fi
 
 printf 'nft_batch_short_write: PASS\n'

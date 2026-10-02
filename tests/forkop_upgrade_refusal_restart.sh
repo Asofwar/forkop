@@ -144,6 +144,34 @@ for pm in apk opkg; do
     expect_no_user_stop "$case"
     [ -s "$UPGRADE_RECOVERY_DIR/pending" ] || fail "$case: the pending rollback was dropped"
 
+    # The next Update click runs the pending rollback first. Restoring the
+    # backend runs its prerm, which stops Forkop for the package; when the
+    # rollback fails again, the Forkop that was running when this action
+    # began is started again as well.
+    : >"$UPGRADE_STATE/init.log"
+    : >"$UPGRADE_STATE/initd.log"
+    case="$pm failed pending rollback"
+    upgrade_harness_run && fail "$case: the failed rollback was reported as completed"
+    expect_message "$case" "recovery archives retained"
+    grep -Fxq 'stop source=package' "$UPGRADE_STATE/init.log" ||
+        fail "$case: the rollback did not stop Forkop for the package"
+    grep -Fxq 'start-and-wait start' "$UPGRADE_STATE/initd.log" ||
+        fail "$case: Forkop was not started again with start-and-wait"
+    upgrade_harness_running || fail "$case: Forkop does not run after the failed pending rollback"
+    expect_no_user_stop "$case"
+    [ -s "$UPGRADE_RECOVERY_DIR/pending" ] || fail "$case: the pending rollback was dropped"
+
+    # Once the rollback can complete, it does, and Forkop runs on.
+    upgrade_harness_unflag fail_old_luci-app-forkop
+    upgrade_harness_unflag fail_old_forkop
+    case="$pm completed pending rollback"
+    upgrade_harness_run || fail "$case: the pending rollback failed: $(upgrade_harness_message)"
+    expect_message "$case" "recovery completed"
+    set_installed 1.0.0-r1 || fail "$case: the previous release is not installed again"
+    upgrade_harness_running || fail "$case: Forkop does not run after the completed rollback"
+    expect_no_user_stop "$case"
+    [ ! -e "$UPGRADE_RECOVERY_DIR" ] || fail "$case: the completed rollback left its recovery state behind"
+
     # --- a successful upgrade ----------------------------------------------
     upgrade_harness_reset "$pm"
     case="$pm upgrade"

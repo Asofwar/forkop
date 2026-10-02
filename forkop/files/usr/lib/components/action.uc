@@ -2785,6 +2785,12 @@ function component_action(component, action, version) {
         action_fail(component != "" ? component : "unknown", action != "" ? action : "unknown", "Failed to create temporary directory");
     if (component == "forkop" && action == "install" &&
         file_exists(FORKOP_OPKG_RECOVERY_DIR + "/pending")) {
+        // Restoring the backend runs its prerm, which stops Forkop for the
+        // package. A rollback that fails again starts the Forkop that was
+        // running when this action began (UC-196); a completed one restores
+        // the state recorded before the upgrade.
+        capture_forkop_running_state();
+        forkop_stopped_for_upgrade = true;
         let recovery_error = recover_forkop_opkg_set();
         if (recovery_error != "")
             action_fail("forkop", "install", recovery_error);

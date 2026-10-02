@@ -173,13 +173,16 @@ PATH="$WORK_DIR/stub:$PATH" ucode -L "$FORKOP_LIB" "$NFT_UC" killswitch-render F
 nft -f "$WORK_DIR/live.nft" || fail "could not create the live ForkopTable"
 
 install_package_files "$ROOT"
+# nft writes a listing in many small writes: a grep -q that matched early
+# would end it with SIGPIPE, which pipefail reports as a failed check, so
+# every listing is read in full before it is matched.
 ks sync start || fail "sync from the real live table failed"
 ks_present || fail "the synced policy is not live"
-nft list chain inet ForkopKillswitch priority_rules | grep -Fq 'counter name "ks_main" jump ks_reject' ||
+grep -Fq 'counter name "ks_main" jump ks_reject' <<<"$(nft list chain inet ForkopKillswitch priority_rules)" ||
   fail "the protected section does not reject"
-nft list chain inet ForkopKillswitch priority_rules | grep -Fq '@forkop_rule_byp_subnets return' ||
+grep -Fq '@forkop_rule_byp_subnets return' <<<"$(nft list chain inet ForkopKillswitch priority_rules)" ||
   fail "the earlier bypass section does not keep its verdict"
-nft list set inet ForkopKillswitch forkop_rule_main_subnets | grep -Fq '3.3.3.0/24' ||
+grep -Fq '3.3.3.0/24' <<<"$(nft list set inet ForkopKillswitch forkop_rule_main_subnets)" ||
   fail "the live set content was not copied"
 ks sync reload || fail "re-applying the same policy failed"
 ok "the policy rendered from a real live table passes nft -c, -f and a re-apply"
@@ -189,10 +192,11 @@ ok "the policy rendered from a real live table passes nft -c, -f and a re-apply"
 if printf 'add table inet ks_probe\nadd chain inet ks_probe c { type nat hook prerouting priority -102; policy accept; }\nadd rule inet ks_probe c udp dport 53 redirect to :1\n' |
   nft -c -f - >/dev/null 2>&1; then
   ks dns-redirect on || fail "switching client DNS to the standby resolver failed"
-  nft list chain inet ForkopKillswitch ks_dns | grep -Eq 'iifname @ks_interfaces udp dport 53 counter .*redirect to :18054' ||
+  grep -Eq 'iifname @ks_interfaces udp dport 53 counter .*redirect to :18054' <<<"$(nft list chain inet ForkopKillswitch ks_dns)" ||
     fail "the standby redirect is not in the live table"
   ks dns-redirect off || fail "handing client DNS back failed"
-  if nft list chain inet ForkopKillswitch ks_dns | grep -q redirect; then fail "the standby redirect must be gone"; fi
+  dns_chain="$(nft list chain inet ForkopKillswitch ks_dns)" || fail "the DNS chain must stay in the live table"
+  if grep -q redirect <<<"$dns_chain"; then fail "the standby redirect must be gone"; fi
   ok "the standby DNS redirect passes the real nft"
 else
   printf 'NOTE: this kernel has no nft redirect expression; the standby DNS redirect is not checked\n'
@@ -202,7 +206,7 @@ fi
 
 fw4_boot "$ROOT"
 ks_present || fail "with Forkop installed the policy must come back after a boot"
-nft list chain inet ForkopKillswitch priority_rules | grep -Fq 'counter name "ks_main" jump ks_reject' ||
+grep -Fq 'counter name "ks_main" jump ks_reject' <<<"$(nft list chain inet ForkopKillswitch priority_rules)" ||
   fail "the policy loaded at boot does not reject protected traffic"
 ok "with the package installed the saved policy is loaded at boot"
 

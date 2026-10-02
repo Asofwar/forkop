@@ -218,7 +218,10 @@ check_converged() {
   fi
   [ ! -e "$MARKER" ] || fail "the list apply marker was left behind ($(cat "$MARKER"))"
   [ ! -e "$RUN/reload.pending" ] || fail "a queued reload was never run"
-  [ ! -e "$RUN/reload.lock" ] || fail "reload.lock was left behind"
+  # The worker's record ends before its final list-content reload, and the
+  # reload writes its event before the init script releases reload.lock: wait
+  # for that release instead of racing it.
+  wait_until 30 test ! -e "$RUN/reload.lock" || fail "reload.lock was left behind"
 }
 
 # A. A scheduled update downloads the old source; the user changes it.

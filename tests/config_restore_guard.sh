@@ -6,6 +6,8 @@ set -eu
 # able to reuse that guard, and the guard may only disappear after a reload
 # proved a coherent runtime.
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+# shellcheck source=tests/helpers/owned_processes.sh
+. "$ROOT/tests/helpers/owned_processes.sh"
 LIB="$ROOT/forkop/files/usr/lib"
 SCRIPT="$LIB/config/snapshots.uc"
 WORK="$(mktemp -d)"
@@ -166,7 +168,7 @@ sleep 300 >/dev/null 2>&1 </dev/null &
 holder=$!
 echo "$holder" > "$FORKOP_RELOAD_LOCK_DIR/pid"
 restore "$LIB" valid "0"
-kill "$holder" 2>/dev/null || true
+owned_kill TERM "$holder" || true
 rm -f "$FORKOP_RELOAD_LOCK_DIR/pid"; rmdir "$FORKOP_RELOAD_LOCK_DIR"
 check '{"status":"busy","reason":"service_action_in_progress","guard":"valid","config":"bad","lkg":"stale","noReload":true,"noRemove":true}'
 [ ! -s "$STATE/events" ]

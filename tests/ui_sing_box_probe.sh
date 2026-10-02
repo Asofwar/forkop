@@ -2,6 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=tests/helpers/owned_processes.sh
+. "$ROOT_DIR/tests/helpers/owned_processes.sh"
 FORKOP_LIB="$ROOT_DIR/forkop/files/usr/lib"
 UI_UC="$FORKOP_LIB/service/ui.uc"
 WORK_DIR="$(mktemp -d)"
@@ -13,7 +15,7 @@ CACHE_FILE="$WORK_DIR/sing-box-version-cache"
 cleanup() {
   if [ -f "$PROBE_PIDS" ]; then
     while IFS= read -r pid; do
-      kill -9 "$pid" 2>/dev/null || true
+      owned_kill KILL "$pid" || true
     done <"$PROBE_PIDS"
   fi
   rm -rf "$WORK_DIR"

@@ -29,6 +29,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=tests/helpers/wait.sh
 . "$ROOT_DIR/tests/helpers/wait.sh"
+# shellcheck source=tests/helpers/owned_processes.sh
+. "$ROOT_DIR/tests/helpers/owned_processes.sh"
 LIB="$ROOT_DIR/forkop/files/usr/lib"
 REAL_INITD="$ROOT_DIR/forkop/files/etc/init.d/forkop"
 WORK_DIR="$(mktemp -d)"
@@ -170,7 +172,7 @@ hold_lock() {
   printf '%s\n' "$!" >"$WORK_DIR/holder"
 }
 release_lock() {
-  kill "$(cat "$WORK_DIR/holder")" 2>/dev/null || true
+  owned_kill TERM "$(cat "$WORK_DIR/holder")" || true
   rm -f "$WORK_DIR/holder" "$FORKOP_RELOAD_LOCK_DIR/pid"
   rmdir "$FORKOP_RELOAD_LOCK_DIR"
 }

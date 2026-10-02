@@ -7,6 +7,8 @@ CLI="$ROOT_DIR/tests/fixtures/process_identity_cli.uc"
 STATE_DIR="$(mktemp -d)"
 # shellcheck source=tests/helpers/wait.sh
 . "$ROOT_DIR/tests/helpers/wait.sh"
+# shellcheck source=tests/helpers/owned_processes.sh
+. "$ROOT_DIR/tests/helpers/owned_processes.sh"
 # $! is known before the background job execs its command; identity checks
 # need the exec'd executable and argv.
 started() {
@@ -16,18 +18,18 @@ sleep 300 &
 foreign_pid=$!
 started "$foreign_pid" sleep
 cleanup() {
-    kill "$foreign_pid" 2>/dev/null || true
+    owned_kill TERM "$foreign_pid" || true
     if [ -n "${owned_pid:-}" ]; then
-        kill "$owned_pid" 2>/dev/null || true
+        owned_kill TERM "$owned_pid" || true
     fi
     if [ -n "${worker_pid:-}" ]; then
-        kill "$worker_pid" 2>/dev/null || true
+        owned_kill TERM "$worker_pid" || true
     fi
     if [ -n "${supervisor_pid:-}" ]; then
-        kill "$supervisor_pid" 2>/dev/null || true
+        owned_kill TERM "$supervisor_pid" || true
     fi
     if [ -f "$STATE_DIR/legacy-child.pid" ]; then
-        kill "$(head -n 1 "$STATE_DIR/legacy-child.pid")" 2>/dev/null || true
+        owned_kill TERM "$(head -n 1 "$STATE_DIR/legacy-child.pid")" || true
     fi
     rm -rf "$STATE_DIR"
 }

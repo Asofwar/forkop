@@ -10,6 +10,8 @@ set -eu
 # reload.pending with a unique marker, so a second request in the same second
 # is still visible to a caller comparing markers.
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=tests/helpers/owned_processes.sh
+. "$ROOT/tests/helpers/owned_processes.sh"
 LIB="$ROOT/forkop/files/usr/lib"
 INITD_UC="$LIB/service/initd.uc"
 STATE_UC="$LIB/service/state.uc"
@@ -18,7 +20,7 @@ REAL_UCODE="$(command -v ucode)"
 WORK="$(mktemp -d)"
 holder=""
 cleanup() {
-  [ -z "$holder" ] || kill "$holder" 2>/dev/null || true
+  [ -z "$holder" ] || owned_kill TERM "$holder" || true
   rm -rf "$WORK"
 }
 trap cleanup EXIT HUP INT TERM

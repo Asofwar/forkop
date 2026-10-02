@@ -5,12 +5,14 @@
 # yt + ytimg, discord: dc), a target outside any group, and helpers.
 REAL_LIB="$ROOT_DIR/forkop/files/usr/lib"
 STUBS="$ROOT_DIR/tests/helpers/autotune_scheduler"
+# shellcheck source=tests/helpers/owned_processes.sh
+. "$ROOT_DIR/tests/helpers/owned_processes.sh"
 WORK="$(mktemp -d)"
 BG_PIDS=()
 # A call the uci test shim refused fails the test, even one it tolerated.
 cleanup() {
-  local rc=$? pid
-  for pid in "${BG_PIDS[@]}"; do kill -9 "$pid" 2>/dev/null || true; done
+  local rc=$?
+  owned_kill KILL "${BG_PIDS[@]}" || true
   uci_cli_report || [ "$rc" != 0 ] || rc=1
   rm -rf "$WORK"
   exit "$rc"

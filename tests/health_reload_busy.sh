@@ -14,14 +14,16 @@ set -eu
 # the UI state and nft are stand-ins. The list worker is a stand-in
 # updates.uc that records itself as components/updates.uc does and waits.
 ROOT="$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)"
+# shellcheck source=tests/helpers/owned_processes.sh
+. "$ROOT/tests/helpers/owned_processes.sh"
 REAL_LIB="$ROOT/forkop/files/usr/lib"
 REAL_UCODE="$(command -v ucode)"
 WORK="$(mktemp -d)"
 holder=""
 cleanup() {
   : > "$WORK/release"
-  [ -z "$holder" ] || kill "$holder" 2>/dev/null || true
-  [ ! -s "$WORK/worker.pid" ] || kill "$(cat "$WORK/worker.pid")" 2>/dev/null || true
+  [ -z "$holder" ] || owned_kill TERM "$holder" || true
+  [ ! -s "$WORK/worker.pid" ] || owned_kill TERM "$(cat "$WORK/worker.pid")" || true
   rm -rf "$WORK"
 }
 trap cleanup EXIT HUP INT TERM

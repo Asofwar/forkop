@@ -2,11 +2,13 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=tests/helpers/owned_processes.sh
+. "$ROOT_DIR/tests/helpers/owned_processes.sh"
 FORKOP_LIB="$ROOT_DIR/forkop/files/usr/lib"
 WORK_DIR="$(mktemp -d)"
 holder=""
 cleanup() {
-  [ -z "$holder" ] || kill "$holder" 2>/dev/null || true
+  [ -z "$holder" ] || owned_kill TERM "$holder" || true
   # The retry that the blocked start scheduled.
   pkill -KILL -f "$WORK_DIR/run/start-retry.pid" 2>/dev/null || true
   rm -rf "$WORK_DIR"

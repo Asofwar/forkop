@@ -2,6 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=tests/helpers/owned_processes.sh
+. "$ROOT_DIR/tests/helpers/owned_processes.sh"
 FORKOP_LIB="$ROOT_DIR/forkop/files/usr/lib"
 UPDATES_UC="$FORKOP_LIB/components/updates.uc"
 LIFECYCLE_UC="$FORKOP_LIB/service/lifecycle.uc"
@@ -94,7 +96,7 @@ pending_reason="$(FORKOP_LIST_UPDATE_RELOAD_FILE="$WORK_DIR/list-update.reload" 
 # lock non-stale, so initd must queue list-content and expose `queued`.
 sleep 300 >/dev/null 2>&1 &
 holder=$!
-trap 'kill "$holder" 2>/dev/null || true; rm -rf "$WORK_DIR"' EXIT
+trap 'owned_kill TERM "$holder" || true; rm -rf "$WORK_DIR"' EXIT
 ucode -L "$FORKOP_LIB" "$FORKOP_LIB/service/state.uc" acquire-runtime-dir-lock "$WORK_DIR/held-reload.lock" "$holder" ||
   fail "the holder could not take reload.lock"
 # Forkop was started since boot: a Forkop that was not is not reloaded at all
@@ -115,7 +117,7 @@ initd_queue_output="$(
   fail "the queued initd request changed the reload.lock owner"
 ucode -L "$FORKOP_LIB" "$FORKOP_LIB/service/state.uc" release-runtime-dir-lock "$WORK_DIR/held-reload.lock" "$holder"
 [ ! -e "$WORK_DIR/held-reload.lock" ] || fail "the holder's release left reload.lock behind"
-kill "$holder" 2>/dev/null || true
+owned_kill TERM "$holder" || true
 
 # A changed remote JSON/SRS cache is independent of list-derived generation.
 # Its refresh return code 0 means changed and must coalesce into one apply.

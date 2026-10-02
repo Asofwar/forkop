@@ -17,6 +17,8 @@ mkdir -p "$PID_DIR" "$CHILD_DIR" "$LOG_DIR"
 make_state_dirs
 # shellcheck source=tests/helpers/wait.sh
 . "$ROOT_DIR/tests/helpers/wait.sh"
+# shellcheck source=tests/helpers/owned_processes.sh
+. "$ROOT_DIR/tests/helpers/owned_processes.sh"
 # shellcheck source=tests/helpers/case_groups.sh
 . "$ROOT_DIR/tests/helpers/case_groups.sh"
 
@@ -25,7 +27,7 @@ cleanup() {
         [ -f "$file" ] || continue
         pid="$(head -n 1 "$file")"
         case "$pid" in *[!0-9]*|'') continue;; esac
-        kill "$pid" 2>/dev/null || true
+        owned_kill TERM "$pid" || true
     done
     rm -rf "$STATE_DIR"
 }
@@ -281,6 +283,8 @@ rm -f "$PID_DIR/foreign.pid"
 # a minute. live_supervisors counts only the group's own supervisors.
 case_group() {
     make_state_dirs
+    # The group's cleanup signals only the group's processes.
+    owned_processes_init
     trap cleanup EXIT HUP INT TERM
     record_normal_snapshot
     "cases_$1"

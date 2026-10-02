@@ -11,12 +11,14 @@ set -eu
 # restore's own reload drains it, so recovery stays possible while the
 # current configuration cannot reload and keeps failing to drain the queue.
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=tests/helpers/owned_processes.sh
+. "$ROOT/tests/helpers/owned_processes.sh"
 LIB="$ROOT/forkop/files/usr/lib"
 SCRIPT="$LIB/config/snapshots.uc"
 REAL_UCODE="$(command -v ucode)"
 WORK="$(mktemp -d)"
 cleanup() {
-  [ ! -e "$WORK/state/holder" ] || kill "$(cat "$WORK/state/holder")" 2>/dev/null || true
+  [ ! -e "$WORK/state/holder" ] || owned_kill TERM "$(cat "$WORK/state/holder")" || true
   rm -rf "$WORK"
 }
 trap cleanup EXIT HUP INT TERM
@@ -47,7 +49,7 @@ hold_lock() {
   echo "$!" > "$STATE/holder"
 }
 release_lock() {
-  kill "$(cat "$STATE/holder")" 2>/dev/null || true
+  owned_kill TERM "$(cat "$STATE/holder")" || true
   rm -f "$STATE/holder" "$FORKOP_RELOAD_LOCK_DIR/pid"
   rmdir "$FORKOP_RELOAD_LOCK_DIR"
 }

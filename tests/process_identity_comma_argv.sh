@@ -9,11 +9,13 @@ set -euo pipefail
 # whose arguments really differ.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=tests/helpers/owned_processes.sh
+. "$ROOT_DIR/tests/helpers/owned_processes.sh"
 LIB="$ROOT_DIR/forkop/files/usr/lib"
 WORK="$(mktemp -d)"
 pid=""
 cleanup() {
-    [ -z "$pid" ] || kill "$pid" 2>/dev/null || true
+    [ -z "$pid" ] || owned_kill TERM "$pid" || true
     rm -rf "$WORK"
 }
 trap cleanup EXIT HUP INT TERM

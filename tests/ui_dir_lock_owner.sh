@@ -14,13 +14,12 @@ UI_UC="$LIB/service/ui.uc"
 WORK_DIR="$(mktemp -d)"
 # shellcheck source=tests/helpers/wait.sh
 . "$ROOT_DIR/tests/helpers/wait.sh"
+# shellcheck source=tests/helpers/owned_processes.sh
+. "$ROOT_DIR/tests/helpers/owned_processes.sh"
 
 actors=()
 cleanup() {
-  local pid
-  for pid in "${actors[@]}"; do
-    kill -KILL "$pid" 2>/dev/null || true
-  done
+  owned_kill KILL "${actors[@]}" || true
   wait 2>/dev/null || true
   rm -rf "$WORK_DIR"
 }

@@ -25,6 +25,8 @@ set -euo pipefail
 # runtime, so it is down.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=tests/helpers/owned_processes.sh
+. "$ROOT_DIR/tests/helpers/owned_processes.sh"
 LIB="$ROOT_DIR/forkop/files/usr/lib"
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
@@ -168,7 +170,7 @@ rm -f "$STOP_MARKER" "$START_RECORD"
 #     a component action stays the user's.
 sleep 300 &
 component_worker=$!
-trap 'kill "$component_worker" 2>/dev/null || true; rm -rf "$WORK_DIR"' EXIT
+trap 'owned_kill TERM "$component_worker" || true; rm -rf "$WORK_DIR"' EXIT
 mkdir -p "$FORKOP_UI_COMPONENT_ACTION_DIR"
 component_job="$FORKOP_UI_COMPONENT_ACTION_DIR/1700000000-4242.json"
 for source in component package user; do
@@ -199,7 +201,7 @@ for source in component package user; do
     fail "Forkop stopped by '$source' is shown as restarting after the component action ended: $(cat "$WORK_DIR/ui.json")"
   [ "$(forkop_field "$WORK_DIR/ui.json" not_started)" = 0 ] || fail "a stop by '$source' whose start never came is not a failure"
 done
-kill "$component_worker" 2>/dev/null || true
+owned_kill TERM "$component_worker" || true
 wait "$component_worker" 2>/dev/null || true
 rm -f "$STOP_MARKER" "$START_RECORD" "$component_job"
 

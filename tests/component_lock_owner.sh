@@ -27,12 +27,14 @@ LIB="$ROOT_DIR/forkop/files/usr/lib"
 WORK="$(mktemp -d)"
 # shellcheck source=tests/helpers/wait.sh
 . "$ROOT_DIR/tests/helpers/wait.sh"
+# shellcheck source=tests/helpers/owned_processes.sh
+. "$ROOT_DIR/tests/helpers/owned_processes.sh"
 
 pids=()
 cleanup() {
   local pid
+  owned_kill KILL "${pids[@]}" || true
   for pid in "${pids[@]}"; do
-    kill -KILL "$pid" 2>/dev/null || true
     wait "$pid" 2>/dev/null || true
   done
   rm -rf "$WORK"

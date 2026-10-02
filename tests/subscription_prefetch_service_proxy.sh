@@ -27,12 +27,14 @@ LIB="$ROOT_DIR/forkop/files/usr/lib"
 WORK_DIR="$(mktemp -d)"
 # shellcheck source=tests/helpers/wait.sh
 . "$ROOT_DIR/tests/helpers/wait.sh"
+# shellcheck source=tests/helpers/owned_processes.sh
+. "$ROOT_DIR/tests/helpers/owned_processes.sh"
 
 pids=()
 cleanup() {
   local pid
+  owned_kill KILL "${pids[@]}" || true
   for pid in "${pids[@]}"; do
-    kill -KILL "$pid" 2>/dev/null || true
     wait "$pid" 2>/dev/null || true
   done
   rm -rf "$WORK_DIR"
@@ -168,7 +170,7 @@ finish_case() {
   state release-runtime-dir-lock "$RELOAD_LOCK" "$HOLDER"
   wait_until 60 process_gone "$UPDATE" || fail "the subscription update did not finish after reload.lock was released"
   wait "$UPDATE" || status=$?
-  kill -KILL "$HOLDER" 2>/dev/null || true
+  owned_kill KILL "$HOLDER" || true
   wait "$HOLDER" 2>/dev/null || true
   [ "$status" = 0 ] || fail "the forced subscription update failed with status $status: $(cat "$WORK_DIR/update.log")"
   [ "$(cached_host)" = "@alpha.example.com" ] || fail "the subscription update did not commit the response"

@@ -17,13 +17,16 @@ set -euo pipefail
 # shell that signals, checked right before the signal. Part 1 holds the
 # helper against processes under PIDs the test stored that are not its own
 # (what a stored PID names once the number was reused): a host process, a
-# process and a process group of another test.
+# process and a process group of another test. Part 2 checks that no test
+# signals a stored PID the old way.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=tests/helpers/wait.sh
 . "$ROOT_DIR/tests/helpers/wait.sh"
 # shellcheck source=tests/helpers/owned_processes.sh
 . "$ROOT_DIR/tests/helpers/owned_processes.sh"
+# shellcheck source=tests/helpers/source_checks.sh
+. "$ROOT_DIR/tests/helpers/source_checks.sh"
 
 WORK_DIR="$(mktemp -d)"
 OWN_MARK="$FORKOP_TEST_OWNER"
@@ -209,5 +212,79 @@ owned_process "$GROUP_PROCESS" && fail "a process of a group of cases counts as 
 FORKOP_TEST_OWNER="$(tr '\0' '\n' <"/proc/$GROUP_PROCESS/environ" | sed -n 's/^FORKOP_TEST_OWNER=//p')" \
   owned_kill KILL "$GROUP_PROCESS" || fail "the group's process was not killed under its mark"
 owned_kill KILL "$BEFORE" || fail "the test's process was not killed"
+
+# --- Part 2: no test signals a stored PID the old way ------------------------
+
+# stale_kills FILE...: the lines that signal a stored PID, the process group
+# of a stored number or the children of a stored PID other than through the
+# helper. A plain `kill "$pid"` that would fail the test if the process were
+# gone is a signal under test sent to a process the test has just seen
+# running, and stays.
+stale_kills() {
+  awk '
+    /^[[:space:]]*#/ { next }
+    {
+      why = ""
+      if ($0 ~ /(^|[^a-z_-])kill[^#]*--[[:space:]]+"?-\$/)
+        why = "signals the process group of a stored number"
+      else if ($0 ~ /(^|[^a-z_-])pkill([[:space:]]+-[A-Za-z0-9]+)*[[:space:]]+-P/)
+        why = "signals the children of a stored PID"
+      else {
+        # Each kill of a stored PID up to the end of its command.
+        rest = $0
+        while (why == "" && match(rest, /(^|[^a-z_-])kill([[:space:]]+(-[A-Z]+|-[1-9][0-9]*|-s[[:space:]]+[A-Z]+))?[[:space:]]+(--[[:space:]]+)?"?\$/)) {
+          command = substr(rest, RSTART)
+          rest = substr(rest, RSTART + RLENGTH)
+          sub(/;.*/, "", command)
+          if (command ~ /\|\|[[:space:]]*(true|:)|2>\/dev\/null/)
+            why = "signals a stored PID whose process may be gone"
+        }
+      }
+      if (why != "")
+        printf "%s:%d: %s: %s\n", FILENAME, FNR, why, $0
+    }
+  ' "$@"
+}
+
+# The check finds every old form, and nothing else.
+cat >"$WORK_DIR/sample.sh" <<'SH'
+  kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
+    pkill -KILL -P "$pid" 2>/dev/null || true
+    kill -KILL "$pid" 2>/dev/null || true
+trap 'kill "$holder" 2>/dev/null || true; rm -rf "$WORK"' EXIT
+kill -HUP -- "-$runner" 2>/dev/null || true; wait "$runner" || true
+  [ -z "$pid" ] || kill -TERM "$pid" 2>/dev/null
+kill "$(cat "$STATE/holder")" 2>/dev/null || true
+  for pid in "${FOREIGN_PIDS[@]}"; do kill -9 "$pid" 2>/dev/null || true; done
+kill -s TERM "$pid" || :
+kill -9 "$runner"; kill -9 "$(cat "$STATE/guard.pid")" 2>/dev/null || true
+-- allowed --
+  owned_kill KILL "${actors[@]}" || true
+kill -0 "$pid" 2>/dev/null || fail "gone"
+kill -TERM "$runner"; wait "$runner" || true
+pkill -KILL -f "$WORK_DIR" 2>/dev/null || true
+# kill -KILL "$pid" 2>/dev/null || true
+SH
+found="$(stale_kills "$WORK_DIR/sample.sh" | cut -d: -f2 | tr '\n' ' ')"
+[ "$found" = "1 2 3 4 5 6 7 8 9 10 " ] || fail "the check of the old forms found lines '$found', not 1 to 10"
+
+TEST_FILES=()
+while IFS= read -r file; do
+  case "${file#"$ROOT_DIR"/}" in
+    # The helper itself, this check, the runner, which signals the process
+    # group of a test it started only while its pidfile says that the test
+    # still runs, and a regression run alone on a router against the
+    # installed Forkop, without this repository.
+    tests/helpers/owned_processes.sh | tests/owned_processes.sh | tests/run.sh | \
+      tests/router/singbox_single_process.sh) continue ;;
+  esac
+  TEST_FILES+=("$file")
+done < <(find "$ROOT_DIR/tests" -name '*.sh' -type f | sort)
+[ "${#TEST_FILES[@]}" -ge 100 ] || fail "only ${#TEST_FILES[@]} test files to check"
+source_require "${TEST_FILES[@]}"
+if old="$(stale_kills "${TEST_FILES[@]}")" && [ -n "$old" ]; then
+  printf '%s\n' "$old" | sed "s|^$ROOT_DIR/||" >&2
+  fail "tests signal stored PIDs other than through tests/helpers/owned_processes.sh (UC-233)"
+fi
 
 printf 'owned processes checks passed\n'

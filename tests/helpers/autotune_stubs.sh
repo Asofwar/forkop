@@ -3,11 +3,13 @@
 # set): nft, curl, dig, ip and a real nfqws binary, plus production stand-ins
 # that every scenario must leave untouched. Process identity, pidfiles and
 # the run lock stay real.
+# shellcheck source=tests/helpers/owned_processes.sh
+. "$(dirname "${BASH_SOURCE[0]}")/owned_processes.sh"
 WORK="$(mktemp -d)"
 FOREIGN_PIDS=()
 cleanup_test() {
   local deadline=$((SECONDS + 10))
-  for pid in "${FOREIGN_PIDS[@]}"; do kill -9 "$pid" 2>/dev/null || true; done
+  owned_kill KILL "${FOREIGN_PIDS[@]}" || true
   pkill -9 -f "$WORK/bin/nfqws" 2>/dev/null || true
   # The queue watchers of the killed stand-ins still rewrite the queue file
   # under its lock file: removing $WORK under them fails, or leaves the lock

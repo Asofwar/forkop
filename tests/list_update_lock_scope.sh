@@ -26,12 +26,14 @@ REAL_LIB="$ROOT_DIR/forkop/files/usr/lib"
 WORK_DIR="$(mktemp -d)"
 # shellcheck source=tests/helpers/wait.sh
 . "$ROOT_DIR/tests/helpers/wait.sh"
+# shellcheck source=tests/helpers/owned_processes.sh
+. "$ROOT_DIR/tests/helpers/owned_processes.sh"
 
 pids=()
 cleanup() {
   local pid
+  owned_kill KILL "${pids[@]}" || true
   for pid in "${pids[@]}"; do
-    kill -KILL "$pid" 2>/dev/null || true
     wait "$pid" 2>/dev/null || true
   done
   rm -rf "$WORK_DIR"
@@ -200,7 +202,7 @@ UCI
   grep -qx 'init reload list-content lock=free' "$EVENTS" || fail "the final list-content reload did not run after the release"
   [ ! -e "$RELOAD_LOCK" ] || fail "the list update left reload.lock behind"
   [ ! -e "$RUN/list.pid" ] || fail "the list update left its PID file behind"
-  kill -KILL "$holder" 2>/dev/null || true
+  owned_kill KILL "$holder" || true
   wait "$holder" 2>/dev/null || true
 }
 

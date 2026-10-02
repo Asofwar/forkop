@@ -2,6 +2,8 @@
 set -eu
 
 ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=tests/helpers/owned_processes.sh
+. "$ROOT_DIR/tests/helpers/owned_processes.sh"
 FORKOP_LIB="$ROOT_DIR/forkop/files/usr/lib"
 UPDATES_UC="$FORKOP_LIB/components/updates.uc"
 WORK_DIR="$(mktemp -d)"
@@ -10,7 +12,7 @@ SOURCE_DIR="$WORK_DIR/source"
 HTTP_PID=""
 
 cleanup() {
-  [ -z "$HTTP_PID" ] || kill "$HTTP_PID" >/dev/null 2>&1 || true
+  [ -z "$HTTP_PID" ] || owned_kill TERM "$HTTP_PID" || true
   umount "$TARGET_DIR" >/dev/null 2>&1 || true
   umount "$SOURCE_DIR" >/dev/null 2>&1 || true
   rm -rf "$WORK_DIR"

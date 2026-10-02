@@ -22,11 +22,13 @@ WORK="$(mktemp -d)"
 . "$ROOT_DIR/tests/helpers/source_checks.sh"
 # shellcheck source=tests/helpers/wait.sh
 . "$ROOT_DIR/tests/helpers/wait.sh"
+# shellcheck source=tests/helpers/owned_processes.sh
+. "$ROOT_DIR/tests/helpers/owned_processes.sh"
 
 process=""
 cleanup() {
   if [ -n "$process" ]; then
-    kill -KILL "$process" 2>/dev/null || true
+    owned_kill KILL "$process" || true
     wait "$process" 2>/dev/null || true
   fi
   rm -rf "$WORK"

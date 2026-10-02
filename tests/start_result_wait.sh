@@ -23,14 +23,16 @@ REAL_UCODE="$(command -v ucode)"
 WORK_DIR="$(mktemp -d)"
 # shellcheck source=tests/helpers/wait.sh
 . "$ROOT_DIR/tests/helpers/wait.sh"
+# shellcheck source=tests/helpers/owned_processes.sh
+. "$ROOT_DIR/tests/helpers/owned_processes.sh"
 
 # A failed start schedules a delayed retry: `/bin/sh -c 'sleep "$1"; rm -f
 # .../start-retry.pid; exec init retry_start_on_wan_up' sh N`.
 kill_retry_workers() {
   local pid
   for pid in $(pgrep -f "$WORK_DIR/run/forkop/start-retry.pid" 2>/dev/null); do
-    pkill -KILL -P "$pid" 2>/dev/null || true
-    kill -KILL "$pid" 2>/dev/null || true
+    owned_kill_children KILL "$pid"
+    owned_kill KILL "$pid" || true
   done
   rm -f "$WORK_DIR/run/forkop/start-retry.pid"
 }
@@ -41,7 +43,7 @@ cleanup() {
   # failed) would schedule its retry once its `forkop start` is killed: stop
   # it first by the reload.lock it holds.
   owner="$("$REAL_UCODE" -L "$LIB" "$LIB/service/state.uc" runtime-dir-lock-owner "$FORKOP_RELOAD_LOCK_DIR" 2>/dev/null || true)"
-  [ -z "$owner" ] || kill -KILL "$owner" 2>/dev/null || true
+  [ -z "$owner" ] || owned_kill KILL "$owner" || true
   # Scheduled retries, detached start workers and UI waiters.
   kill_retry_workers
   pkill -KILL -f "$WORK_DIR" 2>/dev/null || true

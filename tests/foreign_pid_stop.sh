@@ -2,13 +2,15 @@
 set -eu
 
 ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+# shellcheck source=tests/helpers/owned_processes.sh
+. "$ROOT_DIR/tests/helpers/owned_processes.sh"
 LIB_DIR="$ROOT_DIR/forkop/files/usr/lib"
 CLI="$ROOT_DIR/tests/fixtures/process_identity_cli.uc"
 STATE_DIR="$(mktemp -d)"
 sleep 300 &
 foreign_pid=$!
 cleanup() {
-    kill "$foreign_pid" 2>/dev/null || true
+    owned_kill TERM "$foreign_pid" || true
     rm -rf "$STATE_DIR"
 }
 trap cleanup EXIT HUP INT TERM

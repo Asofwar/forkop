@@ -20,12 +20,14 @@ set -eu
 # real code. The list worker is a stand-in updates.uc that records itself
 # exactly as components/updates.uc list_update_pid_begin() does and waits.
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=tests/helpers/owned_processes.sh
+. "$ROOT/tests/helpers/owned_processes.sh"
 REAL_LIB="$ROOT/forkop/files/usr/lib"
 REAL_UCODE="$(command -v ucode)"
 WORK="$(mktemp -d)"
 cleanup() {
   : > "$WORK/release"
-  [ ! -s "$WORK/worker.pid" ] || kill "$(cat "$WORK/worker.pid")" 2>/dev/null || true
+  [ ! -s "$WORK/worker.pid" ] || owned_kill TERM "$(cat "$WORK/worker.pid")" || true
   rm -rf "$WORK"
 }
 trap cleanup EXIT HUP INT TERM

@@ -27,11 +27,13 @@ set -euo pipefail
 # down; the configuration, the snapshots and /etc/rc.d survive it.
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=tests/helpers/owned_processes.sh
+. "$ROOT/tests/helpers/owned_processes.sh"
 LIB="$ROOT/forkop/files/usr/lib"
 REAL_UCODE="$(command -v ucode)"
 WORK="$(mktemp -d)"
 holder=
-trap '[ -z "$holder" ] || kill "$holder" 2>/dev/null || true; rm -rf "$WORK"' EXIT
+trap '[ -z "$holder" ] || owned_kill TERM "$holder" || true; rm -rf "$WORK"' EXIT
 trap 'exit 1' HUP INT TERM
 
 STATE="$WORK/model"
@@ -343,7 +345,7 @@ hold_reload_lock() {
 release_reload_lock() {
   "$REAL_UCODE" -L "$LIB" -e 'exit(require("core.runtime_lock").release(ARGV[0], ARGV[1]) ? 0 : 1);' \
     "$FORKOP_RELOAD_LOCK_DIR" "$holder" || fail "fixture: could not release reload.lock"
-  kill "$holder" 2>/dev/null || true
+  owned_kill TERM "$holder" || true
   wait "$holder" 2>/dev/null || true
   holder=
 }

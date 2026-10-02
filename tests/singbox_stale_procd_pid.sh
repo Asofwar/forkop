@@ -111,10 +111,11 @@ stop_with_reused_pid() {
     rc=0
     ucode -L "$2" "$3" stop-managed-sing-box-runtime 3 || rc=$?
     state="$(sed -n "s/^[0-9]* (.*) \([A-Za-z]\) .*/\1/p" "/proc/$decoy/stat" 2>/dev/null)"
-    kill -KILL "$decoy" 2>/dev/null
+    . "$4"
+    owned_kill KILL "$decoy" || :
     wait "$decoy" 2>/dev/null
     printf "%s %s\n" "$rc" "${state:-gone}"
-  ' _ "$REAL_SLEEP" "$FORKOP_LIB" "$STATE_UC"
+  ' _ "$REAL_SLEEP" "$FORKOP_LIB" "$STATE_UC" "$ROOT_DIR/tests/helpers/owned_processes.sh"
 }
 result="$(stop_with_reused_pid)"
 [ "${result%% *}" != 0 ] ||

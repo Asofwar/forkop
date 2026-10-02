@@ -17,8 +17,8 @@ events() { if [ -e "$FORKOP_HISTORY_FILE" ]; then node -e 'console.log(require("
 # Kill a worker and whatever tool it was running, as a crash or power loss would.
 crash() {
   local pid="$1"
-  pkill -9 -P "$pid" 2>/dev/null || true
-  kill -9 "$pid" 2>/dev/null || true
+  owned_kill_children KILL "$pid"
+  owned_kill KILL "$pid" || true
   wait "$pid" 2>/dev/null || true
   pkill -9 -f "$LIB/autotune/(isolation|apply).uc" 2>/dev/null || true
   for _ in $(seq 50); do flock -n "$FORKOP_AUTOTUNE_STATE_DIR/worker.lock" true && return 0; sleep 0.1; done

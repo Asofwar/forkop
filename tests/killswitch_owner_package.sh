@@ -20,10 +20,12 @@ FULL_UNINSTALL="$FORKOP_LIB/full-uninstall.sh"
 WORK_DIR="$(mktemp -d)"
 # shellcheck source=tests/helpers/wait.sh
 . "$ROOT_DIR/tests/helpers/wait.sh"
+# shellcheck source=tests/helpers/owned_processes.sh
+. "$ROOT_DIR/tests/helpers/owned_processes.sh"
 
 WATCHER=""
 cleanup() {
-  [ -z "$WATCHER" ] || kill "$WATCHER" 2>/dev/null || true
+  [ -z "$WATCHER" ] || owned_kill TERM "$WATCHER" || true
   rm -rf "$WORK_DIR"
 }
 trap cleanup EXIT
@@ -309,7 +311,7 @@ sleep 300 &
 holder=$!
 printf '%s\n' "$holder" >"$FORKOP_RUNTIME_STATE_DIR/killswitch.lock/pid"
 run_script apk-pre-deinstall 1.0.32
-kill "$holder" 2>/dev/null || true
+owned_kill TERM "$holder" || true
 wait "$holder" 2>/dev/null || true
 assert_lifted "package removal with killswitch.lock held (apk)"
 rm -rf "$FORKOP_RUNTIME_STATE_DIR/killswitch.lock"

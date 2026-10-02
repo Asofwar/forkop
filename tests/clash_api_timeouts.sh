@@ -32,8 +32,8 @@ cleanup() {
   local pid
   # Killing the listener closes the held connections, so a curl left behind
   # by a watchdog kill (old code) exits as well.
+  owned_kill TERM "${LISTENER_PIDS[@]}" || true
   for pid in "${LISTENER_PIDS[@]}"; do
-    kill "$pid" 2>/dev/null || true
     wait "$pid" 2>/dev/null || true
   done
   [ -n "${KEEP_WORK:-}" ] || rm -rf "$WORK_DIR"
@@ -49,6 +49,8 @@ fail() {
 source "$ROOT_DIR/tests/helpers/source_checks.sh"
 # shellcheck source=tests/helpers/wait.sh
 source "$ROOT_DIR/tests/helpers/wait.sh"
+# shellcheck source=tests/helpers/owned_processes.sh
+source "$ROOT_DIR/tests/helpers/owned_processes.sh"
 
 UCODE_BIN="$(command -v ucode)" || fail "ucode is required"
 REAL_CURL="$(command -v curl)" || fail "curl is required: the requests run through the real curl"

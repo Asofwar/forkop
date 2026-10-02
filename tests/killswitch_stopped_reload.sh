@@ -19,10 +19,12 @@ LIFECYCLE_UC="$FORKOP_LIB/service/lifecycle.uc"
 WORK_DIR="$(mktemp -d)"
 # shellcheck source=tests/helpers/wait.sh
 . "$ROOT_DIR/tests/helpers/wait.sh"
+# shellcheck source=tests/helpers/owned_processes.sh
+. "$ROOT_DIR/tests/helpers/owned_processes.sh"
 
 HOLDER=""
 cleanup() {
-  [ -z "$HOLDER" ] || kill "$HOLDER" 2>/dev/null || true
+  [ -z "$HOLDER" ] || owned_kill TERM "$HOLDER" || true
   rm -rf "$WORK_DIR"
 }
 trap cleanup EXIT
@@ -119,7 +121,7 @@ hold_reload_lock() {
 }
 
 release_reload_lock() {
-  kill "$HOLDER" 2>/dev/null || true
+  owned_kill TERM "$HOLDER" || true
   wait "$HOLDER" 2>/dev/null || true
   HOLDER=""
   rm -rf "$FORKOP_RELOAD_LOCK_DIR"

@@ -34,13 +34,15 @@ REAL_UCODE="$(command -v ucode)"
 WORK="$(mktemp -d)"
 # shellcheck source=tests/helpers/wait.sh
 . "$ROOT_DIR/tests/helpers/wait.sh"
+# shellcheck source=tests/helpers/owned_processes.sh
+. "$ROOT_DIR/tests/helpers/owned_processes.sh"
 
 cleanup() {
   local pid
   : >"$WORK/stop"
   if [ -s "$WORK/bg.pids" ]; then
     while read -r pid; do
-      kill -KILL "$pid" 2>/dev/null || true
+      owned_kill KILL "$pid" || true
     done <"$WORK/bg.pids"
   fi
   wait 2>/dev/null || true

@@ -21,7 +21,7 @@ checks_started() { grep -q '^dig' "$STUB_LOG/dig.log" 2>/dev/null; }
 
 # The fixture of a group of cases: stand-ins and state under its $WORK.
 apply_fixture() {
-export REAL_UCODE STATE="$WORK/state" WAIT_HELPER="$ROOT/tests/helpers/wait.sh"
+export REAL_UCODE STATE="$WORK/state" WAIT_HELPER="$ROOT/tests/helpers/wait.sh" OWNED_PROCESSES="$ROOT/tests/helpers/owned_processes.sh"
 export FORKOP_CONFIG_FILE="$WORK/config/forkop"
 export FORKOP_SNAPSHOT_DIR="$WORK/snapshots" FORKOP_SNAPSHOT_HASH_DIR="$WORK/hash"
 export FORKOP_RELOAD_COMMAND="$WORK/reload" FORKOP_BIN="$WORK/bin/forkop"
@@ -218,7 +218,9 @@ opt="$(awk '/^config / { in_s = ($0 ~ /^config section .?Dpi.?$/) } in_s && $1 =
 [ -n "$opt" ] || opt="$ZAPRET_DEFAULT_NFQWS_OPT"
 old="$(head -n 1 "$ZAPRET_CHILD_PID_DIR/Dpi.pid" 2>/dev/null || true)"
 if [ -n "$old" ]; then
-  kill "$old" 2>/dev/null || true
+  # shellcheck source=tests/helpers/owned_processes.sh
+  OWNED_PROCESSES_KEEP_MARK=1 . "$OWNED_PROCESSES"
+  owned_kill TERM "$old" || true
   wait_until 10 released "$old" || fixture_fail "the old nfqws $old still holds queue 4000"
 fi
 # shellcheck disable=SC2086
@@ -546,10 +548,10 @@ holder() { cat "$FORKOP_RELOAD_LOCK_DIR/pid" 2>/dev/null || true; }
 reset_apply; plan_ready; rm -f "$STATE/lock-taken"
 # The action ends a moment after the rollback started.
 ( for _ in $(seq 1 300); do grep -q '"phase": "rolling_back"' "$FORKOP_AUTOTUNE_APPLY_STATE" 2>/dev/null && break; sleep 0.1; done
-  sleep 1; kill "$(holder)" 2>/dev/null || true ) &
+  sleep 1; owned_kill TERM "$(holder)" || true ) &
 watcher=$!
 WORK_RELOAD="$WORK/reload" FORKOP_RELOAD_COMMAND="$WORK/reload-then-lock" at apply "$WORK/plan.json"
-kill "$watcher" "$(holder)" 2>/dev/null || true; wait "$watcher" 2>/dev/null || true
+owned_kill TERM "$watcher" "$(holder)" || true; wait "$watcher" 2>/dev/null || true
 json '
 a.equal(r.status, "rolled_back", JSON.stringify(r).slice(0, 600)); a.equal(r.reason, "verification_failed");
 a.ok(r.verification.checks.some((c) => c.name === "no_service_action" && !c.ok));
@@ -560,7 +562,7 @@ a.equal(r.rollback.status, "success"); a.equal(r.rollback.lkg_is_pre_snapshot, t
 # The wait is bounded: an action that outlasts it leaves needs_attention.
 reset_apply; plan_ready; rm -f "$STATE/lock-taken"
 WORK_RELOAD="$WORK/reload" FORKOP_RELOAD_COMMAND="$WORK/reload-then-lock" FORKOP_AUTOTUNE_ROLLBACK_WAIT_SECONDS=1 at apply "$WORK/plan.json"
-kill "$(holder)" 2>/dev/null || true
+owned_kill TERM "$(holder)" || true
 json 'a.equal(r.status, "needs_attention"); a.equal(r.reason, "verification_failed:rollback_busy"); a.equal(r.rollback.reason, "service_action_in_progress");' "$WORK/out.json"
 ok "13a verification failed under a lifecycle action -> rollback waits for it (bounded) and restores the pre-apply snapshot"
 
@@ -614,7 +616,7 @@ json 'a.equal(r.status, "needs_attention", JSON.stringify(r).slice(0, 500)); a.e
 [ "$(journal)" = "autotune_rollback:failure:automatic:multisplit" ] || fail "a rollback whose proof failed: $(journal)"
 reset_apply; plan_ready; rm -rf "$STATE/health"; rm -f "$STATE/lock-taken"
 WORK_RELOAD="$WORK/reload" FORKOP_RELOAD_COMMAND="$WORK/reload-then-lock" FORKOP_AUTOTUNE_ROLLBACK_WAIT_SECONDS=1 at apply "$WORK/plan.json"
-kill "$(holder)" 2>/dev/null || true
+owned_kill TERM "$(holder)" || true
 json 'a.equal(r.reason, "verification_failed:rollback_busy");' "$WORK/out.json"
 [ -z "$(journal)" ] || fail "a rollback refused before it started was recorded: $(journal)"
 ok "13c no event from the transaction; a rollback is one autotune_rollback with its outcome, trigger and candidate"
@@ -628,7 +630,7 @@ reset_apply; plan_ready; rm -f "$STATE/lock-taken" "$WORK/confirm.json"
   confirm ) &
 watcher=$!
 WORK_RELOAD="$WORK/reload" FORKOP_RELOAD_COMMAND="$WORK/reload-then-lock" FORKOP_AUTOTUNE_ROLLBACK_WAIT_SECONDS=4 at apply "$WORK/plan.json"
-wait "$watcher" 2>/dev/null || true; kill "$(holder)" 2>/dev/null || true
+wait "$watcher" 2>/dev/null || true; owned_kill TERM "$(holder)" || true
 json 'a.equal(r.status, "needs_attention"); a.equal(r.reason, "verification_failed:rollback_busy");' "$WORK/out.json"
 json 'a.notEqual(r.status, "confirmed");' "$WORK/confirm.json"
 [ "$(lkg)" = "$PRE_LKG" ] || fail "a reload during the rollback wait confirmed the rejected candidate"
@@ -707,7 +709,7 @@ ucode -L "$LIB" "$LIB/autotune/apply.uc" apply "$WORK/plan.json" > "$WORK/out.js
 runner=$!
 for _ in $(seq 1 100); do [ "$(snaps)" = 2 ] && break; sleep 0.05; done
 sleep 0.3; kill -9 "$runner"; pkill -9 -f "$WORK/tmp/forkop-autotune-candidate" || true
-kill -9 "$(cat "$STATE/guard.pid")" 2>/dev/null || true
+owned_kill KILL "$(cat "$STATE/guard.pid")" || true
 wait "$runner" 2>/dev/null || true; unset GUARD_SLEEP; sleep 0.5
 { [ "$(chash)" = "$PRE_HASH" ] && [ "$(reloads)" = 0 ]; } || fail "crash after snapshot changed production"
 at status
@@ -1189,7 +1191,7 @@ reset_apply; plan_ready; export RELOAD_SLEEP=2
 setsid ucode -L "$LIB" "$LIB/autotune/apply.uc" apply "$WORK/plan.json" > "$WORK/out.json" &
 runner=$!
 for _ in $(seq 1 200); do grep -q '^reload' "$STUB_LOG/reload.log" 2>/dev/null && break; sleep 0.05; done
-kill -HUP -- "-$runner" 2>/dev/null || true; kill -INT -- "-$runner" 2>/dev/null || true
+owned_kill HUP "$runner" || true; owned_kill INT "$runner" || true
 wait "$runner" || true; unset RELOAD_SLEEP
 json 'a.equal(r.status, "failed", JSON.stringify(r).slice(0, 400)); a.equal(r.reason, "interrupted_after_apply"); a.equal(r.reload.status, "success"); a.equal(r.rollback_available, true);' "$WORK/out.json"
 { [ ! -e "$NFT_STATE/tables/ForkopConfigRestoreDpiGuard" ] && [ "$(reloads)" = 1 ] && [ "$(lkg)" = "$PRE_LKG" ]; } || fail "group signal broke the transaction"
@@ -1314,7 +1316,7 @@ cases_8() {
 reset_apply; plan_ready; export DIG_SLEEP=2; : > "$STUB_LOG/dig.log"
 setsid ucode -L "$LIB" "$LIB/autotune/apply.uc" apply "$WORK/plan.json" > "$WORK/out.json" &
 runner=$!; wait_until 30 checks_started || fail "apply did not reach its checks"
-kill -HUP -- "-$runner" 2>/dev/null || true; wait "$runner" || true; unset DIG_SLEEP
+owned_kill HUP "$runner" || true; wait "$runner" || true; unset DIG_SLEEP
 json 'a.equal(r.status, "failed"); a.equal(r.reason, "interrupted_before_mutation");' "$WORK/out.json"
 { [ "$(chash)" = "$PRE_HASH" ] && [ "$(reloads)" = 0 ]; } || fail "group interrupt mutated"
 # An inherited "ignore" (nohup, trap '' HUP) is kept: a hangup does not abort.
@@ -1322,7 +1324,7 @@ reset_apply; plan_ready; export PROD_SLEEP=1
 ( trap '' HUP; exec ucode -L "$LIB" "$LIB/autotune/apply.uc" apply "$WORK/plan.json" > "$WORK/out.json" ) &
 runner=$!
 for _ in $(seq 1 200); do grep -q 'curl production' "$STUB_LOG/curl.log" 2>/dev/null && break; sleep 0.05; done
-kill -HUP "$runner" 2>/dev/null || true; wait "$runner" || true; unset PROD_SLEEP
+owned_kill HUP "$runner" || true; wait "$runner" || true; unset PROD_SLEEP
 json 'a.equal(r.status, "applied");' "$WORK/out.json"
 ok "group SIGHUP during checks -> interrupted_before_mutation; inherited SIG_IGN for HUP respected"
 
@@ -1357,7 +1359,7 @@ reset_apply; plan_ready; : > "$STUB_LOG/uci.log"; export UCI_SLEEP=3
 setsid ucode -L "$LIB" "$LIB/autotune/apply.uc" apply "$WORK/plan.json" > "$WORK/out.json" &
 runner=$!
 for _ in $(seq 1 200); do grep -q 'set forkop_autotune' "$STUB_LOG/uci.log" 2>/dev/null && break; sleep 0.05; done
-kill -HUP -- "-$runner" 2>/dev/null || true; wait "$runner" || true; unset UCI_SLEEP
+owned_kill HUP "$runner" || true; wait "$runner" || true; unset UCI_SLEEP
 json 'a.equal(r.status, "failed"); a.equal(r.reason, "interrupted_before_mutation");' "$WORK/out.json"
 { [ "$(chash)" = "$PRE_HASH" ] && [ "$(reloads)" = 0 ] && [ "$(snaps)" = 1 ]; } || fail "interrupted candidate generation mutated"
 ok "hangup during candidate generation -> interrupted_before_mutation"

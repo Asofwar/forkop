@@ -10,15 +10,15 @@ LEGACY_CONFIG_ALT="${LEGACY_BRAND}_plus"
 
 cleanup() {
   if [ -n "${RETRY_PID:-}" ]; then
-    kill -KILL "$RETRY_PID" 2>/dev/null || true
+    owned_kill KILL "$RETRY_PID" || true
     wait "$RETRY_PID" 2>/dev/null || true
   fi
   if [ -n "${ORPHAN_PROBE_PID:-}" ]; then
-    kill -KILL "$ORPHAN_PROBE_PID" 2>/dev/null || true
+    owned_kill KILL "$ORPHAN_PROBE_PID" || true
   fi
   if [ -n "${HANG_PID_LOG:-}" ] && [ -r "$HANG_PID_LOG" ]; then
     while IFS= read -r pid; do
-      kill -KILL "$pid" 2>/dev/null || true
+      owned_kill KILL "$pid" || true
     done < "$HANG_PID_LOG"
   fi
   rm -rf "$WORK_DIR"
@@ -39,6 +39,8 @@ source "$ROOT_DIR/tests/helpers/source_checks.sh"
 # zombies as dead.
 # shellcheck source=tests/helpers/wait.sh
 source "$ROOT_DIR/tests/helpers/wait.sh"
+# shellcheck source=tests/helpers/owned_processes.sh
+source "$ROOT_DIR/tests/helpers/owned_processes.sh"
 
 # Self-check: an unreaped child of a live parent is dead, the parent is alive.
 # The child exits only after its parent has exec'd sleep, which never reaps:
@@ -63,7 +65,7 @@ wait_until 10 fixture_is_zombie || fail "zombie fixture did not produce a zombie
 kill -0 "$(cat "$WORK_DIR/zombie.pid")" 2>/dev/null || fail "zombie fixture: kill -0 must still see the zombie"
 process_running "$(cat "$WORK_DIR/zombie.pid")" && fail "process_running must treat a zombie as dead"
 process_running "$zombie_parent" || fail "process_running must report a running process as alive"
-kill -KILL "$zombie_parent" 2>/dev/null || true
+owned_kill KILL "$zombie_parent" || true
 wait "$zombie_parent" 2>/dev/null || true
 
 [ -r "$INSTALLER" ] || fail "install.sh is missing"

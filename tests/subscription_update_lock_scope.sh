@@ -22,14 +22,16 @@ LIB="$ROOT_DIR/forkop/files/usr/lib"
 WORK_DIR="$(mktemp -d)"
 # shellcheck source=tests/helpers/wait.sh
 . "$ROOT_DIR/tests/helpers/wait.sh"
+# shellcheck source=tests/helpers/owned_processes.sh
+. "$ROOT_DIR/tests/helpers/owned_processes.sh"
 # shellcheck source=tests/helpers/case_groups.sh
 . "$ROOT_DIR/tests/helpers/case_groups.sh"
 
 pids=()
 cleanup() {
   local pid
+  owned_kill KILL "${pids[@]}" || true
   for pid in "${pids[@]}"; do
-    kill -KILL "$pid" 2>/dev/null || true
     wait "$pid" 2>/dev/null || true
   done
   rm -rf "$WORK_DIR"
@@ -148,7 +150,7 @@ finish_case() {
   state release-runtime-dir-lock "$RELOAD_LOCK" "$HOLDER"
   wait_until 60 process_gone "$UPDATE" || fail "the subscription update did not finish after reload.lock was released"
   wait "$UPDATE" || status=$?
-  kill -KILL "$HOLDER" 2>/dev/null || true
+  owned_kill KILL "$HOLDER" || true
   wait "$HOLDER" 2>/dev/null || true
   [ ! -e "$RELOAD_LOCK" ] || fail "the subscription update left reload.lock behind"
   [ ! -e "$RUN/subscription-update.lock" ] || fail "the subscription update left subscription-update.lock behind"
@@ -213,6 +215,8 @@ case_group() {
   WORK_DIR="$(mktemp -d)"
   EVENTS="$WORK_DIR/events"
   pids=()
+  # The group's cleanup signals only the group's processes.
+  owned_processes_init
   trap cleanup EXIT
   trap 'exit 1' HUP INT TERM
   update_fixture

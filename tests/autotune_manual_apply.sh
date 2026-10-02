@@ -187,7 +187,7 @@ apply busy
 [ "$(got busy status)" = '"busy"' ] || fail "busy: $(cat "$WORK/busy.json")"
 manager apply-async youtube >"$WORK/busy-async.json" || true
 [ "$(got busy-async status)" = '"busy"' ] || fail "busy async: $(cat "$WORK/busy-async.json")"
-kill -9 "${BG_PIDS[-1]}" 2>/dev/null || true
+owned_kill KILL "${BG_PIDS[-1]}" || true
 wait "${BG_PIDS[-1]}" 2>/dev/null || true
 for _ in $(seq 50); do flock -n "$FORKOP_AUTOTUNE_STATE_DIR/worker.lock" true && break; sleep 0.1; done
 
@@ -293,7 +293,7 @@ pid=$!
 for _ in $(seq 100); do [ "$(applies)" != "$before_applies" ] && break; sleep 0.1; done
 [ "$(json_get "$FORKOP_AUTOTUNE_STATE_FILE" worker.phase)" = '"applying"' ] || fail "the apply is marked applying"
 [ "$(cut -d' ' -f5 "/proc/$pid/stat")" = "$pid" ] || fail "fixture: the worker leads its own process group"
-kill -9 -- "-$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true
+owned_kill KILL "$pid" || true; wait "$pid" 2>/dev/null || true
 for _ in $(seq 50); do flock -n "$FORKOP_AUTOTUNE_STATE_DIR/worker.lock" true && break; sleep 0.1; done
 manager run youtube >"$WORK/after-crash.json"
 node -e 'const s=require(process.argv[1]);const a=s.applies[s.applies.length-1];

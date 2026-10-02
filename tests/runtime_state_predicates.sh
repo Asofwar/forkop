@@ -214,6 +214,8 @@ EOF_NETSTAT
 stable_start_checks() {
   # shellcheck source=tests/helpers/wait.sh
   . "$ROOT_DIR/tests/helpers/wait.sh"
+  # shellcheck source=tests/helpers/owned_processes.sh
+  . "$ROOT_DIR/tests/helpers/owned_processes.sh"
   "$WORK_DIR/stable-start-bin/sing-box" 30 &
   sing_box_pid=$!
   # $! is known before the fork has exec'd the double: until then /proc names
@@ -226,7 +228,7 @@ stable_start_checks() {
     SING_BOX_TEST_PID_FILE="$WORK_DIR/sing-box.pid" \
     SING_BOX_TEST_NETSTAT_FILE="$WORK_DIR/sing-box.netstat" \
     state_ucode sing-box-service-running; then
-    kill "$sing_box_pid" >/dev/null 2>&1 || true
+    owned_kill TERM "$sing_box_pid" || true
     wait "$sing_box_pid" 2>/dev/null || true
     fail "stable-start fixture must expose a running sing-box process"
   fi
@@ -235,7 +237,7 @@ stable_start_checks() {
     SING_BOX_TEST_PID_FILE="$WORK_DIR/sing-box.pid" \
     SING_BOX_TEST_NETSTAT_FILE="$WORK_DIR/sing-box.netstat" \
     state_ucode forkop-running forkop ForkopTable 0x00100000; then
-    kill "$sing_box_pid" >/dev/null 2>&1 || true
+    owned_kill TERM "$sing_box_pid" || true
     wait "$sing_box_pid" 2>/dev/null || true
     fail "stable-start fixture must expose configured Forkop networking"
   fi
@@ -245,7 +247,7 @@ stable_start_checks() {
     SING_BOX_TEST_PID_FILE="$WORK_DIR/sing-box.pid" \
     SING_BOX_TEST_NETSTAT_FILE="$WORK_DIR/sing-box.no-dns.netstat" \
     state_ucode forkop-running forkop ForkopTable 0x00100000 >/dev/null 2>&1; then
-    kill "$sing_box_pid" >/dev/null 2>&1 || true
+    owned_kill TERM "$sing_box_pid" || true
     wait "$sing_box_pid" 2>/dev/null || true
     fail "runtime state must reject sing-box without the DNS inbound"
   fi
@@ -254,11 +256,11 @@ stable_start_checks() {
     SING_BOX_TEST_PID_FILE="$WORK_DIR/sing-box.pid" \
     SING_BOX_TEST_NETSTAT_FILE="$WORK_DIR/sing-box.netstat" \
     state_ucode wait-forkop-stable-start forkop ForkopTable 0x00100000 2 2; then
-    kill "$sing_box_pid" >/dev/null 2>&1 || true
+    owned_kill TERM "$sing_box_pid" || true
     wait "$sing_box_pid" 2>/dev/null || true
     fail "stable-start wait must check runtime state after its final sleep"
   fi
-  kill "$sing_box_pid" >/dev/null 2>&1 || true
+  owned_kill TERM "$sing_box_pid" || true
   wait "$sing_box_pid" 2>/dev/null || true
 }
 export ROOT_DIR WORK_DIR UCODE_BIN FORKOP_LIB STATE_UC

@@ -24,6 +24,8 @@ set -eu
 # behind it, the stop dropped both, and the restore guard stayed active past
 # the next start.
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=tests/helpers/owned_processes.sh
+. "$ROOT/tests/helpers/owned_processes.sh"
 LIB="$ROOT/forkop/files/usr/lib"
 SCRIPT="$LIB/config/snapshots.uc"
 REAL_UCODE="$(command -v ucode)"
@@ -31,7 +33,7 @@ WORK="$(mktemp -d)"
 # Owns reload.lock for a stop that is under way (case 9).
 sleep 300 &
 STOP_HOLDER=$!
-trap 'kill "$STOP_HOLDER" 2>/dev/null || true; rm -rf "$WORK"' EXIT HUP INT TERM
+trap 'owned_kill TERM "$STOP_HOLDER" || true; rm -rf "$WORK"' EXIT HUP INT TERM
 fail() {
   printf 'FAIL: %s\n' "$1" >&2
   [ ! -s "$WORK/state/events" ] || sed 's/^/  event: /' "$WORK/state/events" >&2

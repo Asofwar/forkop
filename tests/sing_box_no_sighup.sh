@@ -16,13 +16,15 @@ LIB="$ROOT_DIR/forkop/files/usr/lib"
 WORK="$(mktemp -d)"
 # shellcheck source=tests/helpers/wait.sh
 . "$ROOT_DIR/tests/helpers/wait.sh"
+# shellcheck source=tests/helpers/owned_processes.sh
+. "$ROOT_DIR/tests/helpers/owned_processes.sh"
 # shellcheck source=tests/helpers/source_checks.sh
 . "$ROOT_DIR/tests/helpers/source_checks.sh"
 
 stand_in=""
 cleanup() {
   if [ -n "$stand_in" ]; then
-    kill -KILL "$stand_in" 2>/dev/null || true
+    owned_kill KILL "$stand_in" || true
     wait "$stand_in" 2>/dev/null || true
   fi
   rm -rf "$WORK"

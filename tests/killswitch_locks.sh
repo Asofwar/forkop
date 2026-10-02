@@ -12,11 +12,12 @@ KS_UC="$FORKOP_LIB/killswitch/runtime.uc"
 WORK_DIR="$(mktemp -d)"
 # shellcheck source=tests/helpers/wait.sh
 . "$ROOT_DIR/tests/helpers/wait.sh"
+# shellcheck source=tests/helpers/owned_processes.sh
+. "$ROOT_DIR/tests/helpers/owned_processes.sh"
 
 HOLDERS=()
 cleanup() {
-  local pid
-  for pid in "${HOLDERS[@]}"; do kill "$pid" 2>/dev/null || true; done
+  owned_kill TERM "${HOLDERS[@]}" || true
   rm -rf "$WORK_DIR"
 }
 trap cleanup EXIT

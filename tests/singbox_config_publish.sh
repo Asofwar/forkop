@@ -256,4 +256,23 @@ rm -f "${backups[@]}"
 no_leftovers "DNS failover"
 ok "each DNS failover switch rewrites config.json once, a decision without a switch not at all"
 
+# ---- a symlink that points to nothing -----------------------------------------
+
+# config.json as a symlink into a directory that a reboot cleared: the
+# publish keeps the symlink and fails (core/durable.uc), and the log says
+# why, not that the overlay may be full (S5 integration review).
+rm -f "$CONFIG"
+ln -s "$WORK/cleared/config.json" "$CONFIG"
+printf 'new config\n' >"$WORK/tmp/new.json"
+: >"$WORK/log"
+status=0
+runtime save-config-file-fixture "$WORK/tmp/new.json" "$CONFIG" || status=$?
+[ "$status" != 0 ] || fail "a publish over a symlink that points to nothing succeeded"
+[ -L "$CONFIG" ] || fail "the publish replaced the symlink that points to nothing"
+grep -F '[error]' "$WORK/log" | grep -F "$CONFIG" | grep -Fq 'points to nothing' ||
+  fail "the failed publish did not say that config.json points to nothing: $(cat "$WORK/log")"
+grep -Fq 'overlay full' "$WORK/log" && fail "the failed publish blamed a full overlay: $(cat "$WORK/log")"
+rm -f "$CONFIG" "$WORK/tmp/new.json"
+ok "a publish over a symlink that points to nothing fails and says so"
+
 printf 'sing-box config publish checks passed\n'

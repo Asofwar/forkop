@@ -722,7 +722,11 @@ function publish_config_file(source_path, config_path) {
         let staged = config_path + ".forkop-new." + as_string(fs.readlink("/proc/self"));
         // A full filesystem can take the write and keep none of it.
         if (!durable.checked_replace(staged, config_path, data, 0600)) {
-            log_message("Cannot write, read back or rename " + staged + " (is the overlay full?); " + config_path + " was left unchanged", "error");
+            log_message(durable.dangling(config_path) ?
+                config_path + " is a symlink that points to nothing (" + as_string(fs.readlink(config_path)) +
+                    "); it was left as it is and the sing-box configuration was not published" :
+                "Cannot write, read back or rename " + staged + " (is the overlay full?); " + config_path + " was left unchanged",
+                "error");
             return false;
         }
     }

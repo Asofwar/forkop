@@ -37,6 +37,12 @@ function target_of(path) {
     return link != null && link.type == "link" ? null : path;
 }
 
+// path is a symlink that points to nothing, which no writer here replaces:
+// for the caller's message.
+function dangling(path) {
+    return target_of(path) == null;
+}
+
 // The temporary file a writer of path uses: hidden next to it and named
 // after the writing process, so writers never share one.
 function temp_path(path) {
@@ -97,4 +103,4 @@ function checked_replace(tmp, path, data, mode) {
     return replace(tmp, path, data, mode, null, false);
 }
 
-return { durable_replace, durable_rewrite, checked_replace, temp_path };
+return { durable_replace, durable_rewrite, checked_replace, temp_path, dangling };

@@ -39,6 +39,9 @@ const STOP_REQUESTED_FILE = getenv("FORKOP_STOP_REQUESTED_FILE") ||
 // Written by a managed package upgrade (components/action.uc,
 // write_managed_upgrade_sing_box_marker below): the pre-upgrade sing-box.
 const MANAGED_UPGRADE_SING_BOX_MARKER = getenv("FORKOP_MANAGED_UPGRADE_SING_BOX_MARKER") || "/tmp/forkop-managed-upgrade-sing-box";
+// Forkop's sing-box executable: the sing-box package and every managed
+// binary variant install it here.
+const SING_BOX_BIN = getenv("FORKOP_SING_BOX_BIN") || "/usr/bin/sing-box";
 // The sing-box configuration Forkop generates when settings.config_path is
 // not set (killswitch/runtime.uc, routing/resolve.uc).
 const DEFAULT_SING_BOX_CONFIG_PATH = "/etc/sing-box/config.json";
@@ -919,10 +922,22 @@ function forkop_sing_box_config_path() {
     return path != "" ? path : DEFAULT_SING_BOX_CONFIG_PATH;
 }
 
+// Forkop's executable, also replaced under the running process, seen from
+// Forkop's mount namespace. A container's sing-box commonly keeps its own
+// configuration at Forkop's path, and its executable may be at Forkop's path
+// too, in the container's own filesystem.
+function runs_forkop_sing_box(pid, exe) {
+    if (exe != SING_BOX_BIN && exe != SING_BOX_BIN + " (deleted)")
+        return false;
+    let mount_ns = fs.readlink("/proc/" + as_string(pid) + "/ns/mnt");
+    return mount_ns != null && mount_ns == fs.readlink("/proc/self/ns/mnt");
+}
+
 // A sing-box is Forkop's only by proof (UC-213): procd's 'sing-box'
 // instance (Forkop configures and starts that service), the very process
-// that a managed upgrade recorded (PID and start ticks), or a sing-box that
-// runs Forkop's own configuration file, also outside procd. An executable
+// that a managed upgrade recorded (PID and start ticks), or Forkop's
+// sing-box executable that runs Forkop's own configuration file, also
+// outside procd. An executable
 // named sing-box proves nothing: another program (HomeProxy, a container,
 // the user) may run one of its own. Each record keeps the PID, start ticks
 // and command line seen here, so that every signal re-checks all of them.
@@ -942,7 +957,7 @@ function owned_sing_box_processes(config_path) {
         if (pid == service_pid ||
             (marker != null && marker.pid == pid && marker.start_ticks == ticks) ||
             (length(argv) >= 4 && path_basename(argv[0]) == "sing-box" && argv[1] == "run" &&
-                argv[2] == "-c" && argv[3] == config_path))
+                argv[2] == "-c" && argv[3] == config_path && runs_forkop_sing_box(pid, fs.readlink(exe_path))))
             owned[pid] = { pid, ticks, argv };
     }
     return owned;

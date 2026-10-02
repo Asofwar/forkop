@@ -128,6 +128,8 @@ export TMP_SING_BOX_FOLDER="$WORK_DIR/singbox-tmp"
 export TMP_RULESET_FOLDER="$WORK_DIR/singbox-tmp/rulesets"
 export FORKOP_SING_BOX_RELOAD_PID_TIMEOUT=2
 export FORKOP_STOP_RUNTIME_LOCK_WAIT_SECONDS=2
+# Forkop's sing-box executable (/usr/bin/sing-box on the router).
+export FORKOP_SING_BOX_BIN="$WORK_DIR/stray-bin/sing-box"
 STOP_MARKER="$STATE_DIR/stop.requested"
 START_RECORD="$STATE_DIR/start.explicit"
 MARKER="$FORKOP_MANAGED_UPGRADE_SING_BOX_MARKER"
@@ -396,6 +398,30 @@ foreign_pid=$LAST_DOUBLE
 gone "$stray_pid" || fail "an explicit stop left a stray sing-box that runs Forkop's configuration"
 alive "$foreign_pid" || fail "an explicit stop signalled a sing-box that Forkop does not own"
 [ ! -e "$NFT_TABLE_FILE" ] || fail "an explicit stop left ForkopTable next to a stray runtime"
+
+# 3b. A sing-box with a configuration at Forkop's path is Forkop's only when
+#     it runs Forkop's executable in Forkop's mount namespace: the sing-box
+#     of a container commonly keeps its own configuration at that same path.
+#     Neither is signalled; both are reported.
+reset_case
+runtime_up
+start_double "$WORK_DIR/foreign-bin/sing-box" run -c "$CONFIG_PATH"
+other_exe_pid=$LAST_DOUBLE
+other_ns_pid=''
+if unshare --mount true 2>/dev/null; then
+  start_double unshare --mount "$WORK_DIR/stray-bin/sing-box" run -c "$CONFIG_PATH"
+  other_ns_pid=$LAST_DOUBLE
+else
+  printf 'NOTE: no mount namespace can be created here; a sing-box in another mount namespace is not checked\n' >&2
+fi
+[ "$(rc stop)" = 0 ] || fail "an explicit stop next to sing-box processes of other programs failed"
+alive "$other_exe_pid" || fail "an explicit stop signalled another executable's sing-box that uses Forkop's configuration path"
+[ -z "$other_ns_pid" ] || alive "$other_ns_pid" ||
+  fail "an explicit stop signalled a sing-box in another mount namespace that uses Forkop's configuration path"
+grep -q "pid=$other_exe_pid" "$SYSLOG" || fail "the sing-box of another executable left running is not reported"
+[ -z "$other_ns_pid" ] || grep -q "pid=$other_ns_pid" "$SYSLOG" ||
+  fail "the sing-box in another mount namespace left running is not reported"
+[ ! -e "$NFT_TABLE_FILE" ] || fail "an explicit stop left ForkopTable next to sing-box processes of other programs"
 
 # 4. Forkop's own stop for a package change keeps the ownership guard: with
 #    another sing-box present it refuses (2) and changes nothing - not the

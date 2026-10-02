@@ -23,7 +23,10 @@ killswitch() {
 boot() {
     # A sysupgrade keeps the saved block list, never the servers file
     # dnsmasq reads (lib/upgrade/keep.d/forkop-killswitch): an image without
-    # Forkop must not keep blocking. With Forkop, attach it again here.
+    # Forkop must not keep blocking. With Forkop, attach it again here: an
+    # OpenWrt image enables every rc.common script it ships
+    # (include/rootfs.mk, prepare_rootfs), so this runs whether or not a
+    # sync had enabled the service before the sysupgrade.
     if [ -r "$KILLSWITCH_UC" ] && killswitch armed >/dev/null 2>&1; then
         ucode -L "$FORKOP_LIB" "$FORKOP_LIB/dns/apply.uc" killswitch-refresh >/dev/null 2>&1
     fi

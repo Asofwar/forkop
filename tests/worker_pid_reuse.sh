@@ -123,6 +123,9 @@ track_descendants() {
   for pid in $(descendants "$1"); do actors+=("$pid"); done
 }
 first_line() { head -n 1 "$1" 2>/dev/null; }
+# For wait_until, which runs it again on every attempt (a $(...) among its
+# arguments would be taken once).
+has_descendants() { [ -n "$(descendants "$1")" ]; }
 
 # The unrelated process that now holds the PID a crashed worker left behind.
 sleep 300 &
@@ -227,7 +230,7 @@ for foreign in "$FOREIGN" "$FOREIGN_UCODE"; do
     : >"$WORK_DIR/syslog"
     subscription start-deferred-bootstrap-worker alpha
     [ "$(first_line "$SUB_PID")" = "$worker" ] || fail "a second deferred subscription worker replaced the recorded one"
-    wait_until 10 test -n "$(descendants "$worker")" || fail "the deferred subscription worker did not start waiting"
+    wait_until 10 has_descendants "$worker" || fail "the deferred subscription worker did not start waiting"
     track_descendants "$worker"
     subscription stop-deferred-bootstrap-worker
     wait_until 10 process_gone "$worker" || fail "the recorded deferred subscription worker was not stopped"
@@ -255,7 +258,7 @@ for foreign in "$FOREIGN" "$FOREIGN_SH"; do
 
     initd schedule-start-retry "$RETRY_PID" 300 || fail "a second schedule of the start retry failed"
     [ "$(first_line "$RETRY_PID")" = "$worker" ] || fail "a second start retry replaced the scheduled one"
-    wait_until 10 test -n "$(descendants "$worker")" || fail "the scheduled start retry did not start waiting"
+    wait_until 10 has_descendants "$worker" || fail "the scheduled start retry did not start waiting"
     track_descendants "$worker"
     initd cancel-scheduled-start-retry "$RETRY_PID"
     wait_until 10 process_gone "$worker" || fail "the scheduled start retry was not cancelled"

@@ -51,6 +51,10 @@ fail() {
 
 # shellcheck disable=SC2016 # expanded by the sh that runs it
 GATE_LOOP='while [ -d "$1" ]; do sleep 0.1; done'
+# PAIR_LOOP: a gate loop with a child that runs as long as it does (the
+# loop's own sleeps come and go): sh -c "$PAIR_LOOP" NAME "$GATE_LOOP" DIR.
+# shellcheck disable=SC2016
+PAIR_LOOP='sh -c "$1" "$0-child" "$2" & while [ -d "$2" ]; do sleep 0.1; done'
 # A group whose leader exits at once and leaves a member behind.
 # shellcheck disable=SC2016
 ORPHANING='(while [ -d "$1" ]; do sleep 0.1; done) & exit 0'
@@ -69,33 +73,53 @@ carries_mark() {
 }
 group_members() { pgrep -g "$1" 2>/dev/null | while read -r pid; do process_running "$pid" && echo "$pid"; done; }
 group_size() { group_members "$1" | wc -l; }
+# wait_until runs a command again on every attempt; the value of a $(...)
+# among its arguments is taken once, before the first.
+group_has() { [ "$(group_size "$1")" -ge "$2" ]; }
+group_empty() { [ "$(group_size "$1")" -eq 0 ]; }
+# pair_child PID: PAIR_CHILD is the child of a PAIR_LOOP, told by its argv: a
+# fork of PID not yet exec'd shows the argv of PID.
+pair_child() {
+  local child
+  for child in $(pgrep -P "$1"); do
+    case "$(tr '\0' '\n' <"/proc/$child/cmdline" 2>/dev/null | sed -n 4p)" in
+      *-child)
+        PAIR_CHILD=$child
+        return 0
+        ;;
+    esac
+  done
+  return 1
+}
 
 # --- Part 1: the helper ------------------------------------------------------
 
 # 1. A stored PID that names a host process: neither the process, nor its
 #    children, nor a group of that number is signalled.
-HOST="$(env -u FORKOP_TEST_OWNER sh -c "$ORPHAN" orphan sh -c "$GATE_LOOP" host "$WORK_DIR")"
+HOST="$(env -u FORKOP_TEST_OWNER sh -c "$ORPHAN" orphan sh -c "$PAIR_LOOP" host "$GATE_LOOP" "$WORK_DIR")"
 wait_until 10 process_exec_is "$HOST" "$SH_EXE" || fail "a host process did not start"
+wait_until 10 pair_child "$HOST" || fail "the host process did not start its child"
+HOST_CHILD=$PAIR_CHILD
 owned_process "$HOST" && fail "a host process counts as the test's"
+owned_process "$HOST_CHILD" && fail "the child of a host process counts as the test's"
 if owned_kill KILL "$HOST"; then fail "owned_kill reported a host process as signalled"; fi
 owned_kill_children KILL "$HOST"
 sleep 0.2
 running "$HOST" || fail "owned_kill signalled a host process"
-wait_until 10 test -n "$(pgrep -P "$HOST")" || fail "the host process has no child to check"
-for child in $(pgrep -P "$HOST"); do
-  owned_process "$child" && fail "the child of a host process counts as the test's"
-done
+running "$HOST_CHILD" || fail "owned_kill_children signalled the child of a host process"
 
 # 2. A stored PID that names a process of another test, and a stored number
 #    that is the process group of another test (started under setsid, like
 #    the actors of the lifecycle tests), with its leader alive or gone.
 OTHER="$(FORKOP_TEST_OWNER="$OTHER_MARK" sh -c "$ORPHAN" orphan sh -c "$GATE_LOOP" other "$WORK_DIR")"
-OTHER_GROUP="$(FORKOP_TEST_OWNER="$OTHER_MARK" sh -c "$ORPHAN" orphan setsid sh -c "$GATE_LOOP" other-group "$WORK_DIR")"
+OTHER_GROUP="$(FORKOP_TEST_OWNER="$OTHER_MARK" sh -c "$ORPHAN" orphan \
+  setsid sh -c "$PAIR_LOOP" other-group "$GATE_LOOP" "$WORK_DIR")"
 ORPHANED_GROUP="$(FORKOP_TEST_OWNER="$OTHER_MARK" sh -c "$ORPHAN" orphan setsid sh -c "$ORPHANING" orphaned "$WORK_DIR")"
 OTHERS+=("$OTHER" "$OTHER_GROUP" "$ORPHANED_GROUP")
 wait_until 10 process_gone "$ORPHANED_GROUP" || fail "the leader of another test's group did not exit"
-wait_until 10 test "$(group_size "$OTHER_GROUP")" -ge 2 || fail "another test's process group did not start"
-wait_until 10 test "$(group_size "$ORPHANED_GROUP")" -ge 1 || fail "another test's leaderless group did not start"
+wait_until 10 pair_child "$OTHER_GROUP" || fail "another test's process group did not start"
+OTHER_MEMBER=$PAIR_CHILD
+wait_until 10 group_has "$ORPHANED_GROUP" 1 || fail "another test's leaderless group did not start"
 for pid in "$OTHER" "$OTHER_GROUP" "$ORPHANED_GROUP"; do
   if owned_kill KILL "$pid"; then fail "owned_kill reported a process or group of another test ($pid) as signalled"; fi
   owned_kill_children KILL "$pid"
@@ -103,14 +127,15 @@ done
 sleep 0.2
 running "$OTHER" || fail "owned_kill signalled another test's process"
 running "$OTHER_GROUP" || fail "owned_kill signalled another test's process group"
+running "$OTHER_MEMBER" || fail "owned_kill signalled a member of another test's process group"
 [ "$(group_size "$ORPHANED_GROUP")" -ge 1 ] || fail "owned_kill signalled another test's group whose leader had exited"
 # Its own mark reaches all of them, a group whose leader has exited too: the
 # helper keeps what `kill -- -$pid` did for a test's own group.
 FORKOP_TEST_OWNER="$OTHER_MARK" owned_kill KILL "$OTHER" "$OTHER_GROUP" "$ORPHANED_GROUP" ||
   fail "owned_kill did not signal processes under their own mark"
 wait_until 10 process_gone "$OTHER" || fail "a process was not killed under its own mark"
-wait_until 10 test "$(group_size "$OTHER_GROUP")" = 0 || fail "a process group was not killed under its own mark"
-wait_until 10 test "$(group_size "$ORPHANED_GROUP")" = 0 || fail "a group whose leader had exited was not killed under its own mark"
+wait_until 10 group_empty "$OTHER_GROUP" || fail "a process group was not killed under its own mark"
+wait_until 10 group_empty "$ORPHANED_GROUP" || fail "a group whose leader had exited was not killed under its own mark"
 
 # 3. The test's own processes, which are no children of its shell: a
 #    process, a group whose leader has exited, and the children of a
@@ -127,9 +152,9 @@ if owned_kill TERM "$MINE"; then fail "owned_kill reported a process that has ex
 OWN_GROUP="$(sh -c "$ORPHAN" orphan setsid sh -c "$ORPHANING" own-orphaned "$WORK_DIR")"
 OWN+=("$OWN_GROUP")
 wait_until 10 process_gone "$OWN_GROUP" || fail "the leader of the test's group did not exit"
-wait_until 10 test "$(group_size "$OWN_GROUP")" -ge 1 || fail "the test's leaderless group did not start"
+wait_until 10 group_has "$OWN_GROUP" 1 || fail "the test's leaderless group did not start"
 owned_kill KILL "$OWN_GROUP" || fail "owned_kill did not signal the test's group whose leader had exited"
-wait_until 10 test "$(group_size "$OWN_GROUP")" = 0 || fail "the test's group whose leader had exited survived"
+wait_until 10 group_empty "$OWN_GROUP" || fail "the test's group whose leader had exited survived"
 
 # shellcheck disable=SC2016 # expanded by the parent sh
 PARENT="$(sh -c "$ORPHAN" orphan sh -c 'sleep 300 & env -u FORKOP_TEST_OWNER sh -c "$1" host-child "$2" & wait' \
@@ -347,6 +372,7 @@ owned_kill KILL "$pid" || true
 cat >"$WORK/notes" <<EOF
 EOF
 SH
+# shellcheck disable=SC2016 # the text of a stand-in
 printf '%s\n' "cat >\"\$WORK/stand-in\" <<'STUB'" 'owned_kill KILL "$pid" || true' >"$WORK_DIR/unterminated.sh"
 found="$(unloaded_kills "$WORK_DIR/unloaded.sh" "$WORK_DIR/stand-ins.sh" "$WORK_DIR/unterminated.sh" |
   sed "s|^$WORK_DIR/||" | cut -d: -f1,2 | tr '\n' ' ')"

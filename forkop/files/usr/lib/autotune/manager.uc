@@ -29,6 +29,7 @@
 // A run is marked running in the persistent state; the next run finds a
 // run that died (crash, kill, reboot), records it in the history and, when
 // it died while applying, counts that apply and cools its candidate down.
+// A run that a blocker postpones before it begins stays in RAM (UC-075).
 //
 // Must be invoked as: ucode -L <lib> <lib>/autotune/manager.uc <mode> ...
 let fs = require("fs");
@@ -73,6 +74,11 @@ const CRON_MARKER = "# forkop-autotune";
 const CRON_SCHEDULE = "*/15 * * * *";
 // A scheduled run that could not start is retried after this delay.
 const RETRY_SECONDS = 900;
+// The last run a blocker postponed and its retry time, tmpfs (UC-075): a
+// blocker can last for days (an apply that waits for the operator, a kept
+// guard), and the cron line asks every 15 minutes; such a run changes
+// nothing worth a flash write. A run that measures replaces it.
+const POSTPONED = STATE_DIR + "/postponed.json";
 const JOB_KEEP = 10;
 const JOB_STARTING_GRACE = 30;
 const APPLY_STATE_FILE = getenv("FORKOP_AUTOTUNE_APPLY_STATE") || "/etc/forkop/autotune-apply.json";
@@ -242,11 +248,24 @@ function list_domains(tag) {
         truncated: length(d.domains) > LIST_DOMAINS_MAX, domains: slice(d.domains, 0, LIST_DOMAINS_MAX) };
 }
 
+// The state as the page and the schedule see it: a run postponed after the
+// stored last run is the last run, its retry time the next one. A run
+// marked running in the state (live or crashed) stays what it is.
+function with_postponed(state) {
+    let p = null;
+    try { p = json(fs.readfile(POSTPONED)); } catch (e) { p = null; }
+    let w = state.worker;
+    if (type(p) != "object" || type(p.worker) != "object" ||
+        (type(w) == "object" && (w.state == "running" || int(w.started_at) > int(p.worker.started_at))))
+        return state;
+    return { ...state, worker: p.worker, next_run_at: type(p.next_run_at) == "int" ? p.next_run_at : state.next_run_at };
+}
+
 function status() {
     let sections = config_sections();
     if (sections == null) return { status: "failed", reason: "config_unavailable" };
     let read = policy_module.read(sections);
-    let state = state_module.read();
+    let state = with_postponed(state_module.read());
     let expanded = expand_targets(sections, read.targets);
     return {
         status: "ok",
@@ -681,11 +700,33 @@ function begin_run(trigger, scope, started, policy, extra) {
     return { ok, crashed, previous };
 }
 
+// A run that a blocker postponed before it began: recorded in RAM with its
+// retry time, the state on flash is not touched (UC-075). A manual run
+// keeps the retry time of the schedule.
+function postpone(scope, trigger, started, reason, stored) {
+    let worker = { state: "finished", trigger, scope, started_at: started, finished_at: now(), result: "skipped", reason,
+        groups: [], tuned: [], unmeasured: [], applied: null, recovered: null };
+    let retry = trigger == "schedule" ? now() + RETRY_SECONDS : null;
+    let tmp = POSTPONED + ".tmp";
+    if (fs.writefile(tmp, sprintf("%J\n", { worker, next_run_at: retry ?? with_postponed(stored).next_run_at })) == null ||
+        !fs.rename(tmp, POSTPONED))
+        fs.unlink(tmp);
+    return { status: "ok", result: "skipped", reason, trigger, scope, groups: {}, tuned: [], unmeasured: [], outside: [],
+        applied: null, recovered: null, next_run_at: retry };
+}
+
 function run_locked(scope, trigger) {
     let started = now();
     let sections = config_sections();
     if (sections == null) return { status: "failed", reason: "config_unavailable" };
     let read = policy_module.read(sections), policy = read.policy;
+    // Whatever makes measuring unsafe now is asked before the run is marked
+    // running: a postponed run is kept in RAM only (UC-075). A run still
+    // marked running died; it is recorded first, once.
+    let reason = blocker();
+    let stored = state_module.read();
+    if (reason != null && !(type(stored.worker) == "object" && stored.worker.state == "running"))
+        return postpone(scope, trigger, started, reason, stored);
     let begun = begin_run(trigger, scope, started, policy);
     if (!begun.ok) return { status: "failed", reason: "state_write_failed" };
     let crashed = begun.crashed;
@@ -697,7 +738,6 @@ function run_locked(scope, trigger) {
     let report = {}, tuned = [], unmeasured = [], outside = [], chosen = [], stop = null, results = {}, applied = null;
     let unknown_group = false;
 
-    let reason = blocker();
     if (reason == null) {
         let measured = expand_targets(sections, read.targets).targets;
         let computed = compute_groups(sections, measured, local);
@@ -795,6 +835,7 @@ function run_locked(scope, trigger) {
         recovered: crashed != null ? { started_at: crashed.started_at, trigger: crashed.trigger, phase: crashed.phase,
             group: crashed.group || null } : null };
     merge(updates);
+    fs.unlink(POSTPONED);
     fs.unlink(RUN_PROGRESS);
     fs.unlink(TUNE_PROGRESS);
     if (unknown_group) return { status: "failed", reason: "unknown_group", group: scope };
@@ -819,7 +860,7 @@ function if_due() {
     if (sections == null) return { status: "failed", reason: "config_unavailable" };
     let read = policy_module.read(sections);
     if (read.policy.mode == "off") return { status: "ok", result: "skipped", reason: "mode_off" };
-    let state = state_module.read();
+    let state = with_postponed(state_module.read());
     if (state.next_run_at != null && now() < state.next_run_at)
         return { status: "ok", result: "skipped", reason: "not_due", next_run_at: state.next_run_at };
     if (length(filter(read.targets, (t) => t.enabled)) == 0) return { status: "ok", result: "skipped", reason: "no_targets" };

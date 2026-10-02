@@ -96,8 +96,11 @@ for case in guard snapshot service unresolved lock; do
   [ "$(json_get "$WORK/blocked-$case.json" result)" = '"skipped"' ] || fail "$case must skip: $(cat "$WORK/blocked-$case.json")"
   [ "$(json_get "$WORK/blocked-$case.json" reason)" = "\"$want\"" ] || fail "$case reason: $(cat "$WORK/blocked-$case.json")"
   [ -z "$(calls)" ] || fail "$case: nothing is tuned"
-  next="$(json_get "$FORKOP_AUTOTUNE_STATE_FILE" next_run_at)"
+  # The retry time is kept in RAM, the state on flash is not rewritten (UC-075).
+  next="$(json_get "$WORK/blocked-$case.json" next_run_at)"
   [ "$next" -le $(( $(date +%s) + 900 )) ] && [ "$next" -gt $(( $(date +%s) + 800 )) ] || fail "$case: retried after 15 minutes ($next)"
+  manager status >"$WORK/blocked-status.json"
+  [ "$(json_get "$WORK/blocked-status.json" next_run_at)" = "$next" ] || fail "$case: the status shows the retry time"
   [ "$(json_get "$FORKOP_AUTOTUNE_STATE_FILE" rotation)" = 2 ] || fail "$case: the group keeps its turn"
 done
 rm -f "$STUB_APPLY_STATUS"

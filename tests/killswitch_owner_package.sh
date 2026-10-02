@@ -169,11 +169,17 @@ done
 # stubs under $INIT_ROOT.
 mkdir -p "$WORK_DIR/opkg-info" "$WORK_DIR/initroot/etc/init.d"
 cp "$WORK_DIR/sdk-prerm" "$WORK_DIR/opkg-info/forkop.prerm-pkg"
-grep -o '\$(1)/etc/init\.d/[A-Za-z0-9_.-]*' "$FORKOP_MAKEFILE" | sed 's/^\$(1)//' >"$WORK_DIR/opkg-info/forkop.list"
+grep -o "\$(1)/etc/init\.d/[A-Za-z0-9_.-]*" "$FORKOP_MAKEFILE" | sed "s/^\$(1)//" >"$WORK_DIR/opkg-info/forkop.list"
 grep -Fqx /etc/init.d/forkop-killswitch "$WORK_DIR/opkg-info/forkop.list" ||
   fail "the SDK package must ship the kill-switch init script: $(cat "$WORK_DIR/opkg-info/forkop.list")"
-printf '#!/bin/sh\nexec "$WORK_DIR/bin/forkop-init" "$@"\n' >"$WORK_DIR/initroot/etc/init.d/forkop"
-printf '#!/bin/sh\nexec "$WORK_DIR/bin/killswitch-init" "$@"\n' >"$WORK_DIR/initroot/etc/init.d/forkop-killswitch"
+cat >"$WORK_DIR/initroot/etc/init.d/forkop" <<SH
+#!/bin/sh
+exec "$WORK_DIR/bin/forkop-init" "\$@"
+SH
+cat >"$WORK_DIR/initroot/etc/init.d/forkop-killswitch" <<SH
+#!/bin/sh
+exec "$WORK_DIR/bin/killswitch-init" "\$@"
+SH
 chmod 0755 "$WORK_DIR/initroot/etc/init.d/"*
 export INIT_ROOT="$WORK_DIR/initroot"
 cat >"$WORK_DIR/functions.sh" <<'SH'
@@ -335,21 +341,36 @@ cat >"$ROOT/etc/init.d/dnsmasq" <<'SH'
 printf '%s\n' "$*" >> "$FORKOP_UNINSTALL_ROOT/dnsmasq-calls"
 SH
 # The full uninstall detaches the block list from dnsmasq through the
-# OpenWrt uci CLI. Backend CI has none, and the test shim does not resolve
-# the @dnsmasq[0] it uses: without the CLI, only that part is not checked.
+# OpenWrt uci CLI; every call it makes is recorded.
 UCI_BIN="$(command -v uci 2>/dev/null || true)"
 if [ -n "$UCI_BIN" ]; then
-  # Every uci call of the full uninstall, run by the real uci.
+  # Run by the real uci.
   cat >"$ROOT/bin/uci" <<SH
 #!/bin/sh
 printf '%s\n' "\$*" >> "\$FORKOP_UNINSTALL_ROOT/uci-calls"
 exec "$UCI_BIN" "\$@"
 SH
-  chmod +x "$ROOT/bin/uci"
 else
-  printf 'NOTE: no uci CLI on PATH, the full uninstall is not checked for detaching the DNS block list from dnsmasq\n' >&2
+  # Backend CI has none, and the test shim does not resolve the @dnsmasq[0]
+  # the full uninstall uses. A stub answers the one read the detach depends
+  # on as uci would for the dhcp below, until the option is deleted; the
+  # dhcp the calls leave behind is checked only with the real uci.
+  printf 'NOTE: no uci CLI on PATH, the full uninstall is checked for its uci calls, not for the dhcp they leave\n' >&2
+  cat >"$ROOT/bin/uci" <<'SH'
+#!/bin/sh
+printf '%s\n' "$*" >> "$FORKOP_UNINSTALL_ROOT/uci-calls"
+case "$*" in
+  *" get dhcp.@dnsmasq[0].serversfile")
+    grep -Fq " delete dhcp.@dnsmasq[0].serversfile" "$FORKOP_UNINSTALL_ROOT/uci-calls" ||
+      printf '/etc/forkop/killswitch/dnsmasq.servers\n' ;;
+esac
+exit 0
+SH
 fi
+chmod +x "$ROOT/bin/uci"
 chmod +x "$ROOT/usr/bin/forkop" "$ROOT/bin/opkg" "$ROOT/etc/init.d/dnsmasq"
+: >"$ROOT/uci-calls"
+: >"$ROOT/dnsmasq-calls"
 cat >"$ROOT/etc/config/dhcp" <<'EOF'
 config dnsmasq
 	option domain 'lan'
@@ -374,18 +395,21 @@ for path in /usr/share/nftables.d/ruleset-post/90-forkop-killswitch-loader.nft \
   /usr/share/nftables.d/ruleset-post/90-forkop-killswitch.nft /etc/forkop; do
   [ ! -e "$ROOT$path" ] || fail "full uninstall left $path behind"
 done
+# The changes it stages stay under the fixture root: the host's /tmp/.uci
+# is neither read nor committed.
+root_uci_call="-c $ROOT/etc/config -t $ROOT/tmp/.uci -q"
+grep -Fqx -- "$root_uci_call delete dhcp.@dnsmasq[0].serversfile" "$ROOT/uci-calls" ||
+  fail "full uninstall must detach the kill-switch servers file from dnsmasq: $(cat "$ROOT/uci-calls")"
+grep -Fqx -- "$root_uci_call commit dhcp" "$ROOT/uci-calls" || fail "full uninstall must commit dhcp through uci"
+if grep -Fv -- "-c $ROOT/etc/config -t $ROOT/tmp/.uci " "$ROOT/uci-calls" >"$WORK_DIR/host-uci-calls"; then
+  fail "full uninstall on a fixture root must keep uci's staged changes under it: $(cat "$WORK_DIR/host-uci-calls")"
+fi
+grep -Fqx restart "$ROOT/dnsmasq-calls" || fail "dnsmasq must be restarted without the block list"
 if [ -n "$UCI_BIN" ]; then
   [ -z "$("$UCI_BIN" -c "$ROOT/etc/config" -t "$ROOT/tmp/.uci" -q get 'dhcp.@dnsmasq[0].serversfile')" ] ||
     fail "full uninstall must detach the kill-switch servers file from dnsmasq"
   [ "$("$UCI_BIN" -c "$ROOT/etc/config" -t "$ROOT/tmp/.uci" -q get 'dhcp.@dnsmasq[0].domain')" = lan ] ||
     fail "full uninstall must keep the rest of dhcp"
-  # The changes it stages stay under the fixture root: the host's /tmp/.uci
-  # is neither read nor committed.
-  grep -Fq 'commit dhcp' "$ROOT/uci-calls" || fail "full uninstall must commit dhcp through uci"
-  if grep -Fv -- "-c $ROOT/etc/config -t $ROOT/tmp/.uci " "$ROOT/uci-calls" >"$WORK_DIR/host-uci-calls"; then
-    fail "full uninstall on a fixture root must keep uci's staged changes under it: $(cat "$WORK_DIR/host-uci-calls")"
-  fi
-  grep -Fqx restart "$ROOT/dnsmasq-calls" || fail "dnsmasq must be restarted without the block list"
 fi
 
 # ---- the package went away and nothing lifted the protection -------------------

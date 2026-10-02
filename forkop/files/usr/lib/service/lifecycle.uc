@@ -1028,6 +1028,15 @@ function killswitch_sync(reason) {
         log_message("Kill-switch policy was not refreshed; the previously applied protection stays in place", "warn");
 }
 
+// A runtime without the list generation of its configuration refreshes
+// nothing from its table (UC-209). Lifting renders nothing from it, so a
+// kill-switch that no section has any more is lifted all the same; a
+// protected section keeps the previously applied protection.
+function killswitch_sync_deferred(reason) {
+    log_message("Kill-switch refresh deferred until the list generation is applied", "info");
+    module_success(KILLSWITCH_UC, [ "follow-stopped-config", reason, "reload-lock-held" ]);
+}
+
 function start_phase_failed(phase, status) {
     if (status != 0)
         log_message("Startup phase '" + phase + "' failed with exit status " + as_string(status), "fatal");
@@ -1248,7 +1257,7 @@ function start_impl() {
     if (start_lists_complete)
         killswitch_sync("start");
     else
-        log_message("Kill-switch refresh deferred until the list generation is applied", "info");
+        killswitch_sync_deferred("start");
 
     if (module_success(STATE_UC, [ "has-list-update-sources" ])) {
         // Serialize the two network workers. The rule-set refresh may reload
@@ -2435,7 +2444,7 @@ function reload(reason) {
     // (UC-209).
     if (plan.changed_list == 1 && plan.needs_list_update == 1) {
         write_file(RUNTIME_LISTS_PENDING_FILE, "reload\n");
-        log_message("Kill-switch refresh deferred until the list generation is applied", "info");
+        killswitch_sync_deferred(reason == "" ? "reload" : "reload " + reason);
     }
     else {
         if (plan.needs_nft_rebuild == 1)

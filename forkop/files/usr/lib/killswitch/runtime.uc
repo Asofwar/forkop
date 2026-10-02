@@ -1386,7 +1386,8 @@ function sync(reason, reload_lock_held) {
 // refresh the kill-switch. Lifting it needs no runtime, so a configuration
 // that protects no section any more lifts it here (UC-208). One that still
 // protects a section keeps the last applied protection, the blocking side,
-// until the next start renders it again.
+// until the next start renders it again. A start or reload whose table lacks
+// the list generation of the configuration (UC-209) follows it the same way.
 function follow_stopped_config(reason, reload_lock_held) {
     if (length(protected_section_names(config_sections())) > 0 || !protection_present())
         return 0;

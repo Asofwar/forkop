@@ -176,7 +176,7 @@ reload_with() {
 #    is not refreshed from it.
 reload_with "has_work=1 needs_nft_rebuild=1 needs_sing_box_reload=1 needs_list_update=1 changed_list=1" ""
 ! has_event '^nft/apply nft-rebuild-runtime-from-uci$' || fail "the control: a changed list source rebuilt the table now"
-! has_event '^killswitch ' || fail "a reload that left the table to the list worker must not refresh the kill-switch"
+! has_event '^killswitch sync ' || fail "a reload that left the table to the list worker must not refresh the kill-switch"
 [ -e "$LISTS_PENDING" ] || fail "the reload must record that the live table lacks the list generation"
 grep -q 'Kill-switch refresh deferred' "$WORK_DIR/syslog" || fail "the deferred refresh must be logged"
 printf 'ok - a reload with a changed list source does not refresh the kill-switch\n'
@@ -185,7 +185,7 @@ printf 'ok - a reload with a changed list source does not refresh the kill-switc
 # not under test here).
 rm -f "$LISTS_PENDING" "$FORKOP_RUNTIME_STATE_DIR/list-update.reload"
 reload_with "has_work=1 needs_nft_rebuild=1 needs_list_update=1 changed_list=1" ""
-! has_event '^killswitch ' || fail "a list source change without a sing-box change must not refresh the kill-switch either"
+! has_event '^killswitch sync ' || fail "a list source change without a sing-box change must not refresh the kill-switch either"
 [ -e "$LISTS_PENDING" ] || fail "the list generation must be recorded as pending"
 
 # 2. A reload that rebuilds nothing leaves the record; the kill-switch
@@ -220,12 +220,82 @@ start_with() {
 }
 rm -f "$LISTS_PENDING"
 start_with missing
-! has_event '^killswitch ' || fail "a start without its list generation must not refresh the kill-switch"
+! has_event '^killswitch sync ' || fail "a start without its list generation must not refresh the kill-switch"
 [ -e "$LISTS_PENDING" ] || fail "a start without its list generation must record it as pending"
 start_with present
 has_event '^killswitch sync start reload-lock-held$' || fail "a start with its list generation must refresh the kill-switch"
 [ ! -e "$LISTS_PENDING" ] || fail "a start with its list generation holds it"
 printf 'ok - a start records whether its table holds the list generation\n'
+
+# 6. Lifting renders nothing from the table: such a reload or start still
+#    lifts a kill-switch that no section has any more (the kill-switch turned
+#    off and a list source changed in one apply), and keeps a protected
+#    section's saved policy as it is. The kill-switch is the real
+#    killswitch/runtime.uc from here on.
+cat >"$FAKE_LIB/killswitch/runtime.uc" <<UC
+$fake_header
+ev("killswitch " + join(" ", ARGV));
+let command = "ucode -L " + q(getenv("REAL_LIB")) + " " + q(getenv("REAL_LIB") + "/killswitch/runtime.uc");
+for (let arg in ARGV)
+    command += " " + q(arg);
+exit(system(command) == 0 ? 0 : 1);
+UC
+export KILLSWITCH_STATE_DIR="$WORK_DIR/ks"
+export KILLSWITCH_NFT_INCLUDE="$WORK_DIR/nftables.d/90-forkop-killswitch.nft"
+export KILLSWITCH_NFT_LOADER="$WORK_DIR/nftables.d/90-forkop-killswitch-loader.nft"
+export KILLSWITCH_CACHE_DIR="$WORK_DIR/kscache"
+export FORKOP_KILLSWITCH_INIT="$WORK_DIR/bin/no-init"
+POLICY="$KILLSWITCH_STATE_DIR/policy.nft"
+BLOCKED="$KILLSWITCH_STATE_DIR/dns-blocked.servers"
+save_protection() {
+  mkdir -p "$KILLSWITCH_STATE_DIR"
+  printf 'table inet ForkopKillswitch {}\n' >"$POLICY"
+  printf 'server=/vpn.example/\n' >"$BLOCKED"
+  printf '{ "active": true, "sections": [ "vpn" ] }\n' >"$KILLSWITCH_STATE_DIR/state.json"
+}
+protect_vpn() {
+  cat >>"$WORK_DIR/uci.state" <<'EOF'
+forkop.vpn=section
+forkop.vpn.action=connection
+forkop.vpn.kill_switch=1
+forkop.vpn.domain_suffix=vpn.example
+EOF
+}
+protection_lifted() {
+  [ ! -e "$POLICY" ] && [ ! -e "$BLOCKED" ]
+}
+saved_protection_kept() {
+  [ "$(cat "$POLICY" 2>/dev/null)" = 'table inet ForkopKillswitch {}' ] &&
+    [ "$(cat "$BLOCKED" 2>/dev/null)" = 'server=/vpn.example/' ]
+}
+
+save_protection
+rm -f "$LISTS_PENDING" "$FORKOP_RUNTIME_STATE_DIR/list-update.reload"
+reload_with "has_work=1 needs_nft_rebuild=1 needs_sing_box_reload=1 needs_list_update=1 changed_list=1" ""
+! has_event '^killswitch sync ' || fail "a reload that left the table to the list worker must not refresh the kill-switch"
+[ -e "$LISTS_PENDING" ] || fail "the list generation must be recorded as pending"
+protection_lifted ||
+  fail "a reload with a changed list source must lift the kill-switch that no section has any more"
+printf 'ok - a reload with a changed list source lifts a kill-switch no section has any more\n'
+
+save_protection
+start_with missing
+! has_event '^killswitch sync ' || fail "a start without its list generation must not refresh the kill-switch"
+protection_lifted ||
+  fail "a start without its list generation must lift the kill-switch that no section has any more"
+printf 'ok - a start without its list generation lifts a kill-switch no section has any more\n'
+
+protect_vpn
+save_protection
+rm -f "$FORKOP_RUNTIME_STATE_DIR/list-update.reload"
+reload_with "has_work=1 needs_nft_rebuild=1 needs_sing_box_reload=1 needs_list_update=1 changed_list=1" ""
+! has_event '^killswitch sync ' || fail "a protected section: the reload must not refresh the kill-switch"
+saved_protection_kept || fail "a reload with a changed list source must keep the saved protection of a protected section"
+save_protection
+start_with missing
+! has_event '^killswitch sync ' || fail "a protected section: the start must not refresh the kill-switch"
+saved_protection_kept || fail "a start without its list generation must keep the saved protection of a protected section"
+printf 'ok - a protected section keeps its saved protection\n'
 
 [ ! -e "$FORKOP_RELOAD_LOCK_DIR" ] || fail "reload.lock was left behind"
 printf 'killswitch_reload_lists: PASS\n'

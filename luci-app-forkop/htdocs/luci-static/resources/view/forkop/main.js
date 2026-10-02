@@ -19369,8 +19369,16 @@ function workerView(worker) {
         tone: "neutral"
       };
     default:
-      return { label: _("The last check failed"), tone: "error" };
+      return {
+        label: worker.reason === "state_write_failed" ? `${_("The last check failed")}. ${stateNotSavedText()}` : _("The last check failed"),
+        tone: "error"
+      };
   }
+}
+function stateNotSavedText() {
+  return _(
+    "The autotune state could not be saved. Check the free space on the router."
+  );
 }
 function blockerText(reason) {
   switch (reason) {
@@ -19413,6 +19421,10 @@ function mutationErrorText(reason) {
       return _("Check 1 to 8 domains of the list.");
     case "invalid_pin":
       return _("Pinned domains must be domain names, at most 8.");
+    // The change is saved; the measurements of the old target are not
+    // forgotten.
+    case "state_write_failed":
+      return stateNotSavedText();
     case "number_out_of_range":
     case "duration_out_of_range":
     case "invalid_number":
@@ -19536,6 +19548,8 @@ function refusalText(reason) {
       return _(
         "The autotune state was restored after damage. Run the check again."
       );
+    case "state_write_failed":
+      return `${_("The strategy was not applied")}. ${stateNotSavedText()}`;
     case "resolver_missing":
       return targetReasonText(reason);
     case "autotune_worker_running":
@@ -19551,6 +19565,10 @@ function refusalText(reason) {
   }
 }
 function applyResultView(result, candidate) {
+  if (result?.recorded === false)
+    return unrecordedView(
+      applyResultView({ ...result, recorded: true }, candidate)
+    );
   const name = strategyLabel(candidate);
   const outcome = result?.result ?? "";
   const reason = result?.reason ?? null;
@@ -19668,6 +19686,13 @@ function applyResultView(result, candidate) {
     attention: true
   };
 }
+function unrecordedView(done) {
+  return {
+    tone: done.tone === "success" || done.tone === "neutral" ? "warning" : done.tone,
+    text: `${done.text} ${stateNotSavedText()}`,
+    attention: done.attention
+  };
+}
 function changeName(apply, groupTitle) {
   const candidate = strategyLabel(apply.candidate);
   return groupTitle ? _('%s in the rule "%t"').replace("%s", candidate).replace("%t", groupTitle) : candidate;
@@ -19783,6 +19808,14 @@ function rollbackResultView(result) {
       ),
       attention: false
     };
+  if (result.recorded === false)
+    return unrecordedView(
+      rollbackResultView({
+        ...result,
+        recorded: true,
+        ...result.result === "rolled_back" ? { status: "ok", reason: null } : {}
+      })
+    );
   if (result.status === "ok" && result.reason === "apply_state_unreadable")
     return {
       tone: "success",
@@ -20039,6 +20072,12 @@ async function pollJob(jobId) {
         showToast(_("Check completed"), "success");
       else if (result?.status === "busy")
         showToast(_("A check is already running."), "warning", 6e3);
+      else if (result?.reason === "state_write_failed")
+        showToast(
+          `${_("The check did not complete")}. ${stateNotSavedText()}`,
+          "error",
+          8e3
+        );
       else if (result?.result === "skipped")
         showToast(
           _("The check was postponed. See the state above."),

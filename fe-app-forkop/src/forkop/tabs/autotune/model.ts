@@ -849,8 +849,22 @@ export function workerView(
         tone: 'neutral',
       };
     default:
-      return { label: _('The last check failed'), tone: 'error' };
+      return {
+        label:
+          worker.reason === 'state_write_failed'
+            ? `${_('The last check failed')}. ${stateNotSavedText()}`
+            : _('The last check failed'),
+        tone: 'error',
+      };
   }
+}
+
+// A write of the autotune state failed (autotune/manager.uc
+// state_write_failed, UC-074): what was done is not recorded.
+export function stateNotSavedText() {
+  return _(
+    'The autotune state could not be saved. Check the free space on the router.',
+  );
 }
 
 // Why a run did not measure (manager.uc blocker()).
@@ -897,6 +911,10 @@ export function mutationErrorText(reason: string | undefined) {
       return _('Check 1 to 8 domains of the list.');
     case 'invalid_pin':
       return _('Pinned domains must be domain names, at most 8.');
+    // The change is saved; the measurements of the old target are not
+    // forgotten.
+    case 'state_write_failed':
+      return stateNotSavedText();
     case 'number_out_of_range':
     case 'duration_out_of_range':
     case 'invalid_number':
@@ -1060,6 +1078,8 @@ function refusalText(reason: string | null | undefined) {
       return _(
         'The autotune state was restored after damage. Run the check again.',
       );
+    case 'state_write_failed':
+      return `${_('The strategy was not applied')}. ${stateNotSavedText()}`;
     case 'resolver_missing':
       return targetReasonText(reason);
     case 'autotune_worker_running':
@@ -1080,9 +1100,19 @@ function refusalText(reason: string | null | undefined) {
 
 // What the finished apply job means for the user.
 export function applyResultView(
-  result: { status: string; result?: string; reason?: string | null } | null,
+  result: {
+    status: string;
+    result?: string;
+    reason?: string | null;
+    recorded?: boolean;
+  } | null,
   candidate: string | null,
 ): ApplyResultView {
+  // Done, but the autotune state does not show it (UC-074).
+  if (result?.recorded === false)
+    return unrecordedView(
+      applyResultView({ ...result, recorded: true }, candidate),
+    );
   const name = strategyLabel(candidate);
   const outcome = result?.result ?? '';
   const reason = result?.reason ?? null;
@@ -1209,6 +1239,19 @@ export function applyResultView(
     tone: 'error',
     text: _('Automatic recovery did not finish.'),
     attention: true,
+  };
+}
+
+// What an apply or a rollback did, and that the autotune state could not
+// record it.
+function unrecordedView(done: ApplyResultView): ApplyResultView {
+  return {
+    tone:
+      done.tone === 'success' || done.tone === 'neutral'
+        ? 'warning'
+        : done.tone,
+    text: `${done.text} ${stateNotSavedText()}`,
+    attention: done.attention,
   };
 }
 
@@ -1388,6 +1431,18 @@ export function rollbackResultView(
       ),
       attention: false,
     };
+  // Done, but the autotune state could not pause the rolled back candidate
+  // (UC-074); a finished rollback reports state_write_failed instead of ok.
+  if (result.recorded === false)
+    return unrecordedView(
+      rollbackResultView({
+        ...result,
+        recorded: true,
+        ...(result.result === 'rolled_back'
+          ? { status: 'ok' as const, reason: null }
+          : {}),
+      }),
+    );
   if (result.status === 'ok' && result.reason === 'apply_state_unreadable')
     return {
       tone: 'success',

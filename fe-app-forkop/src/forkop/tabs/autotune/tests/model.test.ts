@@ -22,6 +22,7 @@ import {
   ruleListLabel,
   listErrorText,
   runProgressView,
+  stateNotSavedText,
   workerView,
 } from '../model';
 import type { Forkop } from '../../../types';
@@ -586,6 +587,27 @@ describe('workerView', () => {
       'success',
     );
   });
+
+  // UC-074: a run that could not write the autotune state says so.
+  it('names a check that failed to save the state', () => {
+    const view = workerView({
+      state: 'finished',
+      result: 'failed',
+      reason: 'state_write_failed',
+    });
+    expect(view).toEqual({
+      label: `The last check failed. ${stateNotSavedText()}`,
+      tone: 'error',
+    });
+    expect(stateNotSavedText()).toContain('free space on the router');
+    expect(
+      workerView({
+        state: 'finished',
+        result: 'failed',
+        reason: 'unknown_group',
+      })?.label,
+    ).toBe('The last check failed');
+  });
 });
 
 describe('texts', () => {
@@ -616,6 +638,8 @@ describe('texts', () => {
       'unsaved configuration changes',
     );
     expect(mutationErrorText(undefined)).toBe('The change was not saved.');
+    // The target is saved; its old measurements could not be forgotten.
+    expect(mutationErrorText('state_write_failed')).toBe(stateNotSavedText());
   });
 });
 
@@ -1071,6 +1095,63 @@ describe('recorded apply and its rollback', () => {
     expect(damaged.consequences?.join(' ')).toContain('undone');
     expect(damaged.consequences?.join(' ')).toContain('Before restore');
     expect(JSON.stringify(damaged)).not.toContain('null');
+  });
+
+  // UC-074: done, but the autotune state does not show it.
+  it('keeps what an unrecorded apply or rollback did', () => {
+    const applied = applyResultView(
+      {
+        status: 'failed',
+        result: 'applied',
+        reason: 'state_write_failed',
+        recorded: false,
+      },
+      'multisplit',
+    );
+    expect(applied.text).toBe(
+      `${applyResultView({ status: 'ok', result: 'applied' }, 'multisplit').text} ${stateNotSavedText()}`,
+    );
+    expect(applied.tone).toBe('warning');
+    const rolledBackByCheck = applyResultView(
+      {
+        status: 'failed',
+        result: 'rolled_back',
+        reason: 'verification_failed',
+        recorded: false,
+      },
+      'multisplit',
+    );
+    expect(rolledBackByCheck.text).toContain(
+      'restored the previous configuration',
+    );
+    expect(rolledBackByCheck.text).toContain(stateNotSavedText());
+    expect(
+      applyResultView(
+        { status: 'refused', result: 'refused', reason: 'state_write_failed' },
+        'multisplit',
+      ).text,
+    ).toBe(`The strategy was not applied. ${stateNotSavedText()}`);
+    const rollback = rollbackResultView({
+      status: 'failed',
+      result: 'rolled_back',
+      reason: 'state_write_failed',
+      restored: true,
+      recorded: false,
+    });
+    expect(rollback).toEqual({
+      tone: 'warning',
+      text: `The configuration before the change is restored. ${stateNotSavedText()}`,
+      attention: false,
+    });
+    const unfinished = rollbackResultView({
+      status: 'failed',
+      result: 'needs_attention',
+      reason: 'operator_rollback:config_changed_during_rollback',
+      recorded: false,
+    });
+    expect(unfinished.tone).toBe('error');
+    expect(unfinished.attention).toBe(true);
+    expect(unfinished.text).toContain(stateNotSavedText());
   });
 
   it('explains every rollback outcome', () => {

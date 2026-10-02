@@ -29,7 +29,9 @@
 // A run is marked running in the persistent state; the next run finds a
 // run that died (crash, kill, reboot), records it in the history and, when
 // it died while applying, counts that apply and cools its candidate down.
-// A run that a blocker postpones before it begins stays in RAM (UC-075).
+// A run that a blocker postpones before it begins stays in RAM (UC-075), as
+// does one whose running mark cannot be written (UC-074). A state write
+// that fails after the work is never reported as success.
 //
 // Must be invoked as: ucode -L <lib> <lib>/autotune/manager.uc <mode> ...
 let fs = require("fs");
@@ -77,7 +79,8 @@ const RETRY_SECONDS = 900;
 // The last run a blocker postponed and its retry time, tmpfs (UC-075): a
 // blocker can last for days (an apply that waits for the operator, a kept
 // guard), and the cron line asks every 15 minutes; such a run changes
-// nothing worth a flash write. A run that measures replaces it.
+// nothing worth a flash write. So is a run that failed because its running
+// mark could not be written (UC-074). A run that measures replaces it.
 const POSTPONED = STATE_DIR + "/postponed.json";
 const JOB_KEEP = 10;
 const JOB_STARTING_GRACE = 30;
@@ -422,6 +425,14 @@ function with_state(change) {
     return ok;
 }
 
+// The output of work done whose state write failed (UC-074): it keeps what
+// was done, says that the state does not show it, and is never a success.
+function unrecorded(output) {
+    let ok = output.status == "ok";
+    return { ...output, status: ok ? "failed" : output.status, reason: ok ? "state_write_failed" : output.reason,
+        recorded: false };
+}
+
 function uncommitted_changes() {
     let st = fs.stat(UCI_SAVEDIR + "/" + CONFIG_PACKAGE);
     return st != null && st.size > 0;
@@ -518,12 +529,14 @@ function target_set(id, host, enabled, resolver_ip, rule_set, sample, pins) {
     let result = uci_apply(ops);
     if (result.status != "ok") return result;
     // Results measured for another host or list say nothing about the new one.
+    let forgotten = true;
     if (existing != null && (lc(as_string(existing.options.host)) != host || as_string(existing.options.rule_set) != rule_set))
-        with_state((state) => forget_target(state, id));
-    if (list)
-        return { status: "ok", target: { id, host: null, rule_set, sample: sample != "" ? int(sample) : lists_module.DEFAULT_SAMPLE,
-            pins, enabled: enabled == "1", resolver: resolver_ip || null } };
-    return { status: "ok", target: { id, host, enabled: enabled == "1", resolver: resolver_ip || null } };
+        forgotten = with_state((state) => forget_target(state, id));
+    let output = list ?
+        { status: "ok", target: { id, host: null, rule_set, sample: sample != "" ? int(sample) : lists_module.DEFAULT_SAMPLE,
+            pins, enabled: enabled == "1", resolver: resolver_ip || null } } :
+        { status: "ok", target: { id, host, enabled: enabled == "1", resolver: resolver_ip || null } };
+    return forgotten ? output : unrecorded(output);
 }
 
 function target_remove(id) {
@@ -534,8 +547,8 @@ function target_remove(id) {
     if (existing == null) return { status: "failed", reason: "unknown_target" };
     let result = uci_apply([ [ "delete", CONFIG_PACKAGE + "." + id ] ]);
     if (result.status != "ok") return result;
-    with_state((state) => forget_target(state, id));
-    return { status: "ok", removed: id };
+    let output = { status: "ok", removed: id };
+    return with_state((state) => forget_target(state, id)) ? output : unrecorded(output);
 }
 
 // ---- scheduled runs ----------------------------------------------------------
@@ -700,19 +713,21 @@ function begin_run(trigger, scope, started, policy, extra) {
     return { ok, crashed, previous };
 }
 
-// A run that a blocker postponed before it began: recorded in RAM with its
-// retry time, the state on flash is not touched (UC-075). A manual run
-// keeps the retry time of the schedule.
-function postpone(scope, trigger, started, reason, stored) {
-    let worker = { state: "finished", trigger, scope, started_at: started, finished_at: now(), result: "skipped", reason,
+// A run that did not begin: a blocker postponed it (result skipped), or its
+// running mark could not be written (result failed, UC-074). Recorded in
+// RAM with its retry time, the state on flash is not touched (UC-075); the
+// page shows it all the same. A manual run keeps the retry time of the
+// schedule.
+function not_begun(scope, trigger, started, result, reason, stored) {
+    let worker = { state: "finished", trigger, scope, started_at: started, finished_at: now(), result, reason,
         groups: [], tuned: [], unmeasured: [], applied: null, recovered: null };
     let retry = trigger == "schedule" ? now() + RETRY_SECONDS : null;
     let tmp = POSTPONED + ".tmp";
     if (fs.writefile(tmp, sprintf("%J\n", { worker, next_run_at: retry ?? with_postponed(stored).next_run_at })) == null ||
         !fs.rename(tmp, POSTPONED))
         fs.unlink(tmp);
-    return { status: "ok", result: "skipped", reason, trigger, scope, groups: {}, tuned: [], unmeasured: [], outside: [],
-        applied: null, recovered: null, next_run_at: retry };
+    return { status: result == "skipped" ? "ok" : "failed", result, reason, trigger, scope, groups: {}, tuned: [],
+        unmeasured: [], outside: [], applied: null, recovered: null, next_run_at: retry };
 }
 
 function run_locked(scope, trigger) {
@@ -726,9 +741,9 @@ function run_locked(scope, trigger) {
     let reason = blocker();
     let stored = state_module.read();
     if (reason != null && !(type(stored.worker) == "object" && stored.worker.state == "running"))
-        return postpone(scope, trigger, started, reason, stored);
+        return not_begun(scope, trigger, started, "skipped", reason, stored);
     let begun = begin_run(trigger, scope, started, policy);
-    if (!begun.ok) return { status: "failed", reason: "state_write_failed" };
+    if (!begun.ok) return not_begun(scope, trigger, started, "failed", "state_write_failed", stored);
     let crashed = begun.crashed;
     remove_stale_apply_dirs();
     let local = state_module.read();
@@ -834,13 +849,16 @@ function run_locked(scope, trigger) {
         groups: chosen, tuned, unmeasured, applied: applied != null ? applied.status : null,
         recovered: crashed != null ? { started_at: crashed.started_at, trigger: crashed.trigger, phase: crashed.phase,
             group: crashed.group || null } : null };
-    merge(updates);
+    // A run whose record is not written stays marked running in the state:
+    // the next run records it as crashed, with an apply it did.
+    let recorded = merge(updates);
     fs.unlink(POSTPONED);
     fs.unlink(RUN_PROGRESS);
     fs.unlink(TUNE_PROGRESS);
     if (unknown_group) return { status: "failed", reason: "unknown_group", group: scope };
-    return { status: "ok", result, reason, trigger, scope, groups: report, tuned, unmeasured, outside,
+    let output = { status: "ok", result, reason, trigger, scope, groups: report, tuned, unmeasured, outside,
         applied, recovered: updates.worker.recovered, next_run_at: updates.next_run_at };
+    return recorded ? output : unrecorded(output);
 }
 
 function run(scope, trigger) {
@@ -938,15 +956,12 @@ function manual_apply_locked(name, job) {
     let begun = begin_run("manual", name, started, policy,
         { kind: "apply", job: job || null, phase: "checking", group: name, candidate, phase_at: started });
     if (!begun.ok) return refuse("state_write_failed");
-    let finish = (output) => {
-        with_state((s) => {
+    let finish = (output) => with_state((s) => {
             // The last run stays what the status shows; the apply is in the
             // group record and the apply list.
             let prev = begun.previous;
             s.worker = type(prev) == "object" && prev.state == "running" ? { ...prev, state: "crashed", detected_at: now() } : prev;
-        });
-        return output;
-    };
+        }) ? output : unrecorded(output);
 
     let measured = expand_targets(sections, read.targets).targets;
     let fresh = manual_fresh(sections, measured, state, name, stored);
@@ -961,7 +976,7 @@ function manual_apply_locked(name, job) {
     if (dns_resolver == null) return finish(refuse("resolver_missing"));
 
     let record = apply_group(name, fresh.result, full, dns_resolver.ip, "manual");
-    with_state((s) => {
+    let recorded = with_state((s) => {
         let g = type(s.groups[name]) == "object" ? s.groups[name] : hysteresis.empty_group();
         g.last_apply = record;
         if (record.outcome != null && record.outcome.cooldown)
@@ -971,9 +986,12 @@ function manual_apply_locked(name, job) {
         push(s.applies, record);
     });
     let ran = record.outcome != null || record.status == "no_change_required";
-    return finish({ status: record.status == "applied" || record.status == "no_change_required" ? "ok" : ran ? "failed" : "refused",
+    let output = { status: record.status == "applied" || record.status == "no_change_required" ? "ok" : ran ? "failed" : "refused",
         result: ran ? record.status : "refused", reason: record.reason, group: name, candidate,
-        trigger: "manual", finished_at: now() });
+        trigger: "manual", finished_at: now() };
+    // Without its record the apply keeps its mark in the state: the next run
+    // records it as one of unknown outcome and pauses its candidate.
+    return recorded ? finish(output) : unrecorded(output);
 }
 
 function manual_apply(name, job) {
@@ -1006,10 +1024,11 @@ function operator_rollback() {
     let r = run_tool("apply", [ "rollback" ]) || { status: "failed", reason: "rollback_output_invalid" };
     let group = type(r.mutation) == "object" && state_module.valid_id(r.mutation.section) ? r.mutation.section : null;
     let candidate = match(as_string(r.selected), /^[a-z0-9_]{1,32}$/) != null ? r.selected : null;
+    let recorded = true;
     if ((r.status == "rolled_back" || r.status == "needs_attention") && group != null && candidate != null) {
         let sections = config_sections();
         let policy = policy_module.read(sections || []).policy;
-        with_state((state) => {
+        recorded = with_state((state) => {
             let g = type(state.groups[group]) == "object" ? state.groups[group] : hysteresis.empty_group();
             g.last_apply = { at: now(), group, candidate, representative: null, status: r.status,
                 reason: "operator_rollback", counted: false, attempted: true, trigger: "manual" };
@@ -1020,9 +1039,11 @@ function operator_rollback() {
         });
     }
     unlock(lock);
-    return { status: r.status == "rolled_back" ? "ok" : r.status == "busy" ? "busy" : "failed",
+    let output = { status: r.status == "rolled_back" ? "ok" : r.status == "busy" ? "busy" : "failed",
         result: as_string(r.status) || "failed", reason: r.reason || null, group, candidate,
         restored: r.status == "rolled_back" && type(r.rollback) == "object" && r.rollback.status == "success", finished_at: now() };
+    // Without the pause the rolled back candidate could be applied again.
+    return recorded ? output : unrecorded(output);
 }
 
 // ---- background jobs ---------------------------------------------------------

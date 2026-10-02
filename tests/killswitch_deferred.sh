@@ -131,7 +131,14 @@ links='"connection_urls": [ "vless://00000000-0000-4000-8000-000000000001@a.exam
   fail "the kill-switch of a section that is never deferred must not reload the runtime"
 printf 'ok - the kill-switch of a subscription section reaches the runtime\n'
 
-# ---- the kill-switch keeps its previous protection ------------------------------
+# ---- the kill-switch follows the live table, not the unknown names -------------
+#
+# The live table holds the deferred protected section's destinations, so the
+# nft policy is refreshed as usual: every other change of the configuration
+# (a section's kill-switch turned off, another section sent direct, new list
+# addresses) reaches it while the subscription stays unreachable. Only the
+# section's names are unknown to the running sing-box; the DNS block list
+# keeps the previous one meanwhile.
 
 mkdir -p "$WORK_DIR/bin" "$WORK_DIR/run"
 cat >"$WORK_DIR/bin/nft" <<'NFT'
@@ -144,6 +151,7 @@ case "$1 $2" in
   "list set")
     printf 'table inet ForkopTable {\n\tset %s {\n\t\ttype ipv4_addr\n' "$5"
     [ "$5" = "forkop_rule_vpn_subnets" ] && [ -e "$WORK_DIR/vpn-elements" ] && printf '\t\telements = { 93.184.216.0/24 }\n'
+    [ "$5" = "forkop_rule_main_subnets" ] && printf '\t\telements = { 198.51.100.0/24 }\n'
     printf '\t}\n}\n'
     exit 0 ;;
   "-c -f") exit 0 ;;
@@ -168,10 +176,15 @@ export KILLSWITCH_CACHE_DIR="$WORK_DIR/cache"
 export DNSMASQ_INIT="$WORK_DIR/bin/dnsmasq-init"
 export FORKOP_KILLSWITCH_INIT="$WORK_DIR/bin/killswitch-init"
 
-cat >"$FORKOP_UCI_STATE_FILE" <<EOF
+uci_state() {
+  cat >"$FORKOP_UCI_STATE_FILE" <<EOF
 forkop.settings=settings
 forkop.settings.source_network_interfaces=br-lan
 forkop.settings.config_path=$WORK_DIR/sing-box.json
+forkop.main=section
+forkop.main.action=connection
+forkop.main.kill_switch=$1
+forkop.main.ip_cidr=198.51.100.0/24
 forkop.vpn=section
 forkop.vpn.action=connection
 forkop.vpn.kill_switch=1
@@ -179,19 +192,22 @@ forkop.vpn.ip_cidr=93.184.216.0/24
 dhcp.@dnsmasq[0]=dnsmasq
 dhcp.@dnsmasq[0].server=127.0.0.42
 EOF
+}
 ks() { ucode -L "$FORKOP_LIB" "$KS_UC" "$@"; }
 routed_config() {
   cat >"$WORK_DIR/sing-box.json" <<'JSON'
-{ "outbounds": [ { "type": "direct", "tag": "vpn-out" } ],
-  "route": { "rules": [ { "action": "route", "outbound": "vpn-out", "domain_suffix": [ "vpn.example" ] } ], "rule_set": [] } }
+{ "outbounds": [ { "type": "direct", "tag": "main-out" }, { "type": "direct", "tag": "vpn-out" } ],
+  "route": { "rules": [ { "action": "route", "outbound": "main-out", "domain_suffix": [ "main.example" ] },
+    { "action": "route", "outbound": "vpn-out", "domain_suffix": [ "vpn.example" ] } ], "rule_set": [] } }
 JSON
 }
 # What the generator writes while the section is deferred: no outbound, its
 # matchers rejected.
 deferred_config() {
   cat >"$WORK_DIR/sing-box.json" <<'JSON'
-{ "outbounds": [ { "type": "direct", "tag": "direct-out" } ],
-  "route": { "rules": [ { "action": "reject", "domain_suffix": [ "vpn.example" ] } ], "rule_set": [] } }
+{ "outbounds": [ { "type": "direct", "tag": "main-out" }, { "type": "direct", "tag": "direct-out" } ],
+  "route": { "rules": [ { "action": "route", "outbound": "main-out", "domain_suffix": [ "main.example" ] },
+    { "action": "reject", "domain_suffix": [ "vpn.example" ] } ], "rule_set": [] } }
 JSON
 }
 
@@ -199,28 +215,36 @@ POLICY="$KILLSWITCH_STATE_DIR/policy.nft"
 BLOCKED="$KILLSWITCH_STATE_DIR/dns-blocked.servers"
 
 touch "$WORK_DIR/vpn-elements"
+uci_state 1
 routed_config
-ks sync start || fail "the sync of a routed section failed"
+ks sync start || fail "the sync of routed sections failed"
 grep -Fq 'forkop_rule_vpn_subnets { 93.184.216.0/24 }' "$POLICY" || fail "the complete policy must hold the section's destinations"
 grep -Fqx 'server=/vpn.example/' "$BLOCKED" || fail "the complete block list must hold the section's names"
-cp "$POLICY" "$WORK_DIR/policy.before"
+grep -Fqx 'server=/main.example/' "$BLOCKED" || fail "the complete block list must hold the other section's names"
 cp "$BLOCKED" "$WORK_DIR/blocked.before"
 
+# The subscription of vpn is deferred, and the kill-switch of main is turned
+# off meanwhile.
 deferred_config
-if ks sync start; then
-  fail "a sync while a protected section is not routed must not report a refresh"
-fi
-cmp -s "$POLICY" "$WORK_DIR/policy.before" || fail "a deferred section must not replace the saved policy: $(cat "$POLICY")"
-cmp -s "$BLOCKED" "$WORK_DIR/blocked.before" || fail "a deferred section must not replace the saved block list"
-grep -Fq 'not routed' "$KILLSWITCH_STATE_DIR/state.json" || fail "the kept protection must be explained"
+uci_state 0
+ks sync reload || fail "a sync while a protected section is not routed must still refresh the nft policy"
+grep -Fq 'forkop_rule_vpn_subnets { 93.184.216.0/24 }' "$POLICY" ||
+  fail "the refreshed policy must keep the deferred section's destinations from the live table: $(cat "$POLICY")"
+! grep -Fq 'ks_main' "$POLICY" || fail "a section whose kill-switch was turned off must not stay protected while another is deferred"
+cmp -s "$BLOCKED" "$WORK_DIR/blocked.before" || fail "the names of a deferred section are unknown; the block list must stay as it was"
+grep -Fq 'not routed' "$KILLSWITCH_STATE_DIR/state.json" || fail "the kept block list must be explained"
+grep -Fq '"last_error": ""' "$KILLSWITCH_STATE_DIR/state.json" || fail "the refreshed nft policy is not an error"
 status="$(ks status)" || fail "status failed"
 ucode -e 'let s = json(ARGV[0]); exit(sprintf("%J", s.unrouted) == "[ \"vpn\" ]" ? 0 : 1);' -- "$status" ||
   fail "status must name the protected section the running Forkop does not route: $status"
-printf 'ok - a deferred section keeps the previous protection\n'
+printf 'ok - a deferred section keeps the previous block list, and the nft policy follows the configuration\n'
 
 routed_config
 ks sync reload || fail "the sync after the subscription was loaded failed"
+grep -Fqx 'server=/vpn.example/' "$BLOCKED" || fail "the refreshed block list must hold the section's names"
+! grep -Fq 'main.example' "$BLOCKED" || fail "the refreshed block list must drop the names of an unprotected section"
 grep -Fq '"last_error": ""' "$KILLSWITCH_STATE_DIR/state.json" || fail "a successful sync must clear the error"
+! grep -Fq 'not routed' "$KILLSWITCH_STATE_DIR/state.json" || fail "a routed section must not be reported any more"
 status="$(ks status)" || fail "status failed"
 ucode -e 'let s = json(ARGV[0]); exit(length(s.unrouted) == 0 ? 0 : 1);' -- "$status" ||
   fail "a routed section is not reported as unrouted: $status"

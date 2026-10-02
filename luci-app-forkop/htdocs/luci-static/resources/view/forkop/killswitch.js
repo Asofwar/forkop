@@ -177,14 +177,15 @@ function renderSectionStatus(section_id, status) {
       badge(_("Waiting for a successful Forkop start or reload"), "warn"),
     );
   }
-  // A deferred subscription (UC-192).
+  // A deferred subscription (UC-192): its addresses are in the live table,
+  // its domains are not known until it is loaded.
   if ((status.unrouted || []).includes(section_id)) {
     children.push(
       E(
         "div",
         { style: `color: ${STATUS_COLORS.warn};` },
         _(
-          "The subscription of this section is not loaded yet: Forkop rejects its traffic, and the kill-switch keeps its previous protection until the subscription is loaded.",
+          "The subscription of this section is not loaded yet: Forkop rejects its traffic. The domains blocked while Forkop is stopped are not refreshed until the subscription is loaded.",
         ),
       ),
     );

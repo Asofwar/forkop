@@ -1114,9 +1114,9 @@ function service_running() {
 // Protected sections the running sing-box does not route. A section whose
 // subscription could not be loaded is deferred until it can be downloaded
 // (subscription/cache.uc): sing-box has no outbound for it and rejects its
-// traffic (singbox/generator.uc), and its domains have no route rule to
-// read. A refresh then would replace the saved protection with one that
-// lacks its names (UC-192).
+// traffic (singbox/generator.uc). The live table still holds its
+// destinations (nft/apply.uc), but its domains have no route rule to read:
+// a block list rendered meanwhile would lack its names (UC-192).
 function unrouted_sections(config, names) {
     config = object_or_empty(config);
     let routed = {};
@@ -1127,7 +1127,7 @@ function unrouted_sections(config, names) {
     return filter(names, (name) => !routed[singbox_constants.outbound_tag(name)]);
 }
 
-function sync_dns(settings, protected_names, config, vpn_names) {
+function sync_dns(settings, protected_names, config, vpn_names, unrouted) {
     if (bool_option(settings, "dont_touch_dhcp", false)) {
         fs.unlink(DNS_BLOCKED_FILE);
         fs.unlink(STANDBY_BLOCKED_FILE);
@@ -1137,6 +1137,9 @@ function sync_dns(settings, protected_names, config, vpn_names) {
 
     if (type(config) != "object")
         return { ok: false, error: "sing-box config " + sing_box_config_path(settings) + " is not readable" };
+    if (length(unrouted) > 0)
+        return { ok: false, error: "protected section(s) " + join(", ", unrouted) +
+            " not routed by the running Forkop yet (subscription not loaded), so their domains are unknown" };
 
     ruleset_cache_used = {};
     let memo = {};
@@ -1258,12 +1261,7 @@ function sync_locked(reason, manual) {
     }
 
     let config = common.read_json_file(sing_box_config_path(settings));
-    let unrouted = unrouted_sections(config, names);
-    if (type(config) == "object" && length(unrouted) > 0) {
-        record_error("protected section(s) " + join(", ", unrouted) +
-            " not routed by the running Forkop yet (subscription not loaded); keeping the previous protection");
-        return 1;
-    }
+    let unrouted = type(config) == "object" ? unrouted_sections(config, names) : [];
 
     let nft_result = apply_nft_policy();
     if (!nft_result.ok) {
@@ -1273,7 +1271,7 @@ function sync_locked(reason, manual) {
     remove_legacy_guard_table();
 
     let warnings = [];
-    let dns_result = sync_dns(settings, names, config, vpn_section_names(sections));
+    let dns_result = sync_dns(settings, names, config, vpn_section_names(sections), unrouted);
     if (!dns_result.ok)
         push(warnings, as_string(dns_result.error) + "; the previous DNS block list stays in place");
     else if (dns_result.warning)

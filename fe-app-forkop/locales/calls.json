@@ -450,7 +450,7 @@
     "call": "Active until the next firewall reload",
     "key": "Active until the next firewall reload",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:261"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:262"
     ]
   },
   {
@@ -1260,7 +1260,7 @@
     "call": "Blocked connections",
     "key": "Blocked connections",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:195"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:196"
     ]
   },
   {
@@ -2783,7 +2783,7 @@
     "call": "DNS protection",
     "key": "DNS protection",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:290"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:291"
     ]
   },
   {
@@ -3000,15 +3000,15 @@
     "call": "Domains also blocked for the excluded devices of this section (DNS is shared by all devices)",
     "key": "Domains also blocked for the excluded devices of this section (DNS is shared by all devices)",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:228"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:229"
     ]
   },
   {
     "call": "Domains blocked while Forkop is stopped",
     "key": "Domains blocked while Forkop is stopped",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:203",
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:298"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:204",
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:299"
     ]
   },
   {
@@ -3022,7 +3022,7 @@
     "call": "Domains of device-limited rules not blocked through DNS (shared by all devices)",
     "key": "Domains of device-limited rules not blocked through DNS (shared by all devices)",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:218"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:219"
     ]
   },
   {
@@ -3501,7 +3501,7 @@
     "call": "exceptions",
     "key": "exceptions",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:299"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:300"
     ]
   },
   {
@@ -3715,7 +3715,7 @@
     "call": "FakeIP connections rejected",
     "key": "FakeIP connections rejected",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:305"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:306"
     ]
   },
   {
@@ -3858,7 +3858,7 @@
     "call": "Forkop runtime",
     "key": "Forkop runtime",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:284"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:285"
     ]
   },
   {
@@ -5146,7 +5146,7 @@
     "call": "Keyword/regex matchers without DNS protection",
     "key": "Keyword/regex matchers without DNS protection",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:210"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:211"
     ]
   },
   {
@@ -5160,7 +5160,7 @@
     "call": "Kill-switch status is unavailable: %s",
     "key": "Kill-switch status is unavailable: %s",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:337"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:338"
     ]
   },
   {
@@ -5263,7 +5263,7 @@
     "call": "Last update",
     "key": "Last update",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:309"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:310"
     ]
   },
   {
@@ -5395,7 +5395,7 @@
     "call": "Loading kill-switch status…",
     "key": "Loading kill-switch status…",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:323"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:324"
     ]
   },
   {
@@ -6085,7 +6085,7 @@
     "call": "none",
     "key": "none",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:277"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:278"
     ]
   },
   {
@@ -6305,7 +6305,7 @@
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:120",
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:153",
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:270",
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:271",
       "src/forkop/tabs/autotune/model.ts:17"
     ]
   },
@@ -6898,7 +6898,7 @@
     "call": "Protected sections",
     "key": "Protected sections",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:276"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:277"
     ]
   },
   {
@@ -6906,7 +6906,7 @@
     "key": "Protection active",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:166",
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:260"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:261"
     ]
   },
   {
@@ -6957,7 +6957,7 @@
     "call": "Re-apply now",
     "key": "Re-apply now",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:368"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:369"
     ]
   },
   {
@@ -7122,7 +7122,7 @@
     "call": "Remove protection now",
     "key": "Remove protection now",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:379"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:380"
     ]
   },
   {
@@ -7150,7 +7150,7 @@
     "call": "Remove the kill-switch now? Protected traffic will be able to leave directly until Forkop applies it again on the next successful start or reload.",
     "key": "Remove the kill-switch now? Protected traffic will be able to leave directly until Forkop applies it again on the next successful start or reload.",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:382"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:383"
     ]
   },
   {
@@ -7716,7 +7716,7 @@
     "call": "running: traffic goes through the VPN",
     "key": "running: traffic goes through the VPN",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:286"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:287"
     ]
   },
   {
@@ -8388,7 +8388,7 @@
     "call": "Standby DNS for a failed sing-box",
     "key": "Standby DNS for a failed sing-box",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:292"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:293"
     ]
   },
   {
@@ -8505,7 +8505,7 @@
     "call": "stopped: protected traffic is blocked",
     "key": "stopped: protected traffic is blocked",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:287"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:288"
     ]
   },
   {
@@ -9576,10 +9576,10 @@
     ]
   },
   {
-    "call": "The subscription of this section is not loaded yet: Forkop rejects its traffic, and the kill-switch keeps its previous protection until the subscription is loaded.",
-    "key": "The subscription of this section is not loaded yet: Forkop rejects its traffic, and the kill-switch keeps its previous protection until the subscription is loaded.",
+    "call": "The subscription of this section is not loaded yet: Forkop rejects its traffic. The domains blocked while Forkop is stopped are not refreshed until the subscription is loaded.",
+    "key": "The subscription of this section is not loaded yet: Forkop rejects its traffic. The domains blocked while Forkop is stopped are not refreshed until the subscription is loaded.",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:186"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:187"
     ]
   },
   {
@@ -9819,7 +9819,7 @@
     "call": "This section has no IP lists, so it is protected through FakeIP and DNS only.",
     "key": "This section has no IP lists, so it is protected through FakeIP and DNS only.",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:241"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:242"
     ]
   },
   {
@@ -10509,7 +10509,7 @@
     "key": "Waiting for a successful Forkop start or reload",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:177",
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:266"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:267"
     ]
   },
   {

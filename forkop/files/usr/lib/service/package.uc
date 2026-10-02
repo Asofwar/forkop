@@ -204,7 +204,42 @@ function remember_upgrade_state(action) {
         unlink_if_exists(PACKAGE_UPGRADE_STATE);
 }
 
-function prerm_cleanup(action) {
+// The newest release without the VPN kill-switch. Older code neither knows
+// its persistent policy nor can lift it.
+const LAST_RELEASE_WITHOUT_KILLSWITCH = [ 1, 0, 31 ];
+
+// true or false for an x.y.z[-...] release version, null when unknown.
+function release_has_killswitch(version) {
+    let parts = match(as_string(version), /^([0-9]+)\.([0-9]+)\.([0-9]+)/);
+    if (parts == null)
+        return null;
+    for (let i = 0; i < 3; i++) {
+        let value = int(parts[i + 1]);
+        if (value != LAST_RELEASE_WITHOUT_KILLSWITCH[i])
+            return value > LAST_RELEASE_WITHOUT_KILLSWITCH[i];
+    }
+    return false;
+}
+
+// The kill-switch must never outlive the code that can lift it (UC-191): a
+// removal lifts it, and so does a change to a release without it. opkg runs
+// this package's prerm with the new version; apk runs the incoming
+// package's pre-upgrade, which passes its version from this release on and
+// none in every release up to 1.0.31. Any other change keeps the protection
+// across the stop the package change needs.
+function killswitch_outlives_package(action, version) {
+    action = as_string(action);
+    if (action == "remove")
+        return true;
+    if (action != "upgrade")
+        return false;
+    let supported = release_has_killswitch(version);
+    if (supported != null)
+        return !supported;
+    return command_success_from_args([ "sh", "-c", "command -v apk" ]);
+}
+
+function prerm_cleanup(action, version) {
     if (env("IPKG_INSTROOT", "") != "")
         return true;
 
@@ -220,10 +255,13 @@ function prerm_cleanup(action) {
         if (as_string(action) == "remove")
             command_success_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/service/initd.uc", "clear-explicit-start" ]);
         // An upgrade keeps the kill-switch: protected traffic must stay
-        // blocked while the old runtime is down. Only a removal lifts it,
-        // since nothing would be left to manage the persistent policy.
-        if (as_string(action) == "remove" && path_exists(KILLSWITCH_UC))
-            command_success_from_args([ "ucode", "-L", LIB_DIR, KILLSWITCH_UC, "release", "package removal" ]);
+        // blocked while the old runtime is down. A removal or a release
+        // without the kill-switch lifts it, since nothing would be left to
+        // manage the persistent policy.
+        if (killswitch_outlives_package(action, version) && path_exists(KILLSWITCH_UC))
+            command_success_from_args([ "ucode", "-L", LIB_DIR, KILLSWITCH_UC, "release",
+                as_string(action) == "remove" ? "package removal" :
+                "change to a release without the kill-switch (" + (as_string(version) || "unknown version") + ")" ]);
         restore_dnsmasq_if_needed();
         remove_managed_sing_box();
     }
@@ -410,7 +448,7 @@ function luci_postinst() {
 let mode = ARGV[0] || "";
 
 if (mode == "prerm")
-    exit(prerm_cleanup(ARGV[1]) ? 0 : 1);
+    exit(prerm_cleanup(ARGV[1], ARGV[2]) ? 0 : 1);
 else if (mode == "postinst")
     exit(postinst_restore() ? 0 : 1);
 else if (mode == "remove-rt-tables-entry")

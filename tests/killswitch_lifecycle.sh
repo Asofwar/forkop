@@ -4,8 +4,6 @@ set -eo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FORKOP_LIB="$ROOT_DIR/forkop/files/usr/lib"
 LIFECYCLE="$FORKOP_LIB/service/lifecycle.uc"
-PACKAGE_UC="$FORKOP_LIB/service/package.uc"
-FULL_UNINSTALL="$FORKOP_LIB/full-uninstall.sh"
 VALIDATOR_UC="$FORKOP_LIB/config/validator.uc"
 FORKOP_BIN="$ROOT_DIR/forkop/files/usr/bin/forkop"
 WORK_DIR="$(mktemp -d)"
@@ -76,12 +74,8 @@ ucode "$WORK_DIR/sync.uc" || fail "kill-switch sync failure must only warn"
 # Uninstall paths lift the protection; an upgrade keeps it.
 function_body "$LIFECYCLE" uninstall | awk '/KILLSWITCH_UC, \[ "release"/ { d = NR } /rm", "-rf", "\/usr\/lib\/forkop"/ { r = NR } END { exit !(d && r && d < r) }' ||
   fail "uninstall must lift the kill-switch before removing the libraries"
-prerm_body="$(function_body "$PACKAGE_UC" prerm_cleanup)"
-printf '%s\n' "$prerm_body" | grep -Fq 'as_string(action) == "remove" && path_exists(KILLSWITCH_UC)' ||
-  fail "package removal (and only removal) must lift the kill-switch"
-grep -Fq '"$BIN" killswitch_disable' "$FULL_UNINSTALL" || fail "full uninstall must lift the kill-switch"
-grep -Fq '/usr/share/nftables.d/ruleset-post/90-forkop-killswitch.nft' "$FULL_UNINSTALL" ||
-  fail "full uninstall must remove the fw4 include"
+# Package removal, upgrades, downgrades and full uninstall run behaviourally
+# in tests/killswitch_owner_package.sh.
 for command in killswitch_status killswitch_sync killswitch_disable; do
   grep -Fq "$command: [ \"killswitch/runtime.uc\"" "$FORKOP_BIN" || fail "CLI must dispatch $command"
 done

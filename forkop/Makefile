@@ -42,8 +42,13 @@ endef
 define Package/forkop/prerm
 #!/usr/bin/ucode
 
+// opkg runs "prerm upgrade <new version>" or "prerm remove": the new
+// version tells whether the incoming release can lift the kill-switch.
+let version = ARGV[1] || "";
+if (match(version, /^[A-Za-z0-9.~+_-]+$$/) == null)
+	version = "";
 if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "")
-	system("/usr/bin/forkop package_prerm " + (ARGV[0] || "") + " >/dev/null 2>&1");
+	system("/usr/bin/forkop package_prerm " + (ARGV[0] || "") + " " + version + " >/dev/null 2>&1");
 
 exit(0);
 endef

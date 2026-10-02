@@ -1,0 +1,293 @@
+#!/usr/bin/env bash
+# The kill-switch is lifted whenever the package that can lift it goes away
+# (UC-191): package removal, an upgrade or downgrade to a release without the
+# kill-switch (in-app version picker or the package manager), full uninstall,
+# and, when none of those ran, the watcher noticing that its package is gone.
+# An upgrade to a release that manages the kill-switch keeps it.
+#
+# The package scripts are the ones build.sh and forkop/Makefile ship, run
+# through the real CLI and service/package.uc; only nft, the init scripts and
+# the package managers are stubs.
+set -eo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+FORKOP_LIB="$ROOT_DIR/forkop/files/usr/lib"
+FORKOP_CLI="$ROOT_DIR/forkop/files/usr/bin/forkop"
+KS_UC="$FORKOP_LIB/killswitch/runtime.uc"
+BUILD_SCRIPT="$ROOT_DIR/build.sh"
+FORKOP_MAKEFILE="$ROOT_DIR/forkop/Makefile"
+FULL_UNINSTALL="$FORKOP_LIB/full-uninstall.sh"
+WORK_DIR="$(mktemp -d)"
+# shellcheck source=tests/helpers/wait.sh
+. "$ROOT_DIR/tests/helpers/wait.sh"
+
+WATCHER=""
+cleanup() {
+  [ -z "$WATCHER" ] || kill "$WATCHER" 2>/dev/null || true
+  rm -rf "$WORK_DIR"
+}
+trap cleanup EXIT
+
+fail() {
+  printf 'FAIL: %s\n' "$1" >&2
+  printf 'uci state:\n' >&2
+  cat "$FORKOP_UCI_STATE_FILE" >&2 2>/dev/null || true
+  printf 'logger:\n' >&2
+  cat "$WORK_DIR/logger.log" >&2 2>/dev/null || true
+  exit 1
+}
+
+mkdir -p "$WORK_DIR/bin" "$WORK_DIR/apk-bin" "$WORK_DIR/run" "$WORK_DIR/ks" "$WORK_DIR/ruleset-post"
+cat >"$WORK_DIR/bin/nft" <<'NFT'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$WORK_DIR/nft.log"
+case "$1 $2" in
+  "list table")
+    [ "$4" = "ForkopKillswitch" ] && { [ -e "$WORK_DIR/ks-present" ]; exit $?; }
+    exit 1 ;;
+  "list chain") exit 1 ;;
+  "delete table") [ "$4" = "ForkopKillswitch" ] && rm -f "$WORK_DIR/ks-present"; exit 0 ;;
+esac
+exit 0
+NFT
+for name in logger dnsmasq-init killswitch-init ubus conntrack; do
+  printf '#!/bin/sh\nprintf "%%s\\n" "$*" >>"%s/%s.log"\n' "$WORK_DIR" "$name" >"$WORK_DIR/bin/$name"
+done
+cat >"$WORK_DIR/bin/dig" <<'SH'
+#!/bin/sh
+[ -e "$WORK_DIR/sing-box-alive" ]
+SH
+# Forkop's own init script: running, and a stop only logs.
+cat >"$WORK_DIR/bin/forkop-init" <<'SH'
+#!/bin/sh
+printf '%s\n' "$*" >>"$WORK_DIR/forkop-init.log"
+exit 0
+SH
+# The installed /usr/bin/forkop the package scripts call: the real CLI.
+cat >"$WORK_DIR/bin/forkop" <<SH
+#!/bin/sh
+printf '%s\\n' "\$*" >>"$WORK_DIR/cli.log"
+exec ucode "$FORKOP_CLI" "\$@"
+SH
+# apk is present only where a test puts this directory on PATH.
+printf '#!/bin/sh\nexit 0\n' >"$WORK_DIR/apk-bin/apk"
+chmod 0755 "$WORK_DIR/bin/"* "$WORK_DIR/apk-bin/apk"
+
+export WORK_DIR
+export PATH="$WORK_DIR/bin:$PATH"
+export FORKOP_LIB
+export FORKOP_UCI_STATE_FILE="$WORK_DIR/uci.state"
+export FORKOP_RUNTIME_STATE_DIR="$WORK_DIR/run"
+export FORKOP_RELOAD_LOCK_DIR="$WORK_DIR/run/reload.lock"
+export FORKOP_PENDING_RELOAD_FILE="$WORK_DIR/run/reload.pending"
+export FORKOP_PACKAGE_UPGRADE_STATE="$WORK_DIR/package-was-running"
+export FORKOP_RT_TABLES="$WORK_DIR/rt_tables"
+export FORKOP_INIT="$WORK_DIR/bin/forkop-init"
+export FORKOP_BIN="$WORK_DIR/missing-forkop-bin"
+export FORKOP_DNS_APPLY_UC="$WORK_DIR/missing-dns-apply.uc"
+export FORKOP_SING_BOX_INIT="$WORK_DIR/missing-sing-box-init"
+export FORKOP_KILLSWITCH_UC="$KS_UC"
+export KILLSWITCH_STATE_DIR="$WORK_DIR/ks"
+export KILLSWITCH_NFT_INCLUDE="$WORK_DIR/ruleset-post/90-forkop-killswitch.nft"
+export KILLSWITCH_CACHE_DIR="$WORK_DIR/cache"
+export DNSMASQ_INIT="$WORK_DIR/bin/dnsmasq-init"
+export FORKOP_KILLSWITCH_INIT="$WORK_DIR/bin/killswitch-init"
+export FORKOP_KILLSWITCH_LOCK_ATTEMPTS=2
+
+POLICY="$KILLSWITCH_STATE_DIR/policy.nft"
+SERVERS="$KILLSWITCH_STATE_DIR/dnsmasq.servers"
+BLOCKED="$KILLSWITCH_STATE_DIR/dns-blocked.servers"
+
+uci_value() {
+  awk -F= -v key="$1" '$1 == key { print substr($0, length($1) + 2) }' "$FORKOP_UCI_STATE_FILE"
+}
+
+# Forkop stopped with an armed kill-switch: the policy is live and saved,
+# dnsmasq answers protected names with the block list.
+arm() {
+  cat >"$FORKOP_UCI_STATE_FILE" <<EOF
+forkop.settings=settings
+forkop.main=section
+forkop.main.action=connection
+forkop.main.kill_switch=1
+dhcp.@dnsmasq[0]=dnsmasq
+dhcp.@dnsmasq[0].server=1.1.1.1
+dhcp.@dnsmasq[0].serversfile=$SERVERS
+EOF
+  printf '105 forkop\n' >"$FORKOP_RT_TABLES"
+  printf 'add table inet ForkopKillswitch\n' >"$POLICY"
+  printf 'server=/example.com/\n' >"$BLOCKED"
+  cp "$BLOCKED" "$SERVERS"
+  touch "$WORK_DIR/ks-present"
+}
+
+assert_kept() {
+  [ -s "$POLICY" ] || fail "$1: the saved policy must stay"
+  [ -e "$WORK_DIR/ks-present" ] || fail "$1: the live policy must stay"
+  [ "$(uci_value 'dhcp.@dnsmasq[0].serversfile')" = "$SERVERS" ] || fail "$1: the DNS block list must stay attached"
+}
+
+assert_lifted() {
+  [ ! -e "$POLICY" ] || fail "$1: the saved policy must be removed"
+  [ ! -e "$WORK_DIR/ks-present" ] || fail "$1: the live policy must be removed"
+  [ -z "$(uci_value 'dhcp.@dnsmasq[0].serversfile')" ] || fail "$1: dnsmasq must not read the block list any more"
+  [ ! -e "$SERVERS" ] || fail "$1: the DNS servers file must be removed"
+  [ ! -e "$BLOCKED" ] || fail "$1: the saved block list must be removed"
+}
+
+# The text of a package script as shipped, its /usr/bin/forkop being the
+# real CLI above.
+heredoc_script() {
+  awk -v start="$2" 'index($0, start) == 1 { copy = 1; next } copy && $0 == "EOF" { exit } copy { print }' "$1" |
+    sed "s#/usr/bin/forkop#$WORK_DIR/bin/forkop#g" >"$3"
+}
+# make expands $$ to $ in a define.
+make_script() {
+  awk -v start="$2" '$0 == start { copy = 1; next } copy && $0 == "endef" { exit } copy { print }' "$1" |
+    sed -e 's/[$][$]/$/g' -e "s#/usr/bin/forkop#$WORK_DIR/bin/forkop#g" >"$3"
+}
+heredoc_script "$BUILD_SCRIPT" "  cat > \"\$control_dir/prerm\" <<'EOF'" "$WORK_DIR/ipk-prerm"
+heredoc_script "$BUILD_SCRIPT" "  cat > \"\$scripts_dir/backend-pre-upgrade.sh\" <<'EOF'" "$WORK_DIR/apk-pre-upgrade"
+heredoc_script "$BUILD_SCRIPT" "  cat > \"\$scripts_dir/backend-pre-deinstall.sh\" <<'EOF'" "$WORK_DIR/apk-pre-deinstall"
+make_script "$FORKOP_MAKEFILE" "define Package/forkop/prerm" "$WORK_DIR/sdk-prerm"
+for script in ipk-prerm apk-pre-upgrade apk-pre-deinstall sdk-prerm; do
+  grep -Fq "$WORK_DIR/bin/forkop package_prerm" "$WORK_DIR/$script" || fail "could not read the $script package script"
+done
+
+# opkg runs the installed prerm as "prerm upgrade <new version>"; apk runs
+# the incoming package's pre-upgrade as "pre-upgrade <new> <old>".
+run_script() {
+  local script="$1"
+  shift
+  : >"$WORK_DIR/cli.log"
+  ucode "$WORK_DIR/$script" "$@" || fail "$script $* failed"
+}
+
+# ---- opkg ----------------------------------------------------------------------
+
+arm
+run_script ipk-prerm upgrade 1.0.40
+grep -Fqx 'package_prerm upgrade 1.0.40' "$WORK_DIR/cli.log" || fail "prerm must pass the new version on: $(cat "$WORK_DIR/cli.log")"
+assert_kept "upgrade to a release with the kill-switch (opkg)"
+
+run_script ipk-prerm upgrade 1.0.31
+assert_lifted "downgrade to a release without the kill-switch (opkg)"
+
+arm
+run_script sdk-prerm upgrade 1.0.30
+assert_lifted "downgrade to a release without the kill-switch (SDK package)"
+
+arm
+run_script ipk-prerm upgrade
+assert_kept "upgrade without a version (opkg)"
+
+arm
+run_script ipk-prerm remove
+assert_lifted "package removal (opkg)"
+
+# ---- apk -----------------------------------------------------------------------
+
+PATH="$WORK_DIR/apk-bin:$PATH"
+arm
+run_script apk-pre-upgrade 1.0.40 1.0.32
+grep -Fqx 'package_prerm upgrade 1.0.40' "$WORK_DIR/cli.log" || fail "pre-upgrade must pass the new version on: $(cat "$WORK_DIR/cli.log")"
+assert_kept "upgrade to a release with the kill-switch (apk)"
+
+# Every release up to 1.0.31 ships a pre-upgrade script that passes no
+# version: such an incoming package knows nothing of the kill-switch.
+printf '#!/usr/bin/ucode\nexit(system("%s package_prerm upgrade >/dev/null 2>&1"));\n' "$WORK_DIR/bin/forkop" >"$WORK_DIR/old-pre-upgrade"
+run_script old-pre-upgrade 1.0.31 1.0.32
+assert_lifted "downgrade through the pre-upgrade script of an old release (apk)"
+
+arm
+run_script apk-pre-upgrade 1.0.29 1.0.32
+assert_lifted "downgrade to a release without the kill-switch (apk)"
+
+arm
+mkdir -p "$FORKOP_RUNTIME_STATE_DIR/killswitch.lock"
+sleep 300 &
+holder=$!
+printf '%s\n' "$holder" >"$FORKOP_RUNTIME_STATE_DIR/killswitch.lock/pid"
+run_script apk-pre-deinstall 1.0.32
+kill "$holder" 2>/dev/null || true
+wait "$holder" 2>/dev/null || true
+assert_lifted "package removal with killswitch.lock held (apk)"
+rm -rf "$FORKOP_RUNTIME_STATE_DIR/killswitch.lock"
+PATH="${PATH#"$WORK_DIR/apk-bin:"}"
+
+# ---- full uninstall ------------------------------------------------------------
+
+ROOT="$WORK_DIR/root"
+mkdir -p "$ROOT/etc/opkg" "$ROOT/bin" "$ROOT/usr/bin" "$ROOT/etc/config" "$ROOT/etc/init.d" \
+  "$ROOT/etc/forkop/killswitch" "$ROOT/usr/share/nftables.d/ruleset-post" "$ROOT/packages"
+printf 'original vendor repositories\n' >"$ROOT/etc/opkg/distfeeds.conf.pre-forkop-mirror"
+printf 'https://mirror.51343.ru/openwrt/releases/test\n' >"$ROOT/etc/opkg/distfeeds.conf"
+touch "$ROOT/packages/forkop"
+cat >"$ROOT/usr/bin/forkop" <<'SH'
+#!/bin/sh
+printf '%s\n' "$*" >> "$FORKOP_UNINSTALL_ROOT/service-calls"
+exit 0
+SH
+cat >"$ROOT/bin/opkg" <<'SH'
+#!/bin/sh
+case "$1" in
+ status) [ -e "$FORKOP_UNINSTALL_ROOT/packages/$2" ] && echo 'Status: install ok installed';;
+ remove) shift; for p in "$@"; do rm -f "$FORKOP_UNINSTALL_ROOT/packages/$p"; done;;
+ *) exit 1;;
+esac
+SH
+cat >"$ROOT/etc/init.d/dnsmasq" <<'SH'
+#!/bin/sh
+printf '%s\n' "$*" >> "$FORKOP_UNINSTALL_ROOT/dnsmasq-calls"
+SH
+chmod +x "$ROOT/usr/bin/forkop" "$ROOT/bin/opkg" "$ROOT/etc/init.d/dnsmasq"
+cat >"$ROOT/etc/config/dhcp" <<'EOF'
+config dnsmasq
+	option domain 'lan'
+	option serversfile '/etc/forkop/killswitch/dnsmasq.servers'
+EOF
+printf 'server=/example.com/\n' >"$ROOT/etc/forkop/killswitch/dnsmasq.servers"
+printf 'add table inet ForkopKillswitch\n' >"$ROOT/etc/forkop/killswitch/policy.nft"
+printf '# loader\n' >"$ROOT/usr/share/nftables.d/ruleset-post/90-forkop-killswitch-loader.nft"
+printf 'add table inet ForkopKillswitch\n' >"$ROOT/usr/share/nftables.d/ruleset-post/90-forkop-killswitch.nft"
+
+FORKOP_UNINSTALL_ROOT="$ROOT" PATH="$ROOT/bin:$PATH" sh "$FULL_UNINSTALL" start >"$ROOT/response"
+uninstall_done() {
+  status="$(cat "$ROOT"/www/forkop-uninstall.*.json 2>/dev/null)"
+  case "$status" in *'"state":"complete"'* | *'"state":"failed"'*) return 0 ;; esac
+  return 1
+}
+wait_until 60 uninstall_done || fail "full uninstall timed out"
+printf '%s\n' "$status" | grep -q '"state":"complete"' || fail "full uninstall failed: $status"
+grep -Fqx killswitch_disable "$ROOT/service-calls" || fail "full uninstall must lift the kill-switch first"
+for path in /usr/share/nftables.d/ruleset-post/90-forkop-killswitch-loader.nft \
+  /usr/share/nftables.d/ruleset-post/90-forkop-killswitch.nft /etc/forkop; do
+  [ ! -e "$ROOT$path" ] || fail "full uninstall left $path behind"
+done
+[ -z "$(uci -c "$ROOT/etc/config" -q get dhcp.@dnsmasq[0].serversfile)" ] ||
+  fail "full uninstall must detach the kill-switch servers file from dnsmasq"
+[ "$(uci -c "$ROOT/etc/config" -q get dhcp.@dnsmasq[0].domain)" = lan ] || fail "full uninstall must keep the rest of dhcp"
+grep -Fqx restart "$ROOT/dnsmasq-calls" || fail "dnsmasq must be restarted without the block list"
+
+# ---- the package went away and nothing lifted the protection -------------------
+
+# A copy of the watcher's module stands for the package's file: removing
+# it is what a removal or a downgrade without its scripts does.
+mkdir -p "$WORK_DIR/package/killswitch"
+cp "$KS_UC" "$WORK_DIR/package/killswitch/runtime.uc"
+arm
+FORKOP_KILLSWITCH_WATCH_ITERATIONS=20000 FORKOP_KILLSWITCH_WATCH_INTERVAL_MS=1 \
+  ucode -L "$FORKOP_LIB" "$WORK_DIR/package/killswitch/runtime.uc" watch &
+WATCHER=$!
+sleep 0.5
+process_running "$WATCHER" || fail "the watcher must keep running while its package is installed"
+assert_kept "watcher with its package installed"
+rm -f "$WORK_DIR/package/killswitch/runtime.uc"
+wait_until 15 sh -c "! kill -0 $WATCHER 2>/dev/null" || fail "the watcher must stop once its package is gone"
+wait "$WATCHER" 2>/dev/null || true
+WATCHER=""
+assert_lifted "watcher whose package is gone"
+grep -Fqx restart "$WORK_DIR/dnsmasq-init.log" || fail "dnsmasq must be restarted without the block list"
+grep -Fq 'service delete' "$WORK_DIR/ubus.log" || fail "the orphaned kill-switch service must be removed from procd"
+
+printf 'killswitch_owner_package: PASS\n'

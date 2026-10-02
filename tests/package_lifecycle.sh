@@ -32,7 +32,7 @@ if grep -n -E 'require\("uci"\)\.cursor|uci -q|uci", "-q"' "$PACKAGE_UC" >/dev/n
 fi
 grep -Fq 'require("core.uci")' "$PACKAGE_UC" ||
   fail "service/package.uc must import core.uci"
-grep -Fq 'package_prerm: [ "service/package.uc", "prerm", 1 ]' "$FORKOP_BIN" ||
+grep -Fq 'package_prerm: [ "service/package.uc", "prerm", 2 ]' "$FORKOP_BIN" ||
   fail "forkop entrypoint must dispatch package prerm cleanup through service/package.uc"
 grep -Fq 'package_postinst: [ "service/package.uc", "postinst", 0 ]' "$FORKOP_BIN" ||
   fail "forkop entrypoint must dispatch package postinst recovery through service/package.uc"

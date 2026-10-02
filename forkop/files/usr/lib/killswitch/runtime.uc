@@ -58,6 +58,11 @@ const CACHE_DIR = constant_value("KILLSWITCH_CACHE_DIR", "/tmp/forkop-killswitch
 const FAKEIP_RANGE = constant_value("SB_FAKEIP_INET4_RANGE", "198.18.0.0/15");
 const FAKEIP6_RANGE = constant_value("SB_FAKEIP_INET6_RANGE", "fc00::/18");
 const DNS_BLOCKED_FILE = STATE_DIR + "/dns-blocked.servers";
+// dnsmasq reads it (dns/apply.uc keeps it empty while it forwards to sing-box).
+const DNS_SERVERS_FILE = STATE_DIR + "/dnsmasq.servers";
+const DNSMASQ_INIT = getenv("DNSMASQ_INIT") || "/etc/init.d/dnsmasq";
+// The package file this process runs from.
+const OWNER_FILE = sourcepath() || LIB_DIR + "/killswitch/runtime.uc";
 const STATE_FILE = STATE_DIR + "/state.json";
 const LOCK_DIR = RUNTIME_STATE_DIR + "/killswitch.lock";
 const NFT_UC = LIB_DIR + "/nft/apply.uc";
@@ -825,13 +830,69 @@ function dns_redirect(mode) {
     return set_dns_redirect(mode == "on") ? 0 : 1;
 }
 
+// ---------------------------------------------------------------- orphaned
+//
+// The package this watcher runs from was removed, or replaced by a release
+// without the kill-switch, and nothing lifted the protection: its scripts did
+// not run (a package manager or a manual change that skips them). Nothing
+// would ever lift it then, so the watcher does, with what this process has
+// already loaded and the system's own tools (UC-191).
+
+function detach_dns_servers_file() {
+    if (dnsmasq_option("serversfile") != DNS_SERVERS_FILE)
+        return false;
+    if (fixture_uci()) {
+        uci_core.delete("dhcp.@dnsmasq[0].serversfile");
+        uci_core.commit("dhcp");
+        return true;
+    }
+    try {
+        let cursor = require("uci").cursor();
+        let name = null;
+        cursor.foreach("dhcp", "dnsmasq", function(section) {
+            name = section[".name"];
+            return false;
+        });
+        return name != null && cursor.delete("dhcp", name, "serversfile") && cursor.commit("dhcp");
+    }
+    catch (e) {
+        return false;
+    }
+}
+
+function lift_orphaned() {
+    log_message("Kill-switch: the Forkop package is gone and nothing lifted the kill-switch; removing its protection", "warn");
+    if (ks_table_present())
+        run_quiet([ "nft", "delete", "table", "inet", KS_TABLE ]);
+    let detached = detach_dns_servers_file();
+    for (let path in [ DNS_SERVERS_FILE, DNS_BLOCKED_FILE, NFT_POLICY, LEGACY_NFT_INCLUDE ])
+        fs.unlink(path);
+    if (detached)
+        run_quiet([ DNSMASQ_INIT, "restart" ]);
+    // procd would keep the standby dnsmasq; this ends the watcher as well.
+    run_quiet([ "ubus", "call", "service", "delete", sprintf("%J", { name: "forkop-killswitch" }) ]);
+}
+
 function watch() {
     // A respawned watcher continues from the live state instead of handing
     // DNS back to a sing-box that may still be dead.
     let standby = dns_redirect_state() === true;
     let failures = 0;
     let successes = 0;
+    let orphaned = 0;
     for (let iteration = 1; WATCH_ITERATIONS == 0 || iteration <= WATCH_ITERATIONS; iteration++) {
+        // A package upgrade replaces the file in place; only a file missing
+        // for several passes means that the package is gone.
+        if (fs.stat(OWNER_FILE) == null) {
+            if (++orphaned >= 5) {
+                lift_orphaned();
+                return 0;
+            }
+            sleep(WATCH_INTERVAL_MS);
+            continue;
+        }
+        orphaned = 0;
+
         if (!policy_saved()) {
             standby = false;
             sleep(WATCH_INTERVAL_MS * 2);

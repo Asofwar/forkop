@@ -315,8 +315,13 @@ EOF
   cat > "$control_dir/prerm" <<'EOF'
 #!/usr/bin/ucode
 
+// opkg runs "prerm upgrade <new version>" or "prerm remove": the new
+// version tells whether the incoming release can lift the kill-switch.
+let version = ARGV[1] || "";
+if (match(version, /^[A-Za-z0-9.~+_-]+$/) == null)
+	version = "";
 if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "")
-	system("/usr/bin/forkop package_prerm " + (ARGV[0] || "") + " >/dev/null 2>&1");
+	system("/usr/bin/forkop package_prerm " + (ARGV[0] || "") + " " + version + " >/dev/null 2>&1");
 
 exit(0);
 EOF
@@ -460,8 +465,14 @@ EOF
 
   cat > "$scripts_dir/backend-pre-upgrade.sh" <<'EOF'
 #!/usr/bin/ucode
+// apk runs the incoming package's "pre-upgrade <new> <old>" with the
+// installed /usr/bin/forkop. Passing the new version tells it that this
+// release manages the kill-switch; releases up to 1.0.31 pass none.
+let version = ARGV[0] || "";
+if (match(version, /^[A-Za-z0-9.~+_-]+$/) == null)
+    version = "";
 if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "")
-    exit(system("/usr/bin/forkop package_prerm upgrade >/dev/null 2>&1"));
+    exit(system("/usr/bin/forkop package_prerm upgrade " + version + " >/dev/null 2>&1"));
 exit(0);
 EOF
 

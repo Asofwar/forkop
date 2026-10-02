@@ -132,13 +132,17 @@ run() {
         /usr/bin/forkop /usr/libexec/forkop-ro /usr/bin/sing-box /usr/lib/libcronet.so \
         /etc/init.d/forkop /etc/init.d/forkop-killswitch /etc/init.d/sing-box /etc/uci-defaults/50_luci-forkop \
         /usr/share/luci/menu.d/luci-app-forkop.json /usr/share/rpcd/acl.d/luci-app-forkop.json \
+        /usr/share/nftables.d/ruleset-post/90-forkop-killswitch-loader.nft \
         /usr/share/nftables.d/ruleset-post/90-forkop-killswitch.nft; do
         rm -f "$ROOT$file"
     done
-    if [ -z "$ROOT" ]; then
-        nft delete table inet ForkopKillswitch 2>/dev/null || true
-        if [ "$(uci -q get dhcp.@dnsmasq[0].serversfile 2>/dev/null || true)" = /etc/forkop/killswitch/dnsmasq.servers ]; then
-            uci -q delete dhcp.@dnsmasq[0].serversfile && uci -q commit dhcp && /etc/init.d/dnsmasq restart || true
+    # Whatever the kill-switch left (its removal above failed or an older
+    # Forkop never lifted it) must not outlive the product (UC-191).
+    if [ -z "$ROOT" ]; then nft delete table inet ForkopKillswitch 2>/dev/null || true; fi
+    if [ "$(uci -c "$ROOT/etc/config" -q get dhcp.@dnsmasq[0].serversfile 2>/dev/null || true)" = /etc/forkop/killswitch/dnsmasq.servers ]; then
+        if uci -c "$ROOT/etc/config" -q delete dhcp.@dnsmasq[0].serversfile &&
+            uci -c "$ROOT/etc/config" -q commit dhcp && [ -x "$ROOT/etc/init.d/dnsmasq" ]; then
+            "$ROOT/etc/init.d/dnsmasq" restart || true
         fi
     fi
     for file in "$ROOT"/usr/lib/lua/luci/i18n/forkop.* \

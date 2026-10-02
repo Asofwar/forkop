@@ -30,6 +30,7 @@ let uci_core = require("core.uci");
 let connections = require("config.connections");
 let singbox_constants = require("singbox.constants");
 let constants = require("core.constants");
+let runtime_lock = require("core.runtime_lock");
 
 let as_string = common.as_string;
 let array_or_empty = common.array_or_empty;
@@ -68,6 +69,11 @@ const SB_DNS_ADDRESS = constant_value("SB_DNS_INBOUND_ADDRESS", "127.0.0.42");
 const SB_PROBE_DOMAIN = constant_value("FAKEIP_TEST_DOMAIN", "fakeip.podkop.fyi");
 const DNS_CHAIN = "ks_dns";
 const RELOAD_LOCK_DIR = getenv("FORKOP_RELOAD_LOCK_DIR") || "/var/run/forkop.reload.lock";
+const PENDING_RELOAD_FILE = getenv("FORKOP_PENDING_RELOAD_FILE") || RUNTIME_STATE_DIR + "/reload.pending";
+const SERVICE_INIT = getenv("FORKOP_SERVICE_INIT") || "/etc/init.d/forkop";
+const STATE_UC = LIB_DIR + "/service/state.uc";
+// Attempts, 500 ms apart, to take a held lock; tests bound it.
+const LOCK_ATTEMPTS = int(getenv("FORKOP_KILLSWITCH_LOCK_ATTEMPTS") || "120");
 const INTERFACE_SET = "ks_interfaces";
 const STATE_FORMAT = 1;
 // Test-only bounds for the watcher loop; production runs it forever.
@@ -126,19 +132,6 @@ function dirname(path) {
     return slash > 0 ? substr(path, 0, slash) : "/";
 }
 
-function write_atomic(path, content) {
-    if (!ensure_dir(dirname(path)))
-        return false;
-    let tmp = path + ".tmp";
-    if (fs.writefile(tmp, as_string(content)) == null)
-        return false;
-    if (!fs.rename(tmp, path)) {
-        fs.unlink(tmp);
-        return false;
-    }
-    return true;
-}
-
 let cached_self_pid = null;
 
 function self_pid() {
@@ -151,6 +144,21 @@ function self_pid() {
         cached_self_pid = match(pid, /^[0-9]+$/) != null ? pid : "0";
     }
     return cached_self_pid;
+}
+
+function write_atomic(path, content) {
+    if (!ensure_dir(dirname(path)))
+        return false;
+    // Unique per writer: a second writer must never rename a file this one
+    // is still writing.
+    let tmp = path + ".tmp." + self_pid();
+    if (fs.writefile(tmp, as_string(content)) == null)
+        return false;
+    if (!fs.rename(tmp, path)) {
+        fs.unlink(tmp);
+        return false;
+    }
+    return true;
 }
 
 function now() {
@@ -183,33 +191,29 @@ function protected_section_names(sections) {
 }
 
 // ------------------------------------------------------------------- lock
+//
+// killswitch.lock and reload.lock follow core/runtime_lock.uc: the owner is
+// this process, named by its pid and start time, so a dead owner or a reused
+// pid never holds them (UC-210). Global order (service/state.uc): reload.lock
+// before killswitch.lock.
 
-function process_alive(pid) {
-    pid = int(pid);
-    return pid > 0 && fs.stat("/proc/" + pid) != null;
-}
-
-function acquire_lock() {
-    ensure_dir(RUNTIME_STATE_DIR);
-    for (let attempt = 0; attempt < 120; attempt++) {
-        if (fs.mkdir(LOCK_DIR)) {
-            fs.writefile(LOCK_DIR + "/pid", self_pid() + "\n");
+function acquire_dir_lock(lock_dir) {
+    ensure_dir(dirname(lock_dir));
+    for (let attempt = 0; attempt < LOCK_ATTEMPTS; attempt++) {
+        if (runtime_lock.acquire(lock_dir, self_pid()))
             return true;
-        }
-        let owner = trim(as_string(fs.readfile(LOCK_DIR + "/pid")));
-        if (owner != "" && !process_alive(owner)) {
-            fs.unlink(LOCK_DIR + "/pid");
-            fs.rmdir(LOCK_DIR);
-            continue;
-        }
-        sleep(500);
+        if (attempt + 1 < LOCK_ATTEMPTS)
+            sleep(500);
     }
     return false;
 }
 
-function release_lock() {
-    fs.unlink(LOCK_DIR + "/pid");
-    fs.rmdir(LOCK_DIR);
+// init.d queues every reload that found reload.lock held; its last holder
+// applies them once it lets the lock go (service/lifecycle.uc, UC-061).
+function release_reload_lock(apply_pending) {
+    runtime_lock.release(RELOAD_LOCK_DIR, self_pid());
+    if (apply_pending && fs.stat(PENDING_RELOAD_FILE) != null)
+        run_quiet(module_args(STATE_UC, [ "run-pending-reload-if-requested", PENDING_RELOAD_FILE, SERVICE_INIT ]));
 }
 
 // ------------------------------------------------------------------ state
@@ -841,7 +845,7 @@ function watch() {
             failures = 0;
             successes = 0;
         }
-        else if (fs.stat(RELOAD_LOCK_DIR) != null && !standby) {
+        else if (runtime_lock.busy(RELOAD_LOCK_DIR) && !standby) {
             // Forkop is restarting sing-box on purpose; its own transition
             // guard covers the gap. Do not fail over for a planned restart.
             failures = 0;
@@ -1024,11 +1028,33 @@ function sync_locked(reason) {
     return 0;
 }
 
-function with_lock(callback) {
-    if (!acquire_lock()) {
+// Start and reload refresh the policy while they hold reload.lock
+// themselves ("reload-lock-held"). Every other caller takes it first, so a
+// manual sync or removal never changes dnsmasq or the policy in the middle
+// of a start, stop or reload, and gives up while one runs. A removal for the
+// package ("force") never stays behind a lock: once the bounded wait is over
+// it removes the protection anyway, since nothing would be left to do it.
+function with_lock(callback, reload_lock_held, force) {
+    let reload_locked = false;
+    if (!reload_lock_held) {
+        reload_locked = acquire_dir_lock(RELOAD_LOCK_DIR);
+        if (!reload_locked && !force) {
+            warn("Forkop is starting, stopping or reloading; try the kill-switch operation again when it is done\n");
+            log_message("Kill-switch: Forkop is starting, stopping or reloading; the kill-switch was not changed", "warn");
+            return 1;
+        }
+    }
+    let locked = acquire_dir_lock(LOCK_DIR);
+    if (!locked && !force) {
+        if (reload_locked)
+            release_reload_lock(true);
+        warn("Another kill-switch operation is still running\n");
         log_message("Kill-switch: another kill-switch operation is still running", "error");
         return 1;
     }
+    if (!locked || (!reload_lock_held && !reload_locked))
+        log_message("Kill-switch: a lock is still held; removing the protection anyway", "warn");
+
     let status = 1;
     try {
         status = callback();
@@ -1037,16 +1063,19 @@ function with_lock(callback) {
         record_error("unexpected failure: " + as_string(e));
         status = 1;
     }
-    release_lock();
+    if (locked)
+        runtime_lock.release(LOCK_DIR, self_pid());
+    if (reload_locked)
+        release_reload_lock(!force);
     return status;
 }
 
-function sync(reason) {
-    return with_lock(function() { return sync_locked(reason || "manual"); });
+function sync(reason, reload_lock_held) {
+    return with_lock(function() { return sync_locked(reason || "manual"); }, reload_lock_held, false);
 }
 
-function disable(reason) {
-    return with_lock(function() { return teardown(reason || "disabled on request") ? 0 : 1; });
+function disable(reason, force) {
+    return with_lock(function() { return teardown(reason || "disabled on request") ? 0 : 1; }, false, force);
 }
 
 // A package upgrade from the first kill-switch build: its unguarded fw4
@@ -1105,9 +1134,11 @@ function render_dns_fixture(config_path, names_csv, out_path) {
 let mode = ARGV[0] || "";
 
 if (mode == "sync")
-    exit(sync(ARGV[1]));
+    exit(sync(ARGV[1], ARGV[2] == "reload-lock-held"));
 else if (mode == "disable")
-    exit(disable(ARGV[1]));
+    exit(disable(ARGV[1], false));
+else if (mode == "release")
+    exit(disable(ARGV[1] || "removed with the package", true));
 else if (mode == "status")
     exit(status());
 else if (mode == "render-dns-fixture")
@@ -1123,5 +1154,5 @@ else if (mode == "dns-redirect")
 else if (mode == "watch")
     exit(watch());
 
-warn("Usage: killswitch/runtime.uc <sync [reason]|disable [reason]|postinst|status|armed|standby-config <path>|dns-redirect <on|off>|watch>\n");
+warn("Usage: killswitch/runtime.uc <sync [reason [reload-lock-held]]|disable [reason]|release [reason]|postinst|status|armed|standby-config <path>|dns-redirect <on|off>|watch>\n");
 exit(1);

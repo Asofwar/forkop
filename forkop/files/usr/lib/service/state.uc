@@ -328,6 +328,10 @@ function run_pending_reload_if_requested(path, init_script) {
 //      reload.lock (UC-057): it releases reload.lock, waits holding nothing
 //      else (taking the lock and letting go of it at once), and takes both
 //      again in order.
+//   4. killswitch.lock (killswitch/runtime.uc): taken last and never held
+//      while waiting for another lock; start and reload refresh the
+//      kill-switch inside their reload.lock, a manual sync or removal takes
+//      reload.lock first (UC-210).
 // The lock protocol and the owner record: core/runtime_lock.uc.
 function release_runtime_dir_lock(lock_dir, owner_pid) {
     return runtime_lock.release(lock_dir, owner_pid);

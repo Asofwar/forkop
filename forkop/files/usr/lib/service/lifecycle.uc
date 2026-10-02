@@ -1016,8 +1016,10 @@ function start_sing_box_and_wait() {
 
 // Only a fully applied runtime may refresh the persistent VPN kill-switch;
 // every failure path keeps the previously applied protection untouched.
+// Start and reload call it holding reload.lock, which a manual sync takes
+// first (killswitch/runtime.uc, UC-210).
 function killswitch_sync(reason) {
-    if (module_status(KILLSWITCH_UC, [ "sync", reason ]) != 0)
+    if (module_status(KILLSWITCH_UC, [ "sync", reason, "reload-lock-held" ]) != 0)
         log_message("Kill-switch policy was not refreshed; the previously applied protection stays in place", "warn");
 }
 
@@ -2554,7 +2556,7 @@ function uninstall() {
         command_success_from_args([ SERVICE_INIT, "disable" ]);
     }
 
-    module_success(KILLSWITCH_UC, [ "disable", "uninstall" ]);
+    module_success(KILLSWITCH_UC, [ "release", "uninstall" ]);
     dnsmasq_restore_fail_safe();
 
     if (fs.stat("/etc/init.d/forkop") != null) {

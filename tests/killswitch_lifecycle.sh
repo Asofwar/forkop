@@ -68,13 +68,13 @@ UCODE
 function_body "$LIFECYCLE" killswitch_sync >> "$WORK_DIR/sync.uc"
 cat >> "$WORK_DIR/sync.uc" <<'UCODE'
 killswitch_sync("start");
-if (warned != 1 || calls[0] != "killswitch:sync,start")
+if (warned != 1 || calls[0] != "killswitch:sync,start,reload-lock-held")
     exit(1);
 UCODE
 ucode "$WORK_DIR/sync.uc" || fail "kill-switch sync failure must only warn"
 
 # Uninstall paths lift the protection; an upgrade keeps it.
-function_body "$LIFECYCLE" uninstall | awk '/KILLSWITCH_UC, \[ "disable"/ { d = NR } /rm", "-rf", "\/usr\/lib\/forkop"/ { r = NR } END { exit !(d && r && d < r) }' ||
+function_body "$LIFECYCLE" uninstall | awk '/KILLSWITCH_UC, \[ "release"/ { d = NR } /rm", "-rf", "\/usr\/lib\/forkop"/ { r = NR } END { exit !(d && r && d < r) }' ||
   fail "uninstall must lift the kill-switch before removing the libraries"
 prerm_body="$(function_body "$PACKAGE_UC" prerm_cleanup)"
 printf '%s\n' "$prerm_body" | grep -Fq 'as_string(action) == "remove" && path_exists(KILLSWITCH_UC)' ||

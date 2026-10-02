@@ -82,6 +82,8 @@ export FORKOP_LIB
 export UCI_STATE="$WORK_DIR/uci.state"
 export FORKOP_UCI_STATE_FILE="$UCI_STATE"
 export FORKOP_RUNTIME_STATE_DIR="$WORK_DIR/run"
+# A manual sync takes reload.lock first (UC-210); never the host's.
+export FORKOP_RELOAD_LOCK_DIR="$WORK_DIR/run/reload.lock"
 export KILLSWITCH_STATE_DIR="$WORK_DIR/ks"
 export KILLSWITCH_NFT_INCLUDE="$WORK_DIR/nftables.d/ruleset-post/90-forkop-killswitch.nft"
 export KILLSWITCH_CACHE_DIR="$WORK_DIR/cache"
@@ -242,5 +244,6 @@ ks postinst || fail "second postinst failed"
 grep -Fqx '# first build' "$POLICY" || fail "a saved policy wins over a stale unguarded include"
 
 [ ! -e "$FORKOP_RUNTIME_STATE_DIR/killswitch.lock" ] || fail "lock must be released"
+[ ! -e "$FORKOP_RELOAD_LOCK_DIR" ] || fail "reload.lock must be released"
 
 printf 'killswitch_sync: PASS\n'

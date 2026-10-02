@@ -133,13 +133,16 @@ FORKOP_KILLSWITCH_WATCH_ITERATIONS=1 ks watch
 FORKOP_KILLSWITCH_WATCH_ITERATIONS=2 ks watch
 [ ! -s "$WORK_DIR/ks_dns" ] || fail "a recovered sing-box must get client DNS back"
 
-# A planned sing-box restart under Forkop's reload lock is not an outage.
+# A planned sing-box restart under Forkop's reload lock (a live owner,
+# core/runtime_lock) is not an outage.
 export FORKOP_RELOAD_LOCK_DIR="$WORK_DIR/reload.lock"
 mkdir "$FORKOP_RELOAD_LOCK_DIR"
+ticks="$(awk '{ sub(/^.*\) /, ""); print $20 }' "/proc/$$/stat")"
+printf '%s\n%s\n' "$$" "$ticks" >"$FORKOP_RELOAD_LOCK_DIR/owner.$$.$ticks"
 rm -f "$WORK_DIR/sing-box-alive"
 FORKOP_KILLSWITCH_WATCH_ITERATIONS=5 ks watch
 [ ! -s "$WORK_DIR/ks_dns" ] || fail "no failover while Forkop itself restarts sing-box"
-rmdir "$FORKOP_RELOAD_LOCK_DIR"
+rm -rf "$FORKOP_RELOAD_LOCK_DIR"
 
 # Forkop stopped (dnsmasq answers with its own block list): never redirect.
 sed -i 's/^dhcp.@dnsmasq\[0\].server=.*/dhcp.@dnsmasq[0].server=1.1.1.1/' "$UCI_STATE"

@@ -223,7 +223,7 @@ function prerm_cleanup(action) {
         // blocked while the old runtime is down. Only a removal lifts it,
         // since nothing would be left to manage the persistent policy.
         if (as_string(action) == "remove" && path_exists(KILLSWITCH_UC))
-            command_success_from_args([ "ucode", "-L", LIB_DIR, KILLSWITCH_UC, "disable", "package removal" ]);
+            command_success_from_args([ "ucode", "-L", LIB_DIR, KILLSWITCH_UC, "release", "package removal" ]);
         restore_dnsmasq_if_needed();
         remove_managed_sing_box();
     }

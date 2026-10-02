@@ -140,7 +140,8 @@ function killswitch_dns_apply(blocking) {
     let content = blocking ? as_string(fs.readfile(KILLSWITCH_DNS_BLOCKED_FILE)) : "";
     let changed = false;
     if (!present || as_string(fs.readfile(KILLSWITCH_DNS_SERVERS_FILE)) != content) {
-        let tmp = KILLSWITCH_DNS_SERVERS_FILE + ".tmp";
+        // Unique per writer (UC-210).
+        let tmp = KILLSWITCH_DNS_SERVERS_FILE + ".tmp." + as_string(fs.readlink("/proc/self"));
         if (fs.writefile(tmp, content) == null || !fs.rename(tmp, KILLSWITCH_DNS_SERVERS_FILE)) {
             fs.unlink(tmp);
             log("Could not write the kill-switch dnsmasq servers file", "error");

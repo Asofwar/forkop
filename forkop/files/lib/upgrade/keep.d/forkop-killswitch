@@ -1,2 +1,3 @@
-/etc/forkop/killswitch/
-/usr/share/nftables.d/ruleset-post/90-forkop-killswitch.nft
+/etc/forkop/killswitch/policy.nft
+/etc/forkop/killswitch/dns-blocked.servers
+/etc/forkop/killswitch/state.json

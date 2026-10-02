@@ -79,10 +79,14 @@ dhcp.@dnsmasq[0].domain=home
 EOF
 printf 'server=/claude.ai/\nserver=/drive.example.com/#\n' > "$KILLSWITCH_STATE_DIR/dns-blocked.servers"
 
-# armed follows the persistent include.
-if ks armed; then fail "kill-switch must not be armed without its include"; fi
+# armed follows the saved policy, never the first build's unguarded include.
 printf '# policy\n' > "$KILLSWITCH_NFT_INCLUDE"
-ks armed || fail "kill-switch must be armed with its include"
+if ks armed; then fail "kill-switch must not be armed without its saved policy"; fi
+rm -f "$KILLSWITCH_NFT_INCLUDE"
+: > "$KILLSWITCH_STATE_DIR/policy.nft"
+if ks armed; then fail "an empty saved policy protects nothing"; fi
+printf '# policy\n' > "$KILLSWITCH_STATE_DIR/policy.nft"
+ks armed || fail "kill-switch must be armed with its saved policy"
 
 # Standby configuration: original upstream, local names via the main dnsmasq, the block list.
 ks standby-config "$WORK_DIR/standby.conf" || fail "standby config failed"
@@ -162,9 +166,15 @@ ks dns-redirect off || fail "dns-redirect without a table must be a no-op"
 sh -n "$INIT_SCRIPT" || fail "init script syntax"
 grep -Fq 'killswitch armed' "$INIT_SCRIPT" || fail "service must start only while armed"
 grep -Fq -- '--conf-file="$STANDBY_CONF"' "$INIT_SCRIPT" || fail "standby dnsmasq must use the generated config"
-grep -Fqx '/etc/forkop/killswitch/' "$ROOT_DIR/forkop/files/lib/upgrade/keep.d/forkop-killswitch" || fail "sysupgrade must keep the kill-switch state"
-grep -Fqx '/usr/share/nftables.d/ruleset-post/90-forkop-killswitch.nft' "$ROOT_DIR/forkop/files/lib/upgrade/keep.d/forkop-killswitch" ||
-  fail "sysupgrade must keep the fw4 include"
+# sysupgrade keeps the saved policy and block list, which only Forkop loads
+# (tests/killswitch_owner_nft_real.sh), never what fw4 or dnsmasq read alone.
+keep_list="$ROOT_DIR/forkop/files/lib/upgrade/keep.d/forkop-killswitch"
+grep -Fqx '/etc/forkop/killswitch/policy.nft' "$keep_list" || fail "sysupgrade must keep the saved policy"
+grep -Fqx '/etc/forkop/killswitch/dns-blocked.servers' "$keep_list" || fail "sysupgrade must keep the saved block list"
+if grep -Eq 'nftables\.d|dnsmasq\.servers|^/etc/forkop/killswitch/?$' "$keep_list"; then
+  fail "sysupgrade must not keep a file that fw4 or dnsmasq read without Forkop"
+fi
+grep -Fq 'killswitch-refresh' "$INIT_SCRIPT" || fail "the boot must attach the kept block list again"
 grep -Fq 'procd_set_param file "$STANDBY_CONF"' "$INIT_SCRIPT" || fail "a changed standby config must restart the standby"
 grep -Fq 'killswitch dns-redirect off' "$INIT_SCRIPT" || fail "stopping the service must hand DNS back"
 

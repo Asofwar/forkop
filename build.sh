@@ -195,6 +195,9 @@ build_backend_root() {
   install -m 0755 "$ROOT_DIR/forkop/files/etc/init.d/forkop-killswitch" "$output_root/etc/init.d/forkop-killswitch"
   install -d "$output_root/lib/upgrade/keep.d"
   install -m 0644 "$ROOT_DIR/forkop/files/lib/upgrade/keep.d/forkop-killswitch" "$output_root/lib/upgrade/keep.d/forkop-killswitch"
+  install -d "$output_root/usr/share/nftables.d/ruleset-post"
+  install -m 0644 "$ROOT_DIR/forkop/files/usr/share/nftables.d/ruleset-post/90-forkop-killswitch-loader.nft" \
+    "$output_root/usr/share/nftables.d/ruleset-post/90-forkop-killswitch-loader.nft"
   install -m 0644 "$ROOT_DIR/forkop/files/etc/config/forkop" "$output_root/etc/config/forkop"
   install -m 0644 "$ROOT_DIR/forkop/files/etc/config/forkop" "$output_root/usr/share/forkop/defaults/forkop"
   install -m 0755 "$ROOT_DIR/forkop/files/usr/share/forkop/mirror-migration.sh" "$output_root/usr/share/forkop/mirror-migration.sh"

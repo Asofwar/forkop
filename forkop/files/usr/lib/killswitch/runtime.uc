@@ -8,10 +8,14 @@
 // Forkop runtime:
 //
 //  * nftables: a separate table rendered from the live ForkopTable, installed
-//    both live and as an fw4 ruleset-post include, so it survives a Forkop
-//    stop, a firewall reload/restart and a reboot. It rejects forwarded
-//    client traffic that matches a protected section in Forkop's own
-//    first-match order, plus any FakeIP destination.
+//    live and saved under STATE_DIR. fw4 loads the saved policy on every
+//    firewall start/reload through the loader the forkop package installs
+//    in ruleset-post, so it survives a Forkop stop, a firewall
+//    reload/restart and a reboot, but never the package: without the loader
+//    (package removal, a downgrade to a release without the kill-switch, a
+//    sysupgrade to an image without Forkop) the saved policy is inert
+//    (UC-191). It rejects forwarded client traffic that matches a protected
+//    section in Forkop's own first-match order, plus any FakeIP destination.
 //  * DNS: protected domains are answered locally (NXDOMAIN) by dnsmasq
 //    whenever dnsmasq does not forward to sing-box; dns/apply.uc switches the
 //    servers file on every configure/restore.
@@ -44,7 +48,11 @@ const RUNTIME_STATE_DIR = getenv("FORKOP_RUNTIME_STATE_DIR") || "/var/run/forkop
 const LIVE_TABLE = constant_value("NFT_TABLE_NAME", "ForkopTable");
 const KS_TABLE = constant_value("KILLSWITCH_NFT_TABLE", "ForkopKillswitch");
 const STATE_DIR = constant_value("KILLSWITCH_STATE_DIR", "/etc/forkop/killswitch");
-const NFT_INCLUDE = constant_value("KILLSWITCH_NFT_INCLUDE", "/usr/share/nftables.d/ruleset-post/90-forkop-killswitch.nft");
+const NFT_POLICY = constant_value("KILLSWITCH_NFT_POLICY", STATE_DIR + "/policy.nft");
+const NFT_LOADER = constant_value("KILLSWITCH_NFT_LOADER", "/usr/share/nftables.d/ruleset-post/90-forkop-killswitch-loader.nft");
+// The first kill-switch build saved the policy as an unguarded fw4 include
+// that outlived the package; it is only ever removed (or adopted once).
+const LEGACY_NFT_INCLUDE = constant_value("KILLSWITCH_NFT_INCLUDE", "/usr/share/nftables.d/ruleset-post/90-forkop-killswitch.nft");
 const CACHE_DIR = constant_value("KILLSWITCH_CACHE_DIR", "/tmp/forkop-killswitch");
 const FAKEIP_RANGE = constant_value("SB_FAKEIP_INET4_RANGE", "198.18.0.0/15");
 const FAKEIP6_RANGE = constant_value("SB_FAKEIP_INET6_RANGE", "fc00::/18");
@@ -233,6 +241,16 @@ function ks_table_present() {
     return run_quiet([ "nft", "list", "table", "inet", KS_TABLE ]);
 }
 
+function remove_legacy_include() {
+    return fs.stat(LEGACY_NFT_INCLUDE) == null || fs.unlink(LEGACY_NFT_INCLUDE);
+}
+
+// Saved and loaded at boot (fw4 through the package's loader).
+function policy_saved() {
+    let stat = fs.stat(NFT_POLICY);
+    return stat != null && stat.size > 0;
+}
+
 function apply_nft_policy() {
     let tmp = trim(capture([ "mktemp" ]).output);
     if (tmp == "")
@@ -252,8 +270,8 @@ function apply_nft_policy() {
         return { ok: false, error: "nft render failed: " + (as_string(summary.error) || "unknown error") };
     }
 
-    // A broken include would take the whole firewall down on the next fw4
-    // reload, so the exact bytes that get installed are checked and applied
+    // A broken saved policy would take the whole firewall down on the next
+    // fw4 reload, so the exact bytes that get saved are checked and applied
     // live first.
     if (!run_quiet([ "nft", "-c", "-f", tmp ])) {
         fs.unlink(tmp);
@@ -266,8 +284,9 @@ function apply_nft_policy() {
 
     let content = fs.readfile(tmp);
     fs.unlink(tmp);
-    if (content == null || (fs.readfile(NFT_INCLUDE) != content && !write_atomic(NFT_INCLUDE, content)))
-        return { ok: false, error: "could not install " + NFT_INCLUDE + "; the live policy is active until the next firewall reload" };
+    if (content == null || (fs.readfile(NFT_POLICY) != content && !write_atomic(NFT_POLICY, content)))
+        return { ok: false, error: "could not save " + NFT_POLICY + "; the live policy is active until the next firewall reload" };
+    remove_legacy_include();
 
     summary.ok = true;
     return summary;
@@ -284,7 +303,9 @@ function remove_legacy_guard_table() {
 
 function remove_nft_policy() {
     let ok = true;
-    if (fs.stat(NFT_INCLUDE) != null && !fs.unlink(NFT_INCLUDE))
+    if (fs.stat(NFT_POLICY) != null && !fs.unlink(NFT_POLICY))
+        ok = false;
+    if (!remove_legacy_include())
         ok = false;
     if (ks_table_present() && !run_quiet([ "nft", "delete", "table", "inet", KS_TABLE ]))
         ok = false;
@@ -807,7 +828,7 @@ function watch() {
     let failures = 0;
     let successes = 0;
     for (let iteration = 1; WATCH_ITERATIONS == 0 || iteration <= WATCH_ITERATIONS; iteration++) {
-        if (fs.stat(NFT_INCLUDE) == null) {
+        if (!policy_saved()) {
             standby = false;
             sleep(WATCH_INTERVAL_MS * 2);
             continue;
@@ -934,7 +955,8 @@ function sync_locked(reason) {
     let sections = config_sections();
     let names = protected_section_names(sections);
     if (length(names) == 0) {
-        if (fs.stat(NFT_INCLUDE) != null || ks_table_present() || fs.stat(DNS_BLOCKED_FILE) != null ||
+        if (fs.stat(NFT_POLICY) != null || fs.stat(LEGACY_NFT_INCLUDE) != null ||
+            ks_table_present() || fs.stat(DNS_BLOCKED_FILE) != null ||
             read_state().active === true || run_quiet([ "nft", "list", "table", "inet", LEGACY_GUARD_TABLE ]))
             return teardown("no section has the kill-switch enabled") ? 0 : 1;
         return 0;
@@ -1027,16 +1049,37 @@ function disable(reason) {
     return with_lock(function() { return teardown(reason || "disabled on request") ? 0 : 1; });
 }
 
+// A package upgrade from the first kill-switch build: its unguarded fw4
+// include becomes the saved policy that only the package's loader loads, so
+// the protection stays across the upgrade, and a running watcher is
+// restarted on the new code.
+function postinst() {
+    return with_lock(function() {
+        let legacy = fs.readfile(LEGACY_NFT_INCLUDE);
+        if (legacy != null) {
+            if (!policy_saved() && length(legacy) > 0 && !write_atomic(NFT_POLICY, legacy)) {
+                record_error("could not adopt " + LEGACY_NFT_INCLUDE);
+                return 1;
+            }
+            remove_legacy_include();
+        }
+        if (service_running())
+            service_control([ "restart" ]);
+        return 0;
+    });
+}
+
 function status() {
     let sections = config_sections();
     let state = read_state();
     let configured = protected_section_names(sections);
-    let include_present = fs.stat(NFT_INCLUDE) != null;
+    // Loaded again by fw4 only while the package's loader is installed.
+    let persistent = policy_saved() && fs.stat(NFT_LOADER) != null;
     let table_present = ks_table_present();
     print(sprintf("%J", {
         configured,
         active: table_present,
-        persistent: include_present,
+        persistent,
         forkop_running: live_table_present(),
         pending: length(configured) > 0 && !table_present,
         counters: table_present ? nft_counters() : {},
@@ -1069,8 +1112,10 @@ else if (mode == "status")
     exit(status());
 else if (mode == "render-dns-fixture")
     exit(render_dns_fixture(ARGV[1], ARGV[2], ARGV[3]));
+else if (mode == "postinst")
+    exit(postinst());
 else if (mode == "armed")
-    exit(fs.stat(NFT_INCLUDE) != null ? 0 : 1);
+    exit(policy_saved() ? 0 : 1);
 else if (mode == "standby-config")
     exit(write_standby_config(ARGV[1]) ? 0 : 1);
 else if (mode == "dns-redirect")
@@ -1078,5 +1123,5 @@ else if (mode == "dns-redirect")
 else if (mode == "watch")
     exit(watch());
 
-warn("Usage: killswitch/runtime.uc <sync [reason]|disable [reason]|status|armed|standby-config <path>|dns-redirect <on|off>|watch>\n");
+warn("Usage: killswitch/runtime.uc <sync [reason]|disable [reason]|postinst|status|armed|standby-config <path>|dns-redirect <on|off>|watch>\n");
 exit(1);

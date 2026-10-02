@@ -314,6 +314,10 @@ function postinst_restore() {
 
     clear_component_update_check_cache();
     legacy_vpn_guard_cleanup();
+    // The first kill-switch build saved an unguarded fw4 include; it becomes
+    // the policy only this package's loader loads (UC-191).
+    if (path_exists(KILLSWITCH_UC))
+        command_success_from_args([ "ucode", "-L", LIB_DIR, KILLSWITCH_UC, "postinst" ]);
 
     let config = fs.readfile(CONFIG_PATH);
     if (config == null || trim(as_string(config)) == "") {

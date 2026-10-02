@@ -1,11 +1,12 @@
 #!/bin/sh /etc/rc.common
 # shellcheck disable=SC2034
 
-# The kill-switch's own nftables policy is loaded by fw4 (ruleset-post
-# include). This service only keeps DNS usable for unprotected names when
-# sing-box dies while dnsmasq still forwards to it: a standby dnsmasq answers
-# protected names locally and everything else through the ordinary upstream,
-# and a watcher redirects client DNS to it until sing-box answers again.
+# The kill-switch's own nftables policy is loaded by fw4 (the package's
+# ruleset-post loader). This service only keeps DNS usable for unprotected
+# names when sing-box dies while dnsmasq still forwards to it: a standby
+# dnsmasq answers protected names locally and everything else through the
+# ordinary upstream, and a watcher redirects client DNS to it until sing-box
+# answers again.
 
 START=20
 STOP=90
@@ -17,6 +18,16 @@ STANDBY_CONF="/tmp/forkop-killswitch/standby.conf"
 
 killswitch() {
     ucode -L "$FORKOP_LIB" "$KILLSWITCH_UC" "$@"
+}
+
+boot() {
+    # A sysupgrade keeps the saved block list, never the servers file
+    # dnsmasq reads (lib/upgrade/keep.d/forkop-killswitch): an image without
+    # Forkop must not keep blocking. With Forkop, attach it again here.
+    if [ -r "$KILLSWITCH_UC" ] && killswitch armed >/dev/null 2>&1; then
+        ucode -L "$FORKOP_LIB" "$FORKOP_LIB/dns/apply.uc" killswitch-refresh >/dev/null 2>&1
+    fi
+    start "$@"
 }
 
 start_service() {

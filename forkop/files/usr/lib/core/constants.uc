@@ -66,10 +66,14 @@ function constants_map() {
     c.NFT_INTERFACE_SET_NAME = env("NFT_INTERFACE_SET_NAME", "forkop_interfaces");
     c.NFT_FAKEIP_MARK = env("NFT_FAKEIP_MARK", "0x04000000");
     c.NFT_OUTBOUND_MARK = env("NFT_OUTBOUND_MARK", "0x08000000");
-    // The VPN kill-switch outlives ForkopTable: fw4 loads its ruleset-post
-    // include on every firewall start/reload, independent of Forkop itself.
+    // The VPN kill-switch outlives ForkopTable, but never the forkop package:
+    // fw4 loads the saved policy on every firewall start/reload only through
+    // the loader the package installs (UC-191). KILLSWITCH_NFT_INCLUDE is
+    // the unguarded include of the first kill-switch build, only removed.
     c.KILLSWITCH_NFT_TABLE = env("KILLSWITCH_NFT_TABLE", "ForkopKillswitch");
     c.KILLSWITCH_STATE_DIR = env("KILLSWITCH_STATE_DIR", "/etc/forkop/killswitch");
+    c.KILLSWITCH_NFT_POLICY = env("KILLSWITCH_NFT_POLICY", c.KILLSWITCH_STATE_DIR + "/policy.nft");
+    c.KILLSWITCH_NFT_LOADER = env("KILLSWITCH_NFT_LOADER", "/usr/share/nftables.d/ruleset-post/90-forkop-killswitch-loader.nft");
     c.KILLSWITCH_NFT_INCLUDE = env("KILLSWITCH_NFT_INCLUDE", "/usr/share/nftables.d/ruleset-post/90-forkop-killswitch.nft");
     c.KILLSWITCH_CACHE_DIR = env("KILLSWITCH_CACHE_DIR", "/tmp/forkop-killswitch");
     c.KILLSWITCH_STANDBY_PORT = env("KILLSWITCH_STANDBY_PORT", "18054");

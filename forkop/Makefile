@@ -67,6 +67,8 @@ define Package/forkop/install
 	$(INSTALL_BIN) ./files/etc/init.d/forkop-killswitch $(1)/etc/init.d/forkop-killswitch
 	$(INSTALL_DIR) $(1)/lib/upgrade/keep.d
 	$(INSTALL_DATA) ./files/lib/upgrade/keep.d/forkop-killswitch $(1)/lib/upgrade/keep.d/forkop-killswitch
+	$(INSTALL_DIR) $(1)/usr/share/nftables.d/ruleset-post
+	$(INSTALL_DATA) ./files/usr/share/nftables.d/ruleset-post/90-forkop-killswitch-loader.nft $(1)/usr/share/nftables.d/ruleset-post/90-forkop-killswitch-loader.nft
 
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) ./files/etc/config/forkop $(1)/etc/config/forkop

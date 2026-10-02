@@ -184,6 +184,20 @@ nft list set inet ForkopKillswitch forkop_rule_main_subnets | grep -Fq '3.3.3.0/
 ks sync reload || fail "re-applying the same policy failed"
 ok "the policy rendered from a real live table passes nft -c, -f and a re-apply"
 
+# The watcher's switch of client DNS to the standby resolver is a batch of
+# its own on the live table (tests/killswitch_standby.sh stubs nft).
+if printf 'add table inet ks_probe\nadd chain inet ks_probe c { type nat hook prerouting priority -102; policy accept; }\nadd rule inet ks_probe c udp dport 53 redirect to :1\n' |
+  nft -c -f - >/dev/null 2>&1; then
+  ks dns-redirect on || fail "switching client DNS to the standby resolver failed"
+  nft list chain inet ForkopKillswitch ks_dns | grep -Eq 'iifname @ks_interfaces udp dport 53 counter .*redirect to :18054' ||
+    fail "the standby redirect is not in the live table"
+  ks dns-redirect off || fail "handing client DNS back failed"
+  if nft list chain inet ForkopKillswitch ks_dns | grep -q redirect; then fail "the standby redirect must be gone"; fi
+  ok "the standby DNS redirect passes the real nft"
+else
+  printf 'NOTE: this kernel has no nft redirect expression; the standby DNS redirect is not checked\n'
+fi
+
 # ---- with the package installed the policy survives a reboot ------------------
 
 fw4_boot "$ROOT"

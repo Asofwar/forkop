@@ -134,6 +134,11 @@ const PENDING_APPLY_KEY = "forkop-pending-apply";
 const APPLY_REPORT_WAIT_MS = 90 * 1000;
 const APPLY_RECORD_MAX_AGE_MS = 10 * 60 * 1000;
 const APPLY_POLL_INTERVAL_MS = 2000;
+// LuCI confirms an apply before its rollback timeout (L.env.apply_rollback,
+// 90 s unless set) has passed since the request; this much more is left for
+// the request itself. An apply that LuCI never confirmed (nothing to apply,
+// refused, rolled back) is not reported when a later one is confirmed.
+const APPLY_CONFIRM_MARGIN_MS = 30 * 1000;
 
 // The snapshot and the last reload before the apply that this page started.
 let pendingApply = null;
@@ -166,9 +171,19 @@ if (
   typeof document.addEventListener === "function"
 ) {
   document.addEventListener("uci-applied", () => {
-    if (!pendingApply) return;
-    const record = { ...pendingApply, confirmedAt: Date.now() };
+    const apply = pendingApply;
     pendingApply = null;
+    const rollback = (Number(L.env?.apply_rollback) || 90) * 1000;
+    if (
+      !apply ||
+      Date.now() - apply.startedAt > rollback + APPLY_CONFIRM_MARGIN_MS
+    )
+      return;
+    const record = {
+      snapshot: apply.snapshot,
+      reloadAt: apply.reloadAt,
+      confirmedAt: Date.now(),
+    };
     try {
       sessionStore()?.setItem(PENDING_APPLY_KEY, JSON.stringify(record));
     } catch (e) {
@@ -178,8 +193,23 @@ if (
   });
 }
 
-async function handleSaveApply(ev, mode) {
+// The previous release of the backend (the packages upgraded one at a time)
+// takes only manual and automatic snapshots and refuses before-apply without
+// a reason: the same snapshot is then taken as automatic.
+async function snapshotBeforeApply() {
   const snapshot = await main.ForkopShellMethods.snapshotCreate("before-apply");
+  if (
+    snapshot.success &&
+    snapshot.data?.status === "failed" &&
+    !snapshot.data.reason
+  )
+    return main.ForkopShellMethods.snapshotCreate("automatic");
+  return snapshot;
+}
+
+async function handleSaveApply(ev, mode) {
+  pendingApply = null;
+  const snapshot = await snapshotBeforeApply();
   if (
     !snapshot.success ||
     !["created", "existing"].includes(snapshot.data?.status)
@@ -199,16 +229,27 @@ async function handleSaveApply(ev, mode) {
     );
     return;
   }
-  // A reload recorded after this one is the reload of this apply; unknown,
-  // the reload cannot be told from an older one.
+  // A reload recorded after this one is the reload of this apply. Unknown,
+  // or while a reload runs (an earlier apply's, a list update's: it ends
+  // with an event that may come before or after this apply's), the reload
+  // of this apply cannot be told from another one.
   const health = await main.ForkopShellMethods.getHealthStatus();
-  pendingApply = {
-    snapshot: snapshot.data.snapshot.id,
-    reloadAt: health.success
+  const reloadAt =
+    health.success && health.data?.reload?.busy !== true
       ? Number(health.data?.last_reload?.timestamp) || 0
-      : null,
-  };
-  return this.super("handleSaveApply", [ev, mode]);
+      : null;
+  // luci.js view.handleSaveApply (24.10, 25.12), with a look at what the
+  // apply commits in between: only changes of Forkop X reload it, and only
+  // that reload is reported.
+  await this.handleSave(ev);
+  const staged = await Promise.resolve(uci.changes?.()).catch(() => null);
+  if (staged == null || staged[UCI_PACKAGE]?.length)
+    pendingApply = {
+      snapshot: snapshot.data.snapshot.id,
+      reloadAt,
+      startedAt: Date.now(),
+    };
+  ui.changes.apply(mode == "0");
 }
 
 function takePendingApply() {
@@ -230,8 +271,10 @@ function takePendingApply() {
 }
 
 // The Forkop reload of the apply LuCI confirmed before it loaded this page:
-// a reload event newer than the last one before the apply (health record).
-// None comes while Forkop is stopped or not started since boot (D-15).
+// a reload event newer than the last one before the apply (health record),
+// once no reload runs: the one that ran when this page loaded may have been
+// another one, with this apply's queued behind it. None comes while Forkop
+// is stopped or not started since boot (D-15).
 function waitForApplyReload(record) {
   const deadline = record.confirmedAt + APPLY_REPORT_WAIT_MS;
   const poll = () =>
@@ -241,7 +284,8 @@ function waitForApplyReload(record) {
       if (
         record.reloadAt != null &&
         reload?.kind === "reload" &&
-        Number(reload.timestamp) > record.reloadAt
+        Number(reload.timestamp) > record.reloadAt &&
+        data?.reload?.busy !== true
       )
         return { reload };
       if (["stopped", "not_started"].includes(data?.service?.forkop))
@@ -269,7 +313,12 @@ async function applyOutcomeText(record, outcome) {
       "Configuration saved. Runtime reload failed; check History and recovery.",
     );
   const diff = await main.ForkopShellMethods.snapshotDiff(record.snapshot);
-  const entries = diff.success && Array.isArray(diff.data) ? diff.data : [];
+  if (!diff.success || !Array.isArray(diff.data))
+    return [
+      _("Configuration applied successfully"),
+      _("The list of changes is unavailable."),
+    ].join("\n");
+  const entries = diff.data;
   // UC-062: a diff longer than the backend lists ends with
   // { truncated, total } in place of the rest.
   const changes = entries.filter((entry) => entry.truncated !== true);

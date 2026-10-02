@@ -177,6 +177,9 @@ function createStagedUciStore(config, initial) {
     changes: {},
     deletes: {},
     reorder: {},
+    // What save() sent to rpcd and no apply has committed yet, per package
+    // (the session's delta that uci.changes() reports).
+    saved: {},
   };
   const stored = (value) => (Array.isArray(value) ? value.map(String) : `${value}`);
   const uci = {
@@ -314,9 +317,26 @@ function createStagedUciStore(config, initial) {
       return uci.set(conf, sid, opt, null);
     },
     load: () => Promise.resolve(),
+    // rpcd's uci changes of the session ({ package: [change records] }), as
+    // the header's Unsaved Changes indicator reads them.
+    changes: () => Promise.resolve(clone(state.saved)),
     // What rpcd applies, reloaded: the staged edits become the loaded config.
+    // libuci records no change for an option set to the value it has (a
+    // Flag writes on every save); rpcd sets a list by deleting it and adding
+    // its items, which it records whatever they are.
     save() {
       for (const conf of Object.keys(state.values)) {
+        const changed = (sid) =>
+          Object.entries(state.changes[conf][sid]).some(
+            ([opt, value]) => Array.isArray(value) || `${state.values[conf][sid]?.[opt] ?? ""}` !== value,
+          );
+        const records = [
+          ...Object.keys(state.creates[conf] ?? {}).map((sid) => ["add", sid]),
+          ...Object.keys(state.changes[conf] ?? {}).filter(changed).map((sid) => ["set", sid]),
+          ...Object.keys(state.deletes[conf] ?? {}).map((sid) => ["remove", sid]),
+          ...Object.keys(state.reorder[conf] ?? {}).map((sid) => ["order", sid]),
+        ];
+        if (records.length) state.saved[conf] = [...(state.saved[conf] ?? []), ...records];
         const next = {};
         for (const section of uci.sections(conf)) {
           const { ".create": _create, ".index": _index, ...rest } = section;
@@ -1130,7 +1150,8 @@ function createEnvironment({
     // apply_unchecked and returns at once. Once rpcd confirms the apply,
     // confirm() dispatches "uci-applied" on the document and reloads the
     // page L.env.apply_display seconds later: confirmApply() below plays
-    // that. applies records the `checked` argument of each apply().
+    // that (it commits what uci.changes() lists, every package). applies
+    // records the `checked` argument of each apply().
     changes: {
       applies: [],
       apply(checked) {
@@ -1358,6 +1379,7 @@ function createEnvironment({
     // dispatches "uci-applied" on the document, then reloads the page
     // (createEnvironment({ sessionStorage }) is that next page).
     confirmApply() {
+      for (const conf of Object.keys(uci.state.saved)) delete uci.state.saved[conf];
       document.dispatchEvent(new globals.CustomEvent("uci-applied"));
     },
     // Runs the window.setTimeout callbacks queued so far, then lets the

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-02 13:07+0000\n"
-"PO-Revision-Date: 2026-10-02 13:07+0000\n"
+"POT-Creation-Date: 2026-10-02 13:55+0000\n"
+"PO-Revision-Date: 2026-10-02 13:55+0000\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -3838,6 +3838,9 @@ msgstr "Список длинный: выбрать можно только из
 
 msgid "The list is not downloaded on the router; update the lists or save the rule."
 msgstr "Список не загружен на роутер; обновите списки или сохраните правило."
+
+msgid "The list of changes is unavailable."
+msgstr "Список изменений недоступен."
 
 msgid "The maximum number of targets is reached."
 msgstr "Достигнуто максимальное число целей."

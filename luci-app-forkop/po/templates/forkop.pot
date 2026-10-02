@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-02 13:07+0000\n"
-"PO-Revision-Date: 2026-10-02 13:07+0000\n"
+"POT-Creation-Date: 2026-10-02 13:55+0000\n"
+"PO-Revision-Date: 2026-10-02 13:55+0000\n"
 "Last-Translator: Asofwar <7397608+Asofwar@users.noreply.github.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -476,7 +476,7 @@ msgstr ""
 msgid "An IP address needs no DNS"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:293
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:339
 #: src/forkop/tabs/history/model.ts:366
 msgid "and %d more"
 msgstr ""
@@ -1262,7 +1262,8 @@ msgstr ""
 msgid "Configuration"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:288
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:315
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:334
 msgid "Configuration applied successfully"
 msgstr ""
 
@@ -1278,15 +1279,15 @@ msgstr ""
 msgid "Configuration restored, but Forkop X is stopped: it was not started or checked. The restored configuration takes effect when Forkop X is started."
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:260
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:301
 msgid "Configuration saved. Forkop X is not running: the changes take effect when it is started."
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:268
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:309
 msgid "Configuration saved. Runtime reload failed; check History and recovery."
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:264
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:305
 msgid "Configuration saved. Runtime reload has not been confirmed; check History and recovery."
 msgstr ""
 
@@ -3749,7 +3750,7 @@ msgstr ""
 msgid "Not running"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:283
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:329
 #: src/forkop/tabs/history/model.ts:310
 msgid "not set"
 msgstr ""
@@ -5353,7 +5354,7 @@ msgstr ""
 msgid "The change was not saved."
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:193
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:220
 msgid "The changes are saved: Save & Apply applies them once a snapshot can be taken."
 msgstr ""
 
@@ -5525,6 +5526,10 @@ msgstr ""
 
 #: src/forkop/tabs/autotune/model.ts:569
 msgid "The list is not downloaded on the router; update the lists or save the rule."
+msgstr ""
+
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:316
+msgid "The list of changes is unavailable."
 msgstr ""
 
 #: src/forkop/tabs/autotune/model.ts:892
@@ -6122,7 +6127,6 @@ msgstr ""
 msgid "unique UCI identifier"
 msgstr ""
 
-#: src/forkop/helpers/singBoxVariant.ts:28
 #: src/forkop/services/systemInfo.service.ts:10
 #: src/forkop/services/systemInfo.service.ts:11
 #: src/forkop/services/systemInfo.service.ts:12
@@ -6132,6 +6136,7 @@ msgstr ""
 #: src/forkop/services/systemInfo.service.ts:22
 #: src/forkop/services/systemInfo.service.ts:33
 #: src/forkop/services/systemInfo.service.ts:34
+#: src/forkop/helpers/singBoxVariant.ts:28
 #: src/forkop/tabs/diagnostic/initController.ts:735
 #: src/forkop/tabs/updates/initController.ts:333
 msgid "unknown"

@@ -29,7 +29,9 @@ const config = () => ({
 const installed = { loaded: true, zapretInstalled: true, zapret2Installed: true, byedpiInstalled: true };
 const created = { status: 'created', snapshot: { id: '1_1', kind: 'automatic' } };
 const reloadAt = (timestamp, status = 'success') => ({ kind: 'reload', status, timestamp });
-const health = (last_reload, forkop = 'ok') => ({ overall: 'ok', service: { forkop, sing_box: 'ok' }, last_reload });
+// busy: a reload runs or the list worker that ends in one (reload.lock).
+const health = (last_reload, forkop = 'ok', busy = false) => ({ overall: 'ok', service: { forkop, sing_box: 'ok' },
+  last_reload, reload: { busy } });
 
 // A page load with the CLI answering `answers`; log keeps the order of the
 // CLI calls, the map saves and the apply.
@@ -192,6 +194,108 @@ async function check(label, fn) {
       assert.equal(reloaded.env.notifications.length, 0);
       assert.equal(reloaded.env.sessionStorage.has(RECORD), false);
       assert.equal(reloaded.calls(/get_health_status/).length, 0);
+    });
+
+    // The change list cannot be read (the snapshot is gone, the CLI failed):
+    // the reload is confirmed, and the notice says that its list is missing
+    // instead of a bare success.
+    await check(`${version} change list unavailable`, async () => {
+      let polls = 0;
+      const { next } = await applied({
+        get_health_status: () => health(reloadAt(polls++ ? 105 : 100)),
+        config_snapshot_diff: { code: 1, stdout: '' },
+      });
+      const reloaded = await next();
+      await reloaded.env.runTimers();
+      assert.equal(reloaded.env.notifications.length, 1);
+      assert.equal(reloaded.env.notifications[0].type, 'info');
+      assert.equal(reloaded.env.notifications[0].text,
+        'Configuration applied successfully\nThe list of changes is unavailable.');
+    });
+
+    // A reload newer than the one before the apply is this apply's only once
+    // no other reload runs or waits: one that ran when the page reloaded may
+    // be an older apply's, with this one queued behind it.
+    await check(`${version} reload reported once the runtime has settled`, async () => {
+      let polls = 0;
+      const { next } = await applied({
+        get_health_status: () => (polls++ ? health(reloadAt(107)) : health(reloadAt(105), 'ok', true)),
+        config_snapshot_diff: [{ section: 'vpn', option: 'enabled', before: '1', after: '0' }],
+      });
+      const reloaded = await next();
+      assert.equal(reloaded.env.notifications.length, 0, 'reported while another reload still ran');
+      await reloaded.env.runTimers();
+      assert.equal(reloaded.env.notifications.length, 1);
+      assert.equal(reloaded.env.notifications[0].type, 'info');
+      assert.equal(reloaded.calls(/get_health_status/).length, 2);
+    });
+
+    // A reload that runs when Save & Apply is clicked (an earlier apply's,
+    // a list update's) ends with a reload event that may come before or
+    // after this apply's: nothing tells them apart, so nothing is claimed.
+    await check(`${version} reload running at the click`, async () => {
+      const first = page(version, { config_snapshot_create: created,
+        get_health_status: health(reloadAt(100), 'ok', true) });
+      await (await pages.rules(first.env)).view.saveApply('0');
+      first.env.confirmApply();
+      const reloaded = page(version, { get_health_status: health(reloadAt(105)) }, first.env.sessionStorage);
+      await reloaded.env.openRules();
+      await reloaded.env.settle();
+      assert.equal(reloaded.env.notifications.length, 1);
+      assert.equal(reloaded.env.notifications[0].type, 'warning');
+      assert.match(reloaded.env.notifications[0].text, /Runtime reload has not been confirmed/);
+      assert.equal(reloaded.calls(/config_snapshot_diff/).length, 0);
+    });
+
+    // An apply that commits nothing of Forkop X (only changes of other
+    // packages were staged) starts no Forkop reload: nothing to report.
+    await check(`${version} apply without Forkop changes`, async () => {
+      const { env, calls } = page(version, { config_snapshot_create: created,
+        get_health_status: health(reloadAt(100)) });
+      const rules = await env.openRules();
+      env.uci.state.saved.network = [['set', 'lan']];
+      await rules.saveApply('0');
+      assert.deepEqual(env.ui.changes.applies, [true], 'LuCI applies the other packages');
+      assert.equal(calls(/^exec config_snapshot_create/).length, 1);
+      env.confirmApply();
+      assert.equal(env.sessionStorage.has(RECORD), false, 'an apply without Forkop changes was kept for a report');
+    });
+
+    // An apply that LuCI never confirmed (no changes, refused, rolled back)
+    // leaves nothing that a later apply from the header could take as its own.
+    await check(`${version} unconfirmed apply forgotten`, async () => {
+      const { env } = page(version, { config_snapshot_create: created, get_health_status: health(reloadAt(100)) });
+      await (await pages.rules(env)).view.saveApply('0');
+      const now = Date.now;
+      Date.now = () => now() + 10 * 60 * 1000;
+      try {
+        env.confirmApply();
+      } finally {
+        Date.now = now;
+      }
+      assert.equal(env.sessionStorage.has(RECORD), false, 'a confirmation long after the click was taken for it');
+    });
+
+    // During a package upgrade the backend may still be the previous release,
+    // which takes only manual and automatic snapshots: its refusal of
+    // before-apply names no reason. The same snapshot is taken as automatic.
+    await check(`${version} previous backend without before-apply`, async () => {
+      const { env, log } = page(version, {
+        config_snapshot_create: (args) => (args[1] === 'before-apply' ? { code: 1, data: { status: 'failed' } } : created),
+        get_health_status: health(reloadAt(100)),
+      });
+      await (await pages.rules(env)).view.saveApply('0');
+      assert.deepEqual(log.filter((entry) => /^exec config_snapshot_create|^uci\.save$|^apply /.test(entry)),
+        ['exec config_snapshot_create before-apply', 'exec config_snapshot_create automatic', 'uci.save', 'apply true']);
+      assert.equal(env.notifications.length, 0);
+    });
+    await check(`${version} a refusal with its reason is not retried`, async () => {
+      const { env, calls } = page(version, { config_snapshot_create:
+        { code: 1, data: { status: 'failed', reason: 'write_failed' } } });
+      await (await pages.rules(env)).view.saveApply('0');
+      assert.deepEqual(calls(/^exec config_snapshot_create/), ['exec config_snapshot_create before-apply']);
+      assert.deepEqual(env.ui.changes.applies, []);
+      assert.match(env.notifications[0].text, /it could not be written/);
     });
 
     // Without the health record from before the apply nothing tells this

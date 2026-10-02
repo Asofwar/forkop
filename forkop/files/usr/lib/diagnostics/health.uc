@@ -7,6 +7,7 @@ const RUNTIME_DIR = getenv("FORKOP_RUNTIME_STATE_DIR") || "/var/run/forkop";
 const EVENT_FILE = RUNTIME_DIR + "/health-events.json";
 const PACKAGE_PENDING = getenv("FORKOP_OPKG_RECOVERY_DIR") || "/etc/forkop/opkg-package-set-recovery";
 const SNAPSHOT_LOCK = getenv("FORKOP_SNAPSHOT_LOCK_DIR") || "/var/run/forkop/config-snapshot.lock";
+const RELOAD_LOCK = getenv("FORKOP_RELOAD_LOCK_DIR") || "/var/run/forkop.reload.lock";
 // Significant events survive reboots in a small journal on flash. Only
 // recorded events land there (starts, reloads, restores, autotune applies,
 // manual snapshot changes), never probes or measurements. When the journal
@@ -174,8 +175,10 @@ function snapshot_operation_active() {
 // restore or an autotune apply (ForkopConfigRestoreDpiGuard); only a restore
 // of a snapshot releases one that such a transaction left. transaction: a
 // snapshot operation is running, whose own guard that may be (UC-019,
-// UC-066).
-function health(ui, guards, package_pending, events) {
+// UC-066). reload_busy: a reload runs, or the list worker that ends in one
+// (reload_running); until it ends, the newest reload event may belong to an
+// earlier change than the one just applied (configform.js).
+function health(ui, guards, package_pending, events, reload_busy) {
     let guard = guards.active === true || guards.runtime === true || guards.restore === true;
     let service = type(ui.service) == "object" ? ui.service : {};
     let forkop = type(service.forkop) == "object" ? service.forkop : {};
@@ -218,8 +221,17 @@ function health(ui, guards, package_pending, events) {
         recovery: { pending: guard || failed, last_event: last, action },
         package_recovery: { pending: package_pending },
         last_reload,
+        reload: { busy: reload_busy === true },
         recent_activity: events
     };
+}
+
+// A reload holds reload.lock (a live owner; a dead one's lock is none), or
+// the list worker runs, whose reloads init.d queues for its own final one
+// (core/list_worker.uc). A queued reload (reload.pending) without either is
+// no reload: the next one drains it.
+function reload_running() {
+    return require("core.runtime_lock").busy(RELOAD_LOCK) || require("core.list_worker").running(LIB_DIR);
 }
 
 let mode = ARGV[0] || "";
@@ -236,7 +248,8 @@ if (mode == "fixture") {
     let input = read_object(ARGV[1]);
     print(sprintf("%J\n", health(input.ui || {}, { active: input.guard === true,
         runtime: input.runtime_guard === true, restore: input.restore_guard === true,
-        transaction: input.transaction === true }, input.package_pending === true, input.events || [])));
+        transaction: input.transaction === true }, input.package_pending === true, input.events || [],
+        input.reload_busy === true)));
     exit(0);
 }
 if (mode != "get")
@@ -255,4 +268,4 @@ let guards = {
 if (guards.restore)
     guards.transaction = snapshot_operation_active();
 let package_pending = fs.stat(PACKAGE_PENDING + "/pending") != null;
-print(sprintf("%J\n", health(ui, guards, package_pending, event_state())));
+print(sprintf("%J\n", health(ui, guards, package_pending, event_state(), reload_running())));

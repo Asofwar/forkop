@@ -52,6 +52,9 @@ export namespace Forkop {
     };
     package_recovery: { pending: boolean };
     last_reload: { kind?: string; status: string; timestamp: number } | null;
+    // busy: a reload runs, or the list update that ends in one; the newest
+    // reload event may then belong to an earlier change (configform.js).
+    reload?: { busy: boolean };
     recent_activity: Array<{ kind: string; status: string; timestamp: number }>;
   }
 

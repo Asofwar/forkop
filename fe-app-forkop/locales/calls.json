@@ -787,7 +787,7 @@
     "call": "and %d more",
     "key": "and %d more",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:293",
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:339",
       "src/forkop/tabs/history/model.ts:366"
     ]
   },
@@ -2107,7 +2107,8 @@
     "call": "Configuration applied successfully",
     "key": "Configuration applied successfully",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:288"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:315",
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:334"
     ]
   },
   {
@@ -2135,21 +2136,21 @@
     "call": "Configuration saved. Forkop X is not running: the changes take effect when it is started.",
     "key": "Configuration saved. Forkop X is not running: the changes take effect when it is started.",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:260"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:301"
     ]
   },
   {
     "call": "Configuration saved. Runtime reload failed; check History and recovery.",
     "key": "Configuration saved. Runtime reload failed; check History and recovery.",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:268"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:309"
     ]
   },
   {
     "call": "Configuration saved. Runtime reload has not been confirmed; check History and recovery.",
     "key": "Configuration saved. Runtime reload has not been confirmed; check History and recovery.",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:264"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:305"
     ]
   },
   {
@@ -6304,7 +6305,7 @@
     "call": "not set",
     "key": "not set",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:283",
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:329",
       "src/forkop/tabs/history/model.ts:310"
     ]
   },
@@ -9036,7 +9037,7 @@
     "call": "The changes are saved: Save & Apply applies them once a snapshot can be taken.",
     "key": "The changes are saved: Save & Apply applies them once a snapshot can be taken.",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:193"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:220"
     ]
   },
   {
@@ -9330,6 +9331,13 @@
     "key": "The list is not downloaded on the router; update the lists or save the rule.",
     "places": [
       "src/forkop/tabs/autotune/model.ts:569"
+    ]
+  },
+  {
+    "call": "The list of changes is unavailable.",
+    "key": "The list of changes is unavailable.",
+    "places": [
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:316"
     ]
   },
   {
@@ -10357,7 +10365,6 @@
     "call": "unknown",
     "key": "unknown",
     "places": [
-      "src/forkop/helpers/singBoxVariant.ts:28",
       "src/forkop/services/systemInfo.service.ts:10",
       "src/forkop/services/systemInfo.service.ts:11",
       "src/forkop/services/systemInfo.service.ts:12",
@@ -10367,6 +10374,7 @@
       "src/forkop/services/systemInfo.service.ts:22",
       "src/forkop/services/systemInfo.service.ts:33",
       "src/forkop/services/systemInfo.service.ts:34",
+      "src/forkop/helpers/singBoxVariant.ts:28",
       "src/forkop/tabs/diagnostic/initController.ts:735",
       "src/forkop/tabs/updates/initController.ts:333"
     ]

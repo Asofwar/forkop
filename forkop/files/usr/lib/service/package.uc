@@ -172,12 +172,16 @@ function restore_dnsmasq_if_needed() {
         command_success_from_args([ "ucode", DNS_APPLY_UC, "failsafe-restore" ]);
 }
 
-function remove_managed_sing_box() {
+// keep_running: the sing-box still serves an interception that a removal
+// could not take down. Its files go with the package and its autostart
+// with them; the process serves on until a reboot clears both.
+function remove_managed_sing_box(keep_running) {
     let data = fs.readfile(SING_BOX_INIT);
     if (data == null || index(data, SING_BOX_MANAGED_MARKER) < 0)
         return;
 
-    command_success_from_args([ SING_BOX_INIT, "stop" ]);
+    if (!keep_running)
+        command_success_from_args([ SING_BOX_INIT, "stop" ]);
     command_success_from_args([ SING_BOX_INIT, "disable" ]);
     unlink_if_exists(SING_BOX_INIT);
     unlink_if_exists(SING_BOX_BIN);
@@ -259,6 +263,21 @@ function forkop_interception_present() {
     return false;
 }
 
+// The package managers discard prerm's output (build.sh, forkop/Makefile):
+// what goes wrong here must reach the system log.
+function log_warning(message) {
+    warn(message + "\n");
+    command_success_from_args([ "logger", "-t", "forkop", "[warn] " + message ]);
+}
+
+// Only apk passes a failed prerm on, from the incoming package's
+// pre-upgrade (in every release), and keeps the installed Forkop. opkg's
+// prerm and every pre-deinstall go on with the change whatever prerm
+// returns.
+function package_change_stops_on_failure(action) {
+    return as_string(action) == "upgrade" && command_success_from_args([ "sh", "-c", "command -v apk" ]);
+}
+
 function prerm_cleanup(action, version) {
     if (env("IPKG_INSTROOT", "") != "")
         return true;
@@ -267,32 +286,52 @@ function prerm_cleanup(action, version) {
     if (!PACKAGE_TEST_MODE) {
         // Forkop's own stop for the package change, not the user's
         // (service/initd.uc stop_request_source).
+        let removal = as_string(action) == "remove";
         let stopped = command_success_from_args([ "env", "FORKOP_STOP_SOURCE=package", INIT_PATH, "stop" ]);
+        // A removal leaves nobody to own what a failed or refused stop kept
+        // (UC-028): the explicit stop removes Forkop's own interception
+        // without a proof of ownership and stops only the sing-box Forkop
+        // owns (UC-213).
+        if (!stopped && removal && forkop_interception_present()) {
+            log_warning("Forkop's stop for its removal did not take it down; removing its interception with an explicit stop");
+            stopped = command_success_from_args([ "env", "-u", "FORKOP_STOP_SOURCE", INIT_PATH, "stop" ]);
+        }
         // No start follows a removal: the explicit start ends with it, and
         // a reinstall that does not start Forkop shows it not started, not
         // as a start that failed (service/initd.uc EXPLICIT_START_FILE;
         // D-15(a)).
-        if (as_string(action) == "remove")
+        if (removal)
             command_success_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/service/initd.uc", "clear-explicit-start" ]);
+        // A stop that failed or was refused (another sing-box makes
+        // ownership ambiguous) may have left Forkop's nft table and ip rule
+        // in place. An upgrade then keeps their listener, the managed
+        // sing-box, its DNS and the routing table name: without them the
+        // interception would black-hole traffic with nobody left to own it
+        // (UC-197).
+        let intercepting = !stopped && forkop_interception_present();
         // An upgrade keeps the kill-switch: protected traffic must stay
         // blocked while the old runtime is down. A removal or a release
         // without the kill-switch lifts it, since nothing would be left to
-        // manage the persistent policy.
-        if (killswitch_outlives_package(action, version) && path_exists(KILLSWITCH_UC))
+        // manage the persistent policy; unless the change does not happen:
+        // apk keeps the installed Forkop when this prerm fails.
+        if (killswitch_outlives_package(action, version) && path_exists(KILLSWITCH_UC) &&
+            !(intercepting && package_change_stops_on_failure(action)))
             command_success_from_args([ "ucode", "-L", LIB_DIR, KILLSWITCH_UC, "release",
-                as_string(action) == "remove" ? "package removal" :
+                removal ? "package removal" :
                 "change to a release without the kill-switch (" + (as_string(version) || "unknown version") + ")" ]);
-        // A stop that failed or was refused (another sing-box makes
-        // ownership ambiguous) may have left Forkop's nft table and ip rule
-        // in place. Their listener, the managed sing-box, its DNS and the
-        // routing table name then stay too: without them the interception
-        // would black-hole traffic with nobody left to own it (UC-197).
-        if (!stopped && forkop_interception_present()) {
-            warn("Forkop did not stop and still intercepts traffic; its sing-box, DNS and routing were left in place.\n");
+        if (intercepting && !removal) {
+            log_warning("Forkop did not stop and still intercepts traffic; its sing-box, DNS and routing were left in place");
             return false;
         }
+        // The DNS configuration outlives the package. Whatever a removal
+        // could not take down is gone after a reboot.
         restore_dnsmasq_if_needed();
-        remove_managed_sing_box();
+        remove_managed_sing_box(intercepting);
+        if (intercepting) {
+            remove_rt_tables_entry();
+            log_warning("Forkop could not be stopped for its removal and still intercepts traffic until a reboot; its DNS was restored");
+            return false;
+        }
     }
     return remove_rt_tables_entry();
 }

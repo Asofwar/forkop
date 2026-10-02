@@ -7,6 +7,7 @@ import {
   historyItems,
   recoveryRows,
   restoreConfirmMessage,
+  restoreMigrationNote,
   restorePreview,
   restoreResultToast,
   snapshotBusyText,
@@ -710,5 +711,68 @@ describe('snapshot refusals', () => {
       restoreResultToast({ status: 'failed', reason: 'concurrent_change' })
         .text,
     ).not.toContain('DPI guard');
+  });
+});
+
+// D-16, UC-065: a snapshot of an older release is migrated on a copy before
+// it is restored. The confirmation says so beforehand; a snapshot that
+// cannot be migrated is refused with nothing changed; a finished restore
+// names the migration.
+describe('restore migration', () => {
+  const migration = { from: '1.0.23', to: '1.0.33' };
+
+  it('warns before the restore, from which version to which', () => {
+    expect(restoreMigrationNote(null)).toBeNull();
+    const note = restoreMigrationNote(migration) ?? '';
+    expect(note).toContain('saved by Forkop X 1.0.23');
+    expect(note).toContain('migrated to the current version 1.0.33');
+    expect(note).toContain('The snapshot itself is not changed');
+    // A snapshot whose release was not recorded is still named older.
+    const unknown =
+      restoreMigrationNote({ from: 'unknown', to: '1.0.33' }) ?? '';
+    expect(unknown).toContain('an older version of Forkop X');
+    expect(unknown).toContain('1.0.33');
+    expect(unknown).not.toContain('unknown');
+  });
+
+  it('says that a snapshot that cannot be migrated was not restored', () => {
+    const refused = restoreResultToast({
+      status: 'failed',
+      reason: 'snapshot_migration_failed',
+      detail: 'incomplete',
+      migration,
+    });
+    expect(refused.type).toBe('warning');
+    expect(refused.text).toContain('Restore was not started');
+    expect(refused.text).toContain('could not be migrated');
+    expect(refused.text).toContain('Nothing was changed');
+  });
+
+  it('names the migration of a finished restore', () => {
+    const done = restoreResultToast({
+      status: 'success',
+      migration: { ...migration, migrations: ['vpn_guard_kill_switch_v1'] },
+    });
+    expect(done.type).toBe('success');
+    expect(done.text).toContain('Configuration restored and reloaded');
+    expect(done.text).toContain('migrated from Forkop X 1.0.23 to 1.0.33');
+    const kept = restoreResultToast({
+      status: 'restored_not_started',
+      reason: 'service_stopped',
+      migration,
+    });
+    expect(kept.type).toBe('warning');
+    expect(kept.text).toContain('Forkop X is stopped');
+    expect(kept.text).toContain('migrated from Forkop X 1.0.23 to 1.0.33');
+    expect(
+      restoreResultToast({
+        status: 'success',
+        migration: { from: 'unknown', to: '1.0.33' },
+      }).text,
+    ).toContain('migrated to Forkop X 1.0.33');
+    // Without a migration the texts stay as they were.
+    expect(restoreResultToast({ status: 'success' }).text).toBe(
+      'Configuration restored and reloaded',
+    );
   });
 });

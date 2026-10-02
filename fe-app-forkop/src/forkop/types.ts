@@ -81,6 +81,16 @@ export namespace Forkop {
     interface: RouteTraceStage;
     runtime: RouteTraceStage;
   }
+  // A restore of a snapshot saved by an older release migrates its
+  // configuration first (config/snapshots.uc, D-16): from the release that
+  // saved it ("unknown" when it was not recorded) to the running one.
+  export interface SnapshotMigration {
+    from: string;
+    to: string;
+    // A finished restore: the migrations that ran.
+    migrations?: string[];
+  }
+
   export interface SnapshotMetadata {
     id: string;
     created_at: number;
@@ -88,6 +98,7 @@ export namespace Forkop {
     reason: string;
     forkop_version: string;
     is_lkg?: boolean;
+    migration?: SnapshotMigration;
   }
 
   export interface HistoryEvent {
@@ -438,6 +449,10 @@ export namespace Forkop {
     // how many there are (more after an upgrade from before the limit).
     limit?: number;
     manual?: number;
+    // A restore that migrated the snapshot, or refused one it could not
+    // migrate (snapshot_migration_failed, with its detail).
+    migration?: SnapshotMigration;
+    detail?: string;
   }
   export interface ConnectivityResult {
     host: string;

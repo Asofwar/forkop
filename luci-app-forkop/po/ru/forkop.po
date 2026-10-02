@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-02 10:59+0000\n"
-"PO-Revision-Date: 2026-10-02 10:59+0000\n"
+"POT-Creation-Date: 2026-10-02 11:50+0000\n"
+"PO-Revision-Date: 2026-10-02 11:50+0000\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -3065,6 +3065,9 @@ msgstr "Восстановление не начато: снимок отсут�
 msgid "Restore was not started: the snapshot storage could not be locked. Nothing was changed."
 msgstr "Восстановление не начато: хранилище снимков не удалось заблокировать. Ничего не изменено."
 
+msgid "Restore was not started: the snapshot was saved by an older version of Forkop X, and its configuration could not be migrated to this version. Nothing was changed."
+msgstr "Восстановление не начато: снимок сохранён более старой версией Forkop X, и его конфигурацию не удалось перенести на эту версию. Ничего не изменено."
+
 msgid "Restore…"
 msgstr "Восстановить…"
 
@@ -3704,6 +3707,12 @@ msgstr "Уверенность рекомендации ниже минимум�
 msgid "The configuration before the change is restored."
 msgstr "Конфигурация до изменения восстановлена."
 
+msgid "The configuration of the snapshot was migrated from Forkop X %s to %s."
+msgstr "Конфигурация снимка перенесена с Forkop X %s на %s."
+
+msgid "The configuration of the snapshot was migrated to Forkop X %s."
+msgstr "Конфигурация снимка перенесена на Forkop X %s."
+
 msgid "The configuration was changed after the apply, so nothing was rolled back. Restore a snapshot in History and recovery if needed."
 msgstr "После применения конфигурация менялась, поэтому ничего не откачено. При необходимости восстановите снимок в разделе «История и восстановление»."
 
@@ -4102,6 +4111,12 @@ msgstr "Это правило хранит настройки в устарев�
 
 msgid "This section has no IP lists, so it is protected through FakeIP and DNS only."
 msgstr "У раздела нет IP-списков, поэтому он защищён только через FakeIP и DNS."
+
+msgid "This snapshot was saved by an older version of Forkop X. Before the restore, its configuration is migrated to the current version %s, as an upgrade migrates it: settings retired since then are updated. The snapshot itself is not changed; the changes listed above compare the snapshot as it was saved."
+msgstr "Этот снимок сохранён более старой версией Forkop X. Перед восстановлением его конфигурация переносится на текущую версию %s так же, как при обновлении: устаревшие с тех пор настройки обновляются. Сам снимок не меняется; изменения в списке выше сравнивают снимок в том виде, в каком он был сохранён."
+
+msgid "This snapshot was saved by Forkop X %s. Before the restore, its configuration is migrated to the current version %s, as an upgrade migrates it: settings retired since then are updated. The snapshot itself is not changed; the changes listed above compare the snapshot as it was saved."
+msgstr "Этот снимок сохранён Forkop X %s. Перед восстановлением его конфигурация переносится на текущую версию %s так же, как при обновлении: устаревшие с тех пор настройки обновляются. Сам снимок не меняется; изменения в списке выше сравнивают снимок в том виде, в каком он был сохранён."
 
 msgid "This strategy is already active; nothing was changed."
 msgstr "Эта стратегия уже активна; ничего не изменено."

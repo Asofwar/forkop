@@ -22,6 +22,7 @@ import {
   historyItems,
   recoveryRows,
   restoreConfirmMessage,
+  restoreMigrationNote,
   restorePreview,
   restoreResultToast,
   snapshotBusyText,
@@ -268,6 +269,10 @@ async function restoreSnapshot(id: string, label: string) {
     services.forkopStoppedByUser || services.forkopNotStarted,
   );
 
+  // D-16: a snapshot of an older release is migrated before the restore.
+  const migrationNote = restoreMigrationNote(
+    snapshots?.find((snapshot) => snapshot.id === id)?.migration,
+  );
   const confirmed = await confirmAction({
     title: _('Restore configuration snapshot?'),
     message: `${label}. ${restoreConfirmMessage(staysStopped)}`,
@@ -276,6 +281,7 @@ async function restoreSnapshot(id: string, label: string) {
         ? restorePreview(diff, MAX_RESTORE_PREVIEW)
         : [_('No saved changes since this snapshot')]
       : [_('Could not compare configurations')],
+    notes: migrationNote ? [migrationNote] : [],
     confirmLabel: _('Restore'),
     danger: true,
   });

@@ -470,6 +470,12 @@ function restoreRefusalText(reason: string | undefined): string | null {
       return _(
         'Restore was not started: the snapshot storage could not be locked. Nothing was changed.',
       );
+    // D-16: a snapshot of an older release whose configuration cannot be
+    // migrated to this one is never restored as it was saved.
+    case 'snapshot_migration_failed':
+      return _(
+        'Restore was not started: the snapshot was saved by an older version of Forkop X, and its configuration could not be migrated to this version. Nothing was changed.',
+      );
     default:
       return null;
   }
@@ -507,6 +513,44 @@ export function restoreConfirmMessage(staysStopped: boolean): string {
       );
 }
 
+// D-16: before a snapshot of an older release is restored, its
+// configuration is migrated to the running release, as an upgrade migrates
+// it; the snapshot file stays as it was. The changes listed in the
+// confirmation compare the snapshot as it was saved. null: no migration.
+export function restoreMigrationNote(
+  migration: Forkop.SnapshotMigration | null | undefined,
+): string | null {
+  if (!migration) return null;
+  return migration.from && migration.from !== 'unknown'
+    ? _(
+        'This snapshot was saved by Forkop X %s. Before the restore, its configuration is migrated to the current version %s, as an upgrade migrates it: settings retired since then are updated. The snapshot itself is not changed; the changes listed above compare the snapshot as it was saved.',
+      )
+        .replace('%s', migration.from)
+        .replace('%s', migration.to)
+    : _(
+        'This snapshot was saved by an older version of Forkop X. Before the restore, its configuration is migrated to the current version %s, as an upgrade migrates it: settings retired since then are updated. The snapshot itself is not changed; the changes listed above compare the snapshot as it was saved.',
+      ).replace('%s', migration.to);
+}
+
+// A restore that migrated the snapshot says so after its own text.
+function withMigration(
+  text: string,
+  migration: Forkop.SnapshotMigration | undefined,
+): string {
+  if (!migration) return text;
+  const migrated =
+    migration.from && migration.from !== 'unknown'
+      ? _(
+          'The configuration of the snapshot was migrated from Forkop X %s to %s.',
+        )
+          .replace('%s', migration.from)
+          .replace('%s', migration.to)
+      : _(
+          'The configuration of the snapshot was migrated to Forkop X %s.',
+        ).replace('%s', migration.to);
+  return `${text}${text.endsWith('.') ? '' : '.'} ${migrated}`;
+}
+
 // What a finished restore means. A reload that the service only queued
 // behind another operation never ran, so it is never reported as restored.
 export function restoreResultToast(
@@ -521,15 +565,21 @@ export function restoreResultToast(
       };
     case 'success':
       return {
-        text: _('Configuration restored and reloaded'),
+        text: withMigration(
+          _('Configuration restored and reloaded'),
+          result.migration,
+        ),
         type: 'success',
-        duration: 6000,
+        duration: result.migration ? 10000 : 6000,
       };
     // Forkop X was stopped by the user: only a start brings it back.
     case 'restored_not_started':
       return {
-        text: _(
-          'Configuration restored, but Forkop X is stopped: it was not started or checked. The restored configuration takes effect when Forkop X is started.',
+        text: withMigration(
+          _(
+            'Configuration restored, but Forkop X is stopped: it was not started or checked. The restored configuration takes effect when Forkop X is started.',
+          ),
+          result.migration,
         ),
         type: 'warning',
         duration: 10000,

@@ -117,9 +117,10 @@ function keepUnavailableSectionChoice(option, value) {
 }
 
 // The section as this save leaves it. uci.state.values is the config as
-// loaded; uci.get adds the edits staged on this page (a rule removed from
-// the grid), and the Enable checkbox of a grid row is parsed by the same
-// save only after the Settings fields were validated.
+// loaded; uci.get adds the edits staged since then. The rules have a page of
+// their own, which refuses to remove or disable a rule selected here
+// (UC-199); a rules grid on this map would have its Enable checkbox parsed
+// by the same save only after these fields were validated.
 function currentSection(option, name) {
   const type = uci.get(UCI_PACKAGE, name, ".type");
   if (type == null) {

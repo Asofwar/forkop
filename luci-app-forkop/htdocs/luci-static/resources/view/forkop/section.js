@@ -8350,6 +8350,19 @@ function createSectionContent(section) {
   o.rmempty = false;
   o.editable = true;
   o.width = "6rem";
+  // The grid row and the rule modal: a rule that Settings use stays enabled
+  // (UC-199). LuCI validates a checkbox with the value it sends when
+  // checked, so the state comes from formvalue(). A rule that was already
+  // disabled is fixed in Settings and does not hold up this save.
+  o.validate = function (section_id) {
+    if (
+      this.formvalue(section_id) !== this.disabled ||
+      !ruleSectionFlag({ enabled: this.cfgvalue(section_id) }, "enabled", true)
+    ) {
+      return true;
+    }
+    return settingsRuleUseRefusal(section_id) || true;
+  };
 
   o = section.taboption(
     "basic",
@@ -9809,6 +9822,47 @@ function restoreStagedUciState(snapshot) {
   });
 }
 
+// Settings, a page of their own since the rules moved to the Rules page,
+// route DNS and proxied downloads through a rule. Without that rule, or with
+// it disabled, the backend refuses the configuration at the next reload and
+// start (config/validator.uc validate_dns_settings, validate_runtime_config),
+// so the rule is not removed or disabled here until Settings use another
+// section (UC-008, UC-199). As in validator.uc, a setting that is off uses
+// no section, and components are downloaded through the lists section when
+// none is selected for them.
+function settingsRuleUseRefusal(section_id) {
+  const setting = (key) =>
+    backendOptionText(uci.get(UCI_PACKAGE, "settings", key));
+  const listsSection = setting("download_lists_via_proxy_section");
+  const uses = [];
+
+  if (
+    backendFlag("settings", "dns_detour_enabled") &&
+    setting("dns_detour_section") === section_id
+  ) {
+    uses.push(_("DNS through proxy"));
+  }
+  if (
+    backendFlag("settings", "download_lists_via_proxy") &&
+    listsSection === section_id
+  ) {
+    uses.push(_("Download lists through a section"));
+  }
+  if (
+    backendFlag("settings", "download_components_via_proxy") &&
+    (setting("download_components_via_proxy_section") || listsSection) ===
+      section_id
+  ) {
+    uses.push(_("Download components through a section"));
+  }
+
+  return uses.length
+    ? _(
+        "This rule is selected in Settings for: %s. Choose another section there first.",
+      ).format(uses.join(", "))
+    : null;
+}
+
 function configureSectionSection(sectionRef, options = {}) {
   setActionProvidersAvailabilityLoader(options.loadActionProvidersAvailability);
 
@@ -9836,12 +9890,23 @@ function configureSectionSection(sectionRef, options = {}) {
 
   const handleRemove = sectionRef.handleRemove;
   sectionRef.handleRemove = function (section_id) {
+    // Nothing is staged for a rule that Settings use.
+    const inUse = settingsRuleUseRefusal(section_id);
+    if (inUse) {
+      ui.addNotification(
+        null,
+        E("p", {}, [_("The rule was not removed. %s").format(inUse)]),
+        "error",
+      );
+      return Promise.resolve();
+    }
+
     // LuCI saves the whole page silently after a removal. When another field
-    // refuses that save (e.g. a Settings select on this rule or on an
-    // unavailable section), the row stays, but the removal and the cleanup
-    // of its child items would stay staged: the next rule modal Save sends
-    // the whole package through uci.save(), past that check. Put the staged
-    // state back and say why instead of doing nothing visible.
+    // refuses that save (e.g. the Enable checkbox of a rule that Settings
+    // use, cleared on this page), the row stays, but the removal and the
+    // cleanup of its child items would stay staged: the next rule modal Save
+    // sends the whole package through uci.save(), past that check. Put the
+    // staged state back and say why instead of doing nothing visible.
     const staged = captureStagedUciState();
 
     cleanupRemovedChildItems(section_id, "subscription_url", []);

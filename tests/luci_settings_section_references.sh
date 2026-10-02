@@ -9,9 +9,12 @@ set -euo pipefail
 # the Settings page gets from shell.js follows availability updates after
 # Components installs or removes a provider (UC-152). Every selected section
 # is checked as the save leaves it: provider changes on the same page, the
-# Enable checkbox of its rules grid row, its removal. A rule removal that
-# such a refusal blocks is undone and reported instead of failing silently
-# or staying staged for the next save.
+# rules as the Rules page saved them. The pages are the shipped
+# page/settings.js and page/rules.js: on the Rules page, deleting or
+# disabling (row or rule modal) the rule that Settings use is refused and
+# explained, and a rule removal that a refused page save blocks is undone
+# and reported instead of failing silently or staying staged for the next
+# save (UC-199).
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 node - "$ROOT_DIR/tests/helpers/luci_form_harness.js" <<'NODE'
@@ -25,7 +28,8 @@ function section(name, values) {
 const baseConfig = {
   vpn: section('vpn', { action: 'connection', selector_proxy_links: ['socks5://10.0.0.1:1080'] }),
   off: section('off', { enabled: '0', action: 'connection', selector_proxy_links: ['socks5://10.0.0.2:1080'] }),
-  dpi: section('dpi', { action: 'zapret', community_lists: ['youtube'] }),
+  // Stored as a rule modal Save leaves it.
+  dpi: section('dpi', { action: 'zapret', mixed_proxy_enabled: '0', community_lists: ['youtube'] }),
 };
 function settingsConfig(values) {
   return Object.assign({}, baseConfig, {
@@ -82,35 +86,24 @@ const references = [
       assert.equal(env.uci.data.settings.dns_detour_section, 'dpi');
     });
 
-    // The selected section is checked as this save leaves it, whether or not
-    // it was offered when the form loaded. LuCI's uci.state.values is the
-    // config as loaded (edits staged on the page stay in state.changes until
-    // a successful save reloads it), and the Enable checkbox of a rules grid
-    // row is parsed in the same save, after LuCI validated the Settings
-    // fields (Map.save -> checkDepends -> triggerValidation, then parse).
+    // The selected section is checked as this save leaves it: the Settings
+    // page reads the rules as the Rules page saved them (uci.get with staged
+    // edits), not as LuCI loaded them (uci.state.values).
     const loadedValues = (env) => {
       env.uci.state.values = { forkop: JSON.parse(JSON.stringify(env.uci.data)) };
     };
-    for (const [label, value, enable, accepted] of [
-      ['enabling the disabled section', 'off', '1', true],
-      ['disabling the selected section', 'vpn', '0', false],
-    ]) await check(`${version} rules grid Enable: ${label}`, async () => {
+    await check(`${version} section enabled on the Rules page`, async () => {
       const env = createEnvironment({ version, config: settingsConfig({ dns_detour_enabled: '1',
-        dns_detour_section: value }) });
+        dns_detour_section: 'off' }) });
       loadedValues(env);
+      const rules = await env.openRules();
+      rules.setEnabled('off', '1');
+      await rules.save();
+      assert.equal(env.uci.data.off.enabled, '1');
       const settings = await env.openSettings(installed);
-      const select = settings.option('dns_detour_section');
-      const [enabled, row] = settings.map.lookupOption('enabled', value);
-      enabled.getUIElement(row).setValue(enable);
-      assert.equal(select.isValid('settings'), accepted, 'the Enable checkbox of the row was not honoured');
-      if (accepted) {
-        await settings.save();
-        assert.equal(env.uci.data[value].enabled, '1');
-        await settings.save();
-      } else {
-        await assert.rejects(settings.save(), /The selected section is disabled/);
-      }
-      assert.equal(env.uci.data.settings.dns_detour_section, value);
+      assert.equal(settings.option('dns_detour_section').isValid('settings'), true);
+      await settings.save();
+      assert.equal(env.uci.data.settings.dns_detour_section, 'off');
     });
 
     // UC-152 both ways: Components removes the provider on the same page.
@@ -132,58 +125,154 @@ const references = [
       assert.equal(env.uci.data.settings.dns_detour_section, 'vpn');
     });
 
-    // Deleting the selected rule: the save that follows the removal is
-    // refused and reported instead of leaving Settings pointing to a rule
-    // that the backend then rejects as missing. The removal and the cleanup
-    // of the rule's child items are undone: the next save (a rule modal Save
-    // sends the whole package through uci.save) must not apply them.
-    await check(`${version} removing the selected rule is refused and undone`, async () => {
-      const config = settingsConfig({ dns_detour_enabled: '1', dns_detour_section: 'vpn' });
+    // UC-199: the Rules page is a page of its own. Deleting or disabling the
+    // rule that Settings use for DNS or for downloads is refused there and
+    // explained, instead of leaving Settings pointing to a rule that the
+    // backend then rejects as missing or disabled. Nothing stays staged: the
+    // next save (a rule modal Save sends the whole package through uci.save)
+    // must not apply the refused change, nor the cleanup of the rule's child
+    // items.
+    const usedFor = {
+      dns: [{ dns_detour_enabled: '1', dns_detour_section: 'vpn' }, 'DNS through proxy'],
+      lists: [{ download_lists_via_proxy: '1', download_lists_via_proxy_section: 'vpn' },
+        'Download lists through a section'],
+      components: [{ download_components_via_proxy: '1', download_components_via_proxy_section: 'vpn' },
+        'Download components through a section'],
+      // validator.uc downloads components through the lists section when
+      // none is selected for them.
+      'components through the lists section': [{ download_components_via_proxy: '1',
+        download_lists_via_proxy_section: 'vpn' }, 'Download components through a section'],
+    };
+    const referencedConfig = (settings) => {
+      const config = settingsConfig(settings);
       config.vpn = Object.assign({}, config.vpn, { subscription_url: ['vpnsub'] });
       config.vpnsub = { '.name': 'vpnsub', '.type': 'subscription_url', '.anonymous': false, section: 'vpn',
         url: 'https://example.com/sub', subscription_update_enabled: '1', subscription_update_interval: '4h' };
-      const env = createEnvironment({ version, config });
-      loadedValues(env);
+      return config;
+    };
+    const capture = (env) => {
       const notifications = [];
       env.ui.addNotification = (_title, node, type) => notifications.push({ type, text: node.textContent });
-      const settings = await env.openSettings(installed);
-      await settings.removeRule('vpn');
-      assert.equal(notifications.length, 1, 'the refused save after the removal must be reported');
-      assert.equal(notifications[0].type, 'error');
-      assert.match(notifications[0].text, /The rule was not removed/);
-      assert.match(notifications[0].text, /The selected section no longer exists/);
-      assert.deepEqual(env.uci.data, config, 'a refused removal stayed staged');
+      return notifications;
+    };
+    const inSettings = (title) => new RegExp(`This rule is selected in Settings for: ${title}\\. ` +
+      'Choose another section there first\\.');
+    // The next save of the page: a rule modal Save sends every staged edit.
+    const nextSave = async (env, config) => {
+      await (await env.openRule('dpi')).saveButton();
+      assert.deepEqual(env.uci.data, config, 'the next save applied a refused change');
+    };
+    for (const [use, [settings, title]] of Object.entries(usedFor)) {
+      await check(`${version} Rules page: removing the rule used for ${use}`, async () => {
+        const config = referencedConfig(settings);
+        const env = createEnvironment({ version, config });
+        loadedValues(env);
+        const notifications = capture(env);
+        await (await env.openRules()).removeRule('vpn');
+        assert.equal(notifications.length, 1, 'the refused removal must be reported');
+        assert.equal(notifications[0].type, 'error');
+        assert.match(notifications[0].text, /^The rule was not removed\. /);
+        assert.match(notifications[0].text, inSettings(title));
+        assert.deepEqual(env.uci.data, config, 'a refused removal stayed staged');
+        await nextSave(env, config);
+      });
 
-      const modal = await env.openRule('dpi');
-      await modal.saveButton();
-      assert.deepEqual(env.uci.data.vpn, config.vpn, 'the next save applied the refused removal');
-      assert.deepEqual(env.uci.data.vpnsub, config.vpnsub, 'the next save removed the child items');
-      assert.equal(env.uci.data.settings.dns_detour_section, 'vpn');
+      await check(`${version} Rules page: disabling the rule used for ${use}`, async () => {
+        const config = referencedConfig(settings);
+        const env = createEnvironment({ version, config });
+        loadedValues(env);
+        const rules = await env.openRules();
+        rules.setEnabled('vpn', '0');
+        await assert.rejects(rules.save(), inSettings(title));
+        assert.deepEqual(env.uci.data, config, 'a refused disable stayed staged');
+        await nextSave(env, config);
+      });
+
+      await check(`${version} rule modal: disabling the rule used for ${use}`, async () => {
+        const config = referencedConfig(settings);
+        const env = createEnvironment({ version, config });
+        loadedValues(env);
+        const modal = await env.openRule('vpn');
+        modal.option('enabled').getUIElement('vpn').setValue('0');
+        await assert.rejects(modal.save(), inSettings(title));
+        assert.deepEqual(env.uci.data, config, 'a refused modal save changed UCI');
+      });
+    }
+
+    // Every setting that uses the rule is named.
+    await check(`${version} Rules page: a rule used for DNS and downloads`, async () => {
+      const config = referencedConfig(Object.assign({}, usedFor.dns[0], usedFor.lists[0]));
+      const env = createEnvironment({ version, config });
+      const notifications = capture(env);
+      await (await env.openRules()).removeRule('vpn');
+      assert.match(notifications[0].text,
+        inSettings('DNS through proxy, Download lists through a section'));
+      assert.deepEqual(env.uci.data, config);
     });
 
-    // Deleting a rule saves the whole Settings page silently in LuCI. When a
-    // kept section refuses that save, the row stays, the removal is undone
-    // and the user is told why.
-    await check(`${version} rule removal refused by a kept section`, async () => {
-      const config = settingsConfig({ dns_detour_enabled: '1', dns_detour_section: 'gone' });
+    // Only a setting that is on uses its section; a rule left selected in a
+    // setting that is off is removed and disabled as usual.
+    await check(`${version} Rules page: a rule left selected in settings that are off`, async () => {
+      const settings = { dns_detour_enabled: '0', dns_detour_section: 'vpn', download_lists_via_proxy: '0',
+        download_lists_via_proxy_section: 'vpn', download_components_via_proxy: '0',
+        download_components_via_proxy_section: 'vpn' };
+      const disabled = createEnvironment({ version, config: settingsConfig(settings) });
+      const rules = await disabled.openRules();
+      rules.setEnabled('vpn', '0');
+      await rules.save();
+      assert.equal(disabled.uci.data.vpn.enabled, '0');
+
+      const removed = createEnvironment({ version, config: settingsConfig(settings) });
+      const notifications = capture(removed);
+      await (await removed.openRules()).removeRule('vpn');
+      assert.equal(removed.uci.data.vpn, undefined, 'the rule was not removed');
+      assert.deepEqual(notifications, []);
+    });
+
+    // A Settings section that is already unavailable is fixed in Settings: it
+    // does not hold up other changes on the Rules page, and a rule that was
+    // already disabled stays as it is.
+    await check(`${version} Rules page: Settings already on an unavailable section`, async () => {
+      for (const section of ['off', 'gone']) {
+        const env = createEnvironment({ version, config: settingsConfig({ dns_detour_enabled: '1',
+          dns_detour_section: section }) });
+        const notifications = capture(env);
+        const rules = await env.openRules();
+        await rules.save();
+        assert.equal(env.uci.data.off.enabled, '0');
+        await rules.removeRule('dpi');
+        assert.equal(env.uci.data.dpi, undefined, 'an unrelated removal was refused');
+        assert.deepEqual(notifications, []);
+      }
+    });
+
+    // Deleting a rule saves the whole page silently in LuCI. When another
+    // field refuses that save, the row stays, the removal and the cleanup of
+    // its child items are undone, and the user is told why.
+    await check(`${version} rule removal refused by the page save`, async () => {
+      const config = referencedConfig(usedFor.dns[0]);
+      config.off = Object.assign({}, config.off, { subscription_url: ['offsub'] });
+      config.offsub = Object.assign({}, config.vpnsub, { '.name': 'offsub', section: 'off' });
       const env = createEnvironment({ version, config });
-      const notifications = [];
-      env.ui.addNotification = (_title, node, type) => notifications.push({ type, text: node.textContent });
-      const settings = await env.openSettings(installed);
-      await settings.removeRule('off');
+      loadedValues(env);
+      const notifications = capture(env);
+      const rules = await env.openRules();
+      rules.setEnabled('vpn', '0');
+      await rules.removeRule('off');
       assert.equal(notifications.length, 1, 'a refused removal must be reported');
       assert.equal(notifications[0].type, 'error');
-      assert.match(notifications[0].text, /The rule was not removed/);
-      assert.match(notifications[0].text, /The selected section no longer exists/);
+      assert.match(notifications[0].text, /The rule was not removed because the page could not be saved/);
+      assert.match(notifications[0].text, inSettings('DNS through proxy'));
       assert.deepEqual(env.uci.data, config, 'a refused removal stayed staged');
+      await nextSave(env, config);
 
       // Control: a removal that saves reports nothing.
       const ok = createEnvironment({ version, config: settingsConfig({ dns_detour_enabled: '1',
         dns_detour_section: 'vpn' }) });
-      ok.ui.addNotification = () => notifications.push('unexpected');
-      await (await ok.openSettings(installed)).removeRule('off');
+      const okNotifications = capture(ok);
+      await (await ok.openRules()).removeRule('off');
       assert.equal(ok.uci.data.off, undefined);
-      assert.equal(notifications.length, 1, 'a saved removal must not report an error');
+      assert.deepEqual(okNotifications, [], 'a saved removal must not report an error');
     });
 
     // UC-152: shell.uiCapabilities (what page/settings.js passes to the

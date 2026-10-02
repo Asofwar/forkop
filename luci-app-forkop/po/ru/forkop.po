@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-02 04:05+0000\n"
-"PO-Revision-Date: 2026-10-02 04:05+0000\n"
+"POT-Creation-Date: 2026-10-02 08:09+0000\n"
+"PO-Revision-Date: 2026-10-02 08:09+0000\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -3869,6 +3869,9 @@ msgstr "Правило, по которому она идёт, нельзя оп
 msgid "The rule was not removed because the page could not be saved: %s"
 msgstr "Правило не удалено, потому что страницу не удалось сохранить: %s"
 
+msgid "The rule was not removed. %s"
+msgstr "Правило не удалено. %s"
+
 msgid "The rule window was closed before the save finished. Nothing was saved."
 msgstr "Окно правила закрыто до завершения сохранения. Ничего не сохранено."
 
@@ -4033,6 +4036,9 @@ msgstr "У этого правила есть скрытая настройка 
 
 msgid "this rule is not a Connection rule"
 msgstr "у этого правила действие не «Подключение»"
+
+msgid "This rule is selected in Settings for: %s. Choose another section there first."
+msgstr "Это правило выбрано в настройках для: %s. Сначала выберите там другую секцию."
 
 msgid "This rule keeps a switched-off cascade setting from an earlier version (transit rule “%s”). It has no effect."
 msgstr "У этого правила сохранилась выключенная настройка каскада из прежней версии (транзитное правило «%s»). Она ни на что не влияет."

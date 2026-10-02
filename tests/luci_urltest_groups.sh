@@ -28,7 +28,6 @@ function override(name, ruleName, tag) {
 }
 const settings = { '.name': 'settings', '.type': 'settings', '.anonymous': false,
   yacd_secret_key: 'secret-0123456789' };
-const installed = { loaded: true, zapretInstalled: true, zapret2Installed: true, byedpiInstalled: true };
 
 const failures = [];
 async function check(label, fn) {
@@ -90,7 +89,7 @@ async function check(label, fn) {
         cfg0c0003: override('cfg0c0003', 'other', 'Flint Auto'),
       };
       const env = createEnvironment({ version, config });
-      await (await env.openSettings(installed)).removeRule('main');
+      await (await env.openRules()).removeRule('main');
       assert.equal(env.uci.data.main, undefined, 'the rule was not removed');
       assert.equal(env.uci.data.cfg0a0001, undefined, 'an override of the removed rule stayed');
       assert.equal(env.uci.data.cfg0b0002, undefined, 'an override of the removed rule stayed');

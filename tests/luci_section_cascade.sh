@@ -34,6 +34,11 @@ function captureStagedUciState() {
 function restoreStagedUciState(value) {
   restored.push(value);
 }
+// A rule that Settings use is refused before anything is staged.
+let settingsRefusal = null;
+function settingsRuleUseRefusal() {
+  return settingsRefusal;
+}
 const notifications = [];
 const ui = { addNotification: (...args) => notifications.push(args) };
 const E = (...args) => args;
@@ -84,6 +89,24 @@ removal
   .then(() => {
     assert.deepStrictEqual(restored, [snapshot], 'a refused removal must restore the staged state');
     assert.strictEqual(notifications.length, 1, 'a refused removal must be reported');
+
+    cleanupCalls.length = 0;
+    overrideCleanups.length = 0;
+    let parentCalled = false;
+    sectionRef.handleRemove = function () {
+      parentCalled = true;
+      return Promise.resolve();
+    };
+    configureSectionSection(sectionRef);
+    settingsRefusal = 'in use';
+    return sectionRef.handleRemove('parent', event).then(() => {
+      assert.strictEqual(parentCalled, false, 'a rule that Settings use must not be removed');
+      assert.deepStrictEqual(cleanupCalls, [], 'its child items must not be cleaned up');
+      assert.deepStrictEqual(overrideCleanups, [], 'its URLTest overrides must not be removed');
+      assert.strictEqual(notifications.length, 2, 'the refusal must be reported');
+    });
+  })
+  .then(() => {
     console.log('LuCI section cascade checks passed');
   })
   .catch((error) => {

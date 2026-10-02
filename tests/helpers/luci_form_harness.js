@@ -3,8 +3,10 @@
 // Minimal LuCI runtime for driving the real Forkop view modules under node.
 //
 // It loads luci-app-forkop/.../view/forkop/section.js (and the generated
-// main.js) unchanged and replaces luci-base with a small model of the parts a
-// modal save goes through: baseclass, form.Map/JSONMap/NamedSection and the
+// main.js) unchanged, builds the Rules and Settings pages from the shipped
+// page/rules.js and page/settings.js (configform.js, settings.js), and
+// replaces luci-base with a small model of the parts a page or modal save
+// goes through: baseclass, form.Map/JSONMap/NamedSection and the
 // AbstractValue family, the grid's modal Save/Dismiss, uci.js with its staged
 // edits and just enough DOM for the stacked item settings modal. The form code
 // follows luci-base form.js of OpenWrt 24.10 and 25.12 (AbstractValue.parse,
@@ -733,11 +735,15 @@ function createForm({ version, baseclass, uci, jsonMaps }) {
     isChecked() {
       return this.value === this.option.enabled;
     }
-    // Lists validate per item while typing and checkboxes carry no validator.
+    // Lists validate per item while typing. LuCI validates a checkbox with
+    // the value of its <input>, which is value_enabled whether or not it is
+    // checked (ui.Checkbox, validation.js); a Flag validator reads the state
+    // from formvalue().
     getValidationError() {
-      if (this.kind === "list" || this.kind === "checkbox") return "";
+      if (this.kind === "list") return "";
       if (typeof this.option.validate !== "function") return "";
-      const result = this.option.validate(this.section_id, this.getValue());
+      const value = this.kind === "checkbox" ? this.option.enabled : this.getValue();
+      const result = this.option.validate(this.section_id, value);
       return result === true ? "" : `${result || "invalid"}`;
     }
     isValid() {
@@ -905,6 +911,12 @@ function createForm({ version, baseclass, uci, jsonMaps }) {
     parse(section_id) {
       if (this.isActive(section_id)) {
         const fval = this.formvalue(section_id);
+        if (!this.isValid(section_id))
+          return Promise.reject(
+            new TypeError(
+              `Option "${this.option}" contains an invalid input value. ${this.getValidationError(section_id)}`,
+            ),
+          );
         if (fval == this.default && (this.optional || this.rmempty))
           return Promise.resolve(this.remove(section_id));
         return Promise.resolve(this.write(section_id, fval));
@@ -917,12 +929,16 @@ function createForm({ version, baseclass, uci, jsonMaps }) {
 
   // GridSection.cloneOptions(): the modal gets fresh option instances that
   // copy every own property of the grid option except the identity fields.
+  // `widgets` and `fields` stand for the DOM of the map an option is rendered
+  // in (LuCI finds them through map.findElement()): a modal has its own.
   function cloneOptions(src, dest) {
     for (const o1 of src.children) {
       if (o1.modalonly === false) continue;
       const o2 = dest.option(o1.constructor, o1.option, o1.title, o1.description);
       for (const k of Object.keys(o1)) {
-        if (["map", "section", "option", "title", "description", "subsection", "children"].includes(k))
+        if (
+          ["map", "section", "option", "title", "description", "subsection", "children", "widgets", "fields"].includes(k)
+        )
           continue;
         o2[k] = o1[k];
       }
@@ -1091,16 +1107,33 @@ function createEnvironment({
   let settingsModule = null;
   let shellModule = null;
 
-  // The rules grid as page/settings.js declares it.
-  const loadActionProvidersAvailability = () => Promise.resolve(Object.assign({}, providers));
-  function rulesGrid(map) {
-    const rules = map.section(form.GridSection, "section");
-    section.configureSectionSection(rules, { loadActionProvidersAvailability });
-    section.createSectionContent(rules);
-    return rules;
+  // A page of the Forkop menu (page/*.js) as LuCI renders it: the view's
+  // render() builds its form with configform.createMap() and renders it.
+  const configform = loadModule("configform.js", { baseclass, form, uci, ui, main }, globals);
+  const view = { extend: (properties) => baseclass.Class.extend(properties) };
+  function renderPage(file, modules) {
+    let map = null;
+    const pageConfigform = Object.create(configform, {
+      createMap: { value: (...args) => (map = configform.createMap(...args)) },
+    });
+    const page = loadModule(file, { view, form, configform: pageConfigform, ...modules }, globals);
+    const rendered = page.render();
+    return { map, rendered };
   }
-  const pageMap = new form.Map("forkop");
-  const grid = rulesGrid(pageMap);
+
+  // The Rules page of page/rules.js: its map holds only the rules grid, and
+  // the rule modal opens from it. shell.loadUiCapabilities is the provider
+  // availability probe the page hands to section.js.
+  const loadActionProvidersAvailability = () => Promise.resolve(Object.assign({}, providers));
+  const rulesPage = renderPage("page/rules.js", {
+    shell: { startPage: () => Promise.resolve(null), loadUiCapabilities: loadActionProvidersAvailability },
+    section,
+  });
+  // Awaited by openRules() and openRule(); a test that only reads the grid
+  // columns does not wait for the page.
+  rulesPage.rendered.catch(() => {});
+  const pageMap = rulesPage.map;
+  const grid = pageMap.children[0];
 
   // The item settings modal just stacked on the modal: its Save and Close
   // buttons (`button` finds them by label) and the gears of its own lists.
@@ -1146,9 +1179,26 @@ function createEnvironment({
       shellModule ??= loadModule("shell.js", { baseclass, uci, main }, moduleGlobals);
       return shellModule;
     },
-    // The Settings page of page/settings.js: the rules grid and the Settings
-    // tabs (one "settings" section) share one map; `capabilities` is the
-    // provider capabilities object (shell.uiCapabilities on the page).
+    // The Rules page of page/rules.js once rendered: its Save (Save & Apply
+    // saves the map first), the Enable checkbox and the Delete button of a
+    // rule row.
+    async openRules() {
+      await rulesPage.rendered;
+      return {
+        map: pageMap,
+        grid,
+        save: () => pageMap.save(),
+        setEnabled(section_id, value) {
+          const [enabled, row] = pageMap.lookupOption("enabled", section_id);
+          enabled.getUIElement(row).setValue(value);
+        },
+        removeRule: (section_id) => grid.handleRemove(section_id),
+      };
+    },
+    // The Settings page of page/settings.js: the Settings tabs (one
+    // "settings" section) and Components; `capabilities` is the provider
+    // capabilities object (shell.uiCapabilities on the page). Components is
+    // the TypeScript Components tab, which saves nothing through the form.
     async openSettings(capabilities) {
       settingsModule ??= loadModule(
         "settings.js",
@@ -1162,42 +1212,30 @@ function createEnvironment({
         },
         moduleGlobals,
       );
-      const map = new form.Map("forkop");
-      const rules = rulesGrid(map);
-      const tab = (type) => {
-        const tabSection = map.section(form.TypedSection, type);
-        tabSection.cfgsections = () => ["settings"];
-        return tabSection;
-      };
-      settingsModule.createSettingsContent(
-        {
-          dns: tab("settings_dns"),
-          network: tab("settings_network"),
-          lists: tab("settings_lists"),
-          service: tab("settings_service"),
-        },
-        capabilities,
-      );
-      await map.render();
+      const page = renderPage("page/settings.js", {
+        shell: { startPage: () => Promise.resolve(null), uiCapabilities: capabilities },
+        settings: settingsModule,
+        updates: { createUpdatesContent() {} },
+      });
+      await page.rendered;
+      const map = page.map;
       return {
         map,
         option(name) {
           for (const tabSection of map.children) {
-            if (tabSection === rules) continue;
             const found = tabSection.children.find((option) => option.option === name);
             if (found) return found;
           }
           throw new Error(`settings have no option ${name}`);
         },
         save: () => map.save(),
-        // The Delete button of a rule row.
-        removeRule: (section_id) => rules.handleRemove(section_id),
       };
     },
     // GridSection.renderMoreOptionsModal() for an existing rule. The modal
     // map takes `readonly` from the page map (a role that may read but not
     // write the Forkop UCI package).
     async openRule(section_id, { readonly = false } = {}) {
+      await rulesPage.rendered;
       const map = new form.Map("forkop");
       const named = map.section(form.NamedSection, section_id, "section");
       map.parent = pageMap;

@@ -3,8 +3,10 @@ set -euo pipefail
 
 # Round trip of the rule editor: the real LuCI section.js is loaded under node
 # with a model of luci-base form.js (tests/helpers/luci_form_harness.js, 24.10
-# and 25.12 parse semantics). Opening a rule modal and saving it without
-# touching anything must leave the rule's UCI section byte-for-byte unchanged.
+# and 25.12 parse semantics), on the Rules page as page/rules.js and
+# configform.js build it. Opening a rule modal from that page and saving it
+# without touching anything, or saving the page itself, must leave the rule's
+# UCI section byte-for-byte unchanged.
 # Also covers the rule-set item settings modal ("Include IP addresses and
 # subnets"), which must not drop Built-in rule sets #2 (UC-003, UC-004).
 # A select whose saved value is no longer offered (DPI provider not installed,
@@ -126,6 +128,15 @@ async function check(label, fn) {
         const env = createEnvironment({ version, config: { rule: fixture } });
         await (await env.openRule('rule')).save();
         assert.deepEqual(env.uci.data.rule, fixture, 'an unchanged rule modal save changed UCI');
+      });
+
+    // Save & Apply of the Rules page saves its map first: the rules grid
+    // parses the Enable checkbox of every row.
+    for (const [name, fixture] of Object.entries(fixtures))
+      await check(`${version} ${name}: Rules page`, async () => {
+        const env = createEnvironment({ version, config: { rule: fixture } });
+        await (await env.openRules()).save();
+        assert.deepEqual(env.uci.data.rule, fixture, 'an unchanged Rules page save changed UCI');
       });
 
     // UC-008: a DPI rule whose provider is not installed keeps its action and

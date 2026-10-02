@@ -10,6 +10,11 @@ const KILLSWITCH_STATE_DIR = getenv("KILLSWITCH_STATE_DIR") || "/etc/forkop/kill
 const KILLSWITCH_DNS_BLOCKED_FILE = KILLSWITCH_STATE_DIR + "/dns-blocked.servers";
 const KILLSWITCH_DNS_SERVERS_FILE = KILLSWITCH_STATE_DIR + "/dnsmasq.servers";
 const DNSMASQ_SERVERSFILE_OPTION = "dhcp.@dnsmasq[0].serversfile";
+// The options a configure set that were not set before: a restore removes
+// them again (UC-236).
+const DNSMASQ_UNSET_OPTION = "dhcp.@dnsmasq[0].forkop_unset";
+const DNSMASQ_CONFIG_FILE = getenv("FORKOP_DNSMASQ_CONFIG_FILE") || "/etc/config/dhcp";
+const UCI_CLI = getenv("FORKOP_UCI_CLI") || "uci";
 // service/lifecycle.uc SHUTDOWN_STATE_FILE.
 const SHUTDOWN_STATE_FILE = (getenv("FORKOP_RUNTIME_STATE_DIR") || "/var/run/forkop") + "/shutdown_correctly";
 
@@ -25,36 +30,42 @@ function run(command) {
     return system(command) == 0;
 }
 
+// The dnsmasq settings while configure, restore and the kill-switch refresh
+// edit them (core/uci.uc session, edit_dhcp): /etc/config/dhcp as it is
+// committed, saved only when something changes and without what someone
+// staged with `uci set` (UC-236). Other reads go through core.uci.
+let dhcp = null;
+
 function uci_available() {
     return uci.available();
 }
 
+function store(path) {
+    return dhcp != null && substr(as_string(path), 0, 5) == "dhcp." ? dhcp : uci;
+}
+
 function uci_get(path) {
-    return uci.get(path);
+    return store(path).get(path);
 }
 
 function uci_exists(path) {
-    return uci.exists(path);
+    return store(path).exists(path);
 }
 
 function uci_delete(path) {
-    uci.delete(path);
+    return store(path).delete(path);
 }
 
 function uci_set(path, value) {
-    uci.set(path, value);
+    return store(path).set(path, value);
 }
 
 function uci_add_list(path, value) {
-    uci.add_list(path, value);
+    return store(path).add_list(path, value);
 }
 
 function uci_del_list(path, value) {
-    return uci.del_list(path, value);
-}
-
-function uci_commit(package_name) {
-    return uci.commit(package_name);
+    return store(path).del_list(path, value);
 }
 
 function words(value) {
@@ -79,18 +90,42 @@ function log(message, level) {
     run("logger -t " + shell_quote("forkop") + " " + shell_quote("[" + level + "] " + as_string(message)));
 }
 
+// dnsmasq reads /etc/config/dhcp at its start: the edit ends first, and
+// with it the lock it holds on the file.
 function restart_dnsmasq() {
+    if (dhcp != null)
+        dhcp.close();
     return run("[ -x " + shell_quote(DNSMASQ_INIT) + " ] && " + shell_quote(DNSMASQ_INIT) + " restart");
 }
 
-// dnsmasq gets the changes only once they are saved. A commit that fails
-// (a full or read-only overlay) leaves /etc/config/dhcp as it was: dnsmasq
-// is not restarted, and the start, stop or failsafe that asked for the
-// change fails with it, so that its own error handling runs (UC-024).
+// Neither UCI nor dnsmasq settings: nothing to configure or restore.
+function no_dnsmasq_settings() {
+    return !uci_available() && fs.stat(DNSMASQ_CONFIG_FILE) == null;
+}
+
+// Opens the edit of the dnsmasq settings (dhcp) unless it is open.
+function edit_dhcp() {
+    if (dhcp == null)
+        dhcp = uci.session("dhcp", DNSMASQ_CONFIG_FILE, UCI_CLI);
+    return dhcp != null;
+}
+
+function dhcp_unreadable() {
+    log("Could not read the dnsmasq settings in " + DNSMASQ_CONFIG_FILE, "error");
+    return false;
+}
+
+// dnsmasq reads its settings from /etc/config/dhcp at its restart, and only
+// there (UCI staged in /tmp/.uci would also reach any later commit, an
+// override file in /var/run/uci only newer libuci): forwarding to sing-box
+// needs a write, written only when something changes (UC-236). A commit that
+// fails (a full or read-only overlay) leaves the file as it was: dnsmasq is
+// not restarted, and the start, stop or failsafe that asked for the change
+// fails with it, so that its own error handling runs (UC-024).
 function commit_dhcp() {
-    if (uci_commit("dhcp"))
+    if (dhcp != null && dhcp.commit())
         return true;
-    log("Could not save the dnsmasq settings in /etc/config/dhcp", "error");
+    log("Could not save the dnsmasq settings in " + DNSMASQ_CONFIG_FILE, "error");
     return false;
 }
 
@@ -114,6 +149,7 @@ function dnsmasq_has_forkop_managed_state() {
     return uci_get("dhcp.@dnsmasq[0].forkop_server") != "" ||
         uci_get("dhcp.@dnsmasq[0].forkop_noresolv") != "" ||
         uci_get("dhcp.@dnsmasq[0].forkop_cachesize") != "" ||
+        uci_get(DNSMASQ_UNSET_OPTION) != "" ||
         uci_get("dhcp.@dnsmasq[0].forkop_notinterface") != "" ||
         dnsmasq_legacy_instance_exists();
 }
@@ -182,8 +218,11 @@ function killswitch_dns_apply(blocking) {
 }
 
 function killswitch_dns_refresh() {
-    if (!uci_available())
+    if (no_dnsmasq_settings())
         return true;
+    // Without a dhcp configuration there are no Forkop settings in it.
+    if (!edit_dhcp())
+        return fs.stat(DNSMASQ_CONFIG_FILE) == null || dhcp_unreadable();
     if (!killswitch_dns_apply(!dnsmasq_has_forkop_dns()))
         return true;
     if (!commit_dhcp())
@@ -224,37 +263,43 @@ function dnsmasq_legacy_interfaces() {
     return legacy_interfaces;
 }
 
-function backup_dnsmasq_config_option(key, backup_key) {
-    if (uci_get("dhcp.@dnsmasq[0]." + backup_key) != "")
+// The value the option had, in forkop_<key>; one that was not set is listed
+// in forkop_unset instead.
+function backup_dnsmasq_config_option(key) {
+    if (uci_get("dhcp.@dnsmasq[0].forkop_" + key) != "" || list_has(uci_get(DNSMASQ_UNSET_OPTION), key))
         return;
 
     let value = uci_get("dhcp.@dnsmasq[0]." + key);
     if (value != "")
-        uci_set("dhcp.@dnsmasq[0]." + backup_key, value);
+        uci_set("dhcp.@dnsmasq[0].forkop_" + key, value);
+    else
+        uci_add_list(DNSMASQ_UNSET_OPTION, key);
 }
 
 function backup_dnsmasq_server_list() {
     if (uci_get("dhcp.@dnsmasq[0].forkop_server") != "")
         return;
 
+    let servers = [];
     for (let server in words(dnsmasq_default_servers())) {
         if (server != SB_DNS_INBOUND_ADDRESS)
-            uci_add_list("dhcp.@dnsmasq[0].forkop_server", server);
+            push(servers, server);
     }
+    uci_set("dhcp.@dnsmasq[0].forkop_server", servers);
 }
 
-function restore_dnsmasq_config_option(key, backup_key, default_value) {
-    let value = uci_get("dhcp.@dnsmasq[0]." + backup_key);
-    if (value != "") {
+// The option as it was before the configure. Releases before UC-236 kept no
+// record of an option that was not set: then the dnsmasq default
+// (fallback) undoes the Forkop value.
+function restore_dnsmasq_config_option(key, managed_global_dns, fallback) {
+    let value = uci_get("dhcp.@dnsmasq[0].forkop_" + key);
+    if (value != "")
         uci_set("dhcp.@dnsmasq[0]." + key, value);
-        uci_delete("dhcp.@dnsmasq[0]." + backup_key);
-    }
-    else if (as_string(default_value) != "") {
-        uci_set("dhcp.@dnsmasq[0]." + key, default_value);
-    }
-    else {
+    else if (list_has(uci_get(DNSMASQ_UNSET_OPTION), key))
         uci_delete("dhcp.@dnsmasq[0]." + key);
-    }
+    else if (managed_global_dns)
+        uci_set("dhcp.@dnsmasq[0]." + key, fallback);
+    uci_delete("dhcp.@dnsmasq[0].forkop_" + key);
 }
 
 function dnsmasq_cleanup_legacy_instance() {
@@ -285,12 +330,11 @@ function dnsmasq_configure_default_instance() {
 
     backup_dnsmasq_server_list();
     if (!default_has_forkop_dns) {
-        backup_dnsmasq_config_option("noresolv", "forkop_noresolv");
-        backup_dnsmasq_config_option("cachesize", "forkop_cachesize");
+        backup_dnsmasq_config_option("noresolv");
+        backup_dnsmasq_config_option("cachesize");
     }
 
-    uci_delete("dhcp.@dnsmasq[0].server");
-    uci_add_list("dhcp.@dnsmasq[0].server", SB_DNS_INBOUND_ADDRESS);
+    uci_set("dhcp.@dnsmasq[0].server", [ SB_DNS_INBOUND_ADDRESS ]);
     uci_set("dhcp.@dnsmasq[0].noresolv", "1");
     uci_set("dhcp.@dnsmasq[0].cachesize", "0");
 }
@@ -300,36 +344,24 @@ function dnsmasq_restore_default_instance() {
     let backup_servers = uci_get("dhcp.@dnsmasq[0].forkop_server");
     let managed_global_dns = list_has(server_list, SB_DNS_INBOUND_ADDRESS);
 
-    uci_delete("dhcp.@dnsmasq[0].server");
-    if (backup_servers != "") {
-        for (let value in words(backup_servers))
-            uci_add_list("dhcp.@dnsmasq[0].server", value);
-        uci_delete("dhcp.@dnsmasq[0].forkop_server");
+    let servers = [];
+    for (let value in words(backup_servers != "" ? backup_servers : server_list)) {
+        if (backup_servers != "" || value != SB_DNS_INBOUND_ADDRESS)
+            push(servers, value);
     }
-    else {
-        for (let value in words(server_list)) {
-            if (value != SB_DNS_INBOUND_ADDRESS)
-                uci_add_list("dhcp.@dnsmasq[0].server", value);
-        }
-    }
+    uci_set("dhcp.@dnsmasq[0].server", servers);
     uci_delete("dhcp.@dnsmasq[0].forkop_server");
 
-    let noresolv = uci_get("dhcp.@dnsmasq[0].forkop_noresolv");
-    if (noresolv != "")
-        restore_dnsmasq_config_option("noresolv", "forkop_noresolv", "");
-    else if (managed_global_dns)
-        uci_set("dhcp.@dnsmasq[0].noresolv", "0");
-
-    let cachesize = uci_get("dhcp.@dnsmasq[0].forkop_cachesize");
-    if (cachesize != "")
-        restore_dnsmasq_config_option("cachesize", "forkop_cachesize", "");
-    else if (managed_global_dns)
-        uci_set("dhcp.@dnsmasq[0].cachesize", "150");
+    restore_dnsmasq_config_option("noresolv", managed_global_dns, "0");
+    restore_dnsmasq_config_option("cachesize", managed_global_dns, "150");
+    uci_delete(DNSMASQ_UNSET_OPTION);
 }
 
 function dnsmasq_configure(force) {
-    if (!uci_available())
+    if (no_dnsmasq_settings())
         return true;
+    if (!edit_dhcp())
+        return dhcp_unreadable();
 
     if (as_string(force) != "force" && shutdown_state() != "1") {
         if (dnsmasq_default_config_is_complete()) {
@@ -354,8 +386,10 @@ function dnsmasq_configure(force) {
 }
 
 function dnsmasq_restore(force, quiet) {
-    if (!uci_available())
+    if (no_dnsmasq_settings())
         return true;
+    if (!edit_dhcp())
+        return fs.stat(DNSMASQ_CONFIG_FILE) == null || dhcp_unreadable();
 
     if (!quiet)
         log("Restoring DNS settings in dnsmasq", "info");
@@ -382,8 +416,10 @@ function dnsmasq_restore(force, quiet) {
 }
 
 function failsafe_restore() {
-    if (!uci_available())
+    if (no_dnsmasq_settings())
         return true;
+    if (!edit_dhcp())
+        return fs.stat(DNSMASQ_CONFIG_FILE) == null || dhcp_unreadable();
 
     if (dnsmasq_management_disabled()) {
         if (!dnsmasq_has_forkop_managed_state()) {
@@ -401,23 +437,30 @@ function failsafe_restore() {
 }
 
 let mode = ARGV[0] || "";
+let result = null;
 
 if (mode == "configure")
-    exit(dnsmasq_configure(ARGV[1]) ? 0 : 1);
+    result = dnsmasq_configure(ARGV[1]);
 else if (mode == "restore")
-    exit(dnsmasq_restore(ARGV[1]) ? 0 : 1);
+    result = dnsmasq_restore(ARGV[1]);
 else if (mode == "failsafe-restore")
-    exit(failsafe_restore() ? 0 : 1);
+    result = failsafe_restore();
 else if (mode == "has-forkop-dns")
-    exit(dnsmasq_has_forkop_dns() ? 0 : 1);
+    result = dnsmasq_has_forkop_dns();
 else if (mode == "has-managed-state")
-    exit(dnsmasq_has_forkop_managed_state() ? 0 : 1);
+    result = dnsmasq_has_forkop_managed_state();
 else if (mode == "default-config-complete")
-    exit(dnsmasq_default_config_is_complete() ? 0 : 1);
+    result = dnsmasq_default_config_is_complete();
 else if (mode == "killswitch-refresh")
-    exit(killswitch_dns_refresh() ? 0 : 1);
+    result = killswitch_dns_refresh();
 else if (mode == "killswitch-status")
-    exit(killswitch_dns_status() ? 0 : 1);
+    result = killswitch_dns_status();
+
+// An edit that ended without a commit (nothing to change) changes nothing.
+if (dhcp != null)
+    dhcp.close();
+if (result != null)
+    exit(result ? 0 : 1);
 
 warn("Usage: dns/apply.uc <configure|restore|failsafe-restore|has-forkop-dns|has-managed-state|default-config-complete|killswitch-refresh|killswitch-status>\n");
 exit(1);

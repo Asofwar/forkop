@@ -305,7 +305,12 @@ lifecycle start
 [ "$LIFECYCLE_STATUS" != 0 ] || fail "a start whose dnsmasq settings could not be saved reported success"
 grep -Fxq 'dns/apply.uc configure' "$EVENTS" || fail "the start did not configure dnsmasq"
 grep -Fxq 'dns/apply.uc failsafe-restore' "$EVENTS" || fail "the failed start did not run the DNS failsafe"
-grep -Fxq 'dnsmasq restart' "$EVENTS" && fail "the start restarted dnsmasq with settings that were not saved"
+# The failsafe finds the settings as they were (nothing of the configure was
+# saved) and may restart dnsmasq with them; the configure must not.
+sed '/^dns\/apply.uc failsafe-restore$/,$d' "$EVENTS" | grep -Fxq 'dnsmasq restart' &&
+  fail "the start restarted dnsmasq with settings that were not saved"
+grep -Fxq 'dhcp.@dnsmasq[0].server=1.1.1.1' "$FORKOP_UCI_STATE_FILE" && ! grep -q '127.0.0.42\|forkop_' "$FORKOP_UCI_STATE_FILE" ||
+  fail "the failed start left Forkop settings in dnsmasq: $(cat "$FORKOP_UCI_STATE_FILE")"
 ok "a start whose dnsmasq settings cannot be saved fails and is cleaned up"
 rmdir "$FORKOP_UCI_LOG_FILE"
 

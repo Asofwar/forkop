@@ -16,6 +16,14 @@ set -eu
 # (UC-213). The upgrade marker it records is removed when the action ends:
 # left behind, it turned the user's next Stop into a guarded one (UC-217).
 #
+# A component stop that is refused (another sing-box makes the ownership of
+# the runtime ambiguous) leaves Forkop running untouched. Before, the
+# sing-box variant change went on regardless: it moved DNS away from the
+# running runtime and stopped Forkop's sing-box while ForkopTable and ip rule
+# 105 stayed, and its restart then left Forkop down (the component variant of
+# UC-197/UC-215). Now the change fails before it touches anything, and the
+# failure does not restart the Forkop it never stopped.
+#
 # The real stop helpers of components/action.uc run against an init.d stand-in
 # that records the source it was stopped with.
 
@@ -35,6 +43,7 @@ fail() {
 cat >"$WORK_DIR/init" <<'SH'
 #!/bin/sh
 printf '%s source=%s\n' "$*" "${FORKOP_STOP_SOURCE:-}" >>"$INIT_LOG"
+[ "$1" != stop ] || exit "${STOP_STATUS:-0}"
 SH
 chmod +x "$WORK_DIR/init"
 
@@ -53,9 +62,10 @@ function command_from_args(args) { return join(" ", map(args, shell_quote)); }
 function command_success_from_args(args) { return system(command_from_args(args)) == 0; }
 function command_status(command) { return system(command); }
 function run_logged(description, command) { return system(command) == 0; }
+function run_logged_status(description, command) { return system(command); }
 function file_exists(path) { return true; }
 function remove_file(path) { fs.unlink(path); }
-function prepare_sing_box_service_disabled() {}
+function prepare_sing_box_service_disabled() { system("echo 'sing-box service disabled' >>\"$INIT_LOG\""); }
 function updates_log(message) {}
 function cleanup_tmp_dir() {}
 function release_component_lock() {}
@@ -70,7 +80,13 @@ for function in upgrade_bounded_stop remove_managed_upgrade_sing_box_marker clea
 done
 cat >>"$WORK_DIR/harness.uc" <<'UCODE'
 if (ARGV[0] == "before-change")
-    stop_forkop_before_sing_box_change();
+    exit(stop_forkop_before_sing_box_change() ? 0 : 3);
+else if (ARGV[0] == "before-change-refused") {
+    if (stop_forkop_before_sing_box_change())
+        exit(3);
+    // action_fail restarts Forkop only after a stop that took it down.
+    exit(forkop_stopped_for_sing_box_change ? 4 : 0);
+}
 else if (ARGV[0] == "after-failed-start")
     command_success_from_args(forkop_stop_for_component_change_args());
 else if (ARGV[0] == "upgrade-stop")
@@ -93,6 +109,22 @@ for step in before-change after-failed-start upgrade-stop; do
   grep -Fxq 'stop source=component' "$WORK_DIR/init.log" ||
     fail "$step: Forkop was not stopped as a component change"
 done
+
+# A refused stop before a sing-box package change: nothing is touched, the
+# change fails, and its failure does not restart Forkop.
+: >"$WORK_DIR/init.log"
+status=0
+STOP_STATUS=2 INIT="$WORK_DIR/init" INIT_LOG="$WORK_DIR/init.log" HARNESS_DIR="$WORK_DIR" \
+  ucode "$WORK_DIR/harness.uc" before-change-refused || status=$?
+[ "$status" -ne 3 ] || fail "a refused stop let the sing-box package change go on"
+[ "$status" -ne 4 ] || fail "a refused stop counts as Forkop stopped, so the failed change would restart it"
+[ "$status" -eq 0 ] || fail "before-change-refused: the harness failed ($status)"
+! grep -q '^restore_dnsmasq' "$WORK_DIR/init.log" || fail "a refused stop moved DNS away from the running Forkop"
+! grep -q '^sing-box service disabled' "$WORK_DIR/init.log" ||
+  fail "a refused stop stopped and disabled the sing-box service of the running Forkop"
+# Every sing-box package change acts on that result.
+source_refute_text "a sing-box package change must not go on after a refused stop" \
+  -E '^[[:space:]]*stop_forkop_before_sing_box_change\(\);' "$(cat "$ACTION")"
 
 # The upgrade marker that the action recorded does not outlive the action.
 INIT="$WORK_DIR/init" INIT_LOG="$WORK_DIR/init.log" HARNESS_DIR="$WORK_DIR" ucode "$WORK_DIR/harness.uc" upgrade-action ||

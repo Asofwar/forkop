@@ -378,7 +378,7 @@ function action_fail(component, action, message, current_version, latest_version
     exit(1);
 }
 
-function run_logged(description, command) {
+function run_logged_status(description, command) {
     init_tmp_dir();
     let output_file = make_tmp_file("command");
     if (output_file == "")
@@ -393,7 +393,11 @@ function run_logged(description, command) {
     remove_file(output_file);
     if (status != 0)
         updates_log(description + " failed with exit code " + status, "warn");
-    return status == 0;
+    return status;
+}
+
+function run_logged(description, command) {
+    return run_logged_status(description, command) == 0;
 }
 
 function is_apk() {
@@ -985,18 +989,27 @@ function forkop_stop_for_component_change_args() {
     return [ "env", "FORKOP_STOP_SOURCE=component", SERVICE_INIT, "stop" ];
 }
 
+const SING_BOX_CHANGE_STOP_REFUSED = "Forkop was not stopped: another sing-box process makes the ownership of its runtime ambiguous; the current sing-box variant was kept";
+
+// False when the stop was refused (status 2): another sing-box makes the
+// ownership of the runtime ambiguous, and Forkop runs on untouched. The
+// change must not then move DNS away from that runtime or stop its sing-box
+// under ForkopTable and ip rule 105, and its failure must not restart the
+// Forkop it never stopped (UC-197, UC-215).
 function stop_forkop_before_sing_box_change() {
     if (forkop_stopped_for_sing_box_change)
-        return;
-    forkop_stopped_for_sing_box_change = true;
+        return true;
 
-    if (forkop_was_running && file_exists(SERVICE_INIT))
-        run_logged("Stopping Forkop before sing-box package change", command_from_args(forkop_stop_for_component_change_args()));
+    if (forkop_was_running && file_exists(SERVICE_INIT) &&
+        run_logged_status("Stopping Forkop before sing-box package change", command_from_args(forkop_stop_for_component_change_args())) == 2)
+        return false;
+    forkop_stopped_for_sing_box_change = true;
 
     if (forkop_was_running && file_exists(BIN_PATH))
         command_success_from_args([ BIN_PATH, "restore_dnsmasq" ]);
 
     prepare_sing_box_service_disabled();
+    return true;
 }
 
 function wait_forkop_running_after_sing_box_change() {
@@ -1698,7 +1711,8 @@ function install_sing_box_extended_package(action) {
     if (!install_opkg_sing_box_dependencies(package_file, "sing-box-extended"))
         action_fail("sing_box", action, "Failed to install required sing-box dependencies; the current sing-box variant was kept", current_version, latest_version);
 
-    stop_forkop_before_sing_box_change();
+    if (!stop_forkop_before_sing_box_change())
+        action_fail("sing_box", action, SING_BOX_CHANGE_STOP_REFUSED, current_version, latest_version);
     prepare_sing_box_package_service_install();
 
     let backup_binary = "";
@@ -1843,7 +1857,8 @@ function install_sing_box_extended(action, compressed) {
     }
 
     remove_file(archive_file);
-    stop_forkop_before_sing_box_change();
+    if (!stop_forkop_before_sing_box_change())
+        action_fail("sing_box", action, SING_BOX_CHANGE_STOP_REFUSED, current_version, latest_version);
     let new_version = validate_sing_box_extended_binary(tmp_binary, tmp_dir);
     if (new_version == "") {
         remove_file(tmp_binary);
@@ -1975,7 +1990,8 @@ function install_package_sing_box(action, tiny) {
     let previous_variant = sing_box_runtime_output("variant", []);
     let previous_marker = sing_box_runtime_output("read-variant-marker", []);
     let previous_version_state = sing_box_runtime_output("read-version-state", []);
-    stop_forkop_before_sing_box_change();
+    if (!stop_forkop_before_sing_box_change())
+        action_fail("sing_box", action, SING_BOX_CHANGE_STOP_REFUSED, current_version, latest_version);
 
     let backup_binary = "";
     let backup_cronet = "";

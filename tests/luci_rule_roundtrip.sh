@@ -84,6 +84,12 @@ const fixtures = {
     domain: 'example.net', ip_cidr: ['1.1.1.1'], ports: ['443', '8000-8080'] }),
   legacy_dns_ip_option: rule({ action: 'dns', dns_type: 'udp', dns_server: '1.1.1.1', dns_detour_enabled: '0',
     domain: 'example.net', ip_cidr: '10.0.0.0/8' }),
+  // D-23: the kill-switch with the DNS exemption of its excluded devices,
+  // and the exemption kept while the kill-switch is off.
+  killswitch_dns_exempt: rule({ action: 'connection', ...routed, domain: 'example.com', kill_switch: '1',
+    kill_switch_dns_exempt: '1', excluded_source_ip_cidr: ['192.168.1.9'] }),
+  killswitch_dns_exempt_kept: rule({ action: 'connection', ...routed, domain: 'example.com',
+    kill_switch_dns_exempt: '1', excluded_source_ip_cidr: ['192.168.1.9'] }),
 };
 
 // UC-046: DNS rules with Built-in rule sets #2 (only the CLI or an older

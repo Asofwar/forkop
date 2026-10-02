@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-02 13:55+0000\n"
-"PO-Revision-Date: 2026-10-02 13:55+0000\n"
+"POT-Creation-Date: 2026-10-02 16:51+0000\n"
+"PO-Revision-Date: 2026-10-02 16:51+0000\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -1286,6 +1286,9 @@ msgstr "Доменов правил для отдельных устройств
 msgid "Domains of the list"
 msgstr "Домены списка"
 
+msgid "Domains the excluded devices of this section resolve while Forkop is stopped (through their own resolver)"
+msgstr "Доменов, которые исключённые устройства этой секции разрешают, пока Forkop остановлен (через собственный резолвер)"
+
 msgid "Domains to check"
 msgstr "Доменов для проверки"
 
@@ -1510,6 +1513,9 @@ msgstr "Исключить из этого уровня серверы с одн
 
 msgid "Exclude servers with one of the selected transports from this level."
 msgstr "Исключить из этого уровня серверы с одним из выбранных транспортов."
+
+msgid "Excluded devices resolve these names while Forkop is stopped"
+msgstr "Исключённые устройства разрешают эти имена, пока Forkop остановлен"
 
 msgid "Expecting: %s"
 msgstr "Ожидается: %s"
@@ -4459,6 +4465,9 @@ msgstr "Куда"
 
 msgid "Which domains to check"
 msgstr "Какие домены проверять"
+
+msgid "While Forkop is stopped, the kill-switch answers this rule's names with NXDOMAIN for every device, the devices excluded from this rule included: DNS is shared by all devices. With this option the excluded devices of this rule resolve its names through a separate resolver of their own; every other device stays blocked and the firewall part of the kill-switch does not change. Applies from the next successful Forkop start or reload."
+msgstr "Пока Forkop остановлен, kill-switch отвечает NXDOMAIN на имена этого правила всем устройствам, в том числе исключённым из этого правила: DNS общий для всех устройств. С этой опцией исключённые устройства этого правила разрешают его имена через отдельный собственный резолвер; для остальных устройств блокировка остаётся, а правила файрвола kill-switch не меняются. Действует со следующего успешного запуска или перезагрузки Forkop."
 
 msgid "Will be"
 msgstr "Будет"

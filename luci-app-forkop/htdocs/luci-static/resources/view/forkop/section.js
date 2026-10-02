@@ -9088,6 +9088,26 @@ function createSectionContent(section) {
   );
   o.modalonly = true;
 
+  // D-23: by default the excluded devices of a protected rule get its names
+  // blocked through DNS as well while Forkop is stopped (dnsmasq is shared).
+  o = section.taboption(
+    "advanced",
+    form.Flag,
+    "kill_switch_dns_exempt",
+    _("Excluded devices resolve these names while Forkop is stopped"),
+    _(
+      "While Forkop is stopped, the kill-switch answers this rule's names with NXDOMAIN for every device, the devices excluded from this rule included: DNS is shared by all devices. With this option the excluded devices of this rule resolve its names through a separate resolver of their own; every other device stays blocked and the firewall part of the kill-switch does not change. Applies from the next successful Forkop start or reload.",
+    ),
+  );
+  // Unchecked means absent; kept while the kill-switch is off, so that an
+  // untouched save never drops it.
+  o.default = "0";
+  o.retain = true;
+  killswitch.KILL_SWITCH_ACTIONS.forEach((action) =>
+    o.depends({ action, kill_switch: "1" }),
+  );
+  o.modalonly = true;
+
   o = section.taboption(
     "advanced",
     form.DummyValue,

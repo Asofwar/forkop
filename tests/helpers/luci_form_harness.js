@@ -1202,11 +1202,14 @@ function createEnvironment({
   };
   const rpc = { declare: () => () => Promise.resolve({}) };
   const main = loadModule("main.js", { baseclass, fs: fsStub, uci, ui, rpc }, globals);
-  const killswitch = loadModule(
-    "killswitch.js",
-    { baseclass, dom: { content() {} }, fs: fsStub, ui },
-    globals,
-  );
+  // dom.content() replaces the children of a node, as in LuCI.
+  const dom = {
+    content(node, children) {
+      node.textContent = "";
+      node.append(...[].concat(children ?? []));
+    },
+  };
+  const killswitch = loadModule("killswitch.js", { baseclass, dom, fs: fsStub, ui }, globals);
   const section = loadModule(
     "section.js",
     {

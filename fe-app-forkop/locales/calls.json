@@ -450,7 +450,7 @@
     "call": "Active until the next firewall reload",
     "key": "Active until the next firewall reload",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:262"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:273"
     ]
   },
   {
@@ -549,28 +549,28 @@
     "call": "Add URLs or local paths to .lst lists containing domains and subnets.",
     "key": "Add URLs or local paths to .lst lists containing domains and subnets.",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9487"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9507"
     ]
   },
   {
     "call": "Add URLs or local paths to .lst lists containing domains. IP entries are ignored.",
     "key": "Add URLs or local paths to .lst lists containing domains. IP entries are ignored.",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9508"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9528"
     ]
   },
   {
     "call": "Add URLs or local paths to .srs / .json lists. Only domain rules are supported.",
     "key": "Add URLs or local paths to .srs / .json lists. Only domain rules are supported.",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9462"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9482"
     ]
   },
   {
     "call": "Add URLs or local paths to .srs / .json lists. Subnets are ignored by default.",
     "key": "Add URLs or local paths to .srs / .json lists. Subnets are ignored by default.",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9427"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9447"
     ]
   },
   {
@@ -717,7 +717,7 @@
     "call": "All traffic from these IP addresses will be routed through the section unconditionally, ignoring all other conditions.",
     "key": "All traffic from these IP addresses will be routed through the section unconditionally, ignoring all other conditions.",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9552"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9572"
     ]
   },
   {
@@ -787,8 +787,8 @@
     "call": "and %d more",
     "key": "and %d more",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:339",
-      "src/forkop/tabs/history/model.ts:366"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:342",
+      "src/forkop/tabs/history/model.ts:369"
     ]
   },
   {
@@ -838,7 +838,7 @@
     "call": "Another snapshot operation is already in progress. Try again in a moment.",
     "key": "Another snapshot operation is already in progress. Try again in a moment.",
     "places": [
-      "src/forkop/tabs/history/model.ts:384"
+      "src/forkop/tabs/history/model.ts:387"
     ]
   },
   {
@@ -859,7 +859,7 @@
     "call": "Applied by reload",
     "key": "Applied by reload",
     "places": [
-      "src/forkop/tabs/history/model.ts:270"
+      "src/forkop/tabs/history/model.ts:273"
     ]
   },
   {
@@ -901,7 +901,7 @@
     "call": "Apply section rules only to the specified local IP addresses",
     "key": "Apply section rules only to the specified local IP addresses",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9532"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9552"
     ]
   },
   {
@@ -1251,21 +1251,21 @@
     "call": "Before applying changes",
     "key": "Before applying changes",
     "places": [
-      "src/forkop/tabs/history/model.ts:273"
+      "src/forkop/tabs/history/model.ts:276"
     ]
   },
   {
     "call": "Before autotune",
     "key": "Before autotune",
     "places": [
-      "src/forkop/tabs/history/model.ts:279"
+      "src/forkop/tabs/history/model.ts:282"
     ]
   },
   {
     "call": "Before restore",
     "key": "Before restore",
     "places": [
-      "src/forkop/tabs/history/model.ts:275"
+      "src/forkop/tabs/history/model.ts:278"
     ]
   },
   {
@@ -1368,8 +1368,8 @@
     "call": "Built-in rule sets",
     "key": "Built-in rule sets",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9348",
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9368"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9368",
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9388"
     ]
   },
   {
@@ -1569,7 +1569,7 @@
     "call": "Cannot save the rule",
     "key": "Cannot save the rule",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9715"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9735"
     ]
   },
   {
@@ -2064,7 +2064,7 @@
     "call": "Concurrent edit",
     "key": "Concurrent edit",
     "places": [
-      "src/forkop/tabs/history/model.ts:284"
+      "src/forkop/tabs/history/model.ts:287"
     ]
   },
   {
@@ -2107,8 +2107,8 @@
     "call": "Configuration applied successfully",
     "key": "Configuration applied successfully",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:315",
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:334"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:318",
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:337"
     ]
   },
   {
@@ -2122,35 +2122,35 @@
     "call": "Configuration restored and reloaded",
     "key": "Configuration restored and reloaded",
     "places": [
-      "src/forkop/tabs/history/model.ts:593"
+      "src/forkop/tabs/history/model.ts:596"
     ]
   },
   {
     "call": "Configuration restored, but Forkop X is stopped: it was not started or checked. The restored configuration takes effect when Forkop X is started.",
     "key": "Configuration restored, but Forkop X is stopped: it was not started or checked. The restored configuration takes effect when Forkop X is started.",
     "places": [
-      "src/forkop/tabs/history/model.ts:603"
+      "src/forkop/tabs/history/model.ts:606"
     ]
   },
   {
     "call": "Configuration saved. Forkop X is not running: the changes take effect when it is started.",
     "key": "Configuration saved. Forkop X is not running: the changes take effect when it is started.",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:301"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:304"
     ]
   },
   {
     "call": "Configuration saved. Runtime reload failed; check History and recovery.",
     "key": "Configuration saved. Runtime reload failed; check History and recovery.",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:309"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:312"
     ]
   },
   {
     "call": "Configuration saved. Runtime reload has not been confirmed; check History and recovery.",
     "key": "Configuration saved. Runtime reload has not been confirmed; check History and recovery.",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:305"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:308"
     ]
   },
   {
@@ -2351,7 +2351,7 @@
     "call": "Could not create snapshot",
     "key": "Could not create snapshot",
     "places": [
-      "src/forkop/tabs/history/model.ts:462"
+      "src/forkop/tabs/history/model.ts:465"
     ]
   },
   {
@@ -2654,7 +2654,7 @@
     "call": "Device filter",
     "key": "Device filter",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9531"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9551"
     ]
   },
   {
@@ -2861,7 +2861,7 @@
     "call": "DNS protection",
     "key": "DNS protection",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:291"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:302"
     ]
   },
   {
@@ -2951,7 +2951,7 @@
     "call": "DNS through proxy",
     "key": "DNS through proxy",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9897",
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9917",
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:399"
     ]
   },
@@ -2973,7 +2973,7 @@
     "call": "Do not apply this section to the specified local IP addresses; matching continues with the next section.",
     "key": "Do not apply this section to the specified local IP addresses; matching continues with the next section.",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9563"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9583"
     ]
   },
   {
@@ -3037,7 +3037,7 @@
     "call": "Domain and IP lists",
     "key": "Domain and IP lists",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9486"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9506"
     ]
   },
   {
@@ -3051,7 +3051,7 @@
     "call": "Domain lists",
     "key": "Domain lists",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9507"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9527"
     ]
   },
   {
@@ -3072,7 +3072,7 @@
     "call": "Domains",
     "key": "Domains",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9307"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9327"
     ]
   },
   {
@@ -3087,7 +3087,7 @@
     "key": "Domains blocked while Forkop is stopped",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:204",
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:299"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:310"
     ]
   },
   {
@@ -3109,6 +3109,13 @@
     "key": "Domains of the list",
     "places": [
       "src/forkop/tabs/autotune/initController.ts:689"
+    ]
+  },
+  {
+    "call": "Domains the excluded devices of this section resolve while Forkop is stopped (through their own resolver)",
+    "key": "Domains the excluded devices of this section resolve while Forkop is stopped (through their own resolver)",
+    "places": [
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:240"
     ]
   },
   {
@@ -3160,7 +3167,7 @@
     "call": "Download components through a section",
     "key": "Download components through a section",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9910",
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9930",
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:754"
     ]
   },
@@ -3175,7 +3182,7 @@
     "call": "Download lists through a section",
     "key": "Download lists through a section",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9903",
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9923",
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:734"
     ]
   },
@@ -3412,14 +3419,14 @@
     "call": "Enable Mixed Proxy",
     "key": "Enable Mixed Proxy",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9112"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9132"
     ]
   },
   {
     "call": "Enable Mixed Proxy Authentication",
     "key": "Enable Mixed Proxy Authentication",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9159"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9179"
     ]
   },
   {
@@ -3582,7 +3589,7 @@
     "call": "exceptions",
     "key": "exceptions",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:300"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:311"
     ]
   },
   {
@@ -3613,7 +3620,7 @@
     "call": "Exclude devices",
     "key": "Exclude devices",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9562"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9582"
     ]
   },
   {
@@ -3660,6 +3667,13 @@
     ]
   },
   {
+    "call": "Excluded devices resolve these names while Forkop is stopped",
+    "key": "Excluded devices resolve these names while Forkop is stopped",
+    "places": [
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9097"
+    ]
+  },
+  {
     "call": "Expecting: %s",
     "key": "Expecting: %s",
     "places": [
@@ -3677,7 +3691,7 @@
     "call": "Expose this section as a local HTTP+SOCKS proxy",
     "key": "Expose this section as a local HTTP+SOCKS proxy",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9113"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9133"
     ]
   },
   {
@@ -3796,7 +3810,7 @@
     "call": "FakeIP connections rejected",
     "key": "FakeIP connections rejected",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:306"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:317"
     ]
   },
   {
@@ -3897,7 +3911,7 @@
     "call": "Forced device routing",
     "key": "Forced device routing",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9551"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9571"
     ]
   },
   {
@@ -3939,7 +3953,7 @@
     "call": "Forkop runtime",
     "key": "Forkop runtime",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:285"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:296"
     ]
   },
   {
@@ -4016,7 +4030,7 @@
     "call": "Forkop X is stopped: the configuration is replaced and checked, but Forkop X is not started. It takes effect when you start Forkop X.",
     "key": "Forkop X is stopped: the configuration is replaced and checked, but Forkop X is not started. It takes effect when you start Forkop X.",
     "places": [
-      "src/forkop/tabs/history/model.ts:532"
+      "src/forkop/tabs/history/model.ts:535"
     ]
   },
   {
@@ -4074,7 +4088,7 @@
     "call": "Forkop X reloads the configuration. If the reload fails, the previous configuration is restored automatically.",
     "key": "Forkop X reloads the configuration. If the reload fails, the previous configuration is restored automatically.",
     "places": [
-      "src/forkop/tabs/history/model.ts:535"
+      "src/forkop/tabs/history/model.ts:538"
     ]
   },
   {
@@ -4849,7 +4863,7 @@
     "call": "Invalid port number. Must be between 1 and 65535",
     "key": "Invalid port number. Must be between 1 and 65535",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9152",
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9172",
       "src/validators/validateShadowsocksUrl.ts:91"
     ]
   },
@@ -5055,7 +5069,7 @@
     "call": "IPs",
     "key": "IPs",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9337"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9357"
     ]
   },
   {
@@ -5234,14 +5248,14 @@
     "call": "Kill-switch status",
     "key": "Kill-switch status",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9095"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9115"
     ]
   },
   {
     "call": "Kill-switch status is unavailable: %s",
     "key": "Kill-switch status is unavailable: %s",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:338"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:349"
     ]
   },
   {
@@ -5309,7 +5323,7 @@
     "key": "Last known good",
     "places": [
       "src/forkop/tabs/history/initController.ts:374",
-      "src/forkop/tabs/history/model.ts:277"
+      "src/forkop/tabs/history/model.ts:280"
     ]
   },
   {
@@ -5344,7 +5358,7 @@
     "call": "Last update",
     "key": "Last update",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:310"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:321"
     ]
   },
   {
@@ -5390,7 +5404,7 @@
     "call": "Legacy settings",
     "key": "Legacy settings",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9591"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9611"
     ]
   },
   {
@@ -5476,7 +5490,7 @@
     "call": "Loading kill-switch status…",
     "key": "Loading kill-switch status…",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:324"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:335"
     ]
   },
   {
@@ -5561,7 +5575,7 @@
     "call": "Manual",
     "key": "Manual",
     "places": [
-      "src/forkop/tabs/history/model.ts:265"
+      "src/forkop/tabs/history/model.ts:268"
     ]
   },
   {
@@ -5589,14 +5603,14 @@
     "call": "Match destination IPs or subnets",
     "key": "Match destination IPs or subnets",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9338"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9358"
     ]
   },
   {
     "call": "Match destination ports. Use a single port or a range",
     "key": "Match destination ports. Use a single port or a range",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9578"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9598"
     ]
   },
   {
@@ -5638,21 +5652,21 @@
     "call": "Mixed Proxy Password",
     "key": "Mixed Proxy Password",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9228"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9248"
     ]
   },
   {
     "call": "Mixed Proxy Port",
     "key": "Mixed Proxy Port",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9130"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9150"
     ]
   },
   {
     "call": "Mixed Proxy Username",
     "key": "Mixed Proxy Username",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9177"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9197"
     ]
   },
   {
@@ -6166,7 +6180,7 @@
     "call": "none",
     "key": "none",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:278"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:289"
     ]
   },
   {
@@ -6305,8 +6319,8 @@
     "call": "not set",
     "key": "not set",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:329",
-      "src/forkop/tabs/history/model.ts:310"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:332",
+      "src/forkop/tabs/history/model.ts:313"
     ]
   },
   {
@@ -6386,7 +6400,7 @@
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:120",
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:153",
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:271",
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:282",
       "src/forkop/tabs/autotune/model.ts:17"
     ]
   },
@@ -6445,7 +6459,7 @@
     "call": "Only the first %d changes are listed; %d changes in total.",
     "key": "Only the first %d changes are listed; %d changes in total.",
     "places": [
-      "src/forkop/tabs/history/model.ts:353"
+      "src/forkop/tabs/history/model.ts:356"
     ]
   },
   {
@@ -6562,7 +6576,7 @@
     "call": "Other",
     "key": "Other",
     "places": [
-      "src/forkop/tabs/history/model.ts:286",
+      "src/forkop/tabs/history/model.ts:289",
       "src/forkop/tabs/monitoring/connectionView.ts:122"
     ]
   },
@@ -6670,7 +6684,7 @@
     "call": "Password cannot be empty",
     "key": "Password cannot be empty",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9270"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9290"
     ]
   },
   {
@@ -6818,14 +6832,14 @@
     "call": "Port cannot be empty",
     "key": "Port cannot be empty",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9144"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9164"
     ]
   },
   {
     "call": "Port for the local mixed proxy of this section",
     "key": "Port for the local mixed proxy of this section",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9131"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9151"
     ]
   },
   {
@@ -6847,7 +6861,7 @@
     "call": "Ports",
     "key": "Ports",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9577"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9597"
     ]
   },
   {
@@ -6979,7 +6993,7 @@
     "call": "Protected sections",
     "key": "Protected sections",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:277"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:288"
     ]
   },
   {
@@ -6987,7 +7001,7 @@
     "key": "Protection active",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:166",
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:261"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:272"
     ]
   },
   {
@@ -7038,7 +7052,7 @@
     "call": "Re-apply now",
     "key": "Re-apply now",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:369"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:380"
     ]
   },
   {
@@ -7203,7 +7217,7 @@
     "call": "Remove protection now",
     "key": "Remove protection now",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:380"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:391"
     ]
   },
   {
@@ -7231,7 +7245,7 @@
     "call": "Remove the kill-switch now? Protected traffic will be able to leave directly until Forkop applies it again on the next successful start or reload.",
     "key": "Remove the kill-switch now? Protected traffic will be able to leave directly until Forkop applies it again on the next successful start or reload.",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:383"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:394"
     ]
   },
   {
@@ -7267,7 +7281,7 @@
     "call": "Require a username and password for the local mixed proxy",
     "key": "Require a username and password for the local mixed proxy",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9160"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9180"
     ]
   },
   {
@@ -7282,14 +7296,14 @@
     "call": "Resolve domain names before routing so sing-box can use real destination IPs.",
     "key": "Resolve domain names before routing so sing-box can use real destination IPs.",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9281"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9301"
     ]
   },
   {
     "call": "Resolve real IP for routing",
     "key": "Resolve real IP for routing",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9280"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9300"
     ]
   },
   {
@@ -7375,42 +7389,42 @@
     "call": "Restore did not finish: a failed change left the DPI guard in place, and the DPI guard stays active. Restart Forkop X, then restore the snapshot again.",
     "key": "Restore did not finish: a failed change left the DPI guard in place, and the DPI guard stays active. Restart Forkop X, then restore the snapshot again.",
     "places": [
-      "src/forkop/tabs/history/model.ts:712"
+      "src/forkop/tabs/history/model.ts:715"
     ]
   },
   {
     "call": "Restore did not finish: the configuration was changed while the snapshot was being applied.",
     "key": "Restore did not finish: the configuration was changed while the snapshot was being applied.",
     "places": [
-      "src/forkop/tabs/history/model.ts:703"
+      "src/forkop/tabs/history/model.ts:706"
     ]
   },
   {
     "call": "Restore did not finish: the configuration was changed while the snapshot was being applied. Forkop X was reloaded, but it is not known whether with the snapshot or with the change.",
     "key": "Restore did not finish: the configuration was changed while the snapshot was being applied. Forkop X was reloaded, but it is not known whether with the snapshot or with the change.",
     "places": [
-      "src/forkop/tabs/history/model.ts:702"
+      "src/forkop/tabs/history/model.ts:705"
     ]
   },
   {
     "call": "Restore did not finish: the service was busy and only queued the reload. The DPI guard stays active; restore again when the service is idle.",
     "key": "Restore did not finish: the service was busy and only queued the reload. The DPI guard stays active; restore again when the service is idle.",
     "places": [
-      "src/forkop/tabs/history/model.ts:720"
+      "src/forkop/tabs/history/model.ts:723"
     ]
   },
   {
     "call": "Restore failed; check the recovery state before retrying",
     "key": "Restore failed; check the recovery state before retrying",
     "places": [
-      "src/forkop/tabs/history/model.ts:729"
+      "src/forkop/tabs/history/model.ts:732"
     ]
   },
   {
     "call": "Restore failed; previous configuration and runtime recovered",
     "key": "Restore failed; previous configuration and runtime recovered",
     "places": [
-      "src/forkop/tabs/history/model.ts:618"
+      "src/forkop/tabs/history/model.ts:621"
     ]
   },
   {
@@ -7438,106 +7452,106 @@
     "call": "Restore the snapshot you need to finish.",
     "key": "Restore the snapshot you need to finish.",
     "places": [
-      "src/forkop/tabs/history/model.ts:702"
+      "src/forkop/tabs/history/model.ts:705"
     ]
   },
   {
     "call": "Restore was not applied: Forkop X was stopped during the restore. The previous configuration is kept.",
     "key": "Restore was not applied: Forkop X was stopped during the restore. The previous configuration is kept.",
     "places": [
-      "src/forkop/tabs/history/model.ts:676"
+      "src/forkop/tabs/history/model.ts:679"
     ]
   },
   {
     "call": "Restore was not applied: Forkop X was stopped, and the configuration was changed during the restore.",
     "key": "Restore was not applied: Forkop X was stopped, and the configuration was changed during the restore.",
     "places": [
-      "src/forkop/tabs/history/model.ts:699"
+      "src/forkop/tabs/history/model.ts:702"
     ]
   },
   {
     "call": "Restore was not applied: the configuration file could not be written. The previous configuration is kept.",
     "key": "Restore was not applied: the configuration file could not be written. The previous configuration is kept.",
     "places": [
-      "src/forkop/tabs/history/model.ts:649",
-      "src/forkop/tabs/history/model.ts:650"
+      "src/forkop/tabs/history/model.ts:652",
+      "src/forkop/tabs/history/model.ts:653"
     ]
   },
   {
     "call": "Restore was not applied: the service was busy and only queued the reload. The previous configuration is kept.",
     "key": "Restore was not applied: the service was busy and only queued the reload. The previous configuration is kept.",
     "places": [
-      "src/forkop/tabs/history/model.ts:615"
+      "src/forkop/tabs/history/model.ts:618"
     ]
   },
   {
     "call": "Restore was not applied: the snapshot configuration did not pass validation. The previous configuration is kept; Forkop X stays stopped.",
     "key": "Restore was not applied: the snapshot configuration did not pass validation. The previous configuration is kept; Forkop X stays stopped.",
     "places": [
-      "src/forkop/tabs/history/model.ts:673"
+      "src/forkop/tabs/history/model.ts:676"
     ]
   },
   {
     "call": "Restore was not started: a failed change left the DPI guard in place, and nothing can be reloaded until Forkop X is restarted. Restart Forkop X, then restore the snapshot if it is still needed.",
     "key": "Restore was not started: a failed change left the DPI guard in place, and nothing can be reloaded until Forkop X is restarted. Restart Forkop X, then restore the snapshot if it is still needed.",
     "places": [
-      "src/forkop/tabs/history/model.ts:627"
+      "src/forkop/tabs/history/model.ts:630"
     ]
   },
   {
     "call": "Restore was not started: the configuration was changed while the restore was starting. Nothing was changed; check the change and try again.",
     "key": "Restore was not started: the configuration was changed while the restore was starting. Nothing was changed; check the change and try again.",
     "places": [
-      "src/forkop/tabs/history/model.ts:486"
+      "src/forkop/tabs/history/model.ts:489"
     ]
   },
   {
     "call": "Restore was not started: the current configuration could not be read. Nothing was changed.",
     "key": "Restore was not started: the current configuration could not be read. Nothing was changed.",
     "places": [
-      "src/forkop/tabs/history/model.ts:482"
+      "src/forkop/tabs/history/model.ts:485"
     ]
   },
   {
     "call": "Restore was not started: the current configuration could not be saved as a snapshot first. Nothing was changed. Check the free space on the router.",
     "key": "Restore was not started: the current configuration could not be saved as a snapshot first. Nothing was changed. Check the free space on the router.",
     "places": [
-      "src/forkop/tabs/history/model.ts:474"
+      "src/forkop/tabs/history/model.ts:477"
     ]
   },
   {
     "call": "Restore was not started: the DPI guard that protects traffic during the restore could not be installed. Nothing was changed.",
     "key": "Restore was not started: the DPI guard that protects traffic during the restore could not be installed. Nothing was changed.",
     "places": [
-      "src/forkop/tabs/history/model.ts:490"
+      "src/forkop/tabs/history/model.ts:493"
     ]
   },
   {
     "call": "Restore was not started: the router has uncommitted uci changes of Forkop X (made with \"uci set\" without a commit). Commit or revert them, then restore again.",
     "key": "Restore was not started: the router has uncommitted uci changes of Forkop X (made with \"uci set\" without a commit). Commit or revert them, then restore again.",
     "places": [
-      "src/forkop/tabs/history/model.ts:637"
+      "src/forkop/tabs/history/model.ts:640"
     ]
   },
   {
     "call": "Restore was not started: the snapshot is missing or damaged. Nothing was changed.",
     "key": "Restore was not started: the snapshot is missing or damaged. Nothing was changed.",
     "places": [
-      "src/forkop/tabs/history/model.ts:478"
+      "src/forkop/tabs/history/model.ts:481"
     ]
   },
   {
     "call": "Restore was not started: the snapshot storage could not be locked. Nothing was changed.",
     "key": "Restore was not started: the snapshot storage could not be locked. Nothing was changed.",
     "places": [
-      "src/forkop/tabs/history/model.ts:494"
+      "src/forkop/tabs/history/model.ts:497"
     ]
   },
   {
     "call": "Restore was not started: the snapshot was saved by an older version of Forkop X, and its configuration could not be migrated to this version. Nothing was changed.",
     "key": "Restore was not started: the snapshot was saved by an older version of Forkop X, and its configuration could not be migrated to this version. Nothing was changed.",
     "places": [
-      "src/forkop/tabs/history/model.ts:500"
+      "src/forkop/tabs/history/model.ts:503"
     ]
   },
   {
@@ -7775,8 +7789,8 @@
     "call": "Rule sets",
     "key": "Rule sets",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9426",
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9461"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9446",
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9481"
     ]
   },
   {
@@ -7854,7 +7868,7 @@
     "call": "running: traffic goes through the VPN",
     "key": "running: traffic goes through the VPN",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:287"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:298"
     ]
   },
   {
@@ -7976,14 +7990,14 @@
     "call": "Select a predefined domain list",
     "key": "Select a predefined domain list",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9349"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9369"
     ]
   },
   {
     "call": "Select a predefined IP rule set from b4geoip-forkop",
     "key": "Select a predefined IP rule set from b4geoip-forkop",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9369"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9389"
     ]
   },
   {
@@ -8186,8 +8200,8 @@
     "call": "Service list",
     "key": "Service list",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9352",
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9389"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9372",
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9409"
     ]
   },
   {
@@ -8365,35 +8379,35 @@
     "call": "Snapshot not saved: at most %d manual snapshots are kept, so that the automatic snapshots taken before a restore, Save & Apply or autotune always have room. Delete a manual snapshot you no longer need, then try again.",
     "key": "Snapshot not saved: at most %d manual snapshots are kept, so that the automatic snapshots taken before a restore, Save & Apply or autotune always have room. Delete a manual snapshot you no longer need, then try again.",
     "places": [
-      "src/forkop/tabs/history/model.ts:426"
+      "src/forkop/tabs/history/model.ts:429"
     ]
   },
   {
     "call": "Snapshot not saved: at most %d manual snapshots are kept, so that the automatic snapshots taken before a restore, Save & Apply or autotune always have room. There are %d manual snapshots now: delete %d you no longer need, then try again.",
     "key": "Snapshot not saved: at most %d manual snapshots are kept, so that the automatic snapshots taken before a restore, Save & Apply or autotune always have room. There are %d manual snapshots now: delete %d you no longer need, then try again.",
     "places": [
-      "src/forkop/tabs/history/model.ts:420"
+      "src/forkop/tabs/history/model.ts:423"
     ]
   },
   {
     "call": "Snapshot not saved: it could not be written. Check the free space on the router.",
     "key": "Snapshot not saved: it could not be written. Check the free space on the router.",
     "places": [
-      "src/forkop/tabs/history/model.ts:444"
+      "src/forkop/tabs/history/model.ts:447"
     ]
   },
   {
     "call": "Snapshot not saved: the configuration file could not be read.",
     "key": "Snapshot not saved: the configuration file could not be read.",
     "places": [
-      "src/forkop/tabs/history/model.ts:435"
+      "src/forkop/tabs/history/model.ts:438"
     ]
   },
   {
     "call": "Snapshot not saved: the snapshot storage could not be locked. Try again in a moment.",
     "key": "Snapshot not saved: the snapshot storage could not be locked. Try again in a moment.",
     "places": [
-      "src/forkop/tabs/history/model.ts:452"
+      "src/forkop/tabs/history/model.ts:455"
     ]
   },
   {
@@ -8407,7 +8421,7 @@
     "call": "Snapshot saved",
     "key": "Snapshot saved",
     "places": [
-      "src/forkop/tabs/history/model.ts:402"
+      "src/forkop/tabs/history/model.ts:405"
     ]
   },
   {
@@ -8568,7 +8582,7 @@
     "call": "Standby DNS for a failed sing-box",
     "key": "Standby DNS for a failed sing-box",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:293"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:304"
     ]
   },
   {
@@ -8685,7 +8699,7 @@
     "call": "stopped: protected traffic is blocked",
     "key": "stopped: protected traffic is blocked",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:288"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:299"
     ]
   },
   {
@@ -9016,14 +9030,14 @@
     "call": "The change is kept and saved as a snapshot (\"Concurrent edit\").",
     "key": "The change is kept and saved as a snapshot (\"Concurrent edit\").",
     "places": [
-      "src/forkop/tabs/history/model.ts:690"
+      "src/forkop/tabs/history/model.ts:693"
     ]
   },
   {
     "call": "The change is kept in the configuration, but no snapshot of it could be saved.",
     "key": "The change is kept in the configuration, but no snapshot of it could be saved.",
     "places": [
-      "src/forkop/tabs/history/model.ts:691"
+      "src/forkop/tabs/history/model.ts:694"
     ]
   },
   {
@@ -9037,7 +9051,7 @@
     "call": "The changes are saved: Save & Apply applies them once a snapshot can be taken.",
     "key": "The changes are saved: Save & Apply applies them once a snapshot can be taken.",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:220"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:223"
     ]
   },
   {
@@ -9086,14 +9100,14 @@
     "call": "The configuration of the snapshot was migrated from Forkop X %s to %s.",
     "key": "The configuration of the snapshot was migrated from Forkop X %s to %s.",
     "places": [
-      "src/forkop/tabs/history/model.ts:567"
+      "src/forkop/tabs/history/model.ts:570"
     ]
   },
   {
     "call": "The configuration of the snapshot was migrated to Forkop X %s.",
     "key": "The configuration of the snapshot was migrated to Forkop X %s.",
     "places": [
-      "src/forkop/tabs/history/model.ts:572"
+      "src/forkop/tabs/history/model.ts:575"
     ]
   },
   {
@@ -9157,15 +9171,15 @@
     "call": "The DPI guard of an earlier restore stays active.",
     "key": "The DPI guard of an earlier restore stays active.",
     "places": [
-      "src/forkop/tabs/history/model.ts:649",
-      "src/forkop/tabs/history/model.ts:663"
+      "src/forkop/tabs/history/model.ts:652",
+      "src/forkop/tabs/history/model.ts:666"
     ]
   },
   {
     "call": "The DPI guard stays active. Restore the snapshot you need to finish.",
     "key": "The DPI guard stays active. Restore the snapshot you need to finish.",
     "places": [
-      "src/forkop/tabs/history/model.ts:703"
+      "src/forkop/tabs/history/model.ts:706"
     ]
   },
   {
@@ -9337,7 +9351,7 @@
     "call": "The list of changes is unavailable.",
     "key": "The list of changes is unavailable.",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:316"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:319"
     ]
   },
   {
@@ -9542,7 +9556,7 @@
     "call": "The rule applies to the domain and all its subdomains. Use full:, keyword:, or regex: prefixes for exact match, keyword match, or regular expression.",
     "key": "The rule applies to the domain and all its subdomains. Use full:, keyword:, or regex: prefixes for exact match, keyword match, or regular expression.",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9308"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9328"
     ]
   },
   {
@@ -9614,21 +9628,21 @@
     "call": "The rule was not removed because the page could not be saved: %s",
     "key": "The rule was not removed because the page could not be saved: %s",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9979"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9999"
     ]
   },
   {
     "call": "The rule was not removed. %s",
     "key": "The rule was not removed. %s",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9952"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9972"
     ]
   },
   {
     "call": "The rule window was closed before the save finished. Nothing was saved.",
     "key": "The rule window was closed before the save finished. Nothing was saved.",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9763"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9783"
     ]
   },
   {
@@ -9680,7 +9694,7 @@
     "call": "The service is busy with another operation (list or subscription update, reload or start). Nothing was changed; try again when it finishes.",
     "key": "The service is busy with another operation (list or subscription update, reload or start). Nothing was changed; try again when it finishes.",
     "places": [
-      "src/forkop/tabs/history/model.ts:381"
+      "src/forkop/tabs/history/model.ts:384"
     ]
   },
   {
@@ -9900,7 +9914,7 @@
     "call": "There are unsaved changes of Forkop X in this session. Save & Apply or revert them, then restore the snapshot.",
     "key": "There are unsaved changes of Forkop X in this session. Save & Apply or revert them, then restore the snapshot.",
     "places": [
-      "src/forkop/tabs/history/model.ts:521"
+      "src/forkop/tabs/history/model.ts:524"
     ]
   },
   {
@@ -10021,7 +10035,7 @@
     "call": "This rule is selected in Settings for: %s. Choose another section there first.",
     "key": "This rule is selected in Settings for: %s. Choose another section there first.",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9914"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9934"
     ]
   },
   {
@@ -10049,21 +10063,21 @@
     "call": "This section has no IP lists, so it is protected through FakeIP and DNS only.",
     "key": "This section has no IP lists, so it is protected through FakeIP and DNS only.",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:242"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:253"
     ]
   },
   {
     "call": "This snapshot was saved by an older version of Forkop X. Before the restore, its configuration is migrated to the current version %s, as an upgrade migrates it: settings retired since then are updated. The snapshot itself is not changed; the changes listed above compare the snapshot as it was saved.",
     "key": "This snapshot was saved by an older version of Forkop X. Before the restore, its configuration is migrated to the current version %s, as an upgrade migrates it: settings retired since then are updated. The snapshot itself is not changed; the changes listed above compare the snapshot as it was saved.",
     "places": [
-      "src/forkop/tabs/history/model.ts:554"
+      "src/forkop/tabs/history/model.ts:557"
     ]
   },
   {
     "call": "This snapshot was saved by Forkop X %s. Before the restore, its configuration is migrated to the current version %s, as an upgrade migrates it: settings retired since then are updated. The snapshot itself is not changed; the changes listed above compare the snapshot as it was saved.",
     "key": "This snapshot was saved by Forkop X %s. Before the restore, its configuration is migrated to the current version %s, as an upgrade migrates it: settings retired since then are updated. The snapshot itself is not changed; the changes listed above compare the snapshot as it was saved.",
     "places": [
-      "src/forkop/tabs/history/model.ts:549"
+      "src/forkop/tabs/history/model.ts:552"
     ]
   },
   {
@@ -10365,6 +10379,7 @@
     "call": "unknown",
     "key": "unknown",
     "places": [
+      "src/forkop/helpers/singBoxVariant.ts:28",
       "src/forkop/services/systemInfo.service.ts:10",
       "src/forkop/services/systemInfo.service.ts:11",
       "src/forkop/services/systemInfo.service.ts:12",
@@ -10374,7 +10389,6 @@
       "src/forkop/services/systemInfo.service.ts:22",
       "src/forkop/services/systemInfo.service.ts:33",
       "src/forkop/services/systemInfo.service.ts:34",
-      "src/forkop/helpers/singBoxVariant.ts:28",
       "src/forkop/tabs/diagnostic/initController.ts:735",
       "src/forkop/tabs/updates/initController.ts:333"
     ]
@@ -10655,7 +10669,7 @@
     "call": "Username cannot be empty",
     "key": "Username cannot be empty",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9218"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9238"
     ]
   },
   {
@@ -10753,7 +10767,7 @@
     "key": "Waiting for a successful Forkop start or reload",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:177",
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:267"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:278"
     ]
   },
   {
@@ -10862,6 +10876,13 @@
     "key": "Which domains to check",
     "places": [
       "src/forkop/tabs/autotune/initController.ts:679"
+    ]
+  },
+  {
+    "call": "While Forkop is stopped, the kill-switch answers this rule's names with NXDOMAIN for every device, the devices excluded from this rule included: DNS is shared by all devices. With this option the excluded devices of this rule resolve its names through a separate resolver of their own; every other device stays blocked and the firewall part of the kill-switch does not change. Applies from the next successful Forkop start or reload.",
+    "key": "While Forkop is stopped, the kill-switch answers this rule's names with NXDOMAIN for every device, the devices excluded from this rule included: DNS is shared by all devices. With this option the excluded devices of this rule resolve its names through a separate resolver of their own; every other device stays blocked and the firewall part of the kill-switch does not change. Applies from the next successful Forkop start or reload.",
+    "places": [
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:9098"
     ]
   },
   {

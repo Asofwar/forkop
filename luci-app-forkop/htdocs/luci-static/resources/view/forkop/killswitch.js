@@ -233,6 +233,17 @@ function renderSectionStatus(section_id, status) {
           ),
         );
       }
+      // D-23: the excluded devices resolve them through their own resolver.
+      if (dnsSection.excluded_exempt) {
+        children.push(
+          line(
+            _(
+              "Domains the excluded devices of this section resolve while Forkop is stopped (through their own resolver)",
+            ),
+            `${dnsSection.excluded_exempt}`,
+          ),
+        );
+      }
     }
     if (!(state.rule_sections || []).includes(section_id)) {
       children.push(

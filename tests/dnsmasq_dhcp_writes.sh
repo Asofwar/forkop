@@ -15,7 +15,8 @@ set -euo pipefail
 # file as it was and fails the operation. The edit holds no lock on the
 # file: a dhcp commit someone else makes meanwhile is not blocked, and the
 # operation starts over from it instead of overwriting it. A symlink stays
-# one.
+# one. Without a dnsmasq section there is nothing to forward: nothing is
+# written and nothing fails.
 #
 # Part 1 runs the real dns/apply.uc on the UCI fixture; part 2 on a dhcp file
 # through the OpenWrt uci CLI (skipped without one: the test shim takes no
@@ -138,6 +139,26 @@ rmdir "$WORK/uci.log"
 restarted && fail "a configure whose commit failed restarted dnsmasq"
 dhcp_lines | cmp -s "$WORK/before" - || fail "a configure whose commit failed left changes behind: $(dhcp_lines | tr '\n' ' ')"
 ok "a configure whose commit fails saves nothing"
+
+# e. Without a dnsmasq section dnsmasq starts no instance and there is
+# nothing to forward: configure, an armed kill-switch and a restore warn and
+# change nothing, as before UC-236, instead of failing the start or stop.
+fixture 'dhcp.lan=dhcp' 'dhcp.lan.interface=lan'
+dhcp_lines >"$WORK/before"
+touch "$WORK/killswitch/dns-blocked.servers"
+for mode in configure "configure force" killswitch-refresh "restore force"; do
+  : >"$WORK/uci.log"
+  # shellcheck disable=SC2086
+  dns_apply $mode
+  [ "$STATUS" = 0 ] || fail "$mode without a dnsmasq section failed"
+  committed && fail "$mode without a dnsmasq section committed dhcp"
+  dhcp_lines | cmp -s "$WORK/before" - || fail "$mode without a dnsmasq section changed dhcp: $(dhcp_lines | tr '\n' ' ')"
+done
+grep -q 'no dnsmasq section' "$WORK/syslog" || fail "a restore without a dnsmasq section did not say why the kill-switch is off"
+dns_apply configure
+grep -q 'no dnsmasq section.*not forwarded' "$WORK/syslog" || fail "configure without a dnsmasq section did not say why"
+rm -f "$WORK/killswitch/dns-blocked.servers" "$WORK/killswitch/dnsmasq.servers"
+ok "without a dnsmasq section nothing is written and nothing fails"
 
 unset FORKOP_UCI_STATE_FILE FORKOP_UCI_LOG_FILE
 
@@ -275,6 +296,15 @@ no_leftovers() {
     done
   done
 }
+
+# Without a dnsmasq section configure warns and leaves the file alone.
+printf "config dhcp 'lan'\n\toption interface 'lan'\n" >"$DHCP"
+cp "$DHCP" "$WORK/dhcp.nosection"
+dns_apply configure force
+[ "$STATUS" = 0 ] || fail "configure of a dhcp file without a dnsmasq section failed: $(cat "$WORK/syslog")"
+cmp -s "$WORK/dhcp.nosection" "$DHCP" || fail "configure changed a dhcp file without a dnsmasq section: $(cat "$DHCP")"
+grep -q 'no dnsmasq section' "$WORK/syslog" || fail "configure without a dnsmasq section did not say why"
+ok "configure of a dhcp file without a dnsmasq section changes nothing and does not fail"
 
 # /etc/config/dhcp as a symlink: the file it points to is written, as a
 # libuci commit does, and the link stays.

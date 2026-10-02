@@ -137,6 +137,13 @@ function dnsmasq_legacy_instance_exists() {
     return uci_exists("dhcp.forkop");
 }
 
+// dnsmasq runs an instance per dnsmasq section: without one there is nothing
+// to forward to sing-box and nothing to attach the kill-switch servers file
+// to. Nothing is written then, and that fails no start or stop.
+function dnsmasq_section_missing() {
+    return !uci_exists("dhcp.@dnsmasq[0]");
+}
+
 function dnsmasq_default_servers() {
     return uci_get("dhcp.@dnsmasq[0].server");
 }
@@ -194,6 +201,10 @@ function killswitch_dns_apply(blocking) {
         return changed;
     }
 
+    if (dnsmasq_section_missing()) {
+        log("Kill-switch DNS protection is unavailable: there is no dnsmasq section in " + DNSMASQ_CONFIG_FILE, "warn");
+        return false;
+    }
     if (current != "" && current != KILLSWITCH_DNS_SERVERS_FILE) {
         log("Kill-switch DNS protection is unavailable: dnsmasq already uses servers file " + current, "warn");
         return false;
@@ -366,6 +377,10 @@ function dnsmasq_configure(force) {
         return true;
     if (!edit_dhcp())
         return dhcp_unreadable();
+    if (dnsmasq_section_missing()) {
+        log("There is no dnsmasq section in " + DNSMASQ_CONFIG_FILE + ": DNS is not forwarded to sing-box", "warn");
+        return true;
+    }
 
     if (as_string(force) != "force" && shutdown_state() != "1") {
         if (dnsmasq_default_config_is_complete()) {

@@ -5,7 +5,8 @@ set -eu
 # proves a coherent runtime: a restore guard left by an earlier needs_attention
 # restore (reused through ensure semantics) stays active. Only a guard this
 # restore installed itself may be released again, restoring the state from
-# before the call.
+# before the call. A restore that wrote nothing is no restore event, unless it
+# leaves its own guard behind because the guard could not be removed (UC-022).
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 LIB="$ROOT/forkop/files/usr/lib"
 SCRIPT="$LIB/config/snapshots.uc"
@@ -45,8 +46,11 @@ case "${3:-}" in
     echo "$4:$guard" >> "$STATE/events"
     case "$4" in
       dpi-transition-guard-state) echo "$guard"; exit 0 ;;
-      ensure-dpi-transition-guard) echo valid > "$STATE/guard"; exit 0 ;;
-      remove-dpi-transition-guard) echo absent > "$STATE/guard"; exit 0 ;;
+      ensure-dpi-transition-guard)
+        # EDIT_ON_GUARD: an edit is committed while the guard is installed.
+        [ -z "${EDIT_ON_GUARD:-}" ] || printf "config settings 'settings'\n option marker 'edit'\n" > "$FORKOP_CONFIG_FILE"
+        echo valid > "$STATE/guard"; exit 0 ;;
+      remove-dpi-transition-guard) [ -z "${REMOVE_FAIL:-}" ] || exit 1; echo absent > "$STATE/guard"; exit 0 ;;
     esac
     exit 1 ;;
   */config/validator.uc) echo validate >> "$STATE/events"; exit 0 ;;
@@ -100,5 +104,25 @@ grep -q '^ensure-dpi-transition-guard:absent$' "$STATE/events" || fail "own guar
 grep -q "marker 'bad'" "$FORKOP_CONFIG_FILE" || fail "own guard: configuration changed"
 [ "$(cat "$FORKOP_SNAPSHOT_DIR/last-known-working")" = stale ] || fail "own guard: last-known-working moved"
 ! grep -q '^health:' "$STATE/events" || fail "own guard: a restore that wrote nothing was recorded"
+
+# 3. The guard this restore installed cannot be removed again: the restore
+#    leaves its own guard active, a change of the runtime, and is recorded.
+export REMOVE_FAIL=1
+restore absent
+unset REMOVE_FAIL
+[ "$(field status)" = needs_attention ] && [ "$(field reason)" = replace_failed ] && [ "$(field guard)" = active ] ||
+  fail "own guard not removed: $(cat "$WORK/result.json")"
+[ "$(cat "$STATE/guard")" = valid ] || fail "own guard not removed: guard state"
+grep -q '^health:restore:failure$' "$STATE/events" || fail "a restore that left its own guard active was not recorded: $(tr '\n' ' ' < "$STATE/events")"
+
+# 4. The same after an edit committed while the guard was installed: the edit
+#    stays, the restore wrote nothing, but its guard is left active.
+export REMOVE_FAIL=1 EDIT_ON_GUARD=1
+restore absent
+unset REMOVE_FAIL EDIT_ON_GUARD
+[ "$(field status)" = needs_attention ] && [ "$(field reason)" = guard_release_failed ] && [ "$(field guard)" = active ] ||
+  fail "edit during the guard: $(cat "$WORK/result.json")"
+grep -q "marker 'edit'" "$FORKOP_CONFIG_FILE" || fail "edit during the guard: the edit was overwritten"
+grep -q '^health:restore:failure$' "$STATE/events" || fail "a restore that left its own guard active was not recorded: $(tr '\n' ' ' < "$STATE/events")"
 
 printf 'config_restore_replace_failure: PASS\n'

@@ -651,14 +651,16 @@ function guarded_replace(before, content, pre, on_success, reason, apply_mode, o
     // has proved yet: only this call's own guard may go without a reload.
     let inherited = !apply_mode && restore_guard_state() != "absent";
     if (!restore_guard(false)) return { status: "failed", reason: "guard_unavailable" };
+    // Nothing written yet: the transaction counts as started (a history
+    // event) only when its own guard, which it cannot remove, stays behind.
     if (read_config() != before) {
         if (inherited) return { status: "failed", reason: "concurrent_change", guard: "active" };
-        if (!restore_guard(true)) return { status: "needs_attention", reason: "guard_release_failed", guard: "active" };
+        if (!restore_guard(true)) return { status: "needs_attention", reason: "guard_release_failed", guard: "active", started: true };
         return { status: "failed", reason: "concurrent_change" };
     }
     if (!atomic(CONFIG, content)) {
         if (inherited) return { status: "failed", reason: "replace_failed", guard: "active" };
-        if (!restore_guard(true)) return { status: "needs_attention", reason: "replace_failed", guard: "active" };
+        if (!restore_guard(true)) return { status: "needs_attention", reason: "replace_failed", guard: "active", started: true };
         return { status: "failed", reason: "replace_failed" };
     }
     let result = null;
@@ -890,7 +892,8 @@ else if (mode == "restore") {
     // Health records a restore only when its transaction started, as for an
     // apply: a refusal before it (busy, staged uci changes, a kept runtime
     // guard, a missing snapshot, no pre-restore snapshot) changed nothing
-    // and is no recovery that failed (UC-022).
+    // and is no recovery that failed (UC-022). One that left its own guard
+    // behind did change the runtime (guarded_replace).
     // A restore that an explicit stop kept from starting the runtime is no
     // success: nothing verified it.
     if (answer.started)

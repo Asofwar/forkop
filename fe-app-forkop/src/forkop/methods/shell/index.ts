@@ -464,7 +464,11 @@ export const ForkopShellMethods = {
     ),
   // Snapshot mutations print a structured result (busy, failed, ...) even
   // when they exit non-zero; keep it instead of a bare failure.
-  snapshotCreate: async (kind: 'manual' | 'automatic' = 'manual') =>
+  // before-apply: Save & Apply's snapshot of the configuration before the
+  // change (UC-067).
+  snapshotCreate: async (
+    kind: 'manual' | 'automatic' | 'before-apply' = 'manual',
+  ) =>
     callBaseMethod<Forkop.SnapshotResult>(
       Forkop.AvailableMethods.CONFIG_SNAPSHOT_CREATE,
       [kind],

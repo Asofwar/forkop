@@ -34,7 +34,7 @@ async function saveApply(snapshot, version = '24.10') {
   rules.setEnabled('vpn', '0');
   await rules.saveApply('0');
   // Refused before anything else: no apply, no "reloading", no health read.
-  assert.deepEqual(log.filter((entry) => !/^exec config_snapshot_create automatic$/.test(entry)), []);
+  assert.deepEqual(log.filter((entry) => !/^exec config_snapshot_create before-apply$/.test(entry)), []);
   assert.deepEqual(env.ui.changes.applies, []);
   assert.deepEqual(stored, []);
   assert.equal(env.uci.data.vpn.enabled, '0', 'the changes must be saved');

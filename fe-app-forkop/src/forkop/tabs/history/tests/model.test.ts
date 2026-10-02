@@ -263,6 +263,10 @@ describe('history list', () => {
 describe('snapshots', () => {
   it('labels every reason and marks the last known good one', () => {
     expect(snapshotReasonLabel('before-autotune')).toBe('Before autotune');
+    // UC-067: the reload snapshot holds the configuration the reload
+    // applies; Save & Apply's holds the one before the change.
+    expect(snapshotReasonLabel('before-reload')).toBe('Applied by reload');
+    expect(snapshotReasonLabel('before-apply')).toBe('Before applying changes');
     expect(snapshotReasonLabel('concurrent-change')).toBe('Concurrent edit');
     expect(snapshotReasonLabel('unexpected')).toBe('Other');
 

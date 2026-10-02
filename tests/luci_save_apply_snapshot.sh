@@ -86,7 +86,7 @@ async function check(label, fn) {
         assert.equal(view.map.handleSaveApply, undefined, 'a Save & Apply hook on the form map is never called');
         await view.saveApply('0');
         const order = log.filter((entry) => /^exec config_snapshot_create|^uci\.save$|^apply /.test(entry));
-        assert.deepEqual(order, ['exec config_snapshot_create automatic', 'uci.save', 'apply true'],
+        assert.deepEqual(order, ['exec config_snapshot_create before-apply', 'uci.save', 'apply true'],
           'the snapshot must come before LuCI saves and applies');
         assert.equal(edited(), true);
         assert.deepEqual(env.ui.changes.applies, [true]);
@@ -94,7 +94,7 @@ async function check(label, fn) {
         // Apply unchecked keeps the snapshot first as well.
         await view.saveApply('1');
         assert.deepEqual(calls(/^exec config_snapshot_create|^apply /).slice(2),
-          ['exec config_snapshot_create automatic', 'apply false']);
+          ['exec config_snapshot_create before-apply', 'apply false']);
       });
 
       await check(`${version} ${name}: a refused snapshot saves but does not apply`, async () => {

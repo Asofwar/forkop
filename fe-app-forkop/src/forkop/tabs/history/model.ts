@@ -245,7 +245,13 @@ export function snapshotReasonLabel(reason: string) {
   switch (reason) {
     case 'manual':
       return _('Manual');
+    // Taken when a reload starts, after the change was committed: the
+    // configuration the reload applies, possibly the one that failed
+    // (UC-067).
     case 'before-reload':
+      return _('Applied by reload');
+    // Save & Apply's snapshot of the configuration before the change.
+    case 'before-apply':
       return _('Before applying changes');
     case 'pre-restore':
       return _('Before restore');

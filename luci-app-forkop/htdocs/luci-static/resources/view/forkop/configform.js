@@ -179,7 +179,7 @@ if (
 }
 
 async function handleSaveApply(ev, mode) {
-  const snapshot = await main.ForkopShellMethods.snapshotCreate("automatic");
+  const snapshot = await main.ForkopShellMethods.snapshotCreate("before-apply");
   if (
     !snapshot.success ||
     !["created", "existing"].includes(snapshot.data?.status)

@@ -36,10 +36,10 @@ describe('observability CLI contracts', () => {
       stdout: '{"status":"created"}',
       stderr: '',
     });
-    await ForkopShellMethods.snapshotCreate('automatic');
+    await ForkopShellMethods.snapshotCreate('before-apply');
     expect(mocks.executeShellCommand).toHaveBeenCalledWith(
       expect.objectContaining({
-        args: ['config_snapshot_create', 'automatic'],
+        args: ['config_snapshot_create', 'before-apply'],
       }),
     );
   });

@@ -163,7 +163,7 @@ function read_snapshot(id, verify) {
 function metadata(snapshot) {
     return { id: snapshot.id, created_at: snapshot.created_at,
         kind: index([ "manual", "automatic" ], snapshot.kind) >= 0 ? snapshot.kind : "unknown",
-        reason: index([ "manual", "before-reload", "pre-restore", "last-known-working", "before-autotune", "concurrent-change" ], snapshot.reason) >= 0 ? snapshot.reason : "unknown",
+        reason: index([ "manual", "before-reload", "before-apply", "pre-restore", "last-known-working", "before-autotune", "concurrent-change" ], snapshot.reason) >= 0 ? snapshot.reason : "unknown",
         config_hash: snapshot.config_hash,
         forkop_version: match(value(snapshot.forkop_version), /^[A-Za-z0-9._-]{1,64}$/) != null ? snapshot.forkop_version : "unknown" };
 }
@@ -1153,9 +1153,16 @@ if (!acquire()) {
 }
 let answer = { status: "failed" };
 if (mode == "create") {
+    // automatic: the lifecycle's snapshot at the start of a reload, taken
+    // after the change was committed, so it holds the configuration the
+    // reload applies (the reason keeps its old name for the snapshots
+    // already stored). before-apply: Save & Apply's snapshot of the
+    // configuration before LuCI applies the change (UC-064, UC-067).
     let kind = value(ARGV[1] || "manual");
     if (index([ "manual", "automatic" ], kind) >= 0)
         answer = create(kind, kind == "manual" ? "manual" : "before-reload", kind == "automatic");
+    else if (kind == "before-apply")
+        answer = create("automatic", "before-apply", true);
     // Automatic snapshots are routine; only a manual one is a history event.
     if (kind == "manual" && answer.status == "created")
         success([ "ucode", "-L", LIB_DIR, LIB_DIR + "/diagnostics/health.uc", "record", "snapshot_create", "success" ]);

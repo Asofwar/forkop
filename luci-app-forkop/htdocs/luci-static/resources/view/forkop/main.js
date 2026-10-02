@@ -2805,6 +2805,8 @@ var ForkopShellMethods = {
   ),
   // Snapshot mutations print a structured result (busy, failed, ...) even
   // when they exit non-zero; keep it instead of a bare failure.
+  // before-apply: Save & Apply's snapshot of the configuration before the
+  // change (UC-067).
   snapshotCreate: async (kind = "manual") => callBaseMethod(
     Forkop.AvailableMethods.CONFIG_SNAPSHOT_CREATE,
     [kind],
@@ -17878,7 +17880,13 @@ function snapshotReasonLabel(reason) {
   switch (reason) {
     case "manual":
       return _("Manual");
+    // Taken when a reload starts, after the change was committed: the
+    // configuration the reload applies, possibly the one that failed
+    // (UC-067).
     case "before-reload":
+      return _("Applied by reload");
+    // Save & Apply's snapshot of the configuration before the change.
+    case "before-apply":
       return _("Before applying changes");
     case "pre-restore":
       return _("Before restore");

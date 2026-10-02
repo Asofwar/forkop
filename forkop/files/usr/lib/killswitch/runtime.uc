@@ -89,6 +89,11 @@ const EXEMPT_GUARD_CHAIN = "ks_exempt_guard";
 // passes; tests set it to 1.
 const EXEMPT_PROBE_PASSES = int(getenv("FORKOP_KILLSWITCH_EXEMPT_PROBE_PASSES") || "5");
 const DNSMASQ_INIT = getenv("DNSMASQ_INIT") || "/etc/init.d/dnsmasq";
+// The dhcp configuration and the uci CLI an edit of it goes through, as in
+// dns/apply.uc (core/uci.uc session).
+const DNSMASQ_CONFIG_FILE = getenv("FORKOP_DNSMASQ_CONFIG_FILE") || "/etc/config/dhcp";
+const UCI_CLI = getenv("FORKOP_UCI_CLI") || "uci";
+const DNSMASQ_SERVERSFILE_OPTION = "dhcp.@dnsmasq[0].serversfile";
 // The package file this process runs from.
 const OWNER_FILE = sourcepath() || LIB_DIR + "/killswitch/runtime.uc";
 const STATE_FILE = STATE_DIR + "/state.json";
@@ -1415,26 +1420,29 @@ function dns_redirect(mode) {
 // would ever lift it then, so the watcher does, with what this process has
 // already loaded and the system's own tools (UC-191).
 
+// Through the edit core/uci.uc gives every dhcp writer (dns/apply.uc): the
+// uci CLI on a private copy (core/uci.uc and the CLI are what this process
+// loaded and the system's own tool), and the file is replaced only while it
+// holds what the edit read. A libuci commit would also commit what someone
+// staged for dhcp with `uci set` (UC-236). A file that someone else changed
+// meanwhile is read again.
 function detach_dns_servers_file() {
-    if (dnsmasq_option("serversfile") != DNS_SERVERS_FILE)
-        return false;
-    if (fixture_uci()) {
-        uci_core.delete("dhcp.@dnsmasq[0].serversfile");
-        uci_core.commit("dhcp");
-        return true;
-    }
-    try {
-        let cursor = require("uci").cursor();
-        let name = null;
-        cursor.foreach("dhcp", "dnsmasq", function(section) {
-            name = section[".name"];
+    for (let attempt = 1; attempt <= 5; attempt++) {
+        let dhcp = uci_core.session("dhcp", DNSMASQ_CONFIG_FILE, UCI_CLI);
+        if (dhcp == null)
             return false;
-        });
-        return name != null && cursor.delete("dhcp", name, "serversfile") && cursor.commit("dhcp");
+        if (dhcp.get(DNSMASQ_SERVERSFILE_OPTION) != DNS_SERVERS_FILE) {
+            dhcp.close();
+            return false;
+        }
+        if (dhcp.delete(DNSMASQ_SERVERSFILE_OPTION) && dhcp.commit())
+            return true;
+        let conflict = dhcp.conflict();
+        dhcp.close();
+        if (!conflict)
+            return false;
     }
-    catch (e) {
-        return false;
-    }
+    return false;
 }
 
 function lift_orphaned() {

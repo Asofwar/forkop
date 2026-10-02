@@ -148,6 +148,15 @@ run() {
     done
     # Whatever the kill-switch left (its removal above failed or an older
     # Forkop never lifted it) must not outlive the product (UC-191).
+    #
+    # The normal path detached the block list already: killswitch_disable
+    # above edits dhcp through core/uci.uc (a private copy, replaced only
+    # while the file is unchanged, without changes someone staged for dhcp).
+    # This fallback is a plain uci commit, which also commits what someone
+    # staged in /tmp/.uci: Forkop's libraries are gone here, BusyBox sh has
+    # no libuci lock for a compare-and-swap of its own, and the detach must
+    # not be skipped: /etc/forkop with the servers file is already removed,
+    # and dnsmasq must not keep reading a file that Forkop no longer owns.
     if [ -z "$ROOT" ]; then nft delete table inet ForkopKillswitch 2>/dev/null || true; fi
     if [ "$(root_uci -q get dhcp.@dnsmasq[0].serversfile 2>/dev/null || true)" = /etc/forkop/killswitch/dnsmasq.servers ]; then
         if root_uci -q delete dhcp.@dnsmasq[0].serversfile &&

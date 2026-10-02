@@ -1642,7 +1642,24 @@ function cron_refresh_apply_result(settings, sections, existing_crontab, bin, li
     };
 }
 
-function write_crontab_text(text) {
+// The crontab as it is ("" when there is none yet), or null when it exists
+// but cannot be read: taken as empty, the rewrite would erase every other
+// job on the router (UC-159).
+function read_crontab() {
+    let data = fs.readfile(CRONTAB_FILE);
+    if (data == null && fs.stat(CRONTAB_FILE) != null) {
+        log_message("Could not read " + CRONTAB_FILE + "; the scheduled jobs were left unchanged", "error");
+        return null;
+    }
+    return as_string(data);
+}
+
+// crontab rewrites the file on flash and signals crond: only when Forkop's
+// jobs change, not on every start and stop (UC-159).
+function write_crontab_text(text, current) {
+    if (as_string(text) === as_string(current))
+        return true;
+
     let tmp = trim(command_output_from_args([ "mktemp" ]));
     if (tmp == "")
         return false;
@@ -1666,30 +1683,35 @@ function remove_cron_jobs(list_marker, subscription_marker, component_marker) {
     // Read BusyBox's backing file directly. `crontab -l` returns an empty
     // string on any failure, and writing that filtered result back would erase
     // every unrelated job on the router.
-    let crontab = as_string(fs.readfile(CRONTAB_FILE) || "");
+    let crontab = read_crontab();
+    if (crontab == null)
+        exit(1);
     let result = {
         crontab: filter_cron_markers_text(crontab, [ list_marker, subscription_marker, component_marker ]),
         logs: [ { level: "info", message: "The cron job removed" } ]
     };
 
-    if (!write_crontab_text(result.crontab))
+    if (!write_crontab_text(result.crontab, crontab))
         exit(1);
 
     log_cron_apply_result(result);
 }
 
 function refresh_cron_from_sources(settings, sections, bin, list_marker, subscription_marker, component_marker) {
+    let crontab = read_crontab();
+    if (crontab == null)
+        exit(1);
     let result = cron_refresh_apply_result(
         settings,
         sections,
-        as_string(fs.readfile(CRONTAB_FILE) || ""),
+        crontab,
         bin,
         list_marker,
         subscription_marker,
         component_marker
     );
 
-    if (!write_crontab_text(result.crontab))
+    if (!write_crontab_text(result.crontab, crontab))
         exit(1);
 
     log_cron_apply_result(result);

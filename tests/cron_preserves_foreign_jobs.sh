@@ -36,10 +36,13 @@ CRON
 # The source contract matters more than the helper: the crontab must be read
 # from the file, never from a command whose failure is indistinguishable from
 # an empty crontab.
-grep -Fq 'let crontab = as_string(fs.readfile(CRONTAB_FILE) || "");' "$UPDATES_UC" ||
-  fail "remove_cron_jobs must read the crontab file, not 'crontab -l'"
-grep -Fq 'as_string(fs.readfile(CRONTAB_FILE) || ""),' "$UPDATES_UC" ||
-  fail "the cron refresh must read the crontab file, not 'crontab -l'"
+# Both the removal and the refresh read it through read_crontab(), which
+# refuses a crontab that exists but cannot be read (UC-159,
+# tests/flash_write_hygiene.sh runs both).
+grep -Fq 'let data = fs.readfile(CRONTAB_FILE);' "$UPDATES_UC" ||
+  fail "read_crontab must read the crontab file, not 'crontab -l'"
+[ "$(grep -Fc 'let crontab = read_crontab();' "$UPDATES_UC")" = 2 ] ||
+  fail "the cron removal and the cron refresh must read the crontab through read_crontab()"
 if grep -Fq 'command_output_from_args([ "crontab", "-l" ])' "$UPDATES_UC"; then
   fail "no cron path may still rewrite the crontab from 'crontab -l' output"
 fi

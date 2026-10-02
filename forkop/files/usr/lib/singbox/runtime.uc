@@ -424,15 +424,29 @@ function sing_box_compressed_marker_set() {
     return trim(as_string(fs.readfile(SB_VARIANT_STATE_FILE) || "")) == "extended-compressed";
 }
 
+// Every start installs the script: written only when it differs, and
+// copies that a crash left between their write and their rename (named by
+// the pid of a writer that is gone) are removed (UC-159).
 function install_managed_service_script() {
+    let text = managed_service_text();
+    let current = fs.stat("/etc/init.d/sing-box");
+    if (current != null && current.type == "file" && (current.mode & 0111) == 0111 &&
+        fs.readfile("/etc/init.d/sing-box") === text)
+        return true;
+
+    for (let path in fs.glob("/etc/init.d/sing-box.forkop.*") || []) {
+        let writer = match(path, /\/sing-box\.forkop\.([0-9]+)$/);
+        if (writer != null && fs.stat("/proc/" + writer[1]) == null)
+            remove_file(path);
+    }
+
     let tmp = "/etc/init.d/sing-box.forkop." + owner_pid();
-    if (!write_file(tmp, managed_service_text()))
-        return false;
-    if (!command_success_from_args([ "chmod", "0755", tmp ])) {
+    if (!write_file(tmp, text) || fs.readfile(tmp) !== text ||
+        !command_success_from_args([ "chmod", "0755", tmp ]) || !fs.rename(tmp, "/etc/init.d/sing-box")) {
         remove_file(tmp);
         return false;
     }
-    return fs.rename(tmp, "/etc/init.d/sing-box");
+    return true;
 }
 
 function remove_managed_service_script() {

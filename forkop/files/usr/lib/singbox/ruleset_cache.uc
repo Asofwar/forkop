@@ -239,9 +239,13 @@ function recorded_shape(path) {
 
 // Written after the last change of the file (rename, chmod): its ctime is
 // part of the signature.
+// A refresh that keeps the file finds the record it would write: it is not
+// written again (UC-159).
 function mark_binary_valid(path, shape) {
     let signature = binary_stat_signature(path);
-    return signature != "" && fs.writefile(binary_validation_path(path), signature + "\n" + as_string(shape) + "\n") != null;
+    let record = signature + "\n" + as_string(shape) + "\n";
+    let record_path = binary_validation_path(path);
+    return signature != "" && (fs.readfile(record_path) === record || fs.writefile(record_path, record) != null);
 }
 
 function valid_binary(path) {

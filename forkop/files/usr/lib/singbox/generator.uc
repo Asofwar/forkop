@@ -92,9 +92,8 @@ function atomic_write_json_file(path, value) {
 
     if (!ensure_parent_dir(path))
         return false;
-    if (!write_json_file(tmp_path, value))
-        return false;
-    if (!fs.rename(tmp_path, path)) {
+    // A write that failed half-way leaves no partial copy (UC-159).
+    if (!write_json_file(tmp_path, value) || !fs.rename(tmp_path, path)) {
         fs.unlink(tmp_path);
         return false;
     }

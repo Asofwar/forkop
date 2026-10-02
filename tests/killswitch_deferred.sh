@@ -1,0 +1,205 @@
+#!/usr/bin/env bash
+# A protected section whose subscription is deferred (UC-192).
+#
+# A start that cannot load a subscription defers its section until the
+# subscription can be downloaded through another section
+# (subscription/cache.uc). The running sing-box then has no outbound for it.
+# Its traffic must not leave directly meanwhile, and a kill-switch refresh
+# from that runtime must not replace the saved protection with one that has
+# none of the section's destinations and names.
+set -eo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+FORKOP_LIB="$ROOT_DIR/forkop/files/usr/lib"
+KS_UC="$FORKOP_LIB/killswitch/runtime.uc"
+GENERATOR_UC="$FORKOP_LIB/singbox/generator.uc"
+NFT_UC="$FORKOP_LIB/nft/apply.uc"
+WORK_DIR="$(mktemp -d)"
+
+cleanup() {
+  rm -rf "$WORK_DIR"
+}
+trap cleanup EXIT
+
+fail() {
+  printf 'FAIL: %s\n' "$1" >&2
+  printf 'state.json:\n' >&2
+  cat "$KILLSWITCH_STATE_DIR/state.json" >&2 2>/dev/null || true
+  printf 'logger:\n' >&2
+  cat "$WORK_DIR/logger.log" >&2 2>/dev/null || true
+  exit 1
+}
+
+# ---- the running sing-box rejects a deferred protected section ----------------
+
+outbound_json='{\"type\":\"http\",\"tag\":\"a\",\"server\":\"proxy.example\",\"server_port\":8080}'
+cat >"$WORK_DIR/fixture.json" <<JSON
+{
+  "settings": { ".name": "settings", ".type": "settings", "dns_server": "77.88.8.8" },
+  "section": [
+    { ".name": "main", ".type": "section", "enabled": "1", "action": "connection",
+      "outbound_jsons": [ "$outbound_json" ], "domain_suffix": [ "main.example" ] },
+    { ".name": "vpn", ".type": "section", "enabled": "1", "action": "connection", "kill_switch": "1",
+      "subscription_urls": [ "https://sub.example/vpn" ], "mixed_proxy_enabled": "1", "mixed_proxy_port": "2081",
+      "domain_suffix": [ "vpn.example" ], "ip_cidr": [ "93.184.216.0/24" ] },
+    { ".name": "other", ".type": "section", "enabled": "1", "action": "connection",
+      "subscription_urls": [ "https://sub.example/other" ], "domain_suffix": [ "other.example" ] }
+  ]
+}
+JSON
+ucode -L "$FORKOP_LIB" "$GENERATOR_UC" generate-config-fixture \
+  "$WORK_DIR/fixture.json" "$WORK_DIR/config.json" 192.168.1.1 0 1 'vpn other' 1.13.0 ||
+  fail "the generator must accept deferred sections"
+ucode -e '
+  let c = json(require("fs").readfile(ARGV[0]));
+  function check(value, message) { if (!value) die(message + "\n"); }
+  function has(value, item) { return index(type(value) == "array" ? value : [ value ], item) >= 0; }
+  let rejected = { domain: false, ip: false }, fakeip = false;
+  for (let rule in c.route.rules) {
+    let text = sprintf("%J", rule);
+    check(index(text, "other.example") < 0, "an unprotected deferred section must stay out of the config");
+    check(index(text, "vpn-out") < 0, "a deferred section has no outbound to route to");
+    if (rule.action == "reject" && has(rule.domain_suffix, "vpn.example")) rejected.domain = true;
+    if (rule.action == "reject" && has(rule.ip_cidr, "93.184.216.0/24")) rejected.ip = true;
+  }
+  for (let rule in c.dns.rules)
+    if (has(rule.domain_suffix, "vpn.example") && rule.server == "fakeip-server") fakeip = true;
+  for (let outbound in c.outbounds)
+    check(outbound.tag != "vpn-out" && outbound.tag != "other-out", "deferred sections have no outbound");
+  for (let inbound in c.inbounds)
+    check(inbound.listen_port != 2081, "a deferred section has no mixed proxy inbound");
+  check(rejected.domain, "the domains of a deferred protected section must be rejected, not sent directly");
+  check(rejected.ip, "the IP destinations of a deferred protected section must be rejected, not sent directly");
+  check(fakeip, "the names of a deferred protected section must resolve to FakeIP so that sing-box rejects them");
+' "$WORK_DIR/config.json" 2>"$WORK_DIR/generator.err" || fail "$(cat "$WORK_DIR/generator.err")"
+printf 'ok - the running sing-box rejects a deferred protected section\n'
+
+# ---- its destinations still reach sing-box ------------------------------------
+
+cat >"$WORK_DIR/populate.uci" <<'EOF'
+forkop.settings=settings
+forkop.settings.source_network_interfaces=br-lan
+forkop.vpn=section
+forkop.vpn.action=connection
+forkop.vpn.kill_switch=1
+forkop.vpn.subscription_urls=https://sub.example/vpn
+forkop.vpn.ip_cidr=93.184.216.0/24
+forkop.vpn.source_ip_cidr=192.168.1.0/28
+forkop.vpn.domain_suffix=vpn.example
+forkop.other=section
+forkop.other.action=connection
+forkop.other.subscription_urls=https://sub.example/other
+forkop.other.ip_cidr=203.0.113.0/24
+forkop.other.source_ip_cidr=192.168.1.32/28
+forkop.other.domain_suffix=other.example
+EOF
+printf '# candidate\n' >"$WORK_DIR/populate.nft"
+FORKOP_UCI_STATE_FILE="$WORK_DIR/populate.uci" FORKOP_NFT_BATCH_FILE="$WORK_DIR/populate.nft" \
+  ucode -L "$FORKOP_LIB" "$NFT_UC" nft-populate-runtime-sets-from-uci 1 'vpn other' ForkopTable \
+  forkop_subnets forkop_ports forkop_ip_ports forkop_interfaces localv4 0x00100000 \
+  forkop_subnets6 forkop_ip_ports6 localv6 || fail "populating the runtime sets failed"
+grep -Fq 'forkop_rule_vpn_subnets { 93.184.216.0/24 }' "$WORK_DIR/populate.nft" ||
+  fail "a deferred protected section's IP destinations must be captured for sing-box to reject: $(cat "$WORK_DIR/populate.nft")"
+grep -Eq 'forkop_dns_sources \{[^}]*192\.168\.1\.0/28' "$WORK_DIR/populate.nft" ||
+  fail "a deferred protected section's clients must use the source-aware DNS the generator expects"
+if grep -Fq '203.0.113.0/24' "$WORK_DIR/populate.nft" || grep -Eq 'forkop_dns_sources \{[^}]*192\.168\.1\.32/28' "$WORK_DIR/populate.nft"; then
+  fail "an unprotected deferred section must not be captured"
+fi
+printf 'ok - the destinations of a deferred protected section reach sing-box\n'
+
+# ---- the kill-switch keeps its previous protection ------------------------------
+
+mkdir -p "$WORK_DIR/bin" "$WORK_DIR/run"
+cat >"$WORK_DIR/bin/nft" <<'NFT'
+#!/usr/bin/env bash
+case "$1 $2" in
+  "list table")
+    [ "$4" = "ForkopTable" ] && exit 0
+    [ "$4" = "ForkopKillswitch" ] && { [ -e "$WORK_DIR/ks-present" ]; exit $?; }
+    exit 1 ;;
+  "list set")
+    printf 'table inet ForkopTable {\n\tset %s {\n\t\ttype ipv4_addr\n' "$5"
+    [ "$5" = "forkop_rule_vpn_subnets" ] && [ -e "$WORK_DIR/vpn-elements" ] && printf '\t\telements = { 93.184.216.0/24 }\n'
+    printf '\t}\n}\n'
+    exit 0 ;;
+  "-c -f") exit 0 ;;
+  "-f "*) cp "$2" "$WORK_DIR/live.nft"; touch "$WORK_DIR/ks-present"; exit 0 ;;
+esac
+exit 0
+NFT
+for name in logger dnsmasq-init killswitch-init; do
+  printf '#!/bin/sh\nprintf "%%s\\n" "$*" >>"%s/%s.log"\n' "$WORK_DIR" "$name" >"$WORK_DIR/bin/$name"
+done
+chmod 0755 "$WORK_DIR/bin/"*
+
+export WORK_DIR
+export PATH="$WORK_DIR/bin:$PATH"
+export FORKOP_LIB
+export FORKOP_UCI_STATE_FILE="$WORK_DIR/uci.state"
+export FORKOP_RUNTIME_STATE_DIR="$WORK_DIR/run"
+export FORKOP_RELOAD_LOCK_DIR="$WORK_DIR/run/reload.lock"
+export KILLSWITCH_STATE_DIR="$WORK_DIR/ks"
+export KILLSWITCH_NFT_INCLUDE="$WORK_DIR/nftables.d/90-forkop-killswitch.nft"
+export KILLSWITCH_CACHE_DIR="$WORK_DIR/cache"
+export DNSMASQ_INIT="$WORK_DIR/bin/dnsmasq-init"
+export FORKOP_KILLSWITCH_INIT="$WORK_DIR/bin/killswitch-init"
+
+cat >"$FORKOP_UCI_STATE_FILE" <<EOF
+forkop.settings=settings
+forkop.settings.source_network_interfaces=br-lan
+forkop.settings.config_path=$WORK_DIR/sing-box.json
+forkop.vpn=section
+forkop.vpn.action=connection
+forkop.vpn.kill_switch=1
+forkop.vpn.ip_cidr=93.184.216.0/24
+dhcp.@dnsmasq[0]=dnsmasq
+dhcp.@dnsmasq[0].server=127.0.0.42
+EOF
+ks() { ucode -L "$FORKOP_LIB" "$KS_UC" "$@"; }
+routed_config() {
+  cat >"$WORK_DIR/sing-box.json" <<'JSON'
+{ "outbounds": [ { "type": "direct", "tag": "vpn-out" } ],
+  "route": { "rules": [ { "action": "route", "outbound": "vpn-out", "domain_suffix": [ "vpn.example" ] } ], "rule_set": [] } }
+JSON
+}
+# What the generator writes while the section is deferred: no outbound, its
+# matchers rejected.
+deferred_config() {
+  cat >"$WORK_DIR/sing-box.json" <<'JSON'
+{ "outbounds": [ { "type": "direct", "tag": "direct-out" } ],
+  "route": { "rules": [ { "action": "reject", "domain_suffix": [ "vpn.example" ] } ], "rule_set": [] } }
+JSON
+}
+
+POLICY="$KILLSWITCH_STATE_DIR/policy.nft"
+BLOCKED="$KILLSWITCH_STATE_DIR/dns-blocked.servers"
+
+touch "$WORK_DIR/vpn-elements"
+routed_config
+ks sync start || fail "the sync of a routed section failed"
+grep -Fq 'forkop_rule_vpn_subnets { 93.184.216.0/24 }' "$POLICY" || fail "the complete policy must hold the section's destinations"
+grep -Fqx 'server=/vpn.example/' "$BLOCKED" || fail "the complete block list must hold the section's names"
+cp "$POLICY" "$WORK_DIR/policy.before"
+cp "$BLOCKED" "$WORK_DIR/blocked.before"
+
+deferred_config
+if ks sync start; then
+  fail "a sync while a protected section is not routed must not report a refresh"
+fi
+cmp -s "$POLICY" "$WORK_DIR/policy.before" || fail "a deferred section must not replace the saved policy: $(cat "$POLICY")"
+cmp -s "$BLOCKED" "$WORK_DIR/blocked.before" || fail "a deferred section must not replace the saved block list"
+grep -Fq 'not routed' "$KILLSWITCH_STATE_DIR/state.json" || fail "the kept protection must be explained"
+status="$(ks status)" || fail "status failed"
+ucode -e 'let s = json(ARGV[0]); exit(sprintf("%J", s.unrouted) == "[ \"vpn\" ]" ? 0 : 1);' -- "$status" ||
+  fail "status must name the protected section the running Forkop does not route: $status"
+printf 'ok - a deferred section keeps the previous protection\n'
+
+routed_config
+ks sync reload || fail "the sync after the subscription was loaded failed"
+grep -Fq '"last_error": ""' "$KILLSWITCH_STATE_DIR/state.json" || fail "a successful sync must clear the error"
+status="$(ks status)" || fail "status failed"
+ucode -e 'let s = json(ARGV[0]); exit(length(s.unrouted) == 0 ? 0 : 1);' -- "$status" ||
+  fail "a routed section is not reported as unrouted: $status"
+printf 'ok - the protection is refreshed once the section is routed\n'
+
+printf 'killswitch_deferred: PASS\n'

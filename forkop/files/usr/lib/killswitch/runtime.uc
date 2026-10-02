@@ -1091,14 +1091,29 @@ function service_running() {
     return false;
 }
 
-function sync_dns(settings, protected_names) {
+// Protected sections the running sing-box does not route. A section whose
+// subscription could not be loaded is deferred until it can be downloaded
+// (subscription/cache.uc): sing-box has no outbound for it and rejects its
+// traffic (singbox/generator.uc), and its domains have no route rule to
+// read. A refresh then would replace the saved protection with one that
+// lacks its names (UC-192).
+function unrouted_sections(config, names) {
+    config = object_or_empty(config);
+    let routed = {};
+    for (let outbound in array_or_empty(config.outbounds))
+        routed[as_string(object_or_empty(outbound).tag)] = true;
+    for (let rule in array_or_empty(object_or_empty(config.route).rules))
+        routed[as_string(object_or_empty(rule).outbound)] = true;
+    return filter(names, (name) => !routed[singbox_constants.outbound_tag(name)]);
+}
+
+function sync_dns(settings, protected_names, config) {
     if (bool_option(settings, "dont_touch_dhcp", false)) {
         fs.unlink(DNS_BLOCKED_FILE);
         dns_refresh();
         return { ok: true, managed: false, warning: "dnsmasq is not managed by Forkop (dont_touch_dhcp); protected domains are guarded by nftables and FakeIP only" };
     }
 
-    let config = common.read_json_file(sing_box_config_path(settings));
     if (type(config) != "object")
         return { ok: false, error: "sing-box config " + sing_box_config_path(settings) + " is not readable" };
 
@@ -1164,6 +1179,14 @@ function sync_locked(reason) {
         return 1;
     }
 
+    let config = common.read_json_file(sing_box_config_path(settings));
+    let unrouted = unrouted_sections(config, names);
+    if (type(config) == "object" && length(unrouted) > 0) {
+        record_error("protected section(s) " + join(", ", unrouted) +
+            " not routed by the running Forkop yet (subscription not loaded); keeping the previous protection");
+        return 1;
+    }
+
     let nft_result = apply_nft_policy();
     if (!nft_result.ok) {
         record_error(nft_result.error + "; keeping the previous protection");
@@ -1172,7 +1195,7 @@ function sync_locked(reason) {
     remove_legacy_guard_table();
 
     let warnings = [];
-    let dns_result = sync_dns(settings, names);
+    let dns_result = sync_dns(settings, names, config);
     if (!dns_result.ok)
         push(warnings, as_string(dns_result.error) + "; the previous DNS block list stays in place");
     else if (dns_result.warning)
@@ -1349,11 +1372,15 @@ function status() {
     // Loaded again by fw4 only while the package's loader is installed.
     let persistent = policy_saved() && fs.stat(NFT_LOADER) != null;
     let table_present = ks_table_present();
+    let forkop_running = live_table_present();
+    let config = forkop_running ? common.read_json_file(sing_box_config_path(config_settings())) : null;
     print(sprintf("%J", {
         configured,
         active: table_present,
         persistent,
-        forkop_running: live_table_present(),
+        forkop_running,
+        // Not routed by the running Forkop yet; it rejects their traffic.
+        unrouted: type(config) == "object" ? unrouted_sections(config, configured) : [],
         pending: length(configured) > 0 && !table_present,
         counters: table_present ? nft_counters() : {},
         dns: dns_status(),

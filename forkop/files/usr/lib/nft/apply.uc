@@ -2360,7 +2360,13 @@ function nft_populate_runtime_sets_from_sections(sections, populate_enabled, def
     if (!arg_bool(populate_enabled))
         return true;
 
+    // sing-box rejects a deferred section that the kill-switch protects
+    // (singbox/generator.uc), so its traffic keeps reaching sing-box
+    // instead of leaving directly (UC-192).
     let deferred_sections = word_set(deferred_section_names);
+    for (let section in sections)
+        if (killswitch_section_enabled(section))
+            delete deferred_sections[as_string(object_or_empty(section)[".name"])];
 
     if (!nft_add_source_aware_dns_sources(sections, deferred_sections, table))
         return false;

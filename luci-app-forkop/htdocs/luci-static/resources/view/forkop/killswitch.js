@@ -175,6 +175,18 @@ function renderSectionStatus(section_id, status) {
       badge(_("Waiting for a successful Forkop start or reload"), "warn"),
     );
   }
+  // A deferred subscription (UC-192).
+  if ((status.unrouted || []).includes(section_id)) {
+    children.push(
+      E(
+        "div",
+        { style: `color: ${STATUS_COLORS.warn};` },
+        _(
+          "The subscription of this section is not loaded yet: Forkop rejects its traffic, and the kill-switch keeps its previous protection until the subscription is loaded.",
+        ),
+      ),
+    );
+  }
 
   if (status.active) {
     children.push(

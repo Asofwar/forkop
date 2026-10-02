@@ -3223,12 +3223,32 @@ function deferred_section_set(value) {
     return result;
 }
 
+// A deferred subscription section has no outbound until its subscription is
+// loaded, so its traffic would meanwhile take the final (direct) outbound.
+// One the VPN kill-switch protects is rejected instead, as a block section
+// with its own matchers; nft/apply.uc keeps capturing its destinations
+// (UC-192).
+function deferred_section_rejected(section) {
+    if (!connections.is_connections_action(option(section, "action", "")) ||
+        !bool_option(section, "kill_switch", false))
+        return null;
+    let rejected = {};
+    for (let key, value in section)
+        rejected[key] = value;
+    rejected.action = "block";
+    delete rejected.mixed_proxy_enabled;
+    return rejected;
+}
+
 function enabled_sections(deferred_sections) {
     let deferred = deferred_section_set(deferred_sections);
     let result = [];
     uci_cursor().foreach(CONFIG_NAME, "section", function(section) {
+        let rejected = deferred[as_string(section[".name"])] ? deferred_section_rejected(section) : null;
         if (section_enabled(section) && !deferred[as_string(section[".name"])])
             push(result, section);
+        else if (section_enabled(section) && rejected != null)
+            push(result, rejected);
     });
     return result;
 }

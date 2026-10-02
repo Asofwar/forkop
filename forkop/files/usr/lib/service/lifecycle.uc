@@ -1276,7 +1276,7 @@ function start_impl() {
     return 0;
 }
 
-function stop_main(allow_process_conflict) {
+function stop_main(explicit_stop) {
     let status = 0;
 
     // A reload or package transition must never tear down Forkop's DNS,
@@ -1288,15 +1288,17 @@ function stop_main(allow_process_conflict) {
     // while replacing its child; treat that unsettled observation exactly
     // like a foreign process and let the serialized caller retry.
     //
-    // An explicit Stop is different: the user asked for interception to end,
-    // so it removes every sing-box rather than leaving one behind.
+    // An explicit Stop is different: the user asked for interception to end.
+    // Forkop's own nft table, ip rules and DNS need no proof of ownership and
+    // go; of the sing-box processes only those proven to be Forkop's are
+    // stopped, a sing-box of another program is left running (UC-213).
     let process_conflict = module_success(STATE_UC, [ "sing-box-process-conflict" ]);
-    if (process_conflict && !allow_process_conflict) {
+    if (process_conflict && !explicit_stop) {
         log_message("Refusing Forkop stop: sing-box process ownership is ambiguous; preserving the existing runtime", "fatal");
         return 2;
     }
     if (process_conflict)
-        log_message("Additional sing-box process detected; explicit Stop will terminate all sing-box runtimes", "warn");
+        log_message("Additional sing-box process detected; explicit Stop removes Forkop's interception and stops only the sing-box processes that Forkop owns", "warn");
 
     log_message("Stopping Forkop", "info");
     module_success(DNS_FAILOVER_UC, [ "stop-runtime" ]);
@@ -1329,7 +1331,7 @@ function stop_main(allow_process_conflict) {
         command_success_from_args([ "ip", "-6", "route", "flush", "table", RT_TABLE_NAME ]);
 
     let sing_box_status = module_status(STATE_UC, [
-        allow_process_conflict ? "stop-all-sing-box-runtime" : "stop-managed-sing-box-runtime",
+        explicit_stop ? "stop-owned-sing-box-runtime" : "stop-managed-sing-box-runtime",
         getenv("FORKOP_SING_BOX_RELOAD_PID_TIMEOUT") || "15"
     ]);
     if (sing_box_status != 0)

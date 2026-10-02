@@ -1159,9 +1159,11 @@ function current_ui_state_json() {
     let restart_blocked = module_success(STATE_UC, [ "sing-box-process-conflict" ]);
     // Health requires sole procd ownership, but Stop has to stay reachable
     // exactly when that check fails: something is still intercepting traffic
-    // and the user needs a way to take it down.
+    // and the user needs a way to take it down. A Stop ends Forkop's
+    // interception and the sing-box that Forkop owns, not a sing-box of
+    // another program: that one does not keep Stop offered (UC-213).
     let stop_available = forkop_is_running ||
-        int(trim(command_output_from_args([ "ucode", "-L", LIB_DIR, STATE_UC, "sing-box-process-count" ]))) > 0 ||
+        int(trim(command_output_from_args([ "ucode", "-L", LIB_DIR, STATE_UC, "owned-sing-box-process-count" ]))) > 0 ||
         dns_configured() ||
         command_success_from_args([ "nft", "list", "table", "inet", NFT_TABLE_NAME ]);
 

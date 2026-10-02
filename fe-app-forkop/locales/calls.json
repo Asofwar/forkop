@@ -1793,11 +1793,11 @@
       "src/forkop/ui/status.ts:140",
       "src/forkop/tabs/autotune/initController.ts:985",
       "src/forkop/tabs/autotune/initController.ts:1207",
+      "src/forkop/tabs/dashboard/overview.ts:229",
       "src/forkop/tabs/diagnostic/connectivityMatrix.ts:104",
       "src/forkop/tabs/diagnostic/dpiPlayground.ts:48",
       "src/forkop/tabs/diagnostic/siteCheck.ts:243",
-      "src/forkop/tabs/diagnostic/statusLabels.ts:28",
-      "src/forkop/tabs/dashboard/overview.ts:229"
+      "src/forkop/tabs/diagnostic/statusLabels.ts:28"
     ]
   },
   {
@@ -5420,8 +5420,8 @@
       "src/forkop/tabs/autotune/render.ts:25",
       "src/forkop/tabs/autotune/render.ts:29",
       "src/forkop/tabs/autotune/render.ts:33",
-      "src/forkop/tabs/diagnostic/initController.ts:737",
       "src/forkop/tabs/dashboard/render.ts:14",
+      "src/forkop/tabs/diagnostic/initController.ts:737",
       "src/forkop/tabs/history/render.ts:13",
       "src/forkop/tabs/history/render.ts:17",
       "src/forkop/tabs/history/render.ts:29"
@@ -5632,8 +5632,8 @@
     ]
   },
   {
-    "call": "Multiple sing-box processes were found or their ownership is unclear. Restart is unavailable; traffic routing was not changed. To stop all sing-box processes, use Stop Forkop X, then start Forkop X again.",
-    "key": "Multiple sing-box processes were found or their ownership is unclear. Restart is unavailable; traffic routing was not changed. To stop all sing-box processes, use Stop Forkop X, then start Forkop X again.",
+    "call": "Multiple sing-box processes were found or their ownership is unclear. Restart is unavailable; traffic routing was not changed. Stop Forkop X ends Forkop's traffic interception and stops the sing-box processes that Forkop runs; then start Forkop X again. A sing-box of another program is not stopped, and Forkop X starts only after it has exited.",
+    "key": "Multiple sing-box processes were found or their ownership is unclear. Restart is unavailable; traffic routing was not changed. Stop Forkop X ends Forkop's traffic interception and stops the sing-box processes that Forkop runs; then start Forkop X again. A sing-box of another program is not stopped, and Forkop X starts only after it has exited.",
     "places": [
       "src/forkop/tabs/dashboard/overviewCards.ts:110"
     ]
@@ -6212,12 +6212,12 @@
     "key": "Not running",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:143",
+      "src/forkop/tabs/dashboard/overview.ts:214",
       "src/forkop/tabs/diagnostic/diagnostic.store.ts:131",
       "src/forkop/tabs/diagnostic/initController.ts:106",
       "src/forkop/tabs/diagnostic/initController.ts:330",
       "src/forkop/tabs/diagnostic/initController.ts:385",
-      "src/forkop/tabs/diagnostic/initController.ts:458",
-      "src/forkop/tabs/dashboard/overview.ts:214"
+      "src/forkop/tabs/diagnostic/initController.ts:458"
     ]
   },
   {

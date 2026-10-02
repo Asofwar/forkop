@@ -6304,7 +6304,7 @@ function renderStateCard(state, actions, restartRequired) {
           "p",
           { class: "fkp-overview__hint" },
           _(
-            "Multiple sing-box processes were found or their ownership is unclear. Restart is unavailable; traffic routing was not changed. To stop all sing-box processes, use Stop Forkop X, then start Forkop X again."
+            "Multiple sing-box processes were found or their ownership is unclear. Restart is unavailable; traffic routing was not changed. Stop Forkop X ends Forkop's traffic interception and stops the sing-box processes that Forkop runs; then start Forkop X again. A sing-box of another program is not stopped, and Forkop X starts only after it has exited."
           )
         )
       );

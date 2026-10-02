@@ -556,6 +556,22 @@ describe('overview cards', () => {
     expect(text(node)).not.toContain('Restart Forkop X');
   });
 
+  it('does not promise that Stop ends a sing-box of another program', () => {
+    // An explicit Stop ends Forkop's interception and only the sing-box
+    // processes that Forkop owns (UC-213).
+    const node = renderOverview(vm({}), {
+      ...actions,
+      readonly: false,
+      restartBlocked: true,
+      stopAvailable: true,
+    });
+
+    expect(text(node)).not.toContain('stop all sing-box processes');
+    expect(text(node)).toContain(
+      'A sing-box of another program is not stopped',
+    );
+  });
+
   it('offers the restart that removes a kept DPI guard, to administrators only', () => {
     const kept = health({
       overall: 'error',

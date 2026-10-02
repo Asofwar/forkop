@@ -36,6 +36,12 @@ const DIAGNOSTICS_RUNTIME_UC = LIB_DIR + "/diagnostics/runtime.uc";
 // snapshot restore, a list update) starts it (D-15(a)).
 const STOP_REQUESTED_FILE = getenv("FORKOP_STOP_REQUESTED_FILE") ||
     (getenv("FORKOP_RUNTIME_STATE_DIR") || "/var/run/forkop") + "/stop.requested";
+// Written by a managed package upgrade (components/action.uc,
+// write_managed_upgrade_sing_box_marker below): the pre-upgrade sing-box.
+const MANAGED_UPGRADE_SING_BOX_MARKER = getenv("FORKOP_MANAGED_UPGRADE_SING_BOX_MARKER") || "/tmp/forkop-managed-upgrade-sing-box";
+// The sing-box configuration Forkop generates when settings.config_path is
+// not set (killswitch/runtime.uc, routing/resolve.uc).
+const DEFAULT_SING_BOX_CONFIG_PATH = "/etc/sing-box/config.json";
 
 function as_string(value) {
     return value == null ? "" : "" + value;
@@ -756,49 +762,6 @@ function stop_managed_sing_box_and_wait(timeout) {
     return false;
 }
 
-// Only an explicit user Stop may remove every sing-box runtime. Reload and
-// package transitions still require sole procd ownership before touching one.
-function signal_all_sing_box_processes(signal) {
-    for (let exe_path in fs.glob("/proc/[0-9]*/exe")) {
-        let parts = split(as_string(exe_path), "/");
-        if (length(parts) < 4)
-            continue;
-        let pid = parts[2];
-        let ticks = process_start_ticks_for_pid(pid);
-        // Recheck immediately before signalling: a PID can be reused while
-        // /proc is being enumerated, and the signal must not land elsewhere.
-        if (ticks != null && ticks == process_start_ticks_for_pid(pid) && pid_is_sing_box(pid))
-            command_success_from_args([ "kill", signal, pid ]);
-    }
-}
-
-function stop_all_sing_box_and_wait(timeout) {
-    timeout = int(timeout || 15);
-    // Remove procd's respawn authority first, otherwise it restarts whatever
-    // is killed below. Calling the nested init script here can deadlock
-    // against rc.common's service lock during Forkop's own Stop.
-    if (!command_success_from_args([ "ubus", "call", "service", "delete", "{\"name\":\"sing-box\"}" ]))
-        return false;
-
-    for (let remaining = timeout; remaining >= 0; remaining--) {
-        if (sing_box_process_count() == 0 && sing_box_service_pid_runtime() <= 0)
-            return true;
-        signal_all_sing_box_processes("-TERM");
-        if (remaining > 0)
-            command_success_from_args([ "sleep", "1" ]);
-    }
-
-    // A process that ignored TERM must not outlive a completed Stop.
-    for (let remaining = 5; remaining >= 0; remaining--) {
-        if (sing_box_process_count() == 0 && sing_box_service_pid_runtime() <= 0)
-            return true;
-        signal_all_sing_box_processes("-KILL");
-        if (remaining > 0)
-            command_success_from_args([ "sleep", "1" ]);
-    }
-    return sing_box_process_count() == 0 && sing_box_service_pid_runtime() <= 0;
-}
-
 function start_managed_sing_box_and_verify(timeout) {
     timeout = int(timeout || 15);
     let process_count = sing_box_process_count();
@@ -929,6 +892,129 @@ function wait_managed_upgrade_sing_box_exit(path, timeout, max_age) {
         command_success_from_args([ "sleep", "1" ]);
         timeout--;
     }
+}
+
+function process_argv(pid) {
+    let raw = fs.readfile("/proc/" + as_string(pid) + "/cmdline");
+    if (raw == null)
+        return null;
+    let argv = split(raw, "\0");
+    if (length(argv) > 0 && argv[length(argv) - 1] == "")
+        pop(argv);
+    return argv;
+}
+
+function forkop_sing_box_config_path() {
+    let path = as_string(uci_get(CONFIG_NAME + ".settings.config_path"));
+    return path != "" ? path : DEFAULT_SING_BOX_CONFIG_PATH;
+}
+
+// A sing-box is Forkop's only by proof (UC-213): procd's 'sing-box'
+// instance (Forkop configures and starts that service), the very process
+// that a managed upgrade recorded (PID and start ticks), or a sing-box that
+// runs Forkop's own configuration file, also outside procd. An executable
+// named sing-box proves nothing: another program (HomeProxy, a container,
+// the user) may run one of its own. Each record keeps the PID, start ticks
+// and command line seen here, so that every signal re-checks all of them.
+function owned_sing_box_processes(config_path) {
+    let owned = {};
+    let service_pid = as_string(sing_box_service_pid_runtime());
+    let marker = managed_upgrade_marker_values(MANAGED_UPGRADE_SING_BOX_MARKER);
+    for (let exe_path in fs.glob("/proc/[0-9]*/exe")) {
+        let pid = split(as_string(exe_path), "/")[2];
+        let ticks = process_identity.start_ticks(pid);
+        if (ticks == "" || !sing_box_exe_path(fs.readlink(exe_path)))
+            continue;
+        let argv = process_argv(pid);
+        // The command line must belong to the process whose start was seen.
+        if (argv == null || process_identity.start_ticks(pid) != ticks)
+            continue;
+        if (pid == service_pid ||
+            (marker != null && marker.pid == pid && marker.start_ticks == ticks) ||
+            (length(argv) >= 4 && path_basename(argv[0]) == "sing-box" && argv[1] == "run" &&
+                argv[2] == "-c" && argv[3] == config_path))
+            owned[pid] = { pid, ticks, argv };
+    }
+    return owned;
+}
+
+// Whether procd has a 'sing-box' service: true, false, or null when procd
+// cannot be asked.
+function sing_box_service_registered() {
+    try {
+        let services = json(command_output_from_args([ "ubus", "call", "service", "list", "{\"name\":\"sing-box\"}" ]));
+        return type(services) == "object" ? services["sing-box"] != null : null;
+    }
+    catch (e) {
+        return null;
+    }
+}
+
+// procd respawns its instance until its 'sing-box' service is deleted. Every
+// stop of that service deletes it already, so one that is not registered is
+// a stopped service, not a failure (UC-194).
+function drop_sing_box_service() {
+    if (sing_box_service_registered() === false)
+        return true;
+    if (command_success_from_args([ "ubus", "call", "service", "delete", "{\"name\":\"sing-box\"}" ]))
+        return true;
+    // procd answers NOT_FOUND for a service that went away meanwhile.
+    return sing_box_service_registered() === false;
+}
+
+function log_unowned_sing_box_processes(owned) {
+    for (let exe_path in fs.glob("/proc/[0-9]*/exe")) {
+        let pid = split(as_string(exe_path), "/")[2];
+        let exe = fs.readlink(exe_path);
+        if (owned[pid] != null || !sing_box_exe_path(exe))
+            continue;
+        let command = join(" ", process_argv(pid) || []);
+        if (length(command) > 256)
+            command = substr(command, 0, 256) + "...";
+        command_success_from_args([ "logger", "-t", "forkop",
+            "[warn] Forkop stop left running a sing-box process that Forkop does not own: pid=" + pid +
+            ", exe=" + as_string(exe) + ", command: " + command ]);
+    }
+}
+
+// The explicit stop (the user's Stop or Restart): every sing-box that is
+// Forkop's goes, TERM first and KILL after `timeout` seconds, and no other
+// process is signalled (UC-213). Each signal goes through
+// process_identity.signal_record, which re-reads the start ticks, executable
+// and command line right before it, so a PID reused since it was seen is
+// never hit (UC-216). The sing-box processes of other programs are
+// reported.
+function stop_owned_sing_box_and_wait(timeout) {
+    timeout = int(timeout || 15);
+    let config_path = forkop_sing_box_config_path();
+    // Seen before procd lets its instance go: then procd no longer names it.
+    let tracked = owned_sing_box_processes(config_path);
+    if (!drop_sing_box_service()) {
+        command_success_from_args([ "logger", "-t", "forkop", "[fatal] Forkop stop failed: procd did not drop the sing-box service" ]);
+        return false;
+    }
+
+    for (let round = 0; round <= timeout + 5; round++) {
+        for (let pid, record in owned_sing_box_processes(config_path))
+            tracked[pid] = record;
+        let live = {};
+        for (let pid, record in tracked)
+            if (process_identity.matches_record(record, "sing-box", record.argv, true, true) != "")
+                live[pid] = record;
+        tracked = live;
+        if (length(live) == 0 && sing_box_service_pid_runtime() <= 0) {
+            log_unowned_sing_box_processes(live);
+            return true;
+        }
+        for (let pid, record in live)
+            process_identity.signal_record(record, "sing-box", record.argv, true, round < timeout ? "TERM" : "KILL");
+        command_success_from_args([ "sleep", "1" ]);
+    }
+
+    command_success_from_args([ "logger", "-t", "forkop", "[fatal] Forkop stop failed: its sing-box processes did not exit: " +
+        join(", ", keys(tracked)) + ", procd pid " + as_string(sing_box_service_pid_runtime()) ]);
+    log_unowned_sing_box_processes(tracked);
+    return false;
 }
 
 function sing_box_service_stable(min_age) {
@@ -2122,8 +2208,10 @@ else if (mode == "runtime-dir-lock-owner") {
 }
 else if (mode == "reload-sing-box-runtime")
     reload_sing_box_runtime(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
-else if (mode == "stop-all-sing-box-runtime")
-    exit(stop_all_sing_box_and_wait(ARGV[1]) ? 0 : 1);
+else if (mode == "stop-owned-sing-box-runtime")
+    exit(stop_owned_sing_box_and_wait(ARGV[1]) ? 0 : 1);
+else if (mode == "owned-sing-box-process-count")
+    print(length(owned_sing_box_processes(forkop_sing_box_config_path())), "\n");
 else if (mode == "stop-managed-sing-box-runtime")
     exit(stop_managed_sing_box_and_wait(ARGV[1]) ? 0 : 1);
 else if (mode == "start-managed-sing-box-runtime")

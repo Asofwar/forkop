@@ -3135,6 +3135,46 @@ function list_preflight_entries(sections) {
     return entries;
 }
 
+// The private download directory of a list worker (UC-057) is named after
+// that worker's identity, pid and start ticks (core/process_identity.uc). A
+// worker that a stop terminated during its downloads, or that was killed,
+// cannot remove it: the stop that terminated the worker and every later
+// list update remove such a directory once its worker is gone, never the
+// directory of a running worker.
+const LIST_STAGING_ROOT = getenv("TMPDIR") || "/tmp";
+const LIST_STAGING_PREFIX = LIST_STAGING_ROOT + "/forkop-list-staging.";
+
+function list_staging_create() {
+    let pid = owner_pid();
+    let ticks = process_identity.start_ticks(pid);
+    if (ticks == "")
+        return "";
+    let path = LIST_STAGING_PREFIX + pid + "." + ticks;
+    command_success_from_args([ "rm", "-rf", path ]);
+    return fs.mkdir(path, 0700) ? path : "";
+}
+
+// The pid and start ticks name one process of this boot; it still runs
+// (not a zombie) and is a ucode program.
+function list_staging_owner_running(pid, ticks) {
+    return process_identity.matches_record({ pid, ticks }, "ucode", [ "ucode" ], false, true) != "";
+}
+
+// wait_seconds: how long a worker that was just signalled may take to end.
+function remove_stale_list_staging(wait_seconds) {
+    for (let path in fs.glob(LIST_STAGING_PREFIX + "*") || []) {
+        let owner = match(substr(path, length(LIST_STAGING_PREFIX)), /^([1-9][0-9]*)\.([0-9]+)$/);
+        if (owner == null)
+            continue;
+        while (wait_seconds > 0 && list_staging_owner_running(owner[1], owner[2])) {
+            command_success_from_args([ "sleep", "1" ]);
+            wait_seconds--;
+        }
+        if (!list_staging_owner_running(owner[1], owner[2]))
+            command_success_from_args([ "rm", "-rf", path ]);
+    }
+}
+
 function abandon_list_downloads(url) {
     log_message("Failed to preflight list source " + safe_remote_source_identity(url) + "; keeping the active generation", "error");
     command_success_from_args([ "rm", "-rf", list_download_staging_dir ]);
@@ -3156,13 +3196,9 @@ function prepare_list_downloads(sections, proxy_address, unlocked) {
     list_download_cache = {};
     list_download_metadata = [];
     list_download_sequence = 0;
-    list_download_staging_dir = temp_path();
-    if (list_download_staging_dir != "")
-        remove_file(list_download_staging_dir);
-    if (list_download_staging_dir == "" || !ensure_dir(list_download_staging_dir)) {
-        list_download_staging_dir = "";
+    list_download_staging_dir = list_staging_create();
+    if (list_download_staging_dir == "")
         return false;
-    }
 
     for (let entry in list_preflight_entries(sections)) {
         list_download_sequence++;
@@ -4021,6 +4057,7 @@ function dns_probe_passed(proxy_address) {
 
 function list_update() {
     log_message("Starting lists update", "info");
+    remove_stale_list_staging(0);
     if (!list_update_pid_begin())
         exit(0);
 
@@ -4115,6 +4152,7 @@ function list_update() {
 }
 
 function list_update_after_start() {
+    remove_stale_list_staging(0);
     if (!service_state_success([ "has-list-update-sources" ])) {
         run_deferred_ruleset_refresh();
         exit(0);
@@ -4161,13 +4199,17 @@ function list_update_if_due() {
 }
 
 function stop_list_update() {
+    let stopped = false;
     for (let mode in LIST_UPDATE_WORKER_MODES) {
         if (process_identity.signal(LIST_UPDATE_PID_FILE, "ucode", list_update_worker_argv(mode), true, "TERM")) {
             log_message("Stopped list_update", "info");
+            stopped = true;
             break;
         }
     }
     remove_file(LIST_UPDATE_PID_FILE);
+    // A worker terminated during its downloads leaves its staging directory.
+    remove_stale_list_staging(stopped ? 2 : 0);
 }
 
 function subscription_cache_env() {

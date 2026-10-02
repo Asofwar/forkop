@@ -3,15 +3,16 @@
 // Persistent autotune state (flash) and the last full tune outputs (tmpfs).
 //
 // /etc/forkop/autotune/state.json — survives reboots, written atomically
-// (temporary file + rename) and only when its content changed, at most once
-// per worker run:
+// (temporary file + rename, flushed to flash before and after the rename,
+// UC-025) and only when its content changed, at most once per worker run:
 //   { version, targets: { <id>: summary }, groups: { <section>: group },
 //     applies: [ records ], next_run_at, rotation, worker, recovered_at }
 // A state file that exists but cannot be trusted (corrupt, foreign version)
-// reads as an empty state marked recovered_from; the next write keeps the
-// bad file as state.json.corrupt and records recovered_at, after which
-// autonomous applies wait out a cooldown (the lost state held the budget
-// and the cooldowns).
+// reads as an empty state marked recovered_from; the next write keeps a copy
+// of the bad file as state.json.corrupt and records recovered_at, after
+// which autonomous applies wait out a cooldown (the lost state held the
+// budget and the cooldowns). The bad file stays state.json until that write
+// is on flash (UC-074): a failed write leaves the recovery to the next one.
 // A target summary keeps what the UI and hysteresis need: status, reason,
 // selected candidate, confidence and per-candidate stability, success ratio,
 // median TLS time and failure classes — never raw strategies of the user's
@@ -20,6 +21,7 @@
 // /var/run/forkop/autotune/last/<id>.json — the complete tune output of the
 // last run of a target, for technical details; gone after a reboot.
 let fs = require("fs");
+let durable = require("core.durable");
 
 const STATE_FILE = getenv("FORKOP_AUTOTUNE_STATE_FILE") || "/etc/forkop/autotune/state.json";
 const LAST_DIR = getenv("FORKOP_AUTOTUNE_LAST_DIR") || "/var/run/forkop/autotune/last";
@@ -76,16 +78,19 @@ function write_atomic(path, text, mode) {
 
 // Flash is written only when the content changed.
 function write(state) {
+    let untrusted = state.recovered_from != null ? fs.readfile(STATE_FILE) : null;
     if (state.recovered_from != null) {
-        // The untrusted file is kept for inspection, never parsed again.
-        fs.rename(STATE_FILE, STATE_FILE + ".corrupt");
         if (state.recovered_at == null) state.recovered_at = time();
         delete state.recovered_from;
     }
     state.applies = slice(state.applies || [], -MAX_APPLY_RECORDS);
     let text = sprintf("%J\n", state);
-    if (fs.readfile(STATE_FILE) == text) return true;
-    return write_atomic(STATE_FILE, text, 0600);
+    if (untrusted == null && fs.readfile(STATE_FILE) == text) return true;
+    if (!mkdir_p(fs.dirname(STATE_FILE), 0700)) return false;
+    // The untrusted file is kept for inspection, never parsed again; it is
+    // replaced only by a complete state that records the recovery.
+    if (untrusted != null) write_atomic(STATE_FILE + ".corrupt", untrusted, 0600);
+    return durable.durable_replace(STATE_FILE + ".tmp." + as_string(fs.readlink("/proc/self")), STATE_FILE, text, 0600);
 }
 
 function round3(value) {

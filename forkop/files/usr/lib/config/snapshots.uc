@@ -4,6 +4,7 @@ let fs = require("fs");
 let identity = require("core.process_identity");
 let runtime_lock = require("core.runtime_lock");
 let list_worker = require("core.list_worker");
+let durable = require("core.durable");
 
 const CONFIG = getenv("FORKOP_CONFIG_FILE") || "/etc/config/forkop";
 const ROOT = getenv("FORKOP_SNAPSHOT_DIR") || "/etc/forkop/config-snapshots";
@@ -72,13 +73,12 @@ function sha(data) {
     let hash = split(output, " ")[0];
     return length(hash) == 64 && match(hash, /^[0-9a-f]+$/) != null ? hash : "";
 }
+// Every file this module writes is on flash: the configuration, the
+// snapshots and the pointers to them are flushed before and after the
+// rename (UC-025).
 function atomic(path, data) {
     let tmp = path + "." + sprintf("%d.%d", clock()[0], clock()[1]) + ".tmp";
-    if (fs.writefile(tmp, data) == null || !fs.chmod(tmp, 0600) || !fs.rename(tmp, path)) {
-        fs.unlink(tmp);
-        return false;
-    }
-    return true;
+    return durable.durable_replace(tmp, path, data, 0600);
 }
 function ensure_root() {
     let parent = fs.dirname(ROOT);

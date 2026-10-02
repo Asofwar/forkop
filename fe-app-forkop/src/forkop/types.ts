@@ -348,6 +348,8 @@ export namespace Forkop {
     // set aside because the configuration already was the last known
     // working one.
     restored?: boolean;
+    // false: the autotune state could not record it (state_write_failed).
+    recorded?: boolean;
   }
 
   // Membership calculated from the routing now (DNS lookups on the router).
@@ -378,6 +380,8 @@ export namespace Forkop {
     status: 'ok' | 'failed' | 'refused' | 'busy';
     reason?: string;
     job?: string;
+    // false: the autotune state could not record it (state_write_failed).
+    recorded?: boolean;
   }
 
   export interface AutotuneJob {
@@ -391,6 +395,7 @@ export namespace Forkop {
       reason?: string | null;
       group?: string;
       candidate?: string;
+      recorded?: boolean;
     } | null;
     // Manual apply: the worker phase and the Stage 5 transaction phase.
     progress?: { phase: string; apply_phase: string | null };

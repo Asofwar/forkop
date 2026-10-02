@@ -61,6 +61,8 @@ esac
 exec "$REAL_UCODE" "$@"
 SH
 printf '#!/bin/sh\necho 1.0.26-test\n' > "$WORK/bin/forkop"
+# sync (core/durable.uc) fails while a file of $SYNC_FAIL_GLOB exists.
+printf '#!/bin/sh\nfor f in ${SYNC_FAIL_GLOB:-}; do [ ! -e "$f" ] || exit 1; done\nexit 0\n' > "$WORK/bin/sync"
 
 # nft: tables and the production queue rule of the Dpi rule (mark 0x01000001, queue 4000).
 cat > "$WORK/bin/nft" <<'SH'
@@ -234,7 +236,7 @@ let broken = require("fs").stat(getenv("STATE") + "/zapret-broken") != null;
 print(sprintf("%J\n", { ready: !broken, conflict: false, expected_process_count: 2, running_process_count: broken ? 1 : 2,
     supervisor_process_count: 2 }));
 UC
-chmod +x "$WORK/bin/ucode" "$WORK/bin/forkop" "$WORK/bin/nft" "$WORK/bin/curl" "$WORK/bin/dig" "$WORK/bin/uci" "$WORK/reload" "$STATE/start-dpi"
+chmod +x "$WORK/bin/ucode" "$WORK/bin/forkop" "$WORK/bin/sync" "$WORK/bin/nft" "$WORK/bin/curl" "$WORK/bin/dig" "$WORK/bin/uci" "$WORK/reload" "$STATE/start-dpi"
 }
 
 # A short provider default with the three profiles of the real one (HTTP, TLS, QUIC).
@@ -862,6 +864,13 @@ for content in '' 'garbage{'; do
   at status; json 'a.equal(r.resolved, true);' "$WORK/out.json"
   at apply "$WORK/plan.json"; json 'a.equal(r.status, "applied");' "$WORK/out.json"
 done
+# The unreadable record stays the record until the record of the rollback is
+# on flash (UC-074): one that cannot be written leaves it, still unresolved.
+reset_apply; plan_ready; printf 'garbage{' > "$FORKOP_AUTOTUNE_APPLY_STATE"
+rm -rf "$STATE/health"; SYNC_FAIL_GLOB="$FORKOP_AUTOTUNE_APPLY_STATE.tmp.*" at rollback
+json 'a.equal(r.status, "failed"); a.equal(r.reason, "state_write_failed");' "$WORK/out.json"
+[ "$(cat "$FORKOP_AUTOTUNE_APPLY_STATE" 2>/dev/null)" = 'garbage{' ] || fail "a rollback whose record could not be written dropped the unreadable record"
+at status; json 'a.equal(r.resolved, false); a.equal(r.diagnosis, "state_unreadable");' "$WORK/out.json"
 reset_apply; printf 'garbage{' > "$FORKOP_AUTOTUNE_APPLY_STATE"
 sed -i "s|option nfqws_opt '$FAKE'|option nfqws_opt '$MULTISPLIT'|" "$FORKOP_CONFIG_FILE"
 rm -rf "$STATE/health"; at rollback

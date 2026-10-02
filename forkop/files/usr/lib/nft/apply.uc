@@ -19,7 +19,14 @@ const NFT_BATCH_FILE = getenv("FORKOP_NFT_BATCH_FILE") || "";
 // is most of an import on the router. The version changes with the format.
 const SUBNET_CACHE_DIR = getenv("FORKOP_NFT_SUBNET_CACHE_DIR") || "/var/run/forkop/nft-subnet-cache";
 const SUBNET_CACHE_VERSION = "1";
+// Bounded by entries and by size: the tmpfs is RAM and holds the candidate
+// batch, config.json and the list downloads too (UC-222). An entry is about
+// the size of its rule set's JSON (100k subnets: 1.7 MB).
 const SUBNET_CACHE_MAX = 32;
+const SUBNET_CACHE_MAX_BYTES = int(getenv("FORKOP_NFT_SUBNET_CACHE_MAX_BYTES") || "4194304");
+// An entry used this recently belongs to the current reload or list update
+// and is never evicted for another entry.
+const SUBNET_CACHE_IN_USE_SECONDS = 600;
 // Test-only candidate failure injection. Empty in production.
 const NFT_CANDIDATE_FAIL_PHASE = getenv("FORKOP_NFT_CANDIDATE_FAIL_PHASE") || "";
 // Route table registry; the same override service/package.uc honours. Tests
@@ -90,13 +97,18 @@ function write_compact_string_array(values) {
     print("]\n");
 }
 
+// On a full tmpfs writefile reports success and the file stays short or
+// empty (stdio writes on close and that error is lost): a regular file
+// must hold all of text (UC-223).
 function write_text_file(path, text) {
-    let result = fs.writefile(path, as_string(text));
+    text = as_string(text);
+    let result = fs.writefile(path, text);
     if (result == null)
         return false;
     if (type(result) == "boolean" && !result)
         return false;
-    return true;
+    let stat = fs.stat(path);
+    return stat != null && (stat.type != "file" || stat.size == length(text));
 }
 
 function file_executable(path) {
@@ -145,12 +157,18 @@ function run_args(args) {
             push(words, args[i]);
         // Appended, never rewritten: element lines of large sets are long,
         // and rewriting the whole file per command grew quadratically.
+        // On a full tmpfs write() and close() report success while the
+        // line is lost, and a batch cut at a line boundary still passes
+        // `nft -c`: the batch must have grown by exactly the line (UC-223).
+        let line = join(" ", words) + "\n";
+        let before = fs.stat(NFT_BATCH_FILE);
         let batch = fs.open(NFT_BATCH_FILE, "a");
         if (!batch)
             return false;
-        let written = batch.write(join(" ", words) + "\n") != null;
+        let written = batch.write(line) != null;
         batch.close();
-        return written;
+        let after = fs.stat(NFT_BATCH_FILE);
+        return written && after != null && after.size == (before != null ? before.size : 0) + length(line);
     }
     return system(command_from_args(args)) == 0;
 }
@@ -1724,8 +1742,11 @@ function nft_transition_guard_batch(table, mark, remove) {
             " { type filter hook prerouting priority -101; policy accept; }\n" +
             "add rule inet " + as_string(table) + " " + NFT_TRANSITION_GUARD_CHAIN +
             " meta mark & " + as_string(mark) + " == " + as_string(mark) + " counter drop\n";
-    let ok = fs.writefile(path, data) != null && run_args([ "nft", "-c", "-f", path ]) &&
-        run_args([ "nft", "-f", path ]);
+    // On a full tmpfs writefile reports success and leaves the file empty,
+    // and an empty batch passes `nft -c` and `nft -f` while it changes
+    // nothing: the batch is read back first (UC-223).
+    let ok = fs.writefile(path, data) != null && fs.readfile(path) === data &&
+        run_args([ "nft", "-c", "-f", path ]) && run_args([ "nft", "-f", path ]);
     fs.unlink(path);
     return ok;
 }
@@ -1767,8 +1788,11 @@ function nft_dpi_transition_guard(table, remove) {
             "add chain inet " + guard_table + " output { type filter hook output priority -149; policy accept; }\n" +
             "add rule inet " + guard_table + " output meta mark & 0xff000000 == 0x01000000 drop\n" +
             "add rule inet " + guard_table + " output meta mark & 0xff000000 == 0x02000000 drop\n";
-    let ok = fs.writefile(path, data) != null && run_args([ "nft", "-c", "-f", path ]) &&
-        run_args([ "nft", "-f", path ]);
+    // On a full tmpfs writefile reports success and leaves the file empty,
+    // and an empty batch passes `nft -c` and `nft -f` while it changes
+    // nothing: the batch is read back first (UC-223).
+    let ok = fs.writefile(path, data) != null && fs.readfile(path) === data &&
+        run_args([ "nft", "-c", "-f", path ]) && run_args([ "nft", "-f", path ]);
     fs.unlink(path);
     return ok;
 }
@@ -2220,38 +2244,69 @@ function nft_prepared_family_valid(p) {
         type(p.v6.chunks) == "array" && type(p.v6.invalid) == "array";
 }
 
+// A hit is a use: the entry's time moves on, so the entries the reloads
+// keep importing are not evicted before superseded ones (UC-222).
 function nft_subnet_cache_read(key) {
+    let path = SUBNET_CACHE_DIR + "/" + key + ".json";
     let data = null;
-    try { data = json(fs.readfile(SUBNET_CACHE_DIR + "/" + key + ".json") || ""); } catch (e) { data = null; }
+    try { data = json(fs.readfile(path) || ""); } catch (e) { data = null; }
     if (type(data) != "object" || !("unscoped" in data) || !("scoped" in data))
         return null;
     for (let part in [ data.unscoped, data.scoped ])
         if (part != null && !nft_prepared_family_valid(part))
             return null;
+    run_args_quiet([ "touch", "-c", path ]);
     return data;
 }
 
 // Best effort: a failed write only means the next import prepares again.
-// The oldest entries go when the cache grows beyond SUBNET_CACHE_MAX.
+// The least recently used entries go when the cache would grow beyond
+// SUBNET_CACHE_MAX entries or SUBNET_CACHE_MAX_BYTES. Entries in use are
+// kept and the new entry is not: when the rule sets every reload imports do
+// not all fit, evicting the least recently used one evicts the next one the
+// same reload imports, and no import would ever hit. An entry larger than
+// the whole limit is not kept either.
 function nft_subnet_cache_write(key, prepared) {
+    let data = sprintf("%J", prepared);
+    if (length(data) > SUBNET_CACHE_MAX_BYTES)
+        return;
     if (!fs.stat(SUBNET_CACHE_DIR) && !run_args_quiet([ "mkdir", "-p", SUBNET_CACHE_DIR ]))
         return;
-    let path = SUBNET_CACHE_DIR + "/" + key + ".json";
-    if (fs.writefile(path + ".tmp", sprintf("%J", prepared)) == null || !fs.rename(path + ".tmp", path)) {
-        fs.unlink(path + ".tmp");
-        return;
-    }
+    let name = key + ".json";
+    let path = SUBNET_CACHE_DIR + "/" + name;
+    let now = time();
     let entries = [];
-    for (let name in fs.lsdir(SUBNET_CACHE_DIR) || []) {
-        let st = match(name, /\.json$/) != null ? fs.stat(SUBNET_CACHE_DIR + "/" + name) : null;
-        if (st != null)
-            push(entries, { name, mtime: st.mtime });
+    let count = 1;
+    let bytes = length(data);
+    for (let other in fs.lsdir(SUBNET_CACHE_DIR) || []) {
+        let st = other != name && match(other, /\.json$/) != null ? fs.stat(SUBNET_CACHE_DIR + "/" + other) : null;
+        if (st != null) {
+            push(entries, { name: other, mtime: st.mtime, size: st.size });
+            count++;
+            bytes += st.size;
+        }
     }
-    if (length(entries) <= SUBNET_CACHE_MAX)
-        return;
     entries = sort(entries, (a, b) => a.mtime - b.mtime);
-    for (let i = 0; i < length(entries) - SUBNET_CACHE_MAX; i++)
-        fs.unlink(SUBNET_CACHE_DIR + "/" + entries[i].name);
+    let evict = [];
+    for (let entry in entries) {
+        if (count <= SUBNET_CACHE_MAX && bytes <= SUBNET_CACHE_MAX_BYTES)
+            break;
+        let age = now - entry.mtime;
+        if (age >= 0 && age < SUBNET_CACHE_IN_USE_SECONDS)
+            continue;
+        push(evict, entry.name);
+        count--;
+        bytes -= entry.size;
+    }
+    if (count > SUBNET_CACHE_MAX || bytes > SUBNET_CACHE_MAX_BYTES)
+        return;
+    for (let other in evict)
+        fs.unlink(SUBNET_CACHE_DIR + "/" + other);
+    // On a full tmpfs writefile reports success and leaves the file short.
+    let written = fs.writefile(path + ".tmp", data);
+    let st = fs.stat(path + ".tmp");
+    if (written == null || st == null || st.size != length(data) || !fs.rename(path + ".tmp", path))
+        fs.unlink(path + ".tmp");
 }
 
 function nft_apply_prepared_ruleset_subnets(prepared, label, table, common_set, ip_port_set, common6_set, ip_port6_set) {
@@ -2276,13 +2331,18 @@ function nft_add_json_ruleset_subnets_for_section(section, json_path, label, tab
     let key = nft_subnet_cache_key(json_path, ports, chunk_size_text);
     let prepared = key != null ? nft_subnet_cache_read(key) : null;
     if (prepared == null) {
-        routing_rulesets.extract_ip_cidr_nft_elements(
+        // An extraction lost on a full tmpfs is not a rule set without
+        // subnets (UC-223).
+        if (!routing_rulesets.extract_ip_cidr_nft_elements(
             json_path,
             unscoped_path,
             scoped_path,
             sprintf("%J", rule_port_values(ports)),
             sprintf("%J", rule_port_ranges(ports))
-        );
+        )) {
+            run_args([ "logger", "-t", "forkop", "[error] Could not extract the subnets of " + as_string(label) + " for nftables" ]);
+            return false;
+        }
         prepared = {
             unscoped: file_nonempty(unscoped_path) ? nft_prepare_family_chunks(nft_trimmed_lines(unscoped_path), "ips", "", chunk_size_text) : null,
             scoped: file_nonempty(scoped_path) ? nft_prepare_family_chunks(nft_trimmed_lines(scoped_path), "ip-ports", "", chunk_size_text) : null

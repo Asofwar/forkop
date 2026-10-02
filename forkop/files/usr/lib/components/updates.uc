@@ -831,9 +831,10 @@ function restore_persistent_list_cache() {
         let persistent = persistent_list_cache_validation();
         // A normal successful update leaves a runtime copy of the same
         // generation.  It is not RAM-only; reserve that diagnostic for a
-        // missing or older persistent LKG.
+        // missing or older persistent LKG. The content decides: unchanged
+        // lists keep the persistent generation they match (UC-072).
         if (runtime_timestamp != "" && runtime_signature == current_list_update_signature() && runtime.valid &&
-            (!persistent.valid || as_string(persistent.manifest.generation) != as_string(runtime.manifest.generation)))
+            (!persistent.valid || !list_generation_manifest_content_equal(persistent.manifest, runtime.manifest)))
             list_cache_log_once(
                 "ram-" + runtime_timestamp + "-" + runtime_signature,
                 "Using the newer RAM-only list generation from this boot; the older persistent cache was not restored",
@@ -1026,6 +1027,25 @@ function commit_runtime_list_generation(signature) {
     return true;
 }
 
+// The success time of a persistent generation whose lists did not change: a
+// small file next to it, replaced by rename, without sync. A lost update
+// only makes the next list update due earlier after a reboot.
+function persist_list_cache_timestamp(timestamp) {
+    let path = PERSISTENT_LIST_CACHE_DIR + "/last-success.timestamp";
+    let value = as_string(timestamp) + "\n";
+    if (fs.readfile(path) === value)
+        return true;
+    let temporary = path + ".tmp";
+    // fs.writefile reports a small file on a full flash as written: read
+    // it back before it replaces the old time.
+    if (fs.writefile(temporary, value) == null || fs.readfile(temporary) !== value ||
+        !fs.chmod(temporary, 0600) || !fs.rename(temporary, path)) {
+        remove_file(temporary);
+        log_message("Persistent list cache is unchanged, but its success time could not be saved", "warn");
+    }
+    return true;
+}
+
 function persist_list_cache(timestamp) {
     let signature = current_list_update_signature();
     recover_list_generation_transaction(RUNTIME_LIST_GENERATION_DIR, signature);
@@ -1033,6 +1053,14 @@ function persist_list_cache(timestamp) {
     let runtime = list_generation_validation(RUNTIME_LIST_GENERATION_DIR, signature);
     if (!runtime.valid)
         return false;
+
+    // Lists that did not change are not copied to flash again (UC-072): a
+    // list update with the default interval of a day rewrote up to 8 MiB
+    // daily, a shorter interval many times a day. Only a valid persistent
+    // generation with exactly this content counts; a damaged one is replaced.
+    let persistent = list_generation_validation(PERSISTENT_LIST_CACHE_DIR, signature);
+    if (persistent.valid && list_generation_manifest_content_equal(persistent.manifest, runtime.manifest))
+        return persist_list_cache_timestamp(timestamp);
 
     let stage = PERSISTENT_LIST_CACHE_DIR + ".stage";
     let previous = PERSISTENT_LIST_CACHE_DIR + ".previous";
@@ -3145,6 +3173,46 @@ function list_preflight_entries(sections) {
     return entries;
 }
 
+// The private download directory of a list worker (UC-057) is named after
+// that worker's identity, pid and start ticks (core/process_identity.uc). A
+// worker that a stop terminated during its downloads, or that was killed,
+// cannot remove it: the stop that terminated the worker and every later
+// list update remove such a directory once its worker is gone, never the
+// directory of a running worker.
+const LIST_STAGING_ROOT = getenv("TMPDIR") || "/tmp";
+const LIST_STAGING_PREFIX = LIST_STAGING_ROOT + "/forkop-list-staging.";
+
+function list_staging_create() {
+    let pid = owner_pid();
+    let ticks = process_identity.start_ticks(pid);
+    if (ticks == "")
+        return "";
+    let path = LIST_STAGING_PREFIX + pid + "." + ticks;
+    command_success_from_args([ "rm", "-rf", path ]);
+    return fs.mkdir(path, 0700) ? path : "";
+}
+
+// The pid and start ticks name one process of this boot; it still runs
+// (not a zombie) and is a ucode program.
+function list_staging_owner_running(pid, ticks) {
+    return process_identity.matches_record({ pid, ticks }, "ucode", [ "ucode" ], false, true) != "";
+}
+
+// wait_seconds: how long a worker that was just signalled may take to end.
+function remove_stale_list_staging(wait_seconds) {
+    for (let path in fs.glob(LIST_STAGING_PREFIX + "*") || []) {
+        let owner = match(substr(path, length(LIST_STAGING_PREFIX)), /^([1-9][0-9]*)\.([0-9]+)$/);
+        if (owner == null)
+            continue;
+        while (wait_seconds > 0 && list_staging_owner_running(owner[1], owner[2])) {
+            command_success_from_args([ "sleep", "1" ]);
+            wait_seconds--;
+        }
+        if (!list_staging_owner_running(owner[1], owner[2]))
+            command_success_from_args([ "rm", "-rf", path ]);
+    }
+}
+
 function abandon_list_downloads(url) {
     log_message("Failed to preflight list source " + safe_remote_source_identity(url) + "; keeping the active generation", "error");
     command_success_from_args([ "rm", "-rf", list_download_staging_dir ]);
@@ -3166,13 +3234,9 @@ function prepare_list_downloads(sections, proxy_address, unlocked) {
     list_download_cache = {};
     list_download_metadata = [];
     list_download_sequence = 0;
-    list_download_staging_dir = temp_path();
-    if (list_download_staging_dir != "")
-        remove_file(list_download_staging_dir);
-    if (list_download_staging_dir == "" || !ensure_dir(list_download_staging_dir)) {
-        list_download_staging_dir = "";
+    list_download_staging_dir = list_staging_create();
+    if (list_download_staging_dir == "")
         return false;
-    }
 
     for (let entry in list_preflight_entries(sections)) {
         list_download_sequence++;
@@ -4031,6 +4095,7 @@ function dns_probe_passed(proxy_address) {
 
 function list_update() {
     log_message("Starting lists update", "info");
+    remove_stale_list_staging(0);
     if (!list_update_pid_begin())
         exit(0);
 
@@ -4125,6 +4190,7 @@ function list_update() {
 }
 
 function list_update_after_start() {
+    remove_stale_list_staging(0);
     if (!service_state_success([ "has-list-update-sources" ])) {
         run_deferred_ruleset_refresh();
         exit(0);
@@ -4171,13 +4237,17 @@ function list_update_if_due() {
 }
 
 function stop_list_update() {
+    let stopped = false;
     for (let mode in LIST_UPDATE_WORKER_MODES) {
         if (process_identity.signal(LIST_UPDATE_PID_FILE, "ucode", list_update_worker_argv(mode), true, "TERM")) {
             log_message("Stopped list_update", "info");
+            stopped = true;
             break;
         }
     }
     remove_file(LIST_UPDATE_PID_FILE);
+    // A worker terminated during its downloads leaves its staging directory.
+    remove_stale_list_staging(stopped ? 2 : 0);
 }
 
 function subscription_cache_env() {

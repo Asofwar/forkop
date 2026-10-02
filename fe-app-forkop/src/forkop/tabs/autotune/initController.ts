@@ -44,6 +44,7 @@ import {
   runProgressView,
   type RunProgressView,
   workerView,
+  stateNotSavedText,
   type ApplyResultView,
   type GroupCard,
   type TargetRow,
@@ -222,6 +223,13 @@ async function pollJob(jobId: string) {
         showToast(_('Check completed'), 'success');
       else if (result?.status === 'busy')
         showToast(_('A check is already running.'), 'warning', 6000);
+      // Its results are not recorded, or it could not begin (UC-074).
+      else if (result?.reason === 'state_write_failed')
+        showToast(
+          `${_('The check did not complete')}. ${stateNotSavedText()}`,
+          'error',
+          8000,
+        );
       else if (result?.result === 'skipped')
         showToast(
           _('The check was postponed. See the state above.'),

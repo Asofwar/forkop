@@ -78,4 +78,85 @@ done
 for i in $(seq 1 40); do printf '{"version":3,"rules":[{"ip_cidr":["10.0.%d.0/24"]}]}\n' "$i" >"$WORK/r$i.json"; import all "$WORK/r$i.json" "$WORK/n.log"; done
 [ "$(entries)" -le 32 ] || fail "the cache is bounded: $(entries)"
 
+# entry JSON: the cache file of an import of the rule set JSON without ports.
+entry() { printf '%s/v1-%s-5000-all.json' "$WORK/cache" "$(md5sum "$1" | cut -c1-32)"; }
+
+# A hit counts as use (UC-222): an entry that a reload keeps importing is not
+# the first to go because it was prepared long ago, a superseded one is.
+rm -rf "$WORK/cache"
+printf '{"version":3,"rules":[{"ip_cidr":["10.1.0.0/16"]}]}\n' >"$WORK/hot.json"
+import all "$WORK/hot.json" "$WORK/n.log"
+touch -d '2000-01-01 00:00:00' "$(entry "$WORK/hot.json")"
+for i in $(seq 1 31); do
+  import all "$WORK/r$i.json" "$WORK/n.log"
+  touch -d "2001-01-01 00:00:$(printf '%02d' "$((i % 60))")" "$(entry "$WORK/r$i.json")"
+done
+[ "$(entries)" = 32 ] || fail "the fixture did not fill the cache: $(entries)"
+rm -f "$WORK/u" "$WORK/s"
+import all "$WORK/hot.json" "$WORK/n.log"
+[ ! -e "$WORK/u" ] || fail "the hot entry was not used from the cache"
+import all "$WORK/r40.json" "$WORK/n.log"
+[ "$(entries)" -le 32 ] || fail "the cache is bounded: $(entries)"
+[ -e "$(entry "$WORK/hot.json")" ] || fail "an entry in use was evicted before unused ones"
+[ ! -e "$(entry "$WORK/r1.json")" ] || fail "the least recently used entry was kept"
+
+# The cache is bounded by its size in tmpfs as well, not by the number of
+# entries alone: a few large rule sets must not fill the RAM.
+rm -rf "$WORK/cache"
+big() { # big N FILE: a rule set of N subnets
+  awk -v n="$1" 'BEGIN {
+    printf "{\"version\":3,\"rules\":[{\"ip_cidr\":["
+    for (i = 0; i < n; i++) printf "%s\"10.%d.%d.0/24\"", (i ? "," : ""), int(i / 256) % 256, i % 256
+    print "]}]}"
+  }' >"$2"
+}
+# backdate: the entries were last used by earlier reloads, long ago, in
+# the order they were last used.
+backdate() {
+  local i=0 f
+  while IFS= read -r f; do
+    i=$((i + 1))
+    touch -d "2001-01-01 00:00:$(printf '%02d' "$i")" "$f"
+  done < <(find "$WORK/cache" -name '*.json' -printf '%T@ %p\n' | sort -n | cut -d' ' -f2-)
+}
+for i in 1 2 3 4 5 6; do
+  big "$((300 + i))" "$WORK/big$i.json"
+  FORKOP_NFT_SUBNET_CACHE_MAX_BYTES=16384 import all "$WORK/big$i.json" "$WORK/n.log"
+  total="$(find "$WORK/cache" -name '*.json' -printf '%s\n' | awk '{ s += $1 } END { print s + 0 }')"
+  [ "$total" -le 16384 ] || fail "the cache outgrew its size limit: $total bytes in $(entries) entries"
+  backdate
+done
+[ -e "$(entry "$WORK/big6.json")" ] || fail "the newest entry that fits was not cached"
+# An entry larger than the whole limit is not cached; the import still works.
+big 3000 "$WORK/huge.json"
+FORKOP_NFT_SUBNET_CACHE_MAX_BYTES=16384 import all "$WORK/huge.json" "$WORK/huge.log"
+grep -q '10.11.183.0/24' "$WORK/huge.log" || fail "an import too large for the cache lost elements"
+[ ! -e "$(entry "$WORK/huge.json")" ] || fail "an entry larger than the size limit was cached"
+[ -e "$(entry "$WORK/big6.json")" ] || fail "an entry too large for the cache evicted the others"
+
+# The rule sets every reload imports need more room than the cache has: the
+# entries the reloads keep using stay, the one that does not fit is
+# prepared each time. Evicting the least recently used entry instead evicts
+# the next one the same reload imports, and no import ever hits.
+rm -rf "$WORK/cache"
+for x in 1 2 3; do big "$((300 + x))" "$WORK/set$x.json"; done
+reload() { # the imports of one reload: hit or miss for each rule set
+  local x
+  for x in 1 2 3; do
+    rm -f "$WORK/u" "$WORK/s"
+    FORKOP_NFT_SUBNET_CACHE_MAX_BYTES=10000 import all "$WORK/set$x.json" "$WORK/n.log"
+    grep -q '10.1.44.0/24' "$WORK/n.log" || fail "an import of set$x lost elements"
+    if [ -e "$WORK/u" ]; then printf 'miss '; else printf 'hit '; fi
+  done
+}
+first="$(reload)"
+[ "$first" = "miss miss miss " ] || fail "the first reload found entries: $first"
+for day in 2 3; do
+  backdate
+  result="$(reload)"
+  [ "$result" = "hit hit miss " ] || fail "reload $day of a working set larger than the cache: $result (cache: $(ls "$WORK/cache"))"
+done
+total="$(find "$WORK/cache" -name '*.json' -printf '%s\n' | awk '{ s += $1 } END { print s + 0 }')"
+[ "$total" -le 10000 ] || fail "the cache outgrew its size limit: $total bytes"
+
 printf 'nft_subnet_cache: PASS\n'

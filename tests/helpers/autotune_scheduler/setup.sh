@@ -49,7 +49,12 @@ manager() { ucode -L "$LIB" "$LIB/autotune/manager.uc" "$@"; }
 calls() { if [ -e "$WORK/tune/calls.log" ]; then awk '{print $2}' "$WORK/tune/calls.log" | tr '\n' ' '; fi; }
 reset_calls() { rm -f "$WORK/tune/calls.log"; }
 json_get() { node -e 'const v=require(process.argv[1]); const r=process.argv[2].split(".").reduce((o,k)=>o==null?o:o[k],v); console.log(r===undefined?"null":JSON.stringify(r))' "$1" "$2"; }
-make_due() { node -e 'const f=process.argv[1],s=require(f);s.next_run_at=1;require("fs").writeFileSync(f,JSON.stringify(s)+"\n")' "$FORKOP_AUTOTUNE_STATE_FILE"; }
+# The next scheduled run is due, also past the retry time of a run a blocker
+# postponed (kept in RAM, UC-075).
+make_due() {
+  node -e 'const f=process.argv[1],s=require(f);s.next_run_at=1;require("fs").writeFileSync(f,JSON.stringify(s)+"\n")' "$FORKOP_AUTOTUNE_STATE_FILE"
+  rm -f "$FORKOP_AUTOTUNE_STATE_DIR/postponed.json"
+}
 
 cat >"$WORK/crontab-cmd" <<SH
 #!/bin/sh

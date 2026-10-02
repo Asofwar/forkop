@@ -15,6 +15,7 @@ import {
   renderLoadingState,
 } from '../../ui/states';
 import {
+  createSnapshotToast,
   diffRows,
   diffTruncatedText,
   historyFilterLabel,
@@ -308,10 +309,8 @@ async function deleteSnapshot(id: string, label: string) {
 async function createSnapshot() {
   await runSnapshotAction(async () => {
     const result = await ForkopShellMethods.snapshotCreate('manual');
-    const status = result.success ? result.data.status : undefined;
-    if (status === 'busy') showToast(snapshotBusyText(), 'warning', 6000);
-    else if (status === 'created') showToast(_('Snapshot saved'), 'success');
-    else showToast(_('Could not create snapshot'), 'error');
+    const toast = createSnapshotToast(result.success ? result.data : undefined);
+    showToast(toast.text, toast.type, toast.duration);
   });
 }
 

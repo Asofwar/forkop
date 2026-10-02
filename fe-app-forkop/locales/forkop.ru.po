@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-02 08:32+0000\n"
-"PO-Revision-Date: 2026-10-02 08:32+0000\n"
+"POT-Creation-Date: 2026-10-02 10:19+0000\n"
+"PO-Revision-Date: 2026-10-02 10:19+0000\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -970,6 +970,15 @@ msgstr "Не удалось загрузить снимки конфигурац
 
 msgid "Could not load data"
 msgstr "Не удалось загрузить данные"
+
+msgid "Could not save a pre-apply configuration snapshot: it could not be written. Check the free space on the router. Changes were not applied."
+msgstr "Не удалось сохранить снимок перед применением: его не удалось записать. Проверьте свободное место на роутере. Изменения не применены."
+
+msgid "Could not save a pre-apply configuration snapshot: the configuration file could not be read. Changes were not applied."
+msgstr "Не удалось сохранить снимок перед применением: не удалось прочитать файл конфигурации. Изменения не применены."
+
+msgid "Could not save a pre-apply configuration snapshot: the snapshot storage could not be locked. Changes were not applied; try again in a moment."
+msgstr "Не удалось сохранить снимок перед применением: хранилище снимков не удалось заблокировать. Изменения не применены, повторите через минуту."
 
 msgid "Could not save a pre-apply configuration snapshot. Changes were not applied."
 msgstr "Не удалось сохранить снимок перед применением. Изменения не применены."
@@ -3023,6 +3032,9 @@ msgstr "Восстановление не применено: Forkop X был о
 msgid "Restore was not applied: Forkop X was stopped, and the configuration was changed during the restore."
 msgstr "Восстановление не применено: Forkop X был остановлен, а конфигурацию изменили во время восстановления."
 
+msgid "Restore was not applied: the configuration file could not be written. The previous configuration is kept."
+msgstr "Восстановление не применено: не удалось записать файл конфигурации. Прежняя конфигурация сохранена."
+
 msgid "Restore was not applied: the service was busy and only queued the reload. The previous configuration is kept."
 msgstr "Восстановление не применено: служба была занята и лишь поставила перезагрузку в очередь. Прежняя конфигурация сохранена."
 
@@ -3032,8 +3044,26 @@ msgstr "Восстановление не применено: конфигура
 msgid "Restore was not started: a failed change left the DPI guard in place, and nothing can be reloaded until Forkop X is restarted. Restart Forkop X, then restore the snapshot if it is still needed."
 msgstr "Восстановление не начато: неудавшееся изменение оставило защиту DPI, и до перезапуска Forkop X ничего нельзя перезагрузить. Перезапустите Forkop X, затем восстановите снимок, если он ещё нужен."
 
+msgid "Restore was not started: the configuration was changed while the restore was starting. Nothing was changed; check the change and try again."
+msgstr "Восстановление не начато: конфигурацию изменили, пока восстановление запускалось. Ничего не изменено; проверьте изменение и повторите."
+
+msgid "Restore was not started: the current configuration could not be read. Nothing was changed."
+msgstr "Восстановление не начато: не удалось прочитать текущую конфигурацию. Ничего не изменено."
+
+msgid "Restore was not started: the current configuration could not be saved as a snapshot first. Nothing was changed. Check the free space on the router."
+msgstr "Восстановление не начато: не удалось сначала сохранить текущую конфигурацию в снимок. Ничего не изменено. Проверьте свободное место на роутере."
+
+msgid "Restore was not started: the DPI guard that protects traffic during the restore could not be installed. Nothing was changed."
+msgstr "Восстановление не начато: не удалось установить защиту DPI, которая оберегает трафик во время восстановления. Ничего не изменено."
+
 msgid "Restore was not started: the router has uncommitted uci changes of Forkop X (made with \"uci set\" without a commit). Commit or revert them, then restore again."
 msgstr "Восстановление не запущено: на роутере есть незафиксированные изменения Forkop X в uci (внесённые «uci set» без commit). Зафиксируйте или отмените их и повторите восстановление."
+
+msgid "Restore was not started: the snapshot is missing or damaged. Nothing was changed."
+msgstr "Восстановление не начато: снимок отсутствует или повреждён. Ничего не изменено."
+
+msgid "Restore was not started: the snapshot storage could not be locked. Nothing was changed."
+msgstr "Восстановление не начато: хранилище снимков не удалось заблокировать. Ничего не изменено."
 
 msgid "Restore…"
 msgstr "Восстановить…"
@@ -3377,11 +3407,26 @@ msgstr "Снимок создан"
 msgid "Snapshot deleted"
 msgstr "Снимок удалён"
 
+msgid "Snapshot not saved: at most %d manual snapshots are kept, so that the automatic snapshots taken before a restore, Save & Apply or autotune always have room. Delete a manual snapshot you no longer need, then try again."
+msgstr "Снимок не сохранён: хранится не более %d ручных снимков, чтобы автоматическим снимкам перед восстановлением, «Сохранить и применить» или автоподбором всегда хватало места. Удалите ненужный ручной снимок и повторите."
+
+msgid "Snapshot not saved: it could not be written. Check the free space on the router."
+msgstr "Снимок не сохранён: его не удалось записать. Проверьте свободное место на роутере."
+
+msgid "Snapshot not saved: the configuration file could not be read."
+msgstr "Снимок не сохранён: не удалось прочитать файл конфигурации."
+
+msgid "Snapshot not saved: the snapshot storage could not be locked. Try again in a moment."
+msgstr "Снимок не сохранён: хранилище снимков не удалось заблокировать. Повторите через минуту."
+
 msgid "Snapshot restore"
 msgstr "Восстановление снимка"
 
 msgid "Snapshot saved"
 msgstr "Снимок сохранён"
+
+msgid "Snapshot storage is full: delete a manual snapshot in History and recovery. Changes were not applied."
+msgstr "Хранилище снимков заполнено: удалите ручной снимок на странице «История и восстановление». Изменения не применены."
 
 msgid "Snapshots: %d"
 msgstr "Снимков: %d"
@@ -3679,6 +3724,9 @@ msgstr "Desync fwmark управляется Forkop для защиты от ц�
 
 msgid "The DNS server must be an IPv4 address."
 msgstr "DNS-сервер должен быть IPv4-адресом."
+
+msgid "The DPI guard of an earlier restore stays active."
+msgstr "Защита DPI от прежнего восстановления остаётся активной."
 
 msgid "The DPI guard stays active. Restore the snapshot you need to finish."
 msgstr "Защита DPI остаётся активной. Чтобы завершить, восстановите нужный снимок."

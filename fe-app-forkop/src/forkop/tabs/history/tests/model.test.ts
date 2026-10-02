@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  createSnapshotToast,
   diffRows,
   diffTruncatedText,
   historyItems,
@@ -586,5 +587,90 @@ describe('restore result', () => {
     // Unknown (the call failed or LuCI lacks it): nothing is blocked.
     expect(unsavedChangesBlockRestore(null, 'forkop')).toBe(false);
     expect(unsavedChangesBlockRestore(undefined, 'forkop')).toBe(false);
+  });
+});
+
+// UC-022, D-14: manual snapshots stop at RETENTION-2 so the automatic ones
+// keep their places; every refusal says why, and that nothing changed.
+describe('snapshot refusals', () => {
+  it('says why a manual snapshot was not saved and what to do', () => {
+    const limit = createSnapshotToast({
+      status: 'failed',
+      reason: 'manual_limit_reached',
+      limit: 8,
+    });
+    expect(limit.type).toBe('warning');
+    expect(limit.text).toContain('at most 8 manual snapshots');
+    expect(limit.text).toContain('Delete a manual snapshot');
+    expect(limit.text).toContain('before a restore, Save & Apply or autotune');
+
+    expect(createSnapshotToast({ status: 'created' })).toEqual({
+      text: 'Snapshot saved',
+      type: 'success',
+      duration: 3000,
+    });
+    expect(
+      createSnapshotToast({
+        status: 'busy',
+        reason: 'snapshot_operation_in_progress',
+      }),
+    ).toEqual({
+      text: snapshotBusyText('snapshot_operation_in_progress'),
+      type: 'warning',
+      duration: 6000,
+    });
+    for (const [reason, words] of [
+      ['config_unavailable', 'could not be read'],
+      ['write_failed', 'free space'],
+      ['hash_unavailable', 'free space'],
+      ['lock_unavailable', 'could not be locked'],
+    ]) {
+      const refused = createSnapshotToast({ status: 'failed', reason });
+      expect(refused.text).toContain('Snapshot not saved');
+      expect(refused.text).toContain(words);
+    }
+    expect(createSnapshotToast({ status: 'failed' }).text).toBe(
+      'Could not create snapshot',
+    );
+    expect(createSnapshotToast(undefined).type).toBe('error');
+  });
+
+  it('names why a restore was refused before it changed anything', () => {
+    for (const [reason, words] of [
+      ['pre_restore_snapshot_failed', 'could not be saved as a snapshot'],
+      ['invalid_snapshot', 'missing or damaged'],
+      ['config_unavailable', 'could not be read'],
+      ['concurrent_change', 'changed while the restore was starting'],
+      ['guard_unavailable', 'DPI guard'],
+      ['lock_unavailable', 'could not be locked'],
+    ]) {
+      const refused = restoreResultToast({ status: 'failed', reason });
+      expect(refused.type).toBe('warning');
+      expect(refused.text).toContain('Restore was not started');
+      expect(refused.text).toContain(words);
+      expect(refused.text).toContain('Nothing was changed');
+      expect(refused.text).not.toContain('check the recovery state');
+    }
+  });
+
+  it('keeps the previous configuration when it cannot be replaced', () => {
+    const own = restoreResultToast({
+      status: 'failed',
+      reason: 'replace_failed',
+    });
+    expect(own.type).toBe('warning');
+    expect(own.text).toContain('could not be written');
+    expect(own.text).toContain('previous configuration is kept');
+    expect(own.text).not.toContain('DPI guard');
+    // A guard an earlier restore left stays active.
+    const inherited = restoreResultToast({
+      status: 'failed',
+      reason: 'replace_failed',
+      guard: 'active',
+    });
+    expect(inherited.text).toContain('previous configuration is kept');
+    expect(inherited.text).toContain(
+      'DPI guard of an earlier restore stays active',
+    );
   });
 });

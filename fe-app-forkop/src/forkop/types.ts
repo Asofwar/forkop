@@ -434,6 +434,8 @@ export namespace Forkop {
     // "Concurrent edit" snapshot that holds it, null when none could be
     // saved (the edit then lives in the configuration only).
     saved_snapshot?: string | null;
+    // manual_limit_reached: how many manual snapshots are kept (D-14).
+    limit?: number;
   }
   export interface ConnectivityResult {
     host: string;

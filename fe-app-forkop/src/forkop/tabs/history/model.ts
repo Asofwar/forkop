@@ -362,6 +362,106 @@ export function snapshotBusyText(reason?: string) {
   );
 }
 
+// Manual snapshots stop two short of the snapshot store's size
+// (config/snapshots.uc MANUAL_LIMIT, D-14): the two places stay for the
+// automatic snapshots a restore, Save & Apply and autotune take. The backend
+// names its limit with the refusal; this only stands in for a missing one.
+const MANUAL_SNAPSHOT_LIMIT = 8;
+
+// What "Create snapshot" did. A refusal says why and what to do, never only
+// that the snapshot could not be created (UC-022).
+export function createSnapshotToast(
+  result: Forkop.SnapshotResult | undefined,
+): SnapshotToast {
+  switch (result?.status) {
+    case 'created':
+      return { text: _('Snapshot saved'), type: 'success', duration: 3000 };
+    case 'busy':
+      return {
+        text: snapshotBusyText(result.reason),
+        type: 'warning',
+        duration: 6000,
+      };
+    case 'failed':
+      switch (result.reason) {
+        // Nothing removes a manual snapshot to make room: the user does.
+        case 'manual_limit_reached':
+          return {
+            text: _(
+              'Snapshot not saved: at most %d manual snapshots are kept, so that the automatic snapshots taken before a restore, Save & Apply or autotune always have room. Delete a manual snapshot you no longer need, then try again.',
+            ).replace('%d', String(result.limit ?? MANUAL_SNAPSHOT_LIMIT)),
+            type: 'warning',
+            duration: 12000,
+          };
+        case 'config_unavailable':
+          return {
+            text: _(
+              'Snapshot not saved: the configuration file could not be read.',
+            ),
+            type: 'error',
+            duration: 8000,
+          };
+        case 'hash_unavailable':
+        case 'write_failed':
+          return {
+            text: _(
+              'Snapshot not saved: it could not be written. Check the free space on the router.',
+            ),
+            type: 'error',
+            duration: 8000,
+          };
+        case 'lock_unavailable':
+          return {
+            text: _(
+              'Snapshot not saved: the snapshot storage could not be locked. Try again in a moment.',
+            ),
+            type: 'error',
+            duration: 8000,
+          };
+      }
+      break;
+  }
+  return {
+    text: _('Could not create snapshot'),
+    type: 'error',
+    duration: 3000,
+  };
+}
+
+// A restore refused before its transaction started: nothing was changed,
+// and it is no restore event in the history (UC-022). null for a reason
+// without a text of its own.
+function restoreRefusalText(reason: string | undefined): string | null {
+  switch (reason) {
+    case 'pre_restore_snapshot_failed':
+      return _(
+        'Restore was not started: the current configuration could not be saved as a snapshot first. Nothing was changed. Check the free space on the router.',
+      );
+    case 'invalid_snapshot':
+      return _(
+        'Restore was not started: the snapshot is missing or damaged. Nothing was changed.',
+      );
+    case 'config_unavailable':
+      return _(
+        'Restore was not started: the current configuration could not be read. Nothing was changed.',
+      );
+    case 'concurrent_change':
+      return _(
+        'Restore was not started: the configuration was changed while the restore was starting. Nothing was changed; check the change and try again.',
+      );
+    case 'guard_unavailable':
+      return _(
+        'Restore was not started: the DPI guard that protects traffic during the restore could not be installed. Nothing was changed.',
+      );
+    case 'lock_unavailable':
+      return _(
+        'Restore was not started: the snapshot storage could not be locked. Nothing was changed.',
+      );
+    default:
+      return null;
+  }
+}
+
 // Changes of this LuCI session that are saved but not applied (rpcd keeps
 // them per session). The restore's reload does not read them, but a later
 // Save & Apply would merge them into the restored configuration: they are
@@ -453,6 +553,23 @@ export function restoreResultToast(
           type: 'warning',
           duration: 10000,
         };
+      // The configuration file could not be replaced: nothing was reloaded.
+      // A guard an earlier restore left stays (an own guard is released).
+      if (result.reason === 'replace_failed')
+        return {
+          text:
+            result.guard === 'active'
+              ? `${_('Restore was not applied: the configuration file could not be written. The previous configuration is kept.')} ${_('The DPI guard of an earlier restore stays active.')}`
+              : _(
+                  'Restore was not applied: the configuration file could not be written. The previous configuration is kept.',
+                ),
+          type: 'warning',
+          duration: 10000,
+        };
+      {
+        const refusal = restoreRefusalText(result.reason);
+        if (refusal) return { text: refusal, type: 'warning', duration: 10000 };
+      }
       if (result.runtime === 'stopped')
         return {
           text:

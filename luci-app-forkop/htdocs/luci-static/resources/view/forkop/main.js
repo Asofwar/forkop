@@ -17950,6 +17950,92 @@ function snapshotBusyText(reason) {
     "Another snapshot operation is already in progress. Try again in a moment."
   );
 }
+var MANUAL_SNAPSHOT_LIMIT = 8;
+function createSnapshotToast(result) {
+  switch (result?.status) {
+    case "created":
+      return { text: _("Snapshot saved"), type: "success", duration: 3e3 };
+    case "busy":
+      return {
+        text: snapshotBusyText(result.reason),
+        type: "warning",
+        duration: 6e3
+      };
+    case "failed":
+      switch (result.reason) {
+        // Nothing removes a manual snapshot to make room: the user does.
+        case "manual_limit_reached":
+          return {
+            text: _(
+              "Snapshot not saved: at most %d manual snapshots are kept, so that the automatic snapshots taken before a restore, Save & Apply or autotune always have room. Delete a manual snapshot you no longer need, then try again."
+            ).replace("%d", String(result.limit ?? MANUAL_SNAPSHOT_LIMIT)),
+            type: "warning",
+            duration: 12e3
+          };
+        case "config_unavailable":
+          return {
+            text: _(
+              "Snapshot not saved: the configuration file could not be read."
+            ),
+            type: "error",
+            duration: 8e3
+          };
+        case "hash_unavailable":
+        case "write_failed":
+          return {
+            text: _(
+              "Snapshot not saved: it could not be written. Check the free space on the router."
+            ),
+            type: "error",
+            duration: 8e3
+          };
+        case "lock_unavailable":
+          return {
+            text: _(
+              "Snapshot not saved: the snapshot storage could not be locked. Try again in a moment."
+            ),
+            type: "error",
+            duration: 8e3
+          };
+      }
+      break;
+  }
+  return {
+    text: _("Could not create snapshot"),
+    type: "error",
+    duration: 3e3
+  };
+}
+function restoreRefusalText(reason) {
+  switch (reason) {
+    case "pre_restore_snapshot_failed":
+      return _(
+        "Restore was not started: the current configuration could not be saved as a snapshot first. Nothing was changed. Check the free space on the router."
+      );
+    case "invalid_snapshot":
+      return _(
+        "Restore was not started: the snapshot is missing or damaged. Nothing was changed."
+      );
+    case "config_unavailable":
+      return _(
+        "Restore was not started: the current configuration could not be read. Nothing was changed."
+      );
+    case "concurrent_change":
+      return _(
+        "Restore was not started: the configuration was changed while the restore was starting. Nothing was changed; check the change and try again."
+      );
+    case "guard_unavailable":
+      return _(
+        "Restore was not started: the DPI guard that protects traffic during the restore could not be installed. Nothing was changed."
+      );
+    case "lock_unavailable":
+      return _(
+        "Restore was not started: the snapshot storage could not be locked. Nothing was changed."
+      );
+    default:
+      return null;
+  }
+}
 function unsavedChangesBlockRestore(changes, uciPackage) {
   const pending = changes?.[uciPackage];
   return Array.isArray(pending) && pending.length > 0;
@@ -18014,6 +18100,18 @@ function restoreResultToast(result) {
           type: "warning",
           duration: 1e4
         };
+      if (result.reason === "replace_failed")
+        return {
+          text: result.guard === "active" ? `${_("Restore was not applied: the configuration file could not be written. The previous configuration is kept.")} ${_("The DPI guard of an earlier restore stays active.")}` : _(
+            "Restore was not applied: the configuration file could not be written. The previous configuration is kept."
+          ),
+          type: "warning",
+          duration: 1e4
+        };
+      {
+        const refusal = restoreRefusalText(result.reason);
+        if (refusal) return { text: refusal, type: "warning", duration: 1e4 };
+      }
       if (result.runtime === "stopped")
         return {
           text: result.reason === "target_invalid" ? _(
@@ -18295,10 +18393,8 @@ async function deleteSnapshot(id, label) {
 async function createSnapshot() {
   await runSnapshotAction(async () => {
     const result = await ForkopShellMethods.snapshotCreate("manual");
-    const status2 = result.success ? result.data.status : void 0;
-    if (status2 === "busy") showToast(snapshotBusyText(), "warning", 6e3);
-    else if (status2 === "created") showToast(_("Snapshot saved"), "success");
-    else showToast(_("Could not create snapshot"), "error");
+    const toast = createSnapshotToast(result.success ? result.data : void 0);
+    showToast(toast.text, toast.type, toast.duration);
   });
 }
 function renderSnapshots() {

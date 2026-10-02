@@ -79,6 +79,41 @@ function configureGridSection(sectionRef, type, title, addTitle) {
   }
 }
 
+// Why the pre-apply snapshot was refused (config/snapshots.uc create). Save &
+// Apply never runs without it, so the refusal names its reason (UC-225).
+function snapshotRefusalText(snapshot) {
+  const data = snapshot.success ? snapshot.data : null;
+  if (data?.status === "busy")
+    return _(
+      "Another snapshot operation is already in progress. Changes were not applied; try again in a moment.",
+    );
+  switch (data?.reason) {
+    // Automatic snapshots keep reserved places (D-14); a store full of
+    // protected snapshots is named with its remedy all the same.
+    case "retention_full":
+      return _(
+        "Snapshot storage is full: delete a manual snapshot in History and recovery. Changes were not applied.",
+      );
+    case "lock_unavailable":
+      return _(
+        "Could not save a pre-apply configuration snapshot: the snapshot storage could not be locked. Changes were not applied; try again in a moment.",
+      );
+    case "config_unavailable":
+      return _(
+        "Could not save a pre-apply configuration snapshot: the configuration file could not be read. Changes were not applied.",
+      );
+    case "hash_unavailable":
+    case "write_failed":
+      return _(
+        "Could not save a pre-apply configuration snapshot: it could not be written. Check the free space on the router. Changes were not applied.",
+      );
+    default:
+      return _(
+        "Could not save a pre-apply configuration snapshot. Changes were not applied.",
+      );
+  }
+}
+
 function createMap(title, description) {
   const map = new form.Map(UCI_PACKAGE, title, description);
   const originalHandleSaveApply = map.handleSaveApply;
@@ -91,17 +126,7 @@ function createMap(title, description) {
     ) {
       ui.addNotification(
         null,
-        E(
-          "p",
-          {},
-          snapshot.data?.status === "busy"
-            ? _(
-                "Another snapshot operation is already in progress. Changes were not applied; try again in a moment.",
-              )
-            : _(
-                "Could not save a pre-apply configuration snapshot. Changes were not applied.",
-              ),
-        ),
+        E("p", {}, snapshotRefusalText(snapshot)),
         "error",
       );
       return;

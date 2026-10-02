@@ -765,7 +765,11 @@ function commit_option(config_file, path, value, keep_existing, cli) {
             let written = out != null && out.write(after) != null;
             if (out != null)
                 out.close();
-            if (written && fs.chmod(tmp, current.mode) && fs.rename(tmp, file))
+            // Read back and flushed, as a session commit does: a full overlay
+            // takes a small write and keeps none of it, and the empty copy
+            // would replace the whole configuration.
+            if (written && fs.readfile(tmp) === after && fs.chmod(tmp, current.mode) && command_ok([ "sync" ]) &&
+                fs.rename(tmp, file))
                 result = "written";
             else
                 fs.unlink(tmp);

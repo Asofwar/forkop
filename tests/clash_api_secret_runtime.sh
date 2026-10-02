@@ -219,6 +219,58 @@ grep -Fq 'Generated' "$WORK/nosettings.out" && fail "a secret uci did not write 
 cmp -s "$WORK/etc/nosettings" "$WORK/nosettings.before" || fail "the configuration changed although no secret was written"
 [ -z "$(find "$WORK/etc" -name '.*')" ] || fail "a temporary file was left next to the configuration"
 
+# A full overlay takes the write of the copy that replaces the configuration
+# and keeps none of it while the file is small: the data sits in the stdio
+# buffer, and neither write nor close reports the error. Renamed over the
+# configuration, the empty copy erased the whole Forkop configuration while
+# the secret was reported as generated. The copy is read back before the
+# rename. A full /tmp fails the private copy uci edits the same way and keeps
+# the configuration too. (Needs user and mount namespaces.)
+export WORK UCODE_BIN FORKOP_LIB
+full_fs() {
+  local where="$1"
+  config "full-$where"
+  cp "$WORK/etc/full-$where" "$WORK/full-$where.before"
+  mkdir -p "$WORK/full-fs"
+  # shellcheck disable=SC2016 # expanded by the sh that runs it
+  unshare -rm sh -c '
+    where="$1"
+    mount -t tmpfs -o size=16k tmpfs "$WORK/full-fs" || exit 90
+    file="$WORK/etc/full-$where"
+    if [ "$where" = overlay ]; then
+      cp "$file" "$WORK/full-fs/forkop"
+      file="$WORK/full-fs/forkop"
+    else
+      export TMPDIR="$WORK/full-fs"
+    fi
+    dd if=/dev/zero of="$WORK/full-fs/fill" bs=1k 2>/dev/null
+    status=0
+    FORKOP_CONFIG_FILE="$file" FORKOP_UCI_CLI="$WORK/bin/uci" \
+      "$UCODE_BIN" -L "$FORKOP_LIB" "$WORK/ensure.uc" >"$WORK/full-$where.out" 2>&1 || status=$?
+    if [ "$where" = overlay ]; then
+      cp "$file" "$WORK/etc/full-$where"
+      find "$WORK/full-fs" -name ".*" >"$WORK/full-$where.left"
+    fi
+    exit "$status"
+  ' sh "$where" || {
+    [ "$?" != 90 ] || fail "could not mount the test filesystem"
+    fail "ensure_clash_api_secret crashed with a full $where: $(cat "$WORK/full-$where.out")"
+  }
+}
+if ! unshare -rm true 2>/dev/null; then
+  printf 'NOTE: no user and mount namespaces; the full filesystem checks are skipped\n'
+else
+  for where in overlay tmp; do
+    full_fs "$where"
+    grep -Fq 'result=failed guard=0' "$WORK/full-$where.out" ||
+      fail "a secret not written to a full $where was reported as written: $(cat "$WORK/full-$where.out")"
+    grep -Fq 'Generated' "$WORK/full-$where.out" && fail "a secret not written to a full $where must not be reported as generated"
+    cmp -s "$WORK/etc/full-$where" "$WORK/full-$where.before" ||
+      fail "a full $where changed the configuration ($(wc -c <"$WORK/full-$where.before") -> $(wc -c <"$WORK/etc/full-$where") bytes)"
+  done
+  [ ! -s "$WORK/full-overlay.left" ] || fail "a temporary file was left on the full overlay: $(cat "$WORK/full-overlay.left")"
+fi
+
 # The test fixture of core/uci.uc (the lifecycle tests' view of UCI) sets the
 # option in its state and never logs a commit of the whole package.
 printf '%s\n' 'forkop.settings=settings' 'forkop.settings.enable_yacd=0' >"$WORK/fixture.state"

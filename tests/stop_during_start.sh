@@ -404,11 +404,15 @@ run_lifecycle_start() {
   LIFECYCLE_ACTOR="$LAST_ACTOR"
 }
 
+# The exit status of the lifecycle start in LIFECYCLE_STATUS. Only the shell
+# that started the actor can wait for it: in a command substitution `wait`
+# fails ("not a child of this shell") and its status passes any "!= 0"
+# check (UC-234).
 lifecycle_start_status() {
-  local status=0
+  [ "$BASH_SUBSHELL" = 0 ] || fail "lifecycle_start_status runs in a subshell, which cannot wait for the lifecycle start"
+  LIFECYCLE_STATUS=0
   wait_until 60 process_gone "$LIFECYCLE_ACTOR" || fail "the lifecycle start did not finish"
-  wait "$LIFECYCLE_ACTOR" || status=$?
-  printf '%s\n' "$status"
+  wait "$LIFECYCLE_ACTOR" || LIFECYCLE_STATUS=$?
 }
 
 # 5. A stop requested while the start prepares the subscription caches.
@@ -419,7 +423,8 @@ wait_until 20 has_event "held subscription/cache.uc prepare-caches" ||
   fail "the lifecycle start did not reach its subscription caches"
 printf 'stop\n' >"$STOP_MARKER"
 : >"$WORK_DIR/fake.gate"
-[ "$(lifecycle_start_status)" != 0 ] || fail "a start abandoned for a stop reported success"
+lifecycle_start_status
+[ "$LIFECYCLE_STATUS" != 0 ] || fail "a start abandoned for a stop reported success"
 no_event '^nft/apply.uc nft-rebuild-runtime' || fail "the start built the nftables policy after a stop request"
 no_event '^service/state.uc start-managed-sing-box-runtime' || fail "the start started sing-box after a stop request"
 grep -q 'start abandoned before the nftables policy' "$WORK_DIR/syslog" || fail "the abandoned start was not logged"
@@ -433,7 +438,8 @@ wait_until 20 has_event "held singbox/runtime.uc init-config" ||
   fail "the lifecycle start did not reach the sing-box configuration"
 printf 'stop\n' >"$STOP_MARKER"
 : >"$WORK_DIR/fake.gate"
-[ "$(lifecycle_start_status)" != 0 ] || fail "a start abandoned for a stop reported success"
+lifecycle_start_status
+[ "$LIFECYCLE_STATUS" != 0 ] || fail "a start abandoned for a stop reported success"
 has_event "nft/apply.uc nft-rebuild-runtime-from-uci" || fail "the start did not reach the nftables policy"
 no_event '^service/state.uc start-managed-sing-box-runtime' || fail "the start started sing-box after a stop request"
 no_event '^singbox/priority.uc start-runtime' || fail "the start started Priority after a stop request"
@@ -457,7 +463,8 @@ for gate in "subscription/cache.uc run-deferred-bootstrap" "providers/zapret2/ru
   printf 'stop\n' >"$STOP_MARKER"
   printf '%s\n' "-- stop requested" >>"$EVENTS"
   : >"$WORK_DIR/fake.gate"
-  [ "$(lifecycle_start_status)" != 0 ] || fail "a start overtaken by a stop at $gate reported success"
+  lifecycle_start_status
+  [ "$LIFECYCLE_STATUS" != 0 ] || fail "a start overtaken by a stop at $gate reported success"
   has_event "service/state.uc start-managed-sing-box-runtime" || fail "the start did not reach sing-box before $gate"
   after_stop="$(sed -n '/^-- stop requested$/,$p' "$EVENTS")"
   for step in "providers/zapret/runtime.uc start-runtime" "providers/zapret2/runtime.uc start-runtime" \
@@ -482,7 +489,8 @@ rm -f "$WORK_DIR/fake.gate"
 FAKE_FAIL="subscription/cache.uc run-deferred-bootstrap"
 run_lifecycle_start ""
 FAKE_FAIL=""
-[ "$(lifecycle_start_status)" != 0 ] || fail "a failing start reported success"
+lifecycle_start_status
+[ "$LIFECYCLE_STATUS" != 0 ] || fail "a failing start reported success"
 has_event "diagnostics/health.uc record start failure" || fail "a failed start without a stop request was not recorded"
 
 # 7. Control: without a stop request the same start reaches sing-box, and an
@@ -491,7 +499,8 @@ reset_case
 rm -f "$WORK_DIR/fake.gate"
 printf 'earlier\n' >"$STOP_MARKER"
 run_lifecycle_start ""
-lifecycle_start_status >/dev/null
+lifecycle_start_status
+[ "$LIFECYCLE_STATUS" = 0 ] || fail "a start without a stop request failed with status $LIFECYCLE_STATUS"
 has_event "service/state.uc start-managed-sing-box-runtime" || fail "a start without a stop request did not start sing-box"
 for step in "providers/zapret/runtime.uc start-runtime" "providers/zapret2/runtime.uc start-runtime" \
   "dns/apply.uc restore" "singbox/dns_failover.uc start-runtime"; do

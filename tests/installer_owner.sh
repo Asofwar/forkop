@@ -102,6 +102,14 @@ export FORKOP_DEADLINE_HELPER_PATH="$deadline_helper"
 export FORKOP_INSTALLER_DEADLINE_HELPER="$deadline_helper"
 export FORKOP_INSTALLER_COMMAND_RESULT="$WORK_DIR/installer-command"
 export TMP_DIR="$WORK_DIR"
+# Once its watchdog fires, the deadline helper stops the command at once,
+# sends TERM to the descendants, waits 1 s, kills them and returns. Finding
+# the descendants walks /proc once per process of the tree and pass, and load
+# slows the walks down (a probe call took up to 5 s with 8 tests at once). A
+# call is therefore held to return within this many seconds after its
+# deadline (UC-238): enough for walks of nearly 2 s each, too little for a
+# helper that lingers after it fired, e.g. with a long pause before KILL.
+deadline_return_allowance=12
 
 grep -Fq 'run_with_deadline "$METADATA_TIMEOUT_SECONDS" wget -T "$CONNECT_TIMEOUT_SECONDS" -qO-' "$INSTALLER" ||
   fail "installer wget metadata requests must have portable connect and total timeouts"
@@ -116,16 +124,19 @@ eval "$run_with_deadline_source"
 # records of the watchdog and of the command show (UC-238): the call ends
 # with 124, which only the watchdog's timeout record makes it return, and the
 # command, which would write its own record 3 s after it started, never
-# does. The wall-clock time of the call shows neither: once the watchdog
-# fires it stops the command at once, but then walks /proc for descendants,
-# twice with 1 s between, and under load the walks take seconds.
+# does. The wall-clock time of the call depends on the load and only bounds
+# how long the helper lingers after the deadline (deadline_return_allowance).
 deadline_record="$WORK_DIR/deadline-command.finished"
 deadline_status=0
+deadline_started="$(date +%s)"
 run_with_deadline 1 sh -c 'sleep 3; : >"$1"' sh "$deadline_record" || deadline_status=$?
+deadline_elapsed="$(($(date +%s) - deadline_started))"
 [ "$deadline_status" = 124 ] ||
   fail "installer deadline watchdog must fail a command that exceeds its deadline (status $deadline_status, not 124)"
 [ ! -e "$deadline_record" ] ||
   fail "installer deadline watchdog did not stop the command promptly"
+[ "$deadline_elapsed" -le "$((1 + deadline_return_allowance))" ] ||
+  fail "installer deadline call did not return soon after its 1 s deadline (${deadline_elapsed}s)"
 run_with_deadline 3 sh -c 'exit 0' ||
   fail "installer deadline watchdog must preserve successful command status"
 deadline_child_pid="$WORK_DIR/deadline-child.pid"
@@ -373,20 +384,25 @@ printf '%s\n%s\n' "$RETRY_PID" "$RETRY_TICKS" > "$WORK_DIR/start-retry.pid"
 printf '%s\n' pending > "$WORK_DIR/start.retry"
 
 # The probes hang for ever: the cleanup ends only because it runs every
-# init.d call under the deadline helper with the timeouts it is given, which
-# the helper's records show (UC-238). A stand-in logs each call of the real
-# helper as "COMMAND ACTION SECONDS STATUS". The wall-clock time of the
-# cleanup shows nothing more and depends on the load: the helper walks /proc
-# twice for every probe it stops.
+# init.d call once under the deadline helper with the timeout given for it,
+# which the helper's records show (UC-238). A stand-in logs each call of the
+# real helper as "COMMAND ACTION SECONDS STATUS ELAPSED". The wall-clock time
+# depends on the load: the helper walks /proc twice for every process of a
+# tree it stops. It only bounds how long each call lingers after its deadline
+# (deadline_return_allowance) and, loosely, the whole cleanup: 10 s alone,
+# up to 24 s with 8 tests at once.
 cat >"$WORK_DIR/logging-deadline" <<'SH'
 #!/bin/sh
+started="$(date +%s)"
 "$FORKOP_REAL_DEADLINE_HELPER" "$@"
 status=$?
-[ "$1" != run ] || printf '%s %s %s %s\n' "${4##*/}" "$5" "$2" "$status" >>"$FORKOP_DEADLINE_LOG"
+[ "$1" != run ] ||
+  printf '%s %s %s %s %s\n' "${4##*/}" "$5" "$2" "$status" "$(($(date +%s) - started))" >>"$FORKOP_DEADLINE_LOG"
 exit "$status"
 SH
 chmod 0755 "$WORK_DIR/logging-deadline"
 : >"$WORK_DIR/hanging-deadline.log"
+hanging_started="$(date +%s)"
 FORKOP_REAL_DEADLINE_HELPER="$deadline_helper" \
 FORKOP_DEADLINE_LOG="$WORK_DIR/hanging-deadline.log" \
 FORKOP_INSTALLER_DEADLINE_HELPER="$WORK_DIR/logging-deadline" \
@@ -416,17 +432,19 @@ FORKOP_INSTALLER_INIT_LOG="$WORK_DIR/hanging-init.log" \
 FORKOP_INSTALLER_HANG_PID_LOG="$HANG_PID_LOG" \
 FORKOP_UCI_STATE_FILE="$WORK_DIR/empty-uci.state" \
   ucode "$helper" installer-cleanup-legacy > "$WORK_DIR/hanging-state.env"
-for probe in enabled status running; do
-  grep -Fxq "hanging-init $probe 1 124" "$WORK_DIR/hanging-deadline.log" ||
-    fail "installer cleanup did not bound the hanging init.d probe $probe by its 1 s timeout: $(tr '\n' ';' <"$WORK_DIR/hanging-deadline.log")"
-done
-for action in stop disable; do
-  grep -Fxq "hanging-init $action 3 0" "$WORK_DIR/hanging-deadline.log" ||
-    fail "installer cleanup did not bound the init.d action $action by its 3 s timeout: $(tr '\n' ';' <"$WORK_DIR/hanging-deadline.log")"
-done
-if awk '$1 == "hanging-init" && $3 != 1 && $3 != 3 { found = 1 } END { exit !found }' "$WORK_DIR/hanging-deadline.log"; then
-  fail "installer cleanup ran an init.d call without the timeouts it was given: $(tr '\n' ';' <"$WORK_DIR/hanging-deadline.log")"
+hanging_elapsed="$(($(date +%s) - hanging_started))"
+hanging_calls="$(tr '\n' ';' <"$WORK_DIR/hanging-deadline.log")"
+# Each probe once under the 1 s probe timeout, ended by it; each action once
+# under the 3 s action timeout.
+[ "$(awk '$1 == "hanging-init" { print $2, $3, $4 }' "$WORK_DIR/hanging-deadline.log" | LC_ALL=C sort)" = \
+  "$(printf '%s\n' 'disable 3 0' 'enabled 1 124' 'running 1 124' 'status 1 124' 'stop 3 0')" ] ||
+  fail "installer cleanup must run each hanging init.d probe once under its 1 s timeout and each action once under its 3 s timeout: $hanging_calls"
+if awk -v allowance="$deadline_return_allowance" '$5 > $3 + allowance { found = 1 } END { exit !found }' \
+  "$WORK_DIR/hanging-deadline.log"; then
+  fail "installer deadline helper did not return soon after a deadline: $hanging_calls"
 fi
+[ "$hanging_elapsed" -lt 60 ] ||
+  fail "installer cleanup did not bound hanging init.d probes (${hanging_elapsed}s): $hanging_calls"
 grep -Fxq 'FORKOP_WAS_ENABLED=1' "$WORK_DIR/hanging-state.env" ||
   fail "installer cleanup must recover enabled state from rc.d after a probe timeout"
 for action in enabled status running stop disable; do

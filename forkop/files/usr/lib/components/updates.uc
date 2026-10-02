@@ -1664,7 +1664,10 @@ function write_crontab_text(text, current) {
     if (tmp == "")
         return false;
 
-    if (fs.writefile(tmp, as_string(text)) == null) {
+    // Read back: a full /tmp can take the write and keep none of it, and
+    // that empty file would become the crontab, without anyone's jobs.
+    if (fs.writefile(tmp, as_string(text)) == null || fs.readfile(tmp) !== as_string(text)) {
+        log_message("Could not stage the new crontab in " + tmp + "; the scheduled jobs were left unchanged", "error");
         fs.unlink(tmp);
         return false;
     }

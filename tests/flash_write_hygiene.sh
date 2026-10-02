@@ -136,6 +136,49 @@ updates refresh-cron-from-uci /usr/bin/forkop "${markers[@]}" || fail "a cron re
 [ -s "$CRONTAB" ] || fail "a cron refresh without a crontab did not create it"
 ok "an unreadable crontab fails the refresh and is never rewritten"
 
+# A full /tmp takes the write of the new crontab and keeps none of it:
+# handed to `crontab`, that empty file would erase every job on the router.
+if ! unshare -rm true 2>/dev/null; then
+  printf 'NOTE: no user and mount namespaces; the full /tmp crontab checks are skipped\n'
+else
+  mkdir -p "$WORK/full-tmp"
+  printf '%s\n' '0 4 * * * /usr/local/bin/backup.sh' '0 5 * * * /usr/bin/forkop list_update # forkop-list-update' >"$CRONTAB"
+  printf '%s\n' '0 4 * * * /usr/local/bin/backup.sh' '0 3 * * * /usr/bin/forkop autotune_if_due # forkop-autotune' >"$WORK/autotune-crontab"
+  cp "$CRONTAB" "$WORK/crontab.before"
+  cp "$WORK/autotune-crontab" "$WORK/autotune-crontab.before"
+  # BusyBox crontab <file> for the autotune manager.
+  cat >"$WORK/bin/autotune-crontab" <<'SH'
+#!/bin/sh
+printf '%s\n' "$*" >>"$WORK/autotune-crontab.calls"
+cp "$1" "$WORK/autotune-crontab"
+SH
+  chmod 0755 "$WORK/bin/autotune-crontab"
+  cat >"$WORK/full-tmp.sh" <<'SH'
+mount -t tmpfs -o size=16k tmpfs "$WORK/full-tmp" || exit 90
+dd if=/dev/zero of="$WORK/full-tmp/fill" bs=1k 2>/dev/null
+export TMPDIR="$WORK/full-tmp"
+updates() { ucode -L "$LIB" "$LIB/components/updates.uc" "$@"; }
+updates remove-cron-jobs '# forkop-list-update' '# forkop-subscription-update' '# forkop-component-update-check'
+printf '%s\n' "$?" >"$WORK/full-tmp.remove"
+updates refresh-cron-from-uci /usr/bin/forkop '# forkop-list-update' '# forkop-subscription-update' '# forkop-component-update-check'
+printf '%s\n' "$?" >"$WORK/full-tmp.refresh"
+FORKOP_CRONTAB_FILE="$WORK/autotune-crontab" FORKOP_AUTOTUNE_CRONTAB="$WORK/bin/autotune-crontab" \
+  FORKOP_AUTOTUNE_TMPDIR="$WORK/full-tmp" FORKOP_LIB="$LIB" \
+  ucode -L "$LIB" "$LIB/autotune/manager.uc" cron-remove >"$WORK/full-tmp.autotune"
+exit 0
+SH
+  unshare -rm sh "$WORK/full-tmp.sh" >"$WORK/full-tmp.out" 2>&1 || fail "the full /tmp crontab run failed: $(cat "$WORK/full-tmp.out")"
+  [ "$(cat "$WORK/full-tmp.remove")" != 0 ] || fail "a removal of the cron jobs with a full /tmp reported success"
+  [ "$(cat "$WORK/full-tmp.refresh")" != 0 ] || fail "a cron refresh with a full /tmp reported success"
+  cmp -s "$CRONTAB" "$WORK/crontab.before" ||
+    fail "a full /tmp changed the crontab: $(wc -c <"$CRONTAB") bytes: $(cat "$CRONTAB")"
+  grep -q '"status": *"failed"' "$WORK/full-tmp.autotune" ||
+    fail "an autotune cron removal with a full /tmp reported: $(cat "$WORK/full-tmp.autotune")"
+  cmp -s "$WORK/autotune-crontab" "$WORK/autotune-crontab.before" ||
+    fail "a full /tmp changed the crontab through autotune: $(wc -c <"$WORK/autotune-crontab") bytes"
+  ok "a full /tmp fails the crontab rewrite and leaves the crontab whole"
+fi
+
 # ---- 3. the rule-set validation record ------------------------------------------
 
 mkdir -p "$WORK/rs-bin" "$WORK/rs-cache"

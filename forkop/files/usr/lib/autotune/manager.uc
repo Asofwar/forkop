@@ -355,7 +355,13 @@ function cron_write(enabled) {
     if (text == existing) return { status: "ok", enabled, changed: false };
     let tmp = trim(capture([ "mktemp", TMP_DIR + "/forkop-autotune-cron.XXXXXX" ]).output);
     if (tmp == "") return { status: "failed", reason: "tempfile_unavailable" };
-    let ok = fs.writefile(tmp, text) != null && success([ CRONTAB, tmp ]);
+    // Read back: a full /tmp can take the write and keep none of it, and that
+    // empty file would become the crontab, without anyone's jobs.
+    if (fs.writefile(tmp, text) == null || fs.readfile(tmp) !== text) {
+        fs.unlink(tmp);
+        return { status: "failed", reason: "tempfile_unavailable" };
+    }
+    let ok = success([ CRONTAB, tmp ]);
     fs.unlink(tmp);
     return ok ? { status: "ok", enabled, changed: true } : { status: "failed", reason: "crontab_failed" };
 }

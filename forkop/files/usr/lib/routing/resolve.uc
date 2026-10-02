@@ -30,12 +30,14 @@ function seconds_setting(value, fallback) {
     return n > 0 ? n : fallback;
 }
 // Each sing-box question parses the whole list. One run is killed after
-// RULESET_MATCH_TIMEOUT seconds; one process (a route_trace, an
-// autotune_groups poll over every target) spends at most
-// RULESET_MATCH_BUDGET seconds in sing-box. Past either, the list is
-// undecidable (UC-220).
-const RULESET_MATCH_TIMEOUT = seconds_setting(getenv("FORKOP_RULESET_MATCH_TIMEOUT"), 10);
-const RULESET_MATCH_BUDGET = seconds_setting(getenv("FORKOP_RULESET_MATCH_BUDGET"), 30);
+// RULESET_MATCH_TIMEOUT seconds, or sooner when less is left of the budget:
+// one pass over the rules for a target (route_owner) spends at most
+// RULESET_MATCH_BUDGET seconds asking about lists, so a route_trace answers
+// within the 15s the page waits for it, DNS included. A caller resolving many
+// targets for a waiting page limits the whole process (limit_ruleset_time).
+// Past any of them, the list is undecidable (UC-220).
+const RULESET_MATCH_TIMEOUT = seconds_setting(getenv("FORKOP_RULESET_MATCH_TIMEOUT"), 5);
+const RULESET_MATCH_BUDGET = seconds_setting(getenv("FORKOP_RULESET_MATCH_BUDGET"), 6);
 
 function as_string(v) { return v == null ? "" : "" + v; }
 function list_of(v) { return v == null ? [] : type(v) == "array" ? v : [ v ]; }
@@ -229,20 +231,41 @@ function rule_set_answer(output) {
     return answer;
 }
 
-// Seconds this process has spent in sing-box (RULESET_MATCH_BUDGET).
-let ruleset_spent = 0;
+// Seconds spent asking about lists (sing-box runs, reading source lists):
+// by the current pass over the rules, and by this process against the limit
+// a caller set (null: none).
+let ruleset_pass_spent = 0, ruleset_process_spent = 0, ruleset_process_limit = null;
 function monotonic() {
     let now = clock(true);
     return now[0] + now[1] / 1e9;
 }
+// Whole seconds left now; below 1, nothing more is asked.
+function ruleset_seconds_left() {
+    let left = RULESET_MATCH_BUDGET - ruleset_pass_spent;
+    if (ruleset_process_limit != null && ruleset_process_limit - ruleset_process_spent < left)
+        left = ruleset_process_limit - ruleset_process_spent;
+    return left < 1 ? 0 : int(left);
+}
+function ruleset_spend(started) {
+    let seconds = monotonic() - started;
+    ruleset_pass_spent += seconds;
+    ruleset_process_spent += seconds;
+}
+// From now on this process spends at most `seconds` more asking about lists.
+function limit_ruleset_time(seconds) {
+    ruleset_process_limit = ruleset_process_spent + seconds_setting(seconds, 0);
+}
 
 // One bounded sing-box run: everything it printed (stdout and stderr), or
-// null when it failed, was killed at RULESET_MATCH_TIMEOUT, or the budget of
-// this process is spent. The watchdog takes its sleep down with it.
+// null when it failed, was killed at RULESET_MATCH_TIMEOUT or at what is
+// left of the budget, or nothing is left. The watchdog takes its sleep down
+// with it.
 function run_singbox(args) {
-    if (ruleset_spent >= RULESET_MATCH_BUDGET) return null;
+    let left = ruleset_seconds_left();
+    if (left < 1) return null;
+    let timeout = left < RULESET_MATCH_TIMEOUT ? left : RULESET_MATCH_TIMEOUT;
     let script = common.shell_command(args) + " 2>&1 & child=$!; " +
-        "( sleep " + RULESET_MATCH_TIMEOUT + " & s=$!; trap 'kill \"$s\" 2>/dev/null; exit 0' TERM; " +
+        "( sleep " + timeout + " & s=$!; trap 'kill \"$s\" 2>/dev/null; exit 0' TERM; " +
         "wait \"$s\"; kill -KILL \"$child\" 2>/dev/null ) >/dev/null 2>&1 & watchdog=$!; " +
         "wait \"$child\"; rc=$?; kill \"$watchdog\" 2>/dev/null; exit \"$rc\"";
     let started = monotonic();
@@ -250,7 +273,7 @@ function run_singbox(args) {
     if (pipe == null) return null;
     let output = as_string(pipe.read("all"));
     let status = pipe.close();
-    ruleset_spent += monotonic() - started;
+    ruleset_spend(started);
     return status == 0 ? output : null;
 }
 
@@ -266,14 +289,17 @@ let ruleset_answers = {}, ruleset_shapes = {};
 // guards, in every process. Its shape is the one singbox/ruleset_cache.uc
 // recorded when it stored and checked the file; a binary list without a
 // record of the file as it is now (a local .srs of the user) is undecidable.
+// Reading a source list counts against the budget like a sing-box run.
 function list_is_plain(entry, file) {
     if (ruleset_shapes[file] == null) {
         let shape = null;
         if (entry.format == "binary")
             shape = rulesets.recorded_binary_shape(entry.path);
         else {
-            let value = null;
+            if (ruleset_seconds_left() < 1) return false;
+            let started = monotonic(), value = null;
             try { value = json(fs.readfile(entry.path)); } catch (e) { value = null; }
+            ruleset_spend(started);
             shape = rulesets.list_shape(value);
         }
         ruleset_shapes[file] = shape == "plain";
@@ -378,6 +404,8 @@ function route_owner(config, t) {
     let rules = type(config) == "object" && type(config.route) == "object" && type(config.route.rules) == "array" ? config.route.rules : null;
     if (rules == null) return { decided: false, reason: "singbox_config_unavailable" };
     let lists = local_rule_sets(config);
+    // Each pass asks about lists within a budget of its own.
+    ruleset_pass_spent = 0;
     for (let i = 0; i < length(rules); i++) {
         let r = rules[i];
         if (type(r) != "object") continue;
@@ -506,5 +534,6 @@ function resolve(config, sections, t) {
 
 return {
     parse_config, enabled, find_section, zapret_sections, settings_of, singbox_config_path, load_json,
-    rule_scope, is_fakeip, target, rule_matches, route_owner, zapret_owner, section_for_outbound, resolve
+    rule_scope, is_fakeip, target, rule_matches, route_owner, zapret_owner, section_for_outbound, resolve,
+    limit_ruleset_time
 };

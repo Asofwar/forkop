@@ -323,7 +323,13 @@ function compute_groups(sections, targets, state) {
     return { groups, outside };
 }
 
+// The page waits 45s for the groups (AUTOTUNE_GROUPS_RPC_TIMEOUT_MS): up to
+// 16 targets with one DNS lookup of at most 2s each, then the list questions
+// of the resolver, limited for the whole call. Past the limit a list is
+// undecidable and its targets are outside (UC-220).
+const GROUPS_LIST_SECONDS = int(getenv("FORKOP_AUTOTUNE_GROUPS_LIST_SECONDS")) > 0 ? int(getenv("FORKOP_AUTOTUNE_GROUPS_LIST_SECONDS")) : 8;
 function groups() {
+    resolver.limit_ruleset_time(GROUPS_LIST_SECONDS);
     let sections = config_sections();
     if (sections == null) return { status: "failed", reason: "config_unavailable" };
     let read = policy_module.read(sections);

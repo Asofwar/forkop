@@ -10,8 +10,11 @@ set -euo pipefail
 # - one process asks each (list file, value) once, however many rules name
 #   the list and however many times the target is resolved; a changed file
 #   is asked again;
-# - one process spends at most FORKOP_RULESET_MATCH_BUDGET seconds in
-#   sing-box; after that, lists are undecidable instead of asked.
+# - one pass over the rules (each target resolved) spends at most
+#   FORKOP_RULESET_MATCH_BUDGET seconds in sing-box, and a run never outlasts
+#   what is left of it; after that, lists are undecidable instead of asked;
+# - a caller that resolves many targets for a waiting page (autotune_groups)
+#   limits the whole process (limit_ruleset_time) the same way.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB="$ROOT_DIR/forkop/files/usr/lib"
@@ -64,6 +67,7 @@ let asked = () => length(filter(split(fs.readfile(getenv("RULESET_STUB_CALLS")) 
 let config = { route: { final: "direct-out", rule_set: c.rule_set, rules: c.rules },
     outbounds: [ { type: "direct", tag: "direct-out" }, { type: "vless", tag: "main-out" },
         { type: "direct", tag: "youtube-out", routing_mark: 16777217 } ] };
+if (c.limit != null) r.limit_ruleset_time(c.limit);
 let out = [];
 for (let step in c.steps) {
     if (step.rewrite != null) {
@@ -115,15 +119,41 @@ got="$(RULESET_STUB_HANG=youtube.com FORKOP_RULESET_MATCH_TIMEOUT=1 run_steps "{
 [ $((SECONDS - start)) -le 8 ] || fail "timeout: the resolver waited $((SECONDS - start))s for a hung sing-box"
 if pgrep -f -- "$WORK/hang.srs" >/dev/null; then fail "timeout: the hung sing-box was left running"; fi
 
-# ---- one budget per process ------------------------------------------------
-# Every question takes 1.2s and the budget is 2s: the second question uses
-# it up, the third list is not asked and is undecidable.
-got="$(RULESET_STUB_DELAY_MS=1200 FORKOP_RULESET_MATCH_BUDGET=2 run_steps "{ \"rule_set\": $sets,
-  \"rules\": [ $(route other1 main-out), $(route other2 main-out), $(route other3 main-out), $(route yt youtube-out) ],
+# ---- a run never outlasts the budget ---------------------------------------
+# The timeout of one run is 20s, but only 2s of the budget are left: the hung
+# sing-box is killed after 2s.
+start=$SECONDS
+got="$(RULESET_STUB_HANG=youtube.com FORKOP_RULESET_MATCH_TIMEOUT=20 FORKOP_RULESET_MATCH_BUDGET=2 run_steps "{ \"rule_set\": $sets,
+  \"rules\": [ $(route hang youtube-out), $(route yt youtube-out) ], \"steps\": [ { \"host\": \"youtube.com\" } ] }")"
+[ "$got" = "undecidable 0 null 1" ] || fail "clamped run: got $got"
+[ $((SECONDS - start)) -le 6 ] || fail "clamped run: the resolver waited $((SECONDS - start))s with a 2s budget"
+
+# ---- one budget per pass over the rules ------------------------------------
+# Every question takes 1.5s and the budget is 3s. The first list is asked
+# (it does not hold the host); the second is asked with the 1s left (and
+# killed) or not at all: undecidable at rule 1, never at a later rule. The
+# next target has a budget of its own and is asked again.
+four="[ $(route other1 main-out), $(route other2 main-out), $(route other3 main-out), $(route yt youtube-out) ]"
+start=$SECONDS
+got="$(RULESET_STUB_DELAY_MS=1500 FORKOP_RULESET_MATCH_BUDGET=3 run_steps "{ \"rule_set\": $sets, \"rules\": $four,
   \"steps\": [ { \"host\": \"youtube.com\" }, { \"host\": \"www.youtube.com\" } ] }")"
-want="undecidable 2 null 2
+elapsed=$((SECONDS - start))
+case "$got" in
+    "undecidable 1 null "[12]"
+undecidable 1 null "[12]) ;;
+    *) fail "budget per pass: got
+$got" ;;
+esac
+[ "$elapsed" -le 12 ] || fail "budget per pass: two passes of 3s took ${elapsed}s"
+
+# ---- a limit for the whole process -----------------------------------------
+# The caller limits the process to 2s: the first pass asks one list (1.5s),
+# then nothing is asked any more, whatever the budget of a pass.
+got="$(RULESET_STUB_DELAY_MS=1500 FORKOP_RULESET_MATCH_BUDGET=30 run_steps "{ \"rule_set\": $sets, \"rules\": $four,
+  \"limit\": 2, \"steps\": [ { \"host\": \"youtube.com\" }, { \"host\": \"www.youtube.com\" } ] }")"
+want="undecidable 1 null 1
 undecidable 0 null 0"
-[ "$got" = "$want" ] || fail "budget: got
+[ "$got" = "$want" ] || fail "process limit: got
 $got
 want
 $want"

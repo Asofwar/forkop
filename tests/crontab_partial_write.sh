@@ -131,6 +131,9 @@ for room in 0 40; do
   cmp -s "$WORK/crontab.orig" "$WORK/crontab" ||
     fail "the autotune cron removal did not put the crontab back with $room bytes left: $(cat "$WORK/crontab")"
   no_leftovers "the failed autotune cron removal"
+  # The lifecycle discards the manager's output: only the system log tells.
+  grep -F '[error]' "$WORK/syslog" | grep -Fi autotune | grep -Fq "$WORK/crontab" ||
+    fail "the failed autotune cron removal was not logged as an error naming the crontab: $(cat "$WORK/syslog")"
 done
 setup 0 0
 autotune_remove

@@ -91,6 +91,8 @@ ucode -L "$FORKOP_LIB" "$MANAGER_UC" cron-remove >"$WORK/autotune.json" 2>&1 || 
 cmp -s "$WORK/crontab.foreign" "$WORK/crontab" ||
   fail "the autotune cron rewrite overwrote the change of another writer: $(cat "$WORK/crontab")"
 [ "$(wc -l <"$WORK/crontab.calls")" = 1 ] || fail "the autotune manager called crontab again after the read-back"
+grep -F '[error]' "$WORK/syslog" | grep -Fi autotune | grep -Fq 'another writer' ||
+  fail "the autotune cron conflict was not logged as an error: $(cat "$WORK/syslog")"
 printf 'ok - the autotune cron rewrite keeps a change another writer made meanwhile and fails\n'
 
 printf 'crontab foreign change checks passed\n'

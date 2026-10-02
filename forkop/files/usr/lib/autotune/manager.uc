@@ -365,7 +365,7 @@ function cron_line() {
 }
 
 // Only the autotune line is added or removed; every other line stays as is.
-function cron_write(enabled) {
+function cron_rewrite(enabled) {
     let existing = fs.readfile(CRONTAB_FILE);
     // A crontab that exists but cannot be read is never rewritten.
     if (existing == null && fs.stat(CRONTAB_FILE) != null) return { status: "failed", reason: "crontab_unreadable" };
@@ -403,6 +403,26 @@ function cron_write(enabled) {
     }
     fs.unlink(tmp);
     return ok ? { status: "ok", enabled, changed: true } : { status: "failed", reason: "crontab_failed" };
+}
+
+const CRON_FAILURES = {
+    crontab_unreadable: "the crontab cannot be read",
+    tempfile_unavailable: "the new crontab could not be staged in " + TMP_DIR,
+    crontab_failed: "crontab failed",
+    crontab_incomplete: "the crontab was cut short (is the overlay full?)",
+    crontab_changed: "another writer changed the crontab meanwhile; it was left as that writer saved it"
+};
+
+// The lifecycle discards what the manager prints (service/lifecycle.uc
+// sync_autotune_cron), so a failure is logged where it is seen.
+function cron_write(enabled) {
+    let result = cron_rewrite(enabled);
+    if (result.status == "failed")
+        success([ "logger", "-t", "forkop", "[error] Autotune: could not update its schedule line in " + CRONTAB_FILE + ": " +
+            (CRON_FAILURES[result.reason] ?? result.reason) +
+            (result.restored === true ? "; the previous crontab was put back" :
+                result.restored === false ? "; the scheduled jobs may be incomplete" : "") ]);
+    return result;
 }
 
 function cron_sync() {

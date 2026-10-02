@@ -220,6 +220,13 @@ grep -Fqx 'package_prerm upgrade 1.0.40' "$WORK_DIR/cli.log" ||
   fail "the SDK prerm must pass the new version on: $(cat "$WORK_DIR/cli.log")"
 assert_kept "upgrade to a release with the kill-switch (SDK package, opkg)"
 
+# An SDK build without a release version is 0.0.0 (forkop/Makefile
+# PKG_VERSION): a build of this tree, which has the kill-switch.
+run_sh_script "$WORK_DIR/opkg-info/forkop.prerm" upgrade 0.0.0
+grep -Fqx 'package_prerm upgrade 0.0.0' "$WORK_DIR/cli.log" ||
+  fail "the SDK prerm must pass the development version on: $(cat "$WORK_DIR/cli.log")"
+assert_kept "upgrade to an SDK build without a release version (opkg)"
+
 run_sh_script "$WORK_DIR/opkg-info/forkop.prerm" upgrade 1.0.30
 assert_lifted "downgrade to a release without the kill-switch (SDK package, opkg)"
 

@@ -133,6 +133,23 @@ sed -i 's/flow_offloading=1/flow_offloading=0/; s/flow_offloading_hw=1/flow_offl
 run_cleanup
 grep -Fqx 'firewall.@defaults[0].flow_offloading=0' "$WORK_DIR/uci.state" || fail "offload that was off must stay off"
 
+# A firewall commit the overlay refuses (full, read-only) keeps the guard's
+# saved offload values for the next postinst instead of deleting them with
+# its state directory (UC-024).
+mkdir -p "$ROOT/etc/forkop/vpn-guard"
+printf '{"saved_offload":{"flow_offloading":"1"}}\n' > "$ROOT/etc/forkop/vpn-guard/policy.json"
+sed -i 's/flow_offloading=1/flow_offloading=0/' "$WORK_DIR/uci.state"
+printf '%s\n' 'firewall.forkop_vpn_guard=include' 'firewall.forkop_vpn_guard.type=script' >>"$WORK_DIR/uci.state"
+mkdir -p "$WORK_DIR/commit-refused"
+status=0
+FORKOP_UCI_LOG_FILE="$WORK_DIR/commit-refused" run_cleanup 2>"$WORK_DIR/refused.err" || status=$?
+[ "$status" != 0 ] || fail "a legacy cleanup whose firewall commit failed reported success"
+[ -f "$ROOT/etc/forkop/vpn-guard/policy.json" ] || fail "a failed firewall commit deleted the saved offload values"
+grep -q 'firewall' "$WORK_DIR/refused.err" || fail "a failed firewall commit was not reported: $(cat "$WORK_DIR/refused.err")"
+run_cleanup || fail "the cleanup after a failed firewall commit failed"
+grep -Fqx 'firewall.@defaults[0].flow_offloading=1' "$WORK_DIR/uci.state" || fail "the saved offload was not restored on the next run"
+[ ! -e "$ROOT/etc/forkop/vpn-guard" ] || fail "the guard state stayed after the firewall was saved"
+
 grep -Fq 'legacy_vpn_guard_cleanup();' "$PACKAGE_UC" || fail "postinst must run the legacy cleanup"
 
 printf 'killswitch_migration: PASS\n'

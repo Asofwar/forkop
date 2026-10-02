@@ -391,27 +391,33 @@ function legacy_vpn_guard_cleanup() {
     // DNS flows already redirected to the stopped standby keep their NAT.
     command_success_from_args([ "sh", "-c", "conntrack -D -p udp --dport 53 >/dev/null 2>&1; conntrack -D -p tcp --dport 53 >/dev/null 2>&1; true" ]);
 
-    let firewall_changed = false;
+    let firewall_changed = false, firewall_saved = true;
     for (let key in LEGACY_GUARD_OFFLOAD_KEYS) {
         if (as_string(saved[key]) == "1" && as_string(uci_core.get("firewall.@defaults[0]." + key)) != "1") {
-            uci_core.set("firewall.@defaults[0]." + key, "1");
+            firewall_saved = uci_core.set("firewall.@defaults[0]." + key, "1") && firewall_saved;
             firewall_changed = true;
         }
     }
     if (has_include) {
-        uci_core.delete(LEGACY_GUARD_FIREWALL_INCLUDE);
+        firewall_saved = uci_core.delete(LEGACY_GUARD_FIREWALL_INCLUDE) && firewall_saved;
         firewall_changed = true;
     }
+    // A firewall the overlay does not save (full, read-only) keeps the
+    // guard's state directory: the saved offload values live there, and the
+    // next postinst tries again (UC-024).
     if (firewall_changed) {
-        uci_core.commit("firewall");
-        command_success_from_args([ "sh", "-c", "[ ! -x /etc/init.d/firewall ] || /etc/init.d/firewall reload >/dev/null 2>&1" ]);
+        firewall_saved = firewall_saved && uci_core.commit("firewall");
+        if (firewall_saved)
+            command_success_from_args([ "sh", "-c", "[ ! -x /etc/init.d/firewall ] || /etc/init.d/firewall reload >/dev/null 2>&1" ]);
+        else
+            log_warning("Could not save the firewall settings the retired VPN guard changed (flow offload, its include); the next package install tries again");
     }
 
-    command_success_from_args([ "rm", "-rf", state_dir, runtime_dir ]);
+    command_success_from_args([ "rm", "-rf", ...(firewall_saved ? [ state_dir ] : []), runtime_dir ]);
     for (let path in [ init_script, root + "/etc/hotplug.d/iface/95-forkop-guard",
         root + "/lib/upgrade/keep.d/forkop-guard", root + "/usr/share/forkop/vpn-guard-firewall.sh" ])
         unlink_if_exists(path);
-    return true;
+    return firewall_saved;
 }
 
 function postinst_restore() {

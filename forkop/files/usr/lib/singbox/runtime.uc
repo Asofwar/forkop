@@ -676,10 +676,39 @@ function prepare_subscription_caches(prepared, no_refresh) {
     return trim(result.output);
 }
 
+// The content of source_path becomes config_path, and source_path is
+// consumed. It is written to a private file next to config_path, read back
+// and renamed over it: config.json is the previous file or the new one,
+// whole. The sources are in /tmp, config.json is on the overlay, and mv
+// between them is no rename: it removes or truncates config.json and then
+// copies, so a crash or a full overlay left it missing or cut short
+// (UC-070). A publish that cannot complete leaves the previous file, no copy
+// and the source. What config_path already holds is not written again.
+function publish_config_file(source_path, config_path) {
+    let data = fs.readfile(source_path);
+    if (data == null || !ensure_parent_dir(config_path))
+        return false;
+    if (fs.readfile(config_path) !== data) {
+        let staged = config_path + ".forkop-new." + as_string(fs.readlink("/proc/self"));
+        remove_file(staged);
+        let out = fs.open(staged, "w", 0600);
+        let written = out != null && fs.chmod(staged, 0600) && out.write(data) != null;
+        if (out != null)
+            out.close();
+        // A full filesystem can take the write and keep none of it.
+        if (!written || fs.readfile(staged) !== data || !fs.rename(staged, config_path)) {
+            remove_file(staged);
+            return false;
+        }
+    }
+    remove_file(source_path);
+    return true;
+}
+
 function save_config_file(temp_file_path, config_path) {
-    // The staged file is private (mktemp, write_private_json_file) and mv
-    // keeps its mode. A config left by an older release is narrowed too, also
-    // when it is unchanged (UC-037).
+    // The staged file is private (mktemp, write_private_json_file), and so is
+    // the published copy. A config left by an older release is narrowed too,
+    // also when it is unchanged (UC-037).
     if (file_exists(config_path))
         fs.chmod(config_path, 0600);
     let current_hash = md5_file(config_path);
@@ -687,9 +716,7 @@ function save_config_file(temp_file_path, config_path) {
 
     if (current_hash != temp_hash) {
         log_message("sing-box configuration changed; updating " + config_path, "info");
-        if (!ensure_parent_dir(config_path))
-            return false;
-        return command_success_from_args([ "mv", "-f", temp_file_path, config_path ]);
+        return publish_config_file(temp_file_path, config_path);
     }
 
     log_message("sing-box configuration is unchanged", "info");
@@ -708,7 +735,7 @@ function restore_config_stage(backup_path) {
     let config_path = option(uci_settings(), "config_path", "");
     backup_path = as_string(backup_path);
     return config_path != "" && file_exists(backup_path) &&
-        command_success_from_args([ "mv", "-f", backup_path, config_path ]);
+        publish_config_file(backup_path, config_path);
 }
 
 function publish_section_cache(temp_config_path) {
@@ -796,10 +823,13 @@ function patch_dns_config(state_path) {
         exit(1);
     }
 
+    // The backup is what a failed switch publishes again: read back, since a
+    // full /tmp can take the write and keep none of it.
+    let current = fs.readfile(config_path);
     let backup_path = temp_path();
     let temp_config = temp_path();
-    if (backup_path == "" || temp_config == "" ||
-        fs.writefile(backup_path, fs.readfile(config_path)) == null ||
+    if (current == null || backup_path == "" || temp_config == "" ||
+        fs.writefile(backup_path, current) == null || fs.readfile(backup_path) !== current ||
         !common.write_private_json_file(temp_config, config)) {
         remove_files([ backup_path, temp_config ]);
         exit(1);
@@ -835,7 +865,7 @@ function restore_dns_config(backup_path) {
     let config_path = option(uci_settings(), "config_path", "");
     if (config_path == "" || !file_exists(backup_path))
         return false;
-    return command_success_from_args([ "mv", "-f", backup_path, config_path ]);
+    return publish_config_file(backup_path, config_path);
 }
 
 function init_config(populate_nft, caches_prepared, no_refresh, prepared_deferred_sections, stage_path) {

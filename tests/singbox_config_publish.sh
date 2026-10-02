@@ -1,0 +1,190 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# How sing-box config.json is published (UC-070).
+#
+# The new configuration is generated in /tmp (tmpfs), config.json lives on
+# the overlay (/etc/sing-box). `mv` across filesystems is no rename: it
+# removes or truncates config.json first and then copies, so a crash or a
+# full overlay in between left config.json missing or cut short. Now the
+# content is written to a private file next to config.json, read back, and
+# renamed over it: config.json is either the previous file or the new one,
+# whole. A publish that cannot complete fails and leaves the previous file
+# and no stray copy. A restore of a backup that holds what config.json
+# already holds, and a DNS-failover patch that changes nothing, write
+# nothing; each DNS-failover switch rewrites the file once.
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+LIB="$ROOT_DIR/forkop/files/usr/lib"
+RUNTIME="$LIB/singbox/runtime.uc"
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+trap 'exit 1' HUP INT TERM
+
+fail() {
+  printf 'FAIL: %s\n' "$1" >&2
+  exit 1
+}
+ok() { printf 'OK: %s\n' "$1"; }
+
+DIR="$WORK/etc/sing-box"
+CONFIG="$DIR/config.json"
+mkdir -p "$WORK/bin" "$WORK/tmp" "$DIR"
+printf '#!/bin/sh\nexit 0\n' >"$WORK/bin/logger"
+# `sing-box check` accepts every candidate.
+printf '#!/bin/sh\nexit 0\n' >"$WORK/bin/sing-box"
+chmod 0755 "$WORK/bin/"*
+export PATH="$WORK/bin:$PATH"
+export TMPDIR="$WORK/tmp"
+export FORKOP_UCI_STATE_FILE="$WORK/uci.state"
+export FORKOP_UCI_LOG_FILE="$WORK/uci.log"
+export FORKOP_RUNTIME_STATE_DIR="$WORK/run"
+export FORKOP_DNS_FAILOVER_STATE_FILE="$WORK/run/dns-failover.json"
+export LIB RUNTIME WORK
+cat >"$WORK/uci.state" <<EOF
+forkop.settings=settings
+forkop.settings.config_path=$CONFIG
+forkop.settings.dns_server=1.1.1.1 8.8.8.8
+forkop.settings.bootstrap_dns_server=77.88.8.8 9.9.9.9
+EOF
+
+runtime() { ucode -L "$LIB" "$RUNTIME" "$@"; }
+# The file config.json is now: inode and modification time.
+stamp() { stat -c '%i %y' "$CONFIG"; }
+mode_of() { stat -c '%a' "$1"; }
+no_leftovers() {
+  local extra
+  extra="$(find "$DIR" -mindepth 1 ! -name config.json ! -name fill -printf '%f ' 2>/dev/null)"
+  [ -z "$extra" ] || fail "$1: left behind in the config directory: $extra"
+}
+# bytes <count>: that many bytes of text.
+bytes() { head -c "$1" /dev/zero | tr '\0' x; }
+
+# ---- 1. a publish is a rename within the config directory --------------------
+
+printf 'old config\n' >"$CONFIG"
+chmod 0600 "$CONFIG"
+printf 'new config\n' >"$WORK/tmp/new.json"
+chmod 0600 "$WORK/tmp/new.json"
+exec 3<"$CONFIG"
+runtime save-config-file-fixture "$WORK/tmp/new.json" "$CONFIG" || fail "the publish of a new config failed"
+[ "$(cat "$CONFIG")" = 'new config' ] || fail "the new config was not published"
+[ "$(cat <&3)" = 'old config' ] || fail "config.json was rewritten in place: a reader of the previous file saw it change"
+exec 3<&-
+[ "$(mode_of "$CONFIG")" = 600 ] || fail "the published config is not private: $(mode_of "$CONFIG")"
+[ ! -e "$WORK/tmp/new.json" ] || fail "the publish did not consume the staged config"
+no_leftovers "a publish"
+ok "a new config replaces config.json by a rename, private and whole"
+
+# ---- 2. a full overlay keeps the previous config ------------------------------
+
+# on_full_overlay <mode> <args...>: runs runtime.uc with the config directory
+# on its own small filesystem (as /etc on the overlay is, apart from /tmp),
+# filled up after config.json was written. STATUS is the exit status;
+# $WORK/after.json what config.json then holds.
+on_full_overlay() {
+  STATUS=0
+  rm -f "$WORK/after.json" "$WORK/after.list"
+  # shellcheck disable=SC2016 # expanded by the sh that runs it
+  unshare -rm sh -c '
+    dir="$1"
+    shift
+    mount -t tmpfs -o size=16k tmpfs "$dir" || exit 90
+    cp "$WORK/old.json" "$dir/config.json"
+    chmod 0600 "$dir/config.json"
+    dd if=/dev/zero of="$dir/fill" bs=1k 2>/dev/null || true
+    status=0
+    ucode -L "$LIB" "$RUNTIME" "$@" || status=$?
+    [ ! -e "$dir/config.json" ] || cp "$dir/config.json" "$WORK/after.json"
+    find "$dir" -mindepth 1 ! -name config.json ! -name fill -printf "%f " >"$WORK/after.list"
+    exit "$status"
+  ' sh "$DIR" "$@" >/dev/null 2>&1 || STATUS=$?
+  [ "$STATUS" != 90 ] || fail "could not mount the test filesystem"
+}
+if ! unshare -rm true 2>/dev/null; then
+  printf 'NOTE: no user and mount namespaces; the full-overlay checks are skipped\n'
+else
+  bytes 1000 >"$WORK/old.json"
+  for mode in save-config-file-fixture restore-config-stage restore-dns-config; do
+    bytes 9000 >"$WORK/tmp/big.json"
+    chmod 0600 "$WORK/tmp/big.json"
+    if [ "$mode" = save-config-file-fixture ]; then
+      on_full_overlay "$mode" "$WORK/tmp/big.json" "$CONFIG"
+    else
+      on_full_overlay "$mode" "$WORK/tmp/big.json"
+    fi
+    [ "$STATUS" != 0 ] || fail "$mode on a full overlay reported success"
+    [ -e "$WORK/after.json" ] || fail "$mode on a full overlay left no config.json"
+    cmp -s "$WORK/old.json" "$WORK/after.json" ||
+      fail "$mode on a full overlay damaged config.json ($(wc -c <"$WORK/after.json") bytes left)"
+    [ ! -s "$WORK/after.list" ] || fail "$mode on a full overlay left behind: $(cat "$WORK/after.list")"
+    [ -e "$WORK/tmp/big.json" ] || fail "$mode on a full overlay discarded its source"
+  done
+  ok "a publish or restore that a full overlay refuses keeps the previous config.json"
+fi
+
+# ---- 3. restores write only what changes ---------------------------------------
+
+printf '{"previous":true}\n' >"$CONFIG"
+chmod 0600 "$CONFIG"
+for mode in restore-config-stage restore-dns-config; do
+  cp "$CONFIG" "$WORK/tmp/backup.json"
+  before="$(stamp)"
+  runtime "$mode" "$WORK/tmp/backup.json" || fail "$mode of an identical backup failed"
+  [ "$(stamp)" = "$before" ] || fail "$mode rewrote config.json with what it already held"
+  [ ! -e "$WORK/tmp/backup.json" ] || fail "$mode did not consume an identical backup"
+
+  printf '{"restored":"%s"}\n' "$mode" >"$WORK/tmp/backup.json"
+  chmod 0644 "$WORK/tmp/backup.json"
+  exec 3<"$CONFIG"
+  runtime "$mode" "$WORK/tmp/backup.json" || fail "$mode of a different backup failed"
+  grep -Fq "\"restored\":\"$mode\"" "$CONFIG" || fail "$mode did not put the backup back"
+  [ "$(cat <&3)" = '{"previous":true}' ] || fail "$mode rewrote config.json in place"
+  exec 3<&-
+  [ "$(mode_of "$CONFIG")" = 600 ] || fail "$mode published a config that is not private"
+  [ ! -e "$WORK/tmp/backup.json" ] || fail "$mode did not consume the backup"
+  no_leftovers "$mode"
+  printf '{"previous":true}\n' >"$CONFIG"
+done
+ok "a restore writes config.json only when the backup differs, and then by a rename"
+
+# ---- 4. DNS failover writes once per switch --------------------------------------
+
+cat >"$CONFIG" <<'JSON'
+{"dns":{"servers":[{"type":"udp","tag":"dns-server","server":"1.1.1.1","server_port":53},{"type":"udp","tag":"bootstrap-dns-server","server":"77.88.8.8","server_port":53}]}}
+JSON
+chmod 0600 "$CONFIG"
+writes=0
+backups=()
+# switch <main index>: patches config.json for that main DNS server; counts
+# the patches that wrote config.json.
+switch() {
+  printf '{"version":1,"dns_type":"udp","dns_detour":"","main_servers":["1.1.1.1","8.8.8.8"],"bootstrap_servers":["77.88.8.8","9.9.9.9"],"main_index":%s,"bootstrap_index":0}\n' \
+    "$1" >"$WORK/candidate.json"
+  local before output
+  before="$(stamp)"
+  output="$(runtime patch-dns-config "$WORK/candidate.json")" || fail "the DNS failover patch to server $1 failed"
+  if [ "$(stamp)" != "$before" ]; then
+    writes=$((writes + 1))
+    case "$output" in "1"$'\t'*) backups+=("${output#*$'\t'}") ;; *) fail "a patch that wrote config.json reported no change: $output" ;; esac
+  else
+    [ "$output" = 0 ] || fail "a patch that wrote nothing reported a change: $output"
+  fi
+}
+switch 1
+switch 1
+switch 0
+switch 0
+switch 0
+switch 1
+[ "$writes" = 3 ] || fail "6 failover decisions with 3 switches wrote config.json $writes times"
+grep -Eq '"server": ?"8\.8\.8\.8"' "$CONFIG" || fail "the last switch did not reach config.json"
+cp "${backups[2]}" "$WORK/expected.json"
+runtime restore-dns-config "${backups[2]}" || fail "the DNS failover backup could not be restored"
+cmp -s "$WORK/expected.json" "$CONFIG" || fail "the DNS failover backup was not restored"
+grep -Eq '"server": ?"1\.1\.1\.1"' "$CONFIG" || fail "the restored config does not use the previous DNS server"
+rm -f "${backups[@]}"
+no_leftovers "DNS failover"
+ok "each DNS failover switch rewrites config.json once, a decision without a switch not at all"
+
+printf 'sing-box config publish checks passed\n'

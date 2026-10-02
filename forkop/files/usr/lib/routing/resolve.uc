@@ -23,6 +23,17 @@ const DEFAULT_SINGBOX_CONFIG = "/etc/sing-box/config.json";
 const FAKEIP_PREFIX = [ "198.18.0.0", 15 ];
 const LEGACY_CONNECTION_ACTIONS = [ "proxy", "outbound", "vpn" ];
 const RULESET_MATCH_BIN = getenv("FORKOP_RULESET_MATCH_BIN") || "/usr/bin/sing-box";
+function seconds_setting(value, fallback) {
+    let n = int(value);
+    return n > 0 ? n : fallback;
+}
+// Each sing-box question parses the whole list. One run is killed after
+// RULESET_MATCH_TIMEOUT seconds; one process (a route_trace, an
+// autotune_groups poll over every target) spends at most
+// RULESET_MATCH_BUDGET seconds in sing-box. Past either, the list is
+// undecidable (UC-220).
+const RULESET_MATCH_TIMEOUT = seconds_setting(getenv("FORKOP_RULESET_MATCH_TIMEOUT"), 10);
+const RULESET_MATCH_BUDGET = seconds_setting(getenv("FORKOP_RULESET_MATCH_BUDGET"), 30);
 
 function as_string(v) { return v == null ? "" : "" + v; }
 function list_of(v) { return v == null ? [] : type(v) == "array" ? v : [ v ]; }
@@ -216,17 +227,48 @@ function rule_set_answer(output) {
     return answer;
 }
 
-// Whether a list holds the value, asked of sing-box itself: "match", "no",
-// or "unknown" when it cannot be asked (no local file, a failing command,
-// output that is not an answer).
-function rule_set_holds(entry, value) {
-    if (entry == null || fs.stat(entry.path) == null) return "unknown";
-    let pipe = fs.popen(common.shell_command([ RULESET_MATCH_BIN, "rule-set", "match", "-f", entry.format, entry.path, value ]) +
-        " 2>&1", "r");
-    if (pipe == null) return "unknown";
+// Seconds this process has spent in sing-box (RULESET_MATCH_BUDGET).
+let ruleset_spent = 0;
+function monotonic() {
+    let now = clock(true);
+    return now[0] + now[1] / 1e9;
+}
+
+// One bounded sing-box run: everything it printed (stdout and stderr), or
+// null when it failed, was killed at RULESET_MATCH_TIMEOUT, or the budget of
+// this process is spent. The watchdog takes its sleep down with it.
+function run_singbox(args) {
+    if (ruleset_spent >= RULESET_MATCH_BUDGET) return null;
+    let script = common.shell_command(args) + " 2>&1 & child=$!; " +
+        "( sleep " + RULESET_MATCH_TIMEOUT + " & s=$!; trap 'kill \"$s\" 2>/dev/null; exit 0' TERM; " +
+        "wait \"$s\"; kill -KILL \"$child\" 2>/dev/null ) >/dev/null 2>&1 & watchdog=$!; " +
+        "wait \"$child\"; rc=$?; kill \"$watchdog\" 2>/dev/null; exit \"$rc\"";
+    let started = monotonic();
+    let pipe = fs.popen(common.shell_command([ "sh", "-c", script ]) + " 2>/dev/null", "r");
+    if (pipe == null) return null;
     let output = as_string(pipe.read("all"));
-    if (pipe.close() != 0) return "unknown";
-    return rule_set_answer(output);
+    let status = pipe.close();
+    ruleset_spent += monotonic() - started;
+    return status == 0 ? output : null;
+}
+
+// Answers already known in this process, by list file (path, format,
+// inode, size, mtime, ctime) and value: each is asked once, however many
+// rules name the list and however many targets are resolved.
+let ruleset_answers = {};
+
+// Whether a list holds the value, asked of sing-box itself: "match", "no",
+// or "unknown" when it cannot be asked (no local file, a failing, hung or
+// over-budget command, output that is not an answer).
+function rule_set_holds(entry, value) {
+    let st = entry == null ? null : fs.stat(entry.path);
+    if (st == null) return "unknown";
+    let key = join("\n", [ entry.format, entry.path, join(":", [ st.inode, st.size, st.mtime, st.ctime ]), value ]);
+    if (ruleset_answers[key] == null) {
+        let output = run_singbox([ RULESET_MATCH_BIN, "rule-set", "match", "-f", entry.format, entry.path, value ]);
+        ruleset_answers[key] = output == null ? "unknown" : rule_set_answer(output);
+    }
+    return ruleset_answers[key];
 }
 
 // The values a list is asked about: the name a FakeIP connection reaches

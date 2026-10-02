@@ -26,7 +26,8 @@
 //
 // Test controls: every call is appended to $RULESET_STUB_CALLS (arguments
 // joined by spaces); a match for the value $RULESET_STUB_HANG never ends;
-// $RULESET_STUB_NOISE is printed on stderr before the answer.
+// every match takes $RULESET_STUB_DELAY_MS more; $RULESET_STUB_NOISE is
+// printed on stderr before the answer.
 let fs = require("fs");
 
 function as_string(v) { return v == null ? "" : "" + v; }
@@ -165,6 +166,7 @@ if (command == "match") {
     let list = read_list(positional[0], format), value = positional[1];
     if (getenv("RULESET_STUB_HANG") != null && getenv("RULESET_STUB_HANG") == value)
         while (true) sleep(1000);
+    if (getenv("RULESET_STUB_DELAY_MS")) sleep(int(getenv("RULESET_STUB_DELAY_MS")));
     if (getenv("RULESET_STUB_NOISE")) warn(getenv("RULESET_STUB_NOISE") + "\n");
     let q = ipv4(value) != null ? { domain: "", ip: value } : { domain: lc(value), ip: null };
     reset_rule_cache();

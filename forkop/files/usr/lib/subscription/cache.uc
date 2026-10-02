@@ -518,8 +518,10 @@ function copy_file(source, target) {
     let stamp = clock();
     let tmp_path = sprintf("%s.%d.%d.tmp", as_string(target), stamp[0], stamp[1]);
     // A write that failed half-way leaves a partial copy (on flash for the
-    // persistent cache): it goes too (UC-159).
-    if (!write_file(tmp_path, data) || !fs.rename(tmp_path, as_string(target))) {
+    // persistent cache): it goes too (UC-159). A full filesystem can take
+    // the write and keep none of it: the copy is read back before it
+    // replaces the cache an offline start falls back on.
+    if (!write_file(tmp_path, data) || fs.readfile(tmp_path) !== data || !fs.rename(tmp_path, as_string(target))) {
         fs.unlink(tmp_path);
         return false;
     }

@@ -252,35 +252,72 @@ else
   ' && fail "persisting a subscription on a full overlay reported success" || status=$?
   [ "$status" != 90 ] || fail "could not mount the test filesystem"
   grep -q '\.tmp$' "$WORK/sub.list" && fail "a failed write left a partial copy in the persistent subscription cache: $(cat "$WORK/sub.list")"
-  ok "a failed write leaves no partial copy in the persistent subscription cache"
+
+  # A small subscription is taken by the write and lost at the close,
+  # unreported: the cached copy an offline start falls back on must not be
+  # replaced by an empty file.
+  mkdir -p "$WORK/sub-small"
+  printf '{"outbounds":[{"type":"direct","tag":"node-a"}]}\n' >"$WORK/sub-a.json"
+  printf '{"outbounds":[{"type":"direct","tag":"node-b"}]}\n' >"$WORK/sub-b.json"
+  # shellcheck disable=SC2016 # expanded by the sh that runs it
+  unshare -rm sh -c '
+    mount -t tmpfs -o size=64k tmpfs "$WORK/sub-small" || exit 90
+    persist() {
+      FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR="$WORK/sub-small" \
+        FORKOP_RUNTIME_STATE_DIR="$WORK/sub-run" \
+        TMP_SING_BOX_FOLDER="$WORK/sub-run/tmp-sing-box" \
+        ucode -L "$LIB" "$LIB/subscription/cache.uc" persist-source-cache \
+        proxy-1 "$1" https://example.com/sub v2rayN "" >/dev/null 2>&1
+    }
+    persist "$WORK/sub-a.json" || exit 91
+    cp "$WORK/sub-small/proxy-1.json" "$WORK/sub-small.before" || exit 92
+    dd if=/dev/zero of="$WORK/sub-small/fill" bs=1k 2>/dev/null
+    persist "$WORK/sub-b.json"
+    status=$?
+    cp "$WORK/sub-small/proxy-1.json" "$WORK/sub-small.after"
+    ls -A "$WORK/sub-small" >"$WORK/sub-small.list"
+    exit "$status"
+  ' && fail "persisting a small subscription on a full overlay reported success" || status=$?
+  [ "$status" != 90 ] || fail "could not mount the test filesystem"
+  [ "$status" != 91 ] || fail "could not persist a subscription before the overlay filled up"
+  [ "$status" != 92 ] || fail "the persistent subscription cache has no proxy-1.json: $(cat "$WORK/sub-small.list" 2>/dev/null)"
+  cmp -s "$WORK/sub-small.before" "$WORK/sub-small.after" ||
+    fail "a full overlay replaced the cached subscription ($(wc -c <"$WORK/sub-small.after") bytes left)"
+  grep -q '\.tmp$' "$WORK/sub-small.list" && fail "a failed write left a partial copy in the persistent subscription cache: $(cat "$WORK/sub-small.list")"
+  ok "a failed write leaves no partial copy in the persistent subscription cache, and keeps the cached one"
 fi
 
 # ---- 5. a partial copy of a generated section cache ------------------------------
 
 if unshare -rm true 2>/dev/null; then
-  python3 - "$WORK/gen-fixture.json" <<'PY2'
+  # A section cache larger than the write buffer fails at the write; a
+  # smaller one is taken by the write and lost at the close, unreported.
+  for count in 300 2; do
+    python3 - "$WORK/gen-fixture.json" "$count" <<'PY2'
 import json
 import sys
 outbounds = [json.dumps({"type": "http", "tag": "node%d" % i, "server": "proxy%d.example" % i, "server_port": 8080})
-             for i in range(300)]
+             for i in range(int(sys.argv[2]))]
 fixture = {"settings": {".name": "settings", ".type": "settings", "dns_server": "77.88.8.8"},
            "section": [{".name": "main", ".type": "section", "enabled": "1", "action": "connection",
                         "outbound_jsons": outbounds, "domain_suffix": ["example.com"]}]}
 open(sys.argv[1], "w").write(json.dumps(fixture))
 PY2
-  mkdir -p "$WORK/gen.json.section-cache" "$WORK/gen.json.rulesets"
-  # shellcheck disable=SC2016 # expanded by the sh that runs it
-  unshare -rm sh -c '
-    mount -t tmpfs -o size=16k tmpfs "$WORK/gen.json.section-cache" || exit 90
-    dd if=/dev/zero of="$WORK/gen.json.section-cache/fill" bs=1k 2>/dev/null || true
-    ucode -L "$LIB" "$LIB/singbox/generator.uc" generate-config-fixture \
-      "$WORK/gen-fixture.json" "$WORK/gen.json" 192.0.2.1 0 1 "" 1.12.0 >/dev/null 2>&1
-    status=$?
-    ls -A "$WORK/gen.json.section-cache" >"$WORK/gen.list"
-    exit "$status"
-  ' && fail "generating with a full section cache reported success" || status=$?
-  [ "$status" != 90 ] || fail "could not mount the test filesystem"
-  grep -q '\.tmp$' "$WORK/gen.list" && fail "a failed write left a partial section cache: $(cat "$WORK/gen.list")"
+    rm -rf "$WORK/gen.json" "$WORK/gen.json.section-cache" "$WORK/gen.json.rulesets"
+    mkdir -p "$WORK/gen.json.section-cache" "$WORK/gen.json.rulesets"
+    # shellcheck disable=SC2016 # expanded by the sh that runs it
+    unshare -rm sh -c '
+      mount -t tmpfs -o size=16k tmpfs "$WORK/gen.json.section-cache" || exit 90
+      dd if=/dev/zero of="$WORK/gen.json.section-cache/fill" bs=1k 2>/dev/null || true
+      ucode -L "$LIB" "$LIB/singbox/generator.uc" generate-config-fixture \
+        "$WORK/gen-fixture.json" "$WORK/gen.json" 192.0.2.1 0 1 "" 1.12.0 >/dev/null 2>&1
+      status=$?
+      ls -A "$WORK/gen.json.section-cache" >"$WORK/gen.list"
+      exit "$status"
+    ' && fail "generating with a full section cache reported success ($count outbounds)" || status=$?
+    [ "$status" != 90 ] || fail "could not mount the test filesystem"
+    grep -q '\.tmp$' "$WORK/gen.list" && fail "a failed write left a partial section cache: $(cat "$WORK/gen.list")"
+  done
   ok "a failed write leaves no partial generated section cache"
 fi
 

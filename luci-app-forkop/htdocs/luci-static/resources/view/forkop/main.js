@@ -16060,6 +16060,22 @@ function shouldApplyCompletedComponentActionResult(result, notify) {
   return result.action !== "check_update" || notify;
 }
 
+// src/forkop/tabs/updates/killSwitchRelease.ts
+var LAST_RELEASE_WITHOUT_KILL_SWITCH = [1, 0, 31];
+function releaseLacksKillSwitch(version) {
+  const parts = /^(\d+)\.(\d+)\.(\d+)/.exec(`${version}`);
+  if (!parts) {
+    return false;
+  }
+  for (let i = 0; i < 3; i++) {
+    const value = Number(parts[i + 1]);
+    if (value !== LAST_RELEASE_WITHOUT_KILL_SWITCH[i]) {
+      return value < LAST_RELEASE_WITHOUT_KILL_SWITCH[i];
+    }
+  }
+  return true;
+}
+
 // src/forkop/tabs/updates/releaseSelector.ts
 var RELEASE_VERSION = /^\d+\.\d+\.\d+$/;
 var RELEASES_TIMEOUT_MS = 75e3;
@@ -16089,6 +16105,15 @@ function confirmVersionChange(currentVersion, version, install) {
           "A configuration backup will be saved in /etc/forkop-backups. Older versions may not support all current settings."
         )
       ),
+      ...releaseLacksKillSwitch(version) ? [
+        E(
+          "p",
+          {},
+          _(
+            "Forkop X 1.0.31 and older have no VPN kill-switch. If it is enabled, the installation removes its protection, and protected traffic is no longer blocked while Forkop is stopped."
+          )
+        )
+      ] : [],
       E("div", { class: "right" }, [
         renderButton({ text: _("Cancel"), onClick: () => ui.hideModal() }),
         renderButton({

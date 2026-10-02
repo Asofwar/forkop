@@ -1,5 +1,6 @@
 import { executeShellCommand } from '../../../helpers/executeShellCommand';
 import { renderButton } from '../../../partials';
+import { releaseLacksKillSwitch } from './killSwitchRelease';
 
 const RELEASE_VERSION = /^\d+\.\d+\.\d+$/;
 const RELEASES_TIMEOUT_MS = 75_000;
@@ -46,6 +47,17 @@ function confirmVersionChange(
           'A configuration backup will be saved in /etc/forkop-backups. Older versions may not support all current settings.',
         ),
       ),
+      ...(releaseLacksKillSwitch(version)
+        ? [
+            E(
+              'p',
+              {},
+              _(
+                'Forkop X 1.0.31 and older have no VPN kill-switch. If it is enabled, the installation removes its protection, and protected traffic is no longer blocked while Forkop is stopped.',
+              ),
+            ),
+          ]
+        : []),
       E('div', { class: 'right' }, [
         renderButton({ text: _('Cancel'), onClick: () => ui.hideModal() }),
         renderButton({

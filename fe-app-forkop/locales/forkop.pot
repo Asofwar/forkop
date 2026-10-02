@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-01 21:31+0300\n"
-"PO-Revision-Date: 2026-10-01 21:31+0300\n"
+"POT-Creation-Date: 2026-10-02 00:38+0000\n"
+"PO-Revision-Date: 2026-10-02 00:38+0000\n"
 "Last-Translator: Asofwar <7397608+Asofwar@users.noreply.github.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -159,7 +159,7 @@ msgstr ""
 msgid "A check is already running."
 msgstr ""
 
-#: src/forkop/tabs/updates/releaseSelector.ts:45
+#: src/forkop/tabs/updates/releaseSelector.ts:46
 msgid "A configuration backup will be saved in /etc/forkop-backups. Older versions may not support all current settings."
 msgstr ""
 
@@ -890,8 +890,8 @@ msgstr ""
 #: src/forkop/tabs/autotune/initController.ts:434
 #: src/forkop/tabs/dashboard/initController.ts:1432
 #: src/forkop/tabs/updates/fullUninstall.ts:11
-#: src/forkop/tabs/updates/releaseSelector.ts:50
-#: src/forkop/tabs/updates/releaseSelector.ts:111
+#: src/forkop/tabs/updates/releaseSelector.ts:62
+#: src/forkop/tabs/updates/releaseSelector.ts:123
 msgid "Cancel"
 msgstr ""
 
@@ -1086,14 +1086,14 @@ msgstr ""
 msgid "Checks and changes wait until it is rolled back."
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/helpers/getMeta.ts:26
 #: src/forkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:10
+#: src/forkop/tabs/diagnostic/helpers/getMeta.ts:26
 msgid "Checks failed"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/helpers/getMeta.ts:13
 #: src/forkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:23
 #: src/forkop/tabs/diagnostic/checks/runFakeIPCheck.ts:43
+#: src/forkop/tabs/diagnostic/helpers/getMeta.ts:13
 msgid "Checks passed"
 msgstr ""
 
@@ -1117,8 +1117,8 @@ msgstr ""
 msgid "Choose at least one domain of the list."
 msgstr ""
 
-#: src/forkop/tabs/updates/releaseSelector.ts:70
-#: src/forkop/tabs/updates/releaseSelector.ts:76
+#: src/forkop/tabs/updates/releaseSelector.ts:82
+#: src/forkop/tabs/updates/releaseSelector.ts:88
 msgid "Choose Forkop X version"
 msgstr ""
 
@@ -1153,10 +1153,10 @@ msgstr ""
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3582
 #: src/partials/modal/renderModal.ts:263
 #: src/forkop/tabs/autotune/initController.ts:795
-#: src/forkop/tabs/history/initController.ts:228
 #: src/forkop/tabs/dashboard/initController.ts:1306
 #: src/forkop/tabs/dashboard/initController.ts:1691
-#: src/forkop/tabs/updates/releaseSelector.ts:121
+#: src/forkop/tabs/history/initController.ts:228
+#: src/forkop/tabs/updates/releaseSelector.ts:133
 msgid "Close"
 msgstr ""
 
@@ -1266,7 +1266,7 @@ msgstr ""
 msgid "Configure User-Agent in the item settings"
 msgstr ""
 
-#: src/forkop/tabs/updates/releaseSelector.ts:39
+#: src/forkop/tabs/updates/releaseSelector.ts:40
 msgid "Confirm version change"
 msgstr ""
 
@@ -1383,8 +1383,8 @@ msgstr ""
 msgid "Could not determine the current rule of each target; results of the last check are shown."
 msgstr ""
 
-#: src/forkop/tabs/updates/releaseSelector.ts:25
-#: src/forkop/tabs/updates/releaseSelector.ts:119
+#: src/forkop/tabs/updates/releaseSelector.ts:26
+#: src/forkop/tabs/updates/releaseSelector.ts:131
 msgid "Could not load available versions"
 msgstr ""
 
@@ -1393,13 +1393,13 @@ msgid "Could not load configuration snapshots"
 msgstr ""
 
 #: src/forkop/ui/states.ts:115
-#: src/forkop/tabs/history/initController.ts:242
 #: src/forkop/tabs/diagnostic/initController.ts:588
 #: src/forkop/tabs/diagnostic/initController.ts:592
 #: src/forkop/tabs/diagnostic/initController.ts:627
 #: src/forkop/tabs/diagnostic/initController.ts:631
 #: src/forkop/tabs/diagnostic/initController.ts:667
 #: src/forkop/tabs/diagnostic/initController.ts:671
+#: src/forkop/tabs/history/initController.ts:242
 msgid "Could not load data"
 msgstr ""
 
@@ -2307,6 +2307,10 @@ msgstr ""
 msgid "Forkop will not modify your DHCP configuration"
 msgstr ""
 
+#: src/forkop/tabs/updates/releaseSelector.ts:55
+msgid "Forkop X 1.0.31 and older have no VPN kill-switch. If it is enabled, the installation removes its protection, and protected traffic is no longer blocked while Forkop is stopped."
+msgstr ""
+
 #: src/forkop/tabs/updates/fullUninstall.ts:57
 msgid "Forkop X and sing-box have been removed. Original repositories have been restored."
 msgstr ""
@@ -2649,7 +2653,7 @@ msgstr ""
 #: src/forkop/tabs/updates/initController.ts:819
 #: src/forkop/tabs/updates/initController.ts:962
 #: src/forkop/tabs/updates/initController.ts:1288
-#: src/forkop/tabs/updates/releaseSelector.ts:52
+#: src/forkop/tabs/updates/releaseSelector.ts:64
 msgid "Install"
 msgstr ""
 
@@ -2661,7 +2665,7 @@ msgstr ""
 msgid "Install Extended build"
 msgstr ""
 
-#: src/forkop/tabs/updates/releaseSelector.ts:95
+#: src/forkop/tabs/updates/releaseSelector.ts:107
 msgid "Install selected version"
 msgstr ""
 
@@ -2669,7 +2673,7 @@ msgstr ""
 msgid "Install Tiny build"
 msgstr ""
 
-#: src/forkop/tabs/updates/releaseSelector.ts:85
+#: src/forkop/tabs/updates/releaseSelector.ts:97
 msgid "Installed"
 msgstr ""
 
@@ -2954,8 +2958,8 @@ msgstr ""
 msgid "IPv6 only"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/helpers/getMeta.ts:20
 #: src/forkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:17
+#: src/forkop/tabs/diagnostic/helpers/getMeta.ts:20
 msgid "Issues detected"
 msgstr ""
 
@@ -3176,7 +3180,7 @@ msgstr ""
 msgid "Lists: %d"
 msgstr ""
 
-#: src/forkop/tabs/updates/releaseSelector.ts:68
+#: src/forkop/tabs/updates/releaseSelector.ts:80
 msgid "Loading available versions…"
 msgstr ""
 
@@ -3204,11 +3208,11 @@ msgstr ""
 #: src/forkop/tabs/autotune/render.ts:25
 #: src/forkop/tabs/autotune/render.ts:29
 #: src/forkop/tabs/autotune/render.ts:33
+#: src/forkop/tabs/dashboard/render.ts:14
+#: src/forkop/tabs/diagnostic/initController.ts:737
 #: src/forkop/tabs/history/render.ts:13
 #: src/forkop/tabs/history/render.ts:17
 #: src/forkop/tabs/history/render.ts:29
-#: src/forkop/tabs/dashboard/render.ts:14
-#: src/forkop/tabs/diagnostic/initController.ts:737
 msgid "Loading…"
 msgstr ""
 
@@ -3349,11 +3353,11 @@ msgstr ""
 
 #: src/forkop/ui/status.ts:164
 #: src/forkop/ui/status.ts:260
-#: src/forkop/tabs/history/model.ts:81
-#: src/forkop/tabs/history/model.ts:84
 #: src/forkop/tabs/diagnostic/statusLabels.ts:24
 #: src/forkop/tabs/diagnostic/statusLabels.ts:45
 #: src/forkop/tabs/diagnostic/statusLabels.ts:56
+#: src/forkop/tabs/history/model.ts:81
+#: src/forkop/tabs/history/model.ts:84
 msgid "Needs attention"
 msgstr ""
 
@@ -3456,7 +3460,7 @@ msgstr ""
 msgid "No closed connections"
 msgstr ""
 
-#: src/forkop/tabs/updates/releaseSelector.ts:91
+#: src/forkop/tabs/updates/releaseSelector.ts:103
 msgid "No compatible releases available"
 msgstr ""
 
@@ -3495,8 +3499,8 @@ msgstr ""
 msgid "No events of this kind"
 msgstr ""
 
-#: src/forkop/tabs/history/initController.ts:172
 #: src/forkop/tabs/dashboard/overviewCards.ts:311
+#: src/forkop/tabs/history/initController.ts:172
 msgid "No events recorded yet"
 msgstr ""
 
@@ -3521,8 +3525,8 @@ msgstr ""
 msgid "No recovery needed"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:154
 #: src/forkop/tabs/dashboard/overview.ts:348
+#: src/forkop/tabs/history/model.ts:154
 msgid "No reload recorded yet"
 msgstr ""
 

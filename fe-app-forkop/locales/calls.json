@@ -242,7 +242,7 @@
     "call": "A configuration backup will be saved in /etc/forkop-backups. Older versions may not support all current settings.",
     "key": "A configuration backup will be saved in /etc/forkop-backups. Older versions may not support all current settings.",
     "places": [
-      "src/forkop/tabs/updates/releaseSelector.ts:45"
+      "src/forkop/tabs/updates/releaseSelector.ts:46"
     ]
   },
   {
@@ -1492,8 +1492,8 @@
       "src/forkop/tabs/autotune/initController.ts:434",
       "src/forkop/tabs/dashboard/initController.ts:1432",
       "src/forkop/tabs/updates/fullUninstall.ts:11",
-      "src/forkop/tabs/updates/releaseSelector.ts:50",
-      "src/forkop/tabs/updates/releaseSelector.ts:111"
+      "src/forkop/tabs/updates/releaseSelector.ts:62",
+      "src/forkop/tabs/updates/releaseSelector.ts:123"
     ]
   },
   {
@@ -1811,17 +1811,17 @@
     "call": "Checks failed",
     "key": "Checks failed",
     "places": [
-      "src/forkop/tabs/diagnostic/helpers/getMeta.ts:26",
-      "src/forkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:10"
+      "src/forkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:10",
+      "src/forkop/tabs/diagnostic/helpers/getMeta.ts:26"
     ]
   },
   {
     "call": "Checks passed",
     "key": "Checks passed",
     "places": [
-      "src/forkop/tabs/diagnostic/helpers/getMeta.ts:13",
       "src/forkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:23",
-      "src/forkop/tabs/diagnostic/checks/runFakeIPCheck.ts:43"
+      "src/forkop/tabs/diagnostic/checks/runFakeIPCheck.ts:43",
+      "src/forkop/tabs/diagnostic/helpers/getMeta.ts:13"
     ]
   },
   {
@@ -1863,8 +1863,8 @@
     "call": "Choose Forkop X version",
     "key": "Choose Forkop X version",
     "places": [
-      "src/forkop/tabs/updates/releaseSelector.ts:70",
-      "src/forkop/tabs/updates/releaseSelector.ts:76"
+      "src/forkop/tabs/updates/releaseSelector.ts:82",
+      "src/forkop/tabs/updates/releaseSelector.ts:88"
     ]
   },
   {
@@ -1923,10 +1923,10 @@
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:3582",
       "src/partials/modal/renderModal.ts:263",
       "src/forkop/tabs/autotune/initController.ts:795",
-      "src/forkop/tabs/history/initController.ts:228",
       "src/forkop/tabs/dashboard/initController.ts:1306",
       "src/forkop/tabs/dashboard/initController.ts:1691",
-      "src/forkop/tabs/updates/releaseSelector.ts:121"
+      "src/forkop/tabs/history/initController.ts:228",
+      "src/forkop/tabs/updates/releaseSelector.ts:133"
     ]
   },
   {
@@ -2114,7 +2114,7 @@
     "call": "Confirm version change",
     "key": "Confirm version change",
     "places": [
-      "src/forkop/tabs/updates/releaseSelector.ts:39"
+      "src/forkop/tabs/updates/releaseSelector.ts:40"
     ]
   },
   {
@@ -2315,8 +2315,8 @@
     "call": "Could not load available versions",
     "key": "Could not load available versions",
     "places": [
-      "src/forkop/tabs/updates/releaseSelector.ts:25",
-      "src/forkop/tabs/updates/releaseSelector.ts:119"
+      "src/forkop/tabs/updates/releaseSelector.ts:26",
+      "src/forkop/tabs/updates/releaseSelector.ts:131"
     ]
   },
   {
@@ -2331,13 +2331,13 @@
     "key": "Could not load data",
     "places": [
       "src/forkop/ui/states.ts:115",
-      "src/forkop/tabs/history/initController.ts:242",
       "src/forkop/tabs/diagnostic/initController.ts:588",
       "src/forkop/tabs/diagnostic/initController.ts:592",
       "src/forkop/tabs/diagnostic/initController.ts:627",
       "src/forkop/tabs/diagnostic/initController.ts:631",
       "src/forkop/tabs/diagnostic/initController.ts:667",
-      "src/forkop/tabs/diagnostic/initController.ts:671"
+      "src/forkop/tabs/diagnostic/initController.ts:671",
+      "src/forkop/tabs/history/initController.ts:242"
     ]
   },
   {
@@ -3869,6 +3869,13 @@
     ]
   },
   {
+    "call": "Forkop X 1.0.31 and older have no VPN kill-switch. If it is enabled, the installation removes its protection, and protected traffic is no longer blocked while Forkop is stopped.",
+    "key": "Forkop X 1.0.31 and older have no VPN kill-switch. If it is enabled, the installation removes its protection, and protected traffic is no longer blocked while Forkop is stopped.",
+    "places": [
+      "src/forkop/tabs/updates/releaseSelector.ts:55"
+    ]
+  },
+  {
     "call": "Forkop X and sing-box have been removed. Original repositories have been restored.",
     "key": "Forkop X and sing-box have been removed. Original repositories have been restored.",
     "places": [
@@ -4457,7 +4464,7 @@
       "src/forkop/tabs/updates/initController.ts:819",
       "src/forkop/tabs/updates/initController.ts:962",
       "src/forkop/tabs/updates/initController.ts:1288",
-      "src/forkop/tabs/updates/releaseSelector.ts:52"
+      "src/forkop/tabs/updates/releaseSelector.ts:64"
     ]
   },
   {
@@ -4478,7 +4485,7 @@
     "call": "Install selected version",
     "key": "Install selected version",
     "places": [
-      "src/forkop/tabs/updates/releaseSelector.ts:95"
+      "src/forkop/tabs/updates/releaseSelector.ts:107"
     ]
   },
   {
@@ -4492,7 +4499,7 @@
     "call": "Installed",
     "key": "Installed",
     "places": [
-      "src/forkop/tabs/updates/releaseSelector.ts:85"
+      "src/forkop/tabs/updates/releaseSelector.ts:97"
     ]
   },
   {
@@ -4981,8 +4988,8 @@
     "call": "Issues detected",
     "key": "Issues detected",
     "places": [
-      "src/forkop/tabs/diagnostic/helpers/getMeta.ts:20",
-      "src/forkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:17"
+      "src/forkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:17",
+      "src/forkop/tabs/diagnostic/helpers/getMeta.ts:20"
     ]
   },
   {
@@ -5359,7 +5366,7 @@
     "call": "Loading available versions…",
     "key": "Loading available versions…",
     "places": [
-      "src/forkop/tabs/updates/releaseSelector.ts:68"
+      "src/forkop/tabs/updates/releaseSelector.ts:80"
     ]
   },
   {
@@ -5399,11 +5406,11 @@
       "src/forkop/tabs/autotune/render.ts:25",
       "src/forkop/tabs/autotune/render.ts:29",
       "src/forkop/tabs/autotune/render.ts:33",
+      "src/forkop/tabs/dashboard/render.ts:14",
+      "src/forkop/tabs/diagnostic/initController.ts:737",
       "src/forkop/tabs/history/render.ts:13",
       "src/forkop/tabs/history/render.ts:17",
-      "src/forkop/tabs/history/render.ts:29",
-      "src/forkop/tabs/dashboard/render.ts:14",
-      "src/forkop/tabs/diagnostic/initController.ts:737"
+      "src/forkop/tabs/history/render.ts:29"
     ]
   },
   {
@@ -5646,11 +5653,11 @@
     "places": [
       "src/forkop/ui/status.ts:164",
       "src/forkop/ui/status.ts:260",
-      "src/forkop/tabs/history/model.ts:81",
-      "src/forkop/tabs/history/model.ts:84",
       "src/forkop/tabs/diagnostic/statusLabels.ts:24",
       "src/forkop/tabs/diagnostic/statusLabels.ts:45",
-      "src/forkop/tabs/diagnostic/statusLabels.ts:56"
+      "src/forkop/tabs/diagnostic/statusLabels.ts:56",
+      "src/forkop/tabs/history/model.ts:81",
+      "src/forkop/tabs/history/model.ts:84"
     ]
   },
   {
@@ -5825,7 +5832,7 @@
     "call": "No compatible releases available",
     "key": "No compatible releases available",
     "places": [
-      "src/forkop/tabs/updates/releaseSelector.ts:91"
+      "src/forkop/tabs/updates/releaseSelector.ts:103"
     ]
   },
   {
@@ -5891,8 +5898,8 @@
     "call": "No events recorded yet",
     "key": "No events recorded yet",
     "places": [
-      "src/forkop/tabs/history/initController.ts:172",
-      "src/forkop/tabs/dashboard/overviewCards.ts:311"
+      "src/forkop/tabs/dashboard/overviewCards.ts:311",
+      "src/forkop/tabs/history/initController.ts:172"
     ]
   },
   {
@@ -5935,8 +5942,8 @@
     "call": "No reload recorded yet",
     "key": "No reload recorded yet",
     "places": [
-      "src/forkop/tabs/history/model.ts:154",
-      "src/forkop/tabs/dashboard/overview.ts:348"
+      "src/forkop/tabs/dashboard/overview.ts:348",
+      "src/forkop/tabs/history/model.ts:154"
     ]
   },
   {

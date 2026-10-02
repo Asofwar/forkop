@@ -54,7 +54,7 @@ function uci_del_list(path, value) {
 }
 
 function uci_commit(package_name) {
-    uci.commit(package_name);
+    return uci.commit(package_name);
 }
 
 function words(value) {
@@ -81,6 +81,17 @@ function log(message, level) {
 
 function restart_dnsmasq() {
     return run("[ -x " + shell_quote(DNSMASQ_INIT) + " ] && " + shell_quote(DNSMASQ_INIT) + " restart");
+}
+
+// dnsmasq gets the changes only once they are saved. A commit that fails
+// (a full or read-only overlay) leaves /etc/config/dhcp as it was: dnsmasq
+// is not restarted, and the start, stop or failsafe that asked for the
+// change fails with it, so that its own error handling runs (UC-024).
+function commit_dhcp() {
+    if (uci_commit("dhcp"))
+        return true;
+    log("Could not save the dnsmasq settings in /etc/config/dhcp", "error");
+    return false;
 }
 
 function dnsmasq_legacy_instance_exists() {
@@ -175,7 +186,8 @@ function killswitch_dns_refresh() {
         return true;
     if (!killswitch_dns_apply(!dnsmasq_has_forkop_dns()))
         return true;
-    uci_commit("dhcp");
+    if (!commit_dhcp())
+        return false;
     return restart_dnsmasq();
 }
 
@@ -323,7 +335,8 @@ function dnsmasq_configure(force) {
         if (dnsmasq_default_config_is_complete()) {
             log("dnsmasq already points to sing-box", "info");
             if (killswitch_dns_apply(false)) {
-                uci_commit("dhcp");
+                if (!commit_dhcp())
+                    return false;
                 return restart_dnsmasq();
             }
             return true;
@@ -334,7 +347,8 @@ function dnsmasq_configure(force) {
     dnsmasq_cleanup_legacy_instance();
     dnsmasq_configure_default_instance();
     killswitch_dns_apply(false);
-    uci_commit("dhcp");
+    if (!commit_dhcp())
+        return false;
 
     return restart_dnsmasq();
 }
@@ -349,7 +363,8 @@ function dnsmasq_restore(force, quiet) {
         if (!dnsmasq_has_forkop_dns()) {
             log("dnsmasq already uses non-Forkop DNS settings; restore is not required", "info");
             if (killswitch_dns_apply(true)) {
-                uci_commit("dhcp");
+                if (!commit_dhcp())
+                    return false;
                 return restart_dnsmasq();
             }
             return true;
@@ -360,7 +375,8 @@ function dnsmasq_restore(force, quiet) {
     dnsmasq_cleanup_legacy_instance();
     dnsmasq_restore_default_instance();
     killswitch_dns_apply(true);
-    uci_commit("dhcp");
+    if (!commit_dhcp())
+        return false;
 
     return restart_dnsmasq();
 }
@@ -381,8 +397,7 @@ function failsafe_restore() {
         log("Rolling back Forkop DNS changes in dnsmasq", "warn");
     }
 
-    dnsmasq_restore("force", true);
-    return true;
+    return dnsmasq_restore("force", true);
 }
 
 let mode = ARGV[0] || "";

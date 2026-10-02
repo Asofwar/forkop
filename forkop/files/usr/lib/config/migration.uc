@@ -1734,6 +1734,8 @@ function remove_cache_path(path) {
         fs.unlink(path);
 }
 
+// False at the first operation the cursor refuses: a configuration that is
+// only partly migrated is never committed (UC-024).
 function apply_operations(cursor, operations) {
     let created = {};
     let section_ref = function(name) {
@@ -1742,25 +1744,31 @@ function apply_operations(cursor, operations) {
     };
 
     for (let op in operations) {
+        let applied = true;
         if (op.op == "create") {
-            if (op.anonymous && type(cursor.add) == "function")
-                created[as_string(op.section)] = cursor.add(CONFIG_NAME, op.type);
+            if (op.anonymous && type(cursor.add) == "function") {
+                created[as_string(op.section)] = as_string(cursor.add(CONFIG_NAME, op.type));
+                applied = created[as_string(op.section)] != "";
+            }
             else
-                cursor.set(CONFIG_NAME, op.section, op.type);
+                applied = cursor.set(CONFIG_NAME, op.section, op.type);
         }
         else if (op.op == "set")
-            cursor.set(CONFIG_NAME, section_ref(op.section), op.option, op.value);
+            applied = cursor.set(CONFIG_NAME, section_ref(op.section), op.option, op.value);
         else if (op.op == "delete")
-            cursor.delete(CONFIG_NAME, section_ref(op.section), op.option);
+            applied = cursor.delete(CONFIG_NAME, section_ref(op.section), op.option);
         else if (op.op == "add_list")
-            cursor.set(CONFIG_NAME, section_ref(op.section), op.option, op.values);
+            applied = cursor.set(CONFIG_NAME, section_ref(op.section), op.option, op.values);
         else if (op.op == "set_list")
-            cursor.set(CONFIG_NAME, section_ref(op.section), op.option, op.values);
+            applied = cursor.set(CONFIG_NAME, section_ref(op.section), op.option, op.values);
         else if (op.op == "set_type")
-            cursor.set(CONFIG_NAME, section_ref(op.section), op.type);
+            applied = cursor.set(CONFIG_NAME, section_ref(op.section), op.type);
         else if (op.op == "rename")
-            cursor.rename(CONFIG_NAME, section_ref(op.section), op.name);
+            applied = cursor.rename(CONFIG_NAME, section_ref(op.section), op.name);
+        if (!applied)
+            return false;
     }
+    return true;
 }
 
 function runtime_cursor() {
@@ -1845,11 +1853,14 @@ function migrate_runtime(source) {
     if (!ctx.changed)
         return true;
 
-    apply_operations(cursor, ctx.operations);
+    if (!apply_operations(cursor, ctx.operations) || !commit_cursor(cursor)) {
+        warn("Forkop: could not save the migrated configuration /etc/config/" + CONFIG_NAME + "\n");
+        return false;
+    }
+    // The configuration that is still in place uses them.
     for (let path in ctx.removed_caches)
         remove_cache_path(path);
-
-    return commit_cursor(cursor);
+    return true;
 }
 
 function commit_runtime() {

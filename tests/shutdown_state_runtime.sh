@@ -264,4 +264,49 @@ grep -Fxq 'dns/apply.uc failsafe-restore' "$EVENTS" || fail "the failed start di
 uci_flag_written && fail "the failed start wrote the configuration: $(cat "$UCI_LOG")"
 ok "a failed start is cleaned up and recorded as stopped, outside the configuration"
 
+# ---- 3. a dhcp change that cannot be saved (UC-024) ----------------------------
+
+# The real dns/apply.uc behind the lifecycle, on the UCI fixture, whose
+# commits fail while its log cannot be written (a full or read-only
+# overlay). The stop and the start then fail and run their DNS failsafe.
+cat >"$FAKE_LIB/dns/apply.uc" <<'UC'
+function q(value) { return "'" + replace("" + value, /'/g, "'\\''") + "'"; }
+system("printf '%s\\n' " + q("dns/apply.uc " + join(" ", ARGV)) + " >> " + q(getenv("EVENTS")));
+let command = "ucode -L " + q(getenv("TEST_LIB")) + " " + q(getenv("TEST_LIB") + "/dns/apply.uc");
+for (let arg in ARGV)
+    command += " " + q(arg);
+exit(system(command));
+UC
+sed -i 's|^if (name + " " + mode == "service/state.uc wait-forkop-stable-start") exit(1);$||' "$FAKE_LIB/service/state.uc"
+rm -f "$FORKOP_UCI_LOG_FILE"
+mkdir "$FORKOP_UCI_LOG_FILE"
+
+cat "$WORK_DIR/uci.base" - >"$FORKOP_UCI_STATE_FILE" <<'EOF'
+dhcp.@dnsmasq[0].server=127.0.0.42
+dhcp.@dnsmasq[0].forkop_server=1.1.1.1
+dhcp.@dnsmasq[0].noresolv=1
+dhcp.@dnsmasq[0].forkop_noresolv=0
+dhcp.@dnsmasq[0].cachesize=0
+dhcp.@dnsmasq[0].forkop_cachesize=150
+EOF
+printf '0\n' >"$RECORD"
+lifecycle stop
+[ "$LIFECYCLE_STATUS" != 0 ] || fail "a stop whose dnsmasq settings could not be saved reported success"
+grep -Fxq 'dns/apply.uc failsafe-restore' "$EVENTS" || fail "the failed stop did not run the DNS failsafe"
+grep -Fxq 'dnsmasq restart' "$EVENTS" && fail "the stop restarted dnsmasq with settings that were not saved"
+grep -q 'Could not save the dnsmasq settings' "$WORK_DIR/syslog" || fail "the failed dhcp commit was not logged"
+ok "a stop whose dnsmasq settings cannot be saved fails and runs the DNS failsafe"
+
+cat "$WORK_DIR/uci.base" - >"$FORKOP_UCI_STATE_FILE" <<'EOF'
+dhcp.@dnsmasq[0].server=1.1.1.1
+EOF
+printf '1\n' >"$RECORD"
+lifecycle start
+[ "$LIFECYCLE_STATUS" != 0 ] || fail "a start whose dnsmasq settings could not be saved reported success"
+grep -Fxq 'dns/apply.uc configure' "$EVENTS" || fail "the start did not configure dnsmasq"
+grep -Fxq 'dns/apply.uc failsafe-restore' "$EVENTS" || fail "the failed start did not run the DNS failsafe"
+grep -Fxq 'dnsmasq restart' "$EVENTS" && fail "the start restarted dnsmasq with settings that were not saved"
+ok "a start whose dnsmasq settings cannot be saved fails and is cleaned up"
+rmdir "$FORKOP_UCI_LOG_FILE"
+
 printf 'shutdown state runtime checks passed\n'

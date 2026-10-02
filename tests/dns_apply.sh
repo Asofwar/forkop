@@ -39,6 +39,14 @@ printf '%s\n' "$*" >> "${DNSMASQ_LOG:?}"
 DNSMASQ
 chmod 0755 "$WORK_DIR/dnsmasq-init"
 
+# No message reaches the host's syslog; the runtime record of the lifecycle
+# (shutdown_correctly, UC-160) is the test's own.
+mkdir -p "$WORK_DIR/bin" "$WORK_DIR/run"
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >>"%s"\n' "$WORK_DIR/syslog" >"$WORK_DIR/bin/logger"
+chmod 0755 "$WORK_DIR/bin/logger"
+export PATH="$WORK_DIR/bin:$PATH"
+export FORKOP_RUNTIME_STATE_DIR="$WORK_DIR/run"
+
 export FORKOP_UCI_STATE_FILE="$STATE"
 export FORKOP_UCI_LOG_FILE="$LOG"
 export DNSMASQ_LOG
@@ -167,5 +175,41 @@ assert_value 'dhcp.@dnsmasq[0].cachesize' '0'
 assert_absent 'dhcp.@dnsmasq[0].forkop_noresolv'
 assert_absent 'dhcp.@dnsmasq[0].forkop_cachesize'
 assert_log_contains 'commit dhcp'
+
+# A commit that fails (a full or read-only overlay; the fixture fails it when
+# its log cannot be written) fails the operation that asked for it, and
+# dnsmasq is not restarted with settings that were not saved (UC-024).
+commit_fails() {
+  : >"$DNSMASQ_LOG"
+  : >"$WORK_DIR/syslog"
+  rm -f "$LOG"
+  mkdir "$LOG"
+  local status=0
+  ucode -L "$UCODE_LIB" "$APPLY" "$@" || status=$?
+  rmdir "$LOG"
+  [ "$status" != 0 ] || fail "dns/apply.uc $* reported success although the dhcp commit failed"
+  grep -Fxq 'restart' "$DNSMASQ_LOG" && fail "dns/apply.uc $* restarted dnsmasq with settings it could not save"
+  grep -q 'Could not save the dnsmasq settings' "$WORK_DIR/syslog" ||
+    fail "dns/apply.uc $* did not log the failed dhcp commit"
+  return 0
+}
+cat >"$STATE" <<'EOF_STATE'
+dhcp.@dnsmasq[0].server=1.1.1.1
+EOF_STATE
+commit_fails configure force
+cat >"$STATE" <<'EOF_STATE'
+dhcp.@dnsmasq[0].server=127.0.0.42
+dhcp.@dnsmasq[0].forkop_server=1.1.1.1
+dhcp.@dnsmasq[0].noresolv=1
+dhcp.@dnsmasq[0].forkop_noresolv=0
+EOF_STATE
+commit_fails restore force
+cat >"$STATE" <<'EOF_STATE'
+dhcp.@dnsmasq[0].server=127.0.0.42
+dhcp.@dnsmasq[0].forkop_server=1.1.1.1
+dhcp.@dnsmasq[0].noresolv=1
+dhcp.@dnsmasq[0].forkop_noresolv=0
+EOF_STATE
+commit_fails failsafe-restore
 
 printf 'DNS apply checks passed\n'

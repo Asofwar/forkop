@@ -290,6 +290,10 @@ function fixture_enabled() {
     return UCI_STATE_FILE != "";
 }
 
+// The libuci binding reports a failed load, set, delete, rename or commit
+// with null (ucode lib/uci.c err_return), never with false or an exception,
+// and a commit fails on a full or read-only overlay: the wrappers below take
+// only true for success (UC-024).
 function cursor() {
     if (runtime_cursor !== false)
         return runtime_cursor;
@@ -319,7 +323,8 @@ function load(package_name) {
         return false;
 
     try {
-        c.load(package_name);
+        if (c.load(package_name) !== true)
+            return false;
         loaded_packages[package_name] = true;
         return true;
     }
@@ -418,11 +423,11 @@ function delete_path(path) {
         return false;
 
     try {
+        // libuci refuses to delete what is absent (null); it is gone either way.
         if (parts.option == "")
-            c.delete(parts.package, parts.section);
-        else
-            c.delete(parts.package, parts.section, parts.option);
-        return true;
+            return c.get(parts.package, parts.section) == null || c.delete(parts.package, parts.section) === true;
+        return c.get(parts.package, parts.section, parts.option) == null ||
+            c.delete(parts.package, parts.section, parts.option) === true;
     }
     catch (e) {
         return false;
@@ -445,8 +450,7 @@ function set_section(path, type_name) {
         return false;
 
     try {
-        c.set(parts.package, parts.section, as_string(type_name));
-        return true;
+        return c.set(parts.package, parts.section, as_string(type_name)) === true;
     }
     catch (e) {
         return false;
@@ -472,7 +476,7 @@ function rename(path, name) {
         return false;
 
     try {
-        return c.rename(parts.package, parts.section, name) != false;
+        return c.rename(parts.package, parts.section, name) === true;
     }
     catch (e) {
         return false;
@@ -513,8 +517,12 @@ function set(path, value) {
         return false;
 
     try {
-        c.set(parts.package, parts.section, parts.option, type(value) == "array" ? value : as_string(value));
-        return true;
+        // libuci keeps no empty list, and the binding refuses to set one
+        // (null): an empty list is no option at all.
+        if (type(value) == "array" && length(value) == 0)
+            return c.get(parts.package, parts.section, parts.option) == null ||
+                c.delete(parts.package, parts.section, parts.option) === true;
+        return c.set(parts.package, parts.section, parts.option, type(value) == "array" ? value : as_string(value)) === true;
     }
     catch (e) {
         return false;
@@ -539,8 +547,7 @@ function add_list(path, value) {
     try {
         let values = value_to_list(c.get(parts.package, parts.section, parts.option));
         push(values, as_string(value));
-        c.set(parts.package, parts.section, parts.option, values);
-        return true;
+        return c.set(parts.package, parts.section, parts.option, values) === true;
     }
     catch (e) {
         return false;
@@ -577,10 +584,8 @@ function del_list(path, value) {
 
     try {
         if (length(values) == 0)
-            c.delete(parts.package, parts.section, parts.option);
-        else
-            c.set(parts.package, parts.section, parts.option, values);
-        return true;
+            return c.delete(parts.package, parts.section, parts.option) === true;
+        return c.set(parts.package, parts.section, parts.option, values) === true;
     }
     catch (e) {
         return false;
@@ -596,7 +601,7 @@ function commit(package_name) {
         return false;
 
     try {
-        return c.commit(package_name) != false;
+        return c.commit(package_name) === true;
     }
     catch (e) {
         return false;

@@ -560,12 +560,67 @@ function ruleset_matchers(definitions, tag, memo) {
     return acc;
 }
 
+// The rule-set tags a route rule matches by, its logical children included
+// (generator.uc wraps every rule of a section with excluded devices as
+// { type: logical, mode: and, rules: [ <conditions>, { source_ip_cidr, invert } ] }).
+// The names of an inverted rule-set are the ones it does not match.
+function collect_rule_set_tags(rule, tags, acc) {
+    rule = object_or_empty(rule);
+    if (rule.invert === true) {
+        if (rule.rule_set != null)
+            acc.inverted++;
+        return;
+    }
+    if (as_string(rule.type) == "logical") {
+        for (let child in array_or_empty(rule.rules))
+            collect_rule_set_tags(child, tags, acc);
+        return;
+    }
+    for (let tag in array_of(rule.rule_set))
+        push(tags, as_string(tag));
+}
+
 function route_rule_matchers(rule, definitions, memo) {
     let acc = new_matchers();
     collect_rule_matchers(rule, acc);
-    for (let tag in array_of(rule.rule_set))
-        merge_matchers(acc, ruleset_matchers(definitions, as_string(tag), memo));
+    let tags = [];
+    collect_rule_set_tags(rule, tags, acc);
+    for (let tag in tags)
+        merge_matchers(acc, ruleset_matchers(definitions, tag, memo));
     return acc;
+}
+
+const SOURCE_RULE_KEYS = [ "source_ip_cidr", "source_port", "source_port_range" ];
+
+// The conditions a rule requires all of: the rule itself or, for a logical
+// "and" rule, its children.
+function and_conditions(rule, result) {
+    rule = object_or_empty(rule);
+    if (as_string(rule.type) == "logical" && as_string(rule.mode) == "and" && rule.invert !== true) {
+        for (let child in array_or_empty(rule.rules))
+            and_conditions(child, result);
+    }
+    else
+        push(result, rule);
+    return result;
+}
+
+// Which clients a route rule applies to: "all", "limited" to some (a source
+// condition) or all but "excluded" ones (an inverted source condition).
+function rule_clients(rule) {
+    let result = "all";
+    for (let condition in and_conditions(rule, [])) {
+        let has_source = false;
+        for (let key in SOURCE_RULE_KEYS)
+            if (condition[key] != null)
+                has_source = true;
+        if (!has_source)
+            continue;
+        if (condition.invert !== true)
+            return "limited";
+        result = "excluded";
+    }
+    return result;
 }
 
 function rule_unrestricted(rule) {
@@ -584,11 +639,16 @@ function rule_unrestricted(rule) {
 // shadows protected names under it and becomes a "#" exception when it sits
 // below a protected name. Restricted earlier rules (by client, port, ...)
 // never weaken the block.
+//
+// dnsmasq answers every client alike. A protected rule limited to some
+// clients therefore blocks nothing through DNS; one that excludes some
+// clients blocks its names for them as well (the fail-closed side for all
+// the others), and both are reported (UC-193).
 function render_dns_from_config(config, protected_names) {
     let result = {
         ok: false, error: "", content: "", domains: 0, exceptions: 0, shadowed: 0,
         invalid: 0, uncovered_keyword: 0, uncovered_regex: 0, uncovered_inverted: 0,
-        client_limited: 0, sections: {}
+        client_limited: 0, excluded_devices: 0, sections: {}
     };
     config = object_or_empty(config);
     let route = object_or_empty(config.route);
@@ -601,7 +661,7 @@ function render_dns_from_config(config, protected_names) {
     let protected_tags = {};
     for (let name in protected_names) {
         protected_tags[singbox_constants.outbound_tag(name)] = name;
-        result.sections[name] = { domains: 0, uncovered: 0, client_limited: 0 };
+        result.sections[name] = { domains: 0, uncovered: 0, client_limited: 0, excluded_devices: 0 };
     }
 
     let definitions = {};
@@ -645,11 +705,16 @@ function render_dns_from_config(config, protected_names) {
         // dnsmasq answers every client alike. A rule limited to some clients
         // must not take its names away from everybody else; those clients
         // stay protected by nftables (subnets) and FakeIP rejects only.
-        if (rule.source_ip_cidr != null || rule.source_port != null || rule.source_port_range != null) {
-            let names = length(acc.suffix) + length(acc.exact);
+        let clients = rule_clients(rule);
+        let names = length(acc.suffix) + length(acc.exact);
+        if (clients == "limited") {
             result.client_limited += names;
             result.sections[item.section].client_limited += names;
             continue;
+        }
+        if (clients == "excluded") {
+            result.excluded_devices += names;
+            result.sections[item.section].excluded_devices += names;
         }
         result.uncovered_keyword += acc.keyword;
         result.uncovered_regex += acc.regex;
@@ -1119,6 +1184,9 @@ function sync_locked(reason) {
         if (dns_result.client_limited > 0)
             push(warnings, sprintf("%d domains of client-limited rules are not blocked through DNS (it is shared by all clients); only their IP lists and FakeIP answers are blocked while Forkop is stopped",
                 dns_result.client_limited));
+        if (dns_result.excluded_devices > 0)
+            push(warnings, sprintf("%d domains of rules with excluded devices are blocked through DNS for the excluded devices as well (it is shared by all clients) while Forkop is stopped",
+                dns_result.excluded_devices));
         let ds = dns_status();
         if (ds.conflict)
             push(warnings, "dnsmasq already uses servers file " + as_string(ds.serversfile) + "; DNS protection is not attached");
@@ -1141,6 +1209,7 @@ function sync_locked(reason) {
             uncovered_regex: int(dns_result.uncovered_regex),
             uncovered_inverted: int(dns_result.uncovered_inverted),
             client_limited: int(dns_result.client_limited),
+            excluded_devices: int(dns_result.excluded_devices),
             sections: object_or_empty(dns_result.sections)
         } : object_or_empty(read_state().dns),
         warnings,

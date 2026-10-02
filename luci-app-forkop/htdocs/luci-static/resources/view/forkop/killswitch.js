@@ -208,6 +208,16 @@ function renderSectionStatus(section_id, status) {
           ),
         );
       }
+      if (dnsSection.excluded_devices) {
+        children.push(
+          line(
+            _(
+              "Domains also blocked for the excluded devices of this section (DNS is shared by all devices)",
+            ),
+            `${dnsSection.excluded_devices}`,
+          ),
+        );
+      }
     }
     if (!(state.rule_sections || []).includes(section_id)) {
       children.push(

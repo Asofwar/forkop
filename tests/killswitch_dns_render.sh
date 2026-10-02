@@ -136,4 +136,60 @@ if ks render-dns-fixture "$WORK_DIR/placeholder.json" "main" "$WORK_DIR/placehol
 fi
 grep -Fq 'not downloaded yet' "$WORK_DIR/placeholder.out" || fail "placeholder must be reported"
 
+# Device scoping in a real generated config (UC-193). The generator wraps
+# every route rule of a section with excluded devices as a logical "and" of
+# its conditions and the inverted excluded sources.
+GEN_DIR="$WORK_DIR/generated"
+mkdir -p "$GEN_DIR"
+printf '{"version":3,"rules":[{"domain_suffix":["first-list.example"]}]}\n' > "$GEN_DIR/first.json"
+printf '{"version":3,"rules":[{"domain_suffix":["second-list.example"]}]}\n' > "$GEN_DIR/second.json"
+printf '{"version":3,"rules":[{"domain_suffix":["device-list.example"]}]}\n' > "$GEN_DIR/device.json"
+outbound_json() {
+  printf '{\\"type\\":\\"http\\",\\"tag\\":\\"%s\\",\\"server\\":\\"proxy.example\\",\\"server_port\\":8080}' "$1"
+}
+cat >"$GEN_DIR/fixture.json" <<JSON
+{
+  "settings": { ".name": "settings", ".type": "settings", "dns_server": "77.88.8.8" },
+  "section": [
+    { ".name": "byp", ".type": "section", "enabled": "1", "action": "bypass",
+      "domain_suffix": [ "sub.excl-inline.example" ], "excluded_source_ip_cidr": [ "192.168.1.60/32" ] },
+    { ".name": "main", ".type": "section", "enabled": "1", "action": "connection", "kill_switch": "1",
+      "outbound_jsons": [ "$(outbound_json a)" ],
+      "domain_suffix": [ "main-inline.example" ], "rule_set": [ "$GEN_DIR/first.json" ] },
+    { ".name": "excl", ".type": "section", "enabled": "1", "action": "connection", "kill_switch": "1",
+      "outbound_jsons": [ "$(outbound_json b)" ],
+      "domain_suffix": [ "excl-inline.example" ], "rule_set": [ "$GEN_DIR/second.json" ],
+      "excluded_source_ip_cidr": [ "192.168.1.50/32" ] },
+    { ".name": "devlim", ".type": "section", "enabled": "1", "action": "connection", "kill_switch": "1",
+      "outbound_jsons": [ "$(outbound_json c)" ],
+      "domain_suffix": [ "device-only.example" ], "rule_set": [ "$GEN_DIR/device.json" ],
+      "source_ip_cidr": [ "192.168.1.0/28" ], "excluded_source_ip_cidr": [ "192.168.1.5/32" ] }
+  ]
+}
+JSON
+ucode -L "$FORKOP_LIB" "$FORKOP_LIB/singbox/generator.uc" generate-config-fixture \
+  "$GEN_DIR/fixture.json" "$GEN_DIR/config.json" 192.168.1.1 0 1 '' 1.13.0 ||
+  fail "the generator fixture could not be generated"
+grep -Fq '"invert": true' "$GEN_DIR/config.json" || fail "the generator must wrap rules of sections with excluded devices"
+
+OUT="$GEN_DIR/blocked.servers"
+summary="$(ks render-dns-fixture "$GEN_DIR/config.json" "main,excl,devlim" "$OUT")" || fail "generated render failed: $summary"
+section_value() {
+  ucode -e 'let s = json(ARGV[0]); print(s.sections[ARGV[1]][ARGV[2]] ?? "null", "\n");' -- "$summary" "$1" "$2"
+}
+has_line "server=/main-inline.example/" "plain protected section"
+has_line "server=/first-list.example/" "rule-set of a plain protected section"
+has_line "server=/excl-inline.example/" "inline names of a section with excluded devices"
+has_line "server=/second-list.example/" "rule-set of a section with excluded devices"
+lacks "device-only.example" "a device-scoped section with excluded devices must not block its names for every client"
+lacks "device-list.example" "a device-scoped section's rule-set must not be blocked for every client"
+lacks "server=/sub.excl-inline.example/#" "a bypass rule with excluded devices is restricted and never an exception"
+[ "$(section_value excl domains)" = 2 ] || fail "the section with excluded devices must count both names: $summary"
+[ "$(section_value excl excluded_devices)" = 2 ] ||
+  fail "names also blocked for the excluded devices must be reported: $summary"
+[ "$(section_value main excluded_devices)" = 0 ] || fail "a section without exclusions has no excluded devices: $summary"
+[ "$(section_value devlim domains)" = 0 ] || fail "a device-scoped section blocks no names through DNS: $summary"
+[ "$(section_value devlim client_limited)" = 2 ] ||
+  fail "both names of the device-scoped section must be reported as client-limited: $summary"
+
 printf 'killswitch_dns_render: PASS\n'

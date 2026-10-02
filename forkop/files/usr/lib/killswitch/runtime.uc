@@ -1139,12 +1139,17 @@ function sync_locked(reason) {
 }
 
 // Start and reload refresh the policy while they hold reload.lock
-// themselves ("reload-lock-held"). Every other caller takes it first, so a
+// themselves (reload_lock_held). Every other caller takes it first, so a
 // manual sync or removal never changes dnsmasq or the policy in the middle
 // of a start, stop or reload, and gives up while one runs. A removal for the
-// package ("force") never stays behind a lock: once the bounded wait is over
+// package (force) never stays behind a lock: once the bounded wait is over
 // it removes the protection anyway, since nothing would be left to do it.
-function with_lock(callback, reload_lock_held, force) {
+// A manual operation applies the reloads queued behind its reload.lock
+// (apply_pending); a stopped or a package-changing Forkop has none to run.
+function with_lock(callback, options) {
+    let reload_lock_held = options.reload_lock_held === true;
+    let force = options.force === true;
+    let apply_pending = options.apply_pending === true;
     let reload_locked = false;
     if (!reload_lock_held) {
         reload_locked = acquire_dir_lock(RELOAD_LOCK_DIR);
@@ -1157,7 +1162,7 @@ function with_lock(callback, reload_lock_held, force) {
     let locked = acquire_dir_lock(LOCK_DIR);
     if (!locked && !force) {
         if (reload_locked)
-            release_reload_lock(true);
+            release_reload_lock(apply_pending);
         warn("Another kill-switch operation is still running\n");
         log_message("Kill-switch: another kill-switch operation is still running", "error");
         return 1;
@@ -1176,12 +1181,13 @@ function with_lock(callback, reload_lock_held, force) {
     if (locked)
         runtime_lock.release(LOCK_DIR, self_pid());
     if (reload_locked)
-        release_reload_lock(!force);
+        release_reload_lock(apply_pending);
     return status;
 }
 
 function sync(reason, reload_lock_held) {
-    return with_lock(function() { return sync_locked(reason || "manual"); }, reload_lock_held, false);
+    return with_lock(function() { return sync_locked(reason || "manual"); },
+        { reload_lock_held, apply_pending: true });
 }
 
 // Forkop stopped by the user or not started since boot (D-15): reloads,
@@ -1196,17 +1202,20 @@ function follow_stopped_config(reason, reload_lock_held) {
     // A skipped reload is not held up for long behind a lifecycle action.
     if (lock_attempts > 10)
         lock_attempts = 10;
-    return with_lock(function() { return sync_locked(reason || "reload while Forkop is stopped"); }, reload_lock_held, false);
+    return with_lock(function() { return sync_locked(reason || "reload while Forkop is stopped"); },
+        { reload_lock_held });
 }
 
 function disable(reason, force) {
-    return with_lock(function() { return teardown(reason || "disabled on request") ? 0 : 1; }, false, force);
+    return with_lock(function() { return teardown(reason || "disabled on request") ? 0 : 1; },
+        { force, apply_pending: !force });
 }
 
 // A package upgrade from the first kill-switch build: its unguarded fw4
 // include becomes the saved policy that only the package's loader loads, so
 // the protection stays across the upgrade, and a running watcher is
-// restarted on the new code.
+// restarted on the new code. Neither dnsmasq nor the live table change:
+// killswitch.lock alone serializes it with a sync.
 function postinst() {
     return with_lock(function() {
         let legacy = fs.readfile(LEGACY_NFT_INCLUDE);
@@ -1220,7 +1229,7 @@ function postinst() {
         if (service_running())
             service_control([ "restart" ]);
         return 0;
-    });
+    }, { reload_lock_held: true });
 }
 
 function status() {

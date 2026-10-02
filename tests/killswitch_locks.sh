@@ -59,7 +59,7 @@ if [ "$1" = "-f" ]; then
 fi
 exit 0
 NFT
-for name in logger dnsmasq-init killswitch-init conntrack; do
+for name in logger dnsmasq-init killswitch-init conntrack forkop-init; do
   printf '#!/bin/sh\nprintf "%%s\\n" "$*" >>"%s/%s.log"\n' "$WORK_DIR" "$name" >"$WORK_DIR/bin/$name"
 done
 cat >"$WORK_DIR/bin/dig" <<'SH'
@@ -75,6 +75,7 @@ export FORKOP_UCI_STATE_FILE="$WORK_DIR/uci.state"
 export FORKOP_RUNTIME_STATE_DIR="$WORK_DIR/run"
 export FORKOP_RELOAD_LOCK_DIR="$WORK_DIR/run/reload.lock"
 export FORKOP_PENDING_RELOAD_FILE="$WORK_DIR/run/reload.pending"
+export FORKOP_SERVICE_INIT="$WORK_DIR/bin/forkop-init"
 export KILLSWITCH_STATE_DIR="$WORK_DIR/ks"
 export KILLSWITCH_NFT_INCLUDE="$WORK_DIR/ruleset-post/90-forkop-killswitch.nft"
 export KILLSWITCH_CACHE_DIR="$WORK_DIR/cache"
@@ -157,10 +158,14 @@ ks sync reload reload-lock-held || fail "a sync inside the caller's reload.lock 
 kill "$HOLDER"
 wait "$HOLDER" 2>/dev/null || true
 
-# 4. A manual sync takes reload.lock (in order), runs and hands it back.
+# 4. A manual sync takes reload.lock (in order), runs and hands it back,
+#    then applies a reload queued behind it, as every holder does (UC-061).
+printf 'reason=on_config_change\n' >"$FORKOP_PENDING_RELOAD_FILE"
 ks sync manual || fail "manual sync with free locks failed"
 [ ! -e "$FORKOP_RELOAD_LOCK_DIR" ] || fail "manual sync must release reload.lock"
 [ ! -e "$KS_LOCK" ] || fail "manual sync must release killswitch.lock"
+grep -Fqx 'reload pending' "$WORK_DIR/forkop-init.log" || fail "a reload queued behind the manual sync must run"
+[ ! -e "$FORKOP_PENDING_RELOAD_FILE" ] || fail "the queued reload must be consumed"
 
 # 5. The package's removal never stays behind a lock: it waits a bounded
 #    time and then removes the protection anyway.
@@ -169,7 +174,11 @@ if ks disable "manual"; then
   fail "a manual removal must not pass a held killswitch.lock"
 fi
 [ -s "$POLICY" ] || fail "a refused removal keeps the policy"
+printf 'reason=on_config_change\n' >"$FORKOP_PENDING_RELOAD_FILE"
+: >"$WORK_DIR/forkop-init.log"
 ks release "package removal" || fail "the package removal must lift the protection"
+[ ! -s "$WORK_DIR/forkop-init.log" ] || fail "a removal for the package must not run queued reloads"
+rm -f "$FORKOP_PENDING_RELOAD_FILE"
 [ ! -e "$POLICY" ] || fail "the package removal must remove the saved policy despite the lock"
 [ ! -e "$WORK_DIR/ks-present" ] || fail "the package removal must remove the live policy despite the lock"
 kill "$HOLDER"

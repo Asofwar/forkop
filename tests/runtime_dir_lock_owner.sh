@@ -75,8 +75,7 @@ start_ticks() {
 }
 reset_lock() { rm -rf "$LOCK" "$LOCK".new.*; }
 
-# Owners are long-lived children of this shell; DEAD is a reaped process, so
-# no process runs under its pid.
+# Owners are long-lived children of this shell.
 sleep 300 >/dev/null 2>&1 &
 A=$!
 actors+=("$A")
@@ -86,13 +85,23 @@ actors+=("$B")
 sleep 300 >/dev/null 2>&1 &
 C=$!
 actors+=("$C")
-sleep 0 &
-DEAD=$!
-wait "$DEAD" || true
 for pid in "$A" "$B" "$C"; do
   wait_until 10 process_exec_is "$pid" sleep || fail "owner process $pid did not start"
 done
-process_gone "$DEAD" || fail "the dead owner still runs"
+
+# new_dead_owner: DEAD becomes the pid of a process that has just exited and
+# been reaped, so no process runs under it. Every dead-owner case takes a new
+# one right before it (UC-237): the kernel hands out pids in turn up to
+# pid_max and gives this one out again only when it comes round, so it stays
+# free while one case starts its few processes; but while the tests run side
+# by side the pids come round within this test, and a pid reaped at its start
+# can name a running process when a later case reads it.
+new_dead_owner() {
+  : &
+  DEAD=$!
+  wait "$DEAD" || true
+  process_gone "$DEAD" || fail "the dead owner $DEAD still runs"
+}
 
 # race ROUND SETUP CONTENDER...: the contenders start together on a busy-wait
 # barrier against the lock SETUP left; exactly one of them may get it.
@@ -105,8 +114,8 @@ race() {
   rm -f "$gate" "$WORK_DIR"/rc.* "$WORK_DIR"/ready.* "$FORKOP_PENDING_RELOAD_FILE"
   case "$setup" in
     free) ;;
-    dead) mkdir "$LOCK" && : >"$LOCK/owner.$DEAD.$(start_ticks "$$")" ;;
-    legacy-dead) mkdir "$LOCK" && printf '%s\n' "$DEAD" >"$LOCK/pid" ;;
+    dead) new_dead_owner && mkdir "$LOCK" && : >"$LOCK/owner.$DEAD.$(start_ticks "$$")" ;;
+    legacy-dead) new_dead_owner && mkdir "$LOCK" && printf '%s\n' "$DEAD" >"$LOCK/pid" ;;
   esac
   for contender in "$@"; do
     kind="${contender%%:*}"
@@ -231,13 +240,13 @@ busy_case() {
   [ "$(owner_of)" = "$expected" ] || fail "$label: the lock names '$(owner_of)', not $expected"
 }
 b_ticks="$(start_ticks "$B")"
-reset_lock; mkdir "$LOCK"; : >"$LOCK/owner.$DEAD.$b_ticks"
+new_dead_owner; reset_lock; mkdir "$LOCK"; : >"$LOCK/owner.$DEAD.$b_ticks"
 stale_case "dead owner"
 reset_lock; mkdir "$LOCK"; : >"$LOCK/owner.$B.$((b_ticks + 1))"
 stale_case "reused pid"
 reset_lock; mkdir "$LOCK"; : >"$LOCK/owner.$B.$b_ticks"
 busy_case "live owner" "$B"
-reset_lock; mkdir "$LOCK"; printf '%s\n' "$DEAD" >"$LOCK/pid"
+new_dead_owner; reset_lock; mkdir "$LOCK"; printf '%s\n' "$DEAD" >"$LOCK/pid"
 stale_case "previous-version dead owner"
 reset_lock; mkdir "$LOCK"; printf '%s\n' "$B" >"$LOCK/pid"
 busy_case "previous-version live owner" "$B"
@@ -280,14 +289,14 @@ hooked_acquire() {
   HOOK_PID="$DEAD" HOOK="$1" ucode -L "$WORK_DIR/hook" -L "$LIB" "$WORK_DIR/hook/acquire.uc" "$LOCK" "$A"
 }
 # Another contender breaks the same stale lock first and publishes its own.
-reset_lock; mkdir "$LOCK"; : >"$LOCK/owner.$DEAD.$b_ticks"
+new_dead_owner; reset_lock; mkdir "$LOCK"; : >"$LOCK/owner.$DEAD.$b_ticks"
 ! hooked_acquire "ucode -L '$LIB' '$LIB/service/state.uc' acquire-runtime-dir-lock '$LOCK' '$B'" ||
   fail "a contender took the lock its rival had just published over the stale one"
 [ "$(owner_of)" = "$B" ] || fail "breaking a stale lock removed its successor's record"
 [ "$(ls -A "$LOCK")" = "owner.$B.$b_ticks" ] || fail "the successor's lock was changed: $(ls -A "$LOCK" | tr '\n' ' ')"
 # A previous-version contender (still running during an upgrade) breaks it
 # its own way: rm pid, rmdir, mkdir, then writes its pid under the same name.
-reset_lock; mkdir "$LOCK"; printf '%s\n' "$DEAD" >"$LOCK/pid"
+new_dead_owner; reset_lock; mkdir "$LOCK"; printf '%s\n' "$DEAD" >"$LOCK/pid"
 ! hooked_acquire "rm -f '$LOCK/pid'; rmdir '$LOCK'; mkdir '$LOCK'; printf '%s\n' '$B' >'$LOCK/pid'" ||
   fail "a contender took the lock a previous-version owner had just rewritten"
 [ "$(owner_of)" = "$B" ] || fail "breaking a stale lock removed the previous-version owner's new pid"
@@ -335,7 +344,7 @@ reset_lock; mkdir "$LOCK"; : >"$LOCK/owner.$B.$((b_ticks + 1))"
 reader_case "reused pid" free
 reset_lock; mkdir "$LOCK"; printf '%s\n' "$B" >"$LOCK/pid"
 reader_case "previous-version live owner" busy
-reset_lock; mkdir "$LOCK"; printf '%s\n' "$DEAD" >"$LOCK/pid"
+new_dead_owner; reset_lock; mkdir "$LOCK"; printf '%s\n' "$DEAD" >"$LOCK/pid"
 reader_case "previous-version dead owner" free
 reset_lock
 rm -f "$FORKOP_PENDING_RELOAD_FILE"

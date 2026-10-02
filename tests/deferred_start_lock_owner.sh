@@ -21,13 +21,12 @@ REAL_UCODE="$(command -v ucode)"
 WORK_DIR="$(mktemp -d)"
 # shellcheck source=tests/helpers/wait.sh
 . "$ROOT_DIR/tests/helpers/wait.sh"
+# shellcheck source=tests/helpers/owned_processes.sh
+. "$ROOT_DIR/tests/helpers/owned_processes.sh"
 
 actors=()
 cleanup() {
-  local pid
-  for pid in "${actors[@]}"; do
-    kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
-  done
+  owned_kill KILL "${actors[@]}" || true
   rm -rf "$WORK_DIR"
 }
 trap cleanup EXIT
@@ -272,7 +271,7 @@ wait_until 20 start_finished || fail "the second start did not finish"
 wait_until 10 process_gone "$OWNER" || fail "the second start worker did not exit"
 [ "$(lock_owner)" = "$other" ] || fail "the start's release removed another owner's reload.lock"
 "$REAL_UCODE" -L "$LIB" "$LIB/service/state.uc" release-runtime-dir-lock "$LOCK" "$other"
-kill "$other" 2>/dev/null || true
+owned_kill TERM "$other" || true
 [ ! -e "$LOCK" ] || fail "the contender's release left reload.lock behind"
 
 # 7. The start ticks make the record name one process: a record whose pid now

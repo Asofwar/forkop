@@ -22,13 +22,12 @@ REAL_UCODE="$(command -v ucode)"
 WORK_DIR="$(mktemp -d)"
 # shellcheck source=tests/helpers/wait.sh
 . "$ROOT_DIR/tests/helpers/wait.sh"
+# shellcheck source=tests/helpers/owned_processes.sh
+. "$ROOT_DIR/tests/helpers/owned_processes.sh"
 
 actors=()
 cleanup() {
-  local pid
-  for pid in "${actors[@]}"; do
-    kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
-  done
+  owned_kill KILL "${actors[@]}" || true
   pkill -KILL -f "$WORK_DIR" 2>/dev/null || true
   rm -rf "$WORK_DIR"
 }
@@ -218,8 +217,8 @@ reset_case() {
   local pid
   pid="$(head -n 1 "$STATE_DIR/start-retry.pid" 2>/dev/null || true)"
   if [ -n "$pid" ]; then
-    pkill -KILL -P "$pid" 2>/dev/null || true
-    kill -KILL "$pid" 2>/dev/null || true
+    owned_kill_children KILL "$pid"
+    owned_kill KILL "$pid" || true
   fi
   rm -f "$WORK_DIR"/runtime.up "$WORK_DIR"/start.status "$WORK_DIR"/start.gate "$WORK_DIR"/start.gate-armed \
     "$WORK_DIR"/hold.gate "$WORK_DIR"/hold.acquired \

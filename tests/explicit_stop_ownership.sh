@@ -59,15 +59,14 @@ STATE_UC="$REAL_LIB/service/state.uc"
 WORK_DIR="$(mktemp -d)"
 # shellcheck source=tests/helpers/wait.sh
 . "$ROOT_DIR/tests/helpers/wait.sh"
+# shellcheck source=tests/helpers/owned_processes.sh
+. "$ROOT_DIR/tests/helpers/owned_processes.sh"
 # shellcheck source=tests/helpers/source_checks.sh
 . "$ROOT_DIR/tests/helpers/source_checks.sh"
 
 doubles=()
 cleanup() {
-  local pid
-  for pid in "${doubles[@]}"; do
-    kill -KILL "$pid" 2>/dev/null || true
-  done
+  owned_kill KILL "${doubles[@]}" || true
   rm -rf "$WORK_DIR"
 }
 trap cleanup EXIT
@@ -124,6 +123,7 @@ export FORKOP_UI_STATE_DIR="$WORK_DIR/ui-state"
 export FORKOP_UI_SERVICE_ACTION_DIR="$WORK_DIR/ui-state/service-actions"
 export FORKOP_UI_SERVICE_ACTION_LOCK_DIR="$WORK_DIR/ui-state/service-actions.lock"
 export FORKOP_UI_ACTION_TRACKED=1
+export OWNED_PROCESSES="$ROOT_DIR/tests/helpers/owned_processes.sh"
 export TMP_SING_BOX_FOLDER="$WORK_DIR/singbox-tmp"
 export TMP_RULESET_FOLDER="$WORK_DIR/singbox-tmp/rulesets"
 export FORKOP_SING_BOX_RELOAD_PID_TIMEOUT=2
@@ -185,7 +185,10 @@ case "$3" in
     if [ -f "$PROCD/registered" ]; then
       pid="$(cat "$PROCD/registered")"
       rm -f "$PROCD/registered"
-      [ -z "$pid" ] || kill -TERM "$pid" 2>/dev/null
+      # procd signals the instance it runs, never a process that took the
+      # PID of an instance that has exited (UC-233).
+      OWNED_PROCESSES_KEEP_MARK=1 . "$OWNED_PROCESSES"
+      [ -z "$pid" ] || owned_kill TERM "$pid" || :
       exit 0
     fi
     echo 'Command failed: Not found' >&2
@@ -342,11 +345,12 @@ runtime_up() { # Forkop's interception: its nft table and its ip rule
   printf '105\n' >"$IP_RULE_FILE"
 }
 
+double_gone() { ! owned_process "$1"; }
 reset_case() {
   local pid
+  owned_kill KILL "${doubles[@]}" || true
   for pid in "${doubles[@]}"; do
-    kill -KILL "$pid" 2>/dev/null || true
-    wait_until 10 process_gone "$pid" || fail "a sing-box double of the previous case did not exit"
+    wait_until 10 double_gone "$pid" || fail "a sing-box double of the previous case did not exit"
   done
   doubles=()
   : >"$EVENTS"

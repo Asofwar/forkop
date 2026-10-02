@@ -26,15 +26,14 @@ REAL_UCODE="$(command -v ucode)"
 WORK_DIR="$(mktemp -d)"
 # shellcheck source=tests/helpers/wait.sh
 . "$ROOT_DIR/tests/helpers/wait.sh"
+# shellcheck source=tests/helpers/owned_processes.sh
+. "$ROOT_DIR/tests/helpers/owned_processes.sh"
 # shellcheck source=tests/helpers/case_groups.sh
 . "$ROOT_DIR/tests/helpers/case_groups.sh"
 
 actors=()
 cleanup() {
-  local pid
-  for pid in "${actors[@]}"; do
-    kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
-  done
+  owned_kill KILL "${actors[@]}" || true
   # Retry workers, detached start workers and UI waiters.
   pkill -KILL -f "$WORK_DIR" 2>/dev/null || true
   rm -rf "$WORK_DIR"
@@ -265,8 +264,8 @@ reset_case() {
   local pid
   pid="$(head -n 1 "$STATE_DIR/start-retry.pid" 2>/dev/null || true)"
   if [ -n "$pid" ]; then
-    pkill -KILL -P "$pid" 2>/dev/null || true
-    kill -KILL "$pid" 2>/dev/null || true
+    owned_kill_children KILL "$pid"
+    owned_kill KILL "$pid" || true
   fi
   rm -f "$WORK_DIR"/runtime.up "$WORK_DIR"/hold.gate "$WORK_DIR"/hold.acquired \
     "$WORK_DIR"/start.hold "$WORK_DIR"/logger.hold "$WORK_DIR"/logger.held "$WORK_DIR"/rc.calls \
@@ -554,11 +553,14 @@ grep -q '"success": *true' "$UI_JOB" || fail "the UI stop did not finish as succ
 # The groups of cases run at once, each in a work directory of its own: the
 # start, its retry and the lock holder wait real (scaled) seconds, so one
 # after another they took a minute. The processes of a group are told
-# apart by its work and state directory (start_work_running).
+# apart by its work and state directory (start_work_running) and by its
+# mark (tests/helpers/owned_processes.sh).
 case_group() {
   WORK_DIR="$(mktemp -d)"
   EVENTS="$WORK_DIR/events"
   actors=()
+  # The group's cleanup signals only the group's processes.
+  owned_processes_init
   trap cleanup EXIT
   trap 'exit 1' HUP INT TERM
   retry_fixture

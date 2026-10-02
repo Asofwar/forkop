@@ -31,6 +31,7 @@ let lock_held = false;
 let forkop_was_running = false;
 let last_logged_output = "";
 let forkop_stopped_for_sing_box_change = false;
+let managed_upgrade_marker_written = false;
 
 function as_string(value) {
     return value == null ? "" : "" + value;
@@ -290,7 +291,18 @@ function release_component_lock() {
     lock_held = false;
 }
 
+// The upgrade marker lets the start that follows this action's package
+// upgrade wait for the old sing-box. Once the action ends it names no
+// transition, and a leftover would turn the user's next Stop into a guarded
+// one (UC-217): the action removes the marker it wrote.
+function remove_managed_upgrade_sing_box_marker() {
+    if (managed_upgrade_marker_written)
+        remove_file(MANAGED_UPGRADE_SING_BOX_MARKER);
+    managed_upgrade_marker_written = false;
+}
+
 function cleanup_action() {
+    remove_managed_upgrade_sing_box_marker();
     cleanup_tmp_dir();
     release_component_lock();
 }
@@ -945,8 +957,10 @@ function capture_managed_upgrade_sing_box_marker() {
     let state_module = LIB_DIR + "/service/state.uc";
     if (!file_exists(state_module))
         return;
-    if (module_success([ state_module, "write-managed-upgrade-sing-box-marker", MANAGED_UPGRADE_SING_BOX_MARKER ]))
+    if (module_success([ state_module, "write-managed-upgrade-sing-box-marker", MANAGED_UPGRADE_SING_BOX_MARKER ])) {
+        managed_upgrade_marker_written = true;
         updates_log("Recorded managed sing-box provenance for package upgrade");
+    }
 }
 
 // False when Forkop was running before the change and did not start again.
@@ -2367,12 +2381,15 @@ function upgrade_procd_owns_all(processes) {
 }
 
 // An init script that never returns would hang the whole upgrade. Run the stop
-// in the background and kill it once the deadline passes.
+// in the background and kill it once the deadline passes. Forkop's stop is
+// its own for the upgrade, not the user's: it keeps the ownership guard and
+// never signals a sing-box that Forkop does not own (UC-213).
 function upgrade_bounded_stop(script) {
     let seconds = int(getenv("FORKOP_UPGRADE_STOP_TIMEOUT_SECONDS") || "60");
     if (seconds < 1)
         seconds = 60;
-    let command = command_from_args([ script, "stop" ]) + " >/dev/null 2>&1 & pid=$!; " +
+    let args = script == SERVICE_INIT ? forkop_stop_for_component_change_args() : [ script, "stop" ];
+    let command = command_from_args(args) + " >/dev/null 2>&1 & pid=$!; " +
         "( sleep " + seconds + "; kill $pid 2>/dev/null || true ) & watcher=$!; " +
         "wait $pid 2>/dev/null; rc=$?; kill $watcher 2>/dev/null || true; " +
         "wait $watcher 2>/dev/null || true; exit $rc";

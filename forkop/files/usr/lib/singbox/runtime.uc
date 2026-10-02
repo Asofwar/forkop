@@ -3,6 +3,7 @@
 let fs = require("fs");
 let uci_core = require("core.uci");
 let common = require("core.common");
+let durable = require("core.durable");
 let runtime_dns = require("singbox.dns");
 
 const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || "forkop";
@@ -439,13 +440,10 @@ function install_managed_service_script() {
 
     // Named after this process, which lives until the rename: the cleanup
     // above in another start keeps the copy while its writer is at work.
+    // Read back and flushed before and after the rename (core/durable.uc):
+    // written only when it differs, so the flushes are rare.
     let tmp = "/etc/init.d/sing-box.forkop." + as_string(fs.readlink("/proc/self"));
-    if (!write_file(tmp, text) || fs.readfile(tmp) !== text ||
-        !command_success_from_args([ "chmod", "0755", tmp ]) || !fs.rename(tmp, "/etc/init.d/sing-box")) {
-        remove_file(tmp);
-        return false;
-    }
-    return true;
+    return durable.durable_replace(tmp, "/etc/init.d/sing-box", text, 0755);
 }
 
 function remove_managed_service_script() {
@@ -698,6 +696,14 @@ function prepare_subscription_caches(prepared, no_refresh) {
 // (UC-070). A publish that cannot complete leaves the previous file, no copy
 // and the source, and logs why. What config_path already holds is not
 // written again.
+//
+// Not flushed (core/durable.uc checked_replace): config.json is derived
+// from the UCI configuration, and every start generates and publishes it
+// before it starts sing-box (the standalone sing-box autostart is
+// disabled), so a file that a power cut emptied is rebuilt by the next
+// start. A sync would flush every filesystem (USB storage included) on
+// each reload, subscription update and DNS-failover switch, and the switch
+// would wait for it while DNS fails.
 function publish_config_file(source_path, config_path) {
     let data = fs.readfile(source_path);
     if (data == null) {
@@ -710,17 +716,9 @@ function publish_config_file(source_path, config_path) {
     }
     if (fs.readfile(config_path) !== data) {
         let staged = config_path + ".forkop-new." + as_string(fs.readlink("/proc/self"));
-        remove_file(staged);
-        let out = fs.open(staged, "w", 0600);
-        let written = out != null && fs.chmod(staged, 0600) && out.write(data) != null;
-        if (out != null)
-            out.close();
         // A full filesystem can take the write and keep none of it.
-        let failed = !written ? "write" : fs.readfile(staged) !== data ? "read back" :
-            !fs.rename(staged, config_path) ? "rename" : null;
-        if (failed != null) {
-            remove_file(staged);
-            log_message("Cannot " + failed + " " + staged + " (is the overlay full?); " + config_path + " was left unchanged", "error");
+        if (!durable.checked_replace(staged, config_path, data, 0600)) {
+            log_message("Cannot write, read back or rename " + staged + " (is the overlay full?); " + config_path + " was left unchanged", "error");
             return false;
         }
     }

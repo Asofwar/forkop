@@ -2,6 +2,7 @@
 
 let fs = require("fs");
 let uci = require("core.uci");
+let durable = require("core.durable");
 
 const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || "forkop";
 const SB_DNS_INBOUND_ADDRESS = getenv("SB_DNS_INBOUND_ADDRESS") || "127.0.0.42";
@@ -214,15 +215,14 @@ function killswitch_dns_apply(blocking) {
     let changed = false;
     if (!present || as_string(fs.readfile(KILLSWITCH_DNS_SERVERS_FILE)) != content) {
         // Unique per writer (UC-210). On flash and read at boot, before
-        // Forkop runs: flushed before and after the rename, so a power cut
-        // never leaves an empty file in place of the block list (UC-212).
+        // Forkop runs: read back, and flushed before and after the rename
+        // (core/durable.uc), so neither a full overlay nor a power cut
+        // leaves an empty file in place of the block list (UC-212, UC-241).
         let tmp = KILLSWITCH_DNS_SERVERS_FILE + ".tmp." + as_string(fs.readlink("/proc/self"));
-        if (fs.writefile(tmp, content) == null || !run("sync") || !fs.rename(tmp, KILLSWITCH_DNS_SERVERS_FILE)) {
-            fs.unlink(tmp);
+        if (!durable.durable_replace(tmp, KILLSWITCH_DNS_SERVERS_FILE, content)) {
             log("Could not write the kill-switch dnsmasq servers file", "error");
             return false;
         }
-        run("sync");
         changed = true;
     }
     if (current != KILLSWITCH_DNS_SERVERS_FILE) {

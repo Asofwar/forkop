@@ -45,10 +45,13 @@ TRANSACTION_ACTIVE=0
 TRANSACTION_COUNT=0
 : > "$TRANSACTION_MANIFEST"
 
-# The content of source becomes destination: a copy next to it, renamed
-# over it. Feeds and keys are never truncated and rewritten in place, where
-# a crash or a full overlay left them cut short and package management
-# broken (UC-076). An existing destination keeps its mode.
+# The content of source becomes destination: a copy next to it, read back,
+# renamed over it. Feeds and keys are never truncated and rewritten in
+# place, where a crash or a full overlay left them cut short and package
+# management broken (UC-076). The copy is flushed before the rename and the
+# rename after it, as core/durable.uc does (UC-025): on UBIFS the rename
+# reaches the flash before the data, and a power cut in between left an
+# empty feed. An existing destination keeps its mode.
 replace_file() {
     source="$1"
     destination="$2"
@@ -58,7 +61,11 @@ replace_file() {
         cp -p "$destination" "$staged" && cat "$source" > "$staged"
     else
         cp "$source" "$staged" && chmod 0644 "$staged"
-    fi && cmp -s "$source" "$staged" && mv -f "$staged" "$destination" && return 0
+    fi && cmp -s "$source" "$staged" && sync && mv -f "$staged" "$destination" && {
+        # Renamed: destination holds the content, whatever this flush reports.
+        sync
+        return 0
+    }
     rm -f "$staged"
     return 1
 }

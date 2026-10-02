@@ -2,6 +2,7 @@
 
 let fs = require("fs");
 let common = require("core.common");
+let durable = require("core.durable");
 let core_ip = require("core.ip");
 let uci_core = require("core.uci");
 let rule_config = require("config.rule");
@@ -1449,22 +1450,12 @@ function ensure_rt_table_entry(path, table_id, table_name) {
     data += as_string(table_id) + " " + as_string(table_name) + "\n";
 
     // rt_tables names the tables of other packages too: written to a copy
-    // next to it, read back and renamed over it, never truncated and
-    // rewritten in place, where a crash or a full overlay lost every entry
-    // (UC-076). The mode stays; a symlink stays one.
-    let file = fs.realpath(path) || as_string(path);
-    let stat = fs.stat(file);
-    let tmp = fs.dirname(file) + "/." + fs.basename(file) + ".forkop-" + as_string(fs.readlink("/proc/self"));
-    fs.unlink(tmp);
-    let out = fs.open(tmp, "w", 0644);
-    let written = out != null && out.write(data) != null;
-    if (out != null)
-        out.close();
-    if (!written || fs.readfile(tmp) !== data || (stat != null && !fs.chmod(tmp, stat.mode)) || !fs.rename(tmp, file)) {
-        fs.unlink(tmp);
-        return false;
-    }
-    return true;
+    // next to it, read back, flushed and renamed over it, never truncated
+    // and rewritten in place, where a crash or a full overlay lost every
+    // entry (UC-076): core/durable.uc, as the package removal does
+    // (service/package.uc). Written only when the entry is missing. The
+    // mode stays; a symlink stays one.
+    return durable.durable_rewrite(as_string(path), data, 0644);
 }
 
 function tproxy_route4_present(table) {

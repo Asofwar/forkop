@@ -76,20 +76,19 @@ printf 'in progress\n' >"/etc/init.d/sing-box.forkop.$$"
 printf '#!/bin/sh\n# an older managed script\n' >/etc/init.d/sing-box
 # The copy being installed is named after its writer, which lives until the
 # rename: another start must find that writer alive and keep the copy. The
-# chmod of the copy records whether the pid in its name is the writer.
-mkdir -p "$WORK/chmod-bin"
-cat >"$WORK/chmod-bin/chmod" <<'CHMOD'
+# flush before the rename (core/durable.uc) records whether the pid in the
+# name of the copy is the writer.
+mkdir -p "$WORK/sync-bin"
+cat >"$WORK/sync-bin/sync" <<'SYNC'
 #!/bin/sh
-case "$2" in
-  /etc/init.d/sing-box.forkop.*)
-    pid="${2##*.}"
-    if grep -q 'runtime\.uc' "/proc/$pid/cmdline" 2>/dev/null; then echo writer; else echo "not the writer: $pid"; fi >>"$WORK/initd.copy-owner"
-    ;;
-esac
-exec "$REAL_CHMOD" "$@"
-CHMOD
-"$REAL_CHMOD" 0755 "$WORK/chmod-bin/chmod"
-(PATH="$WORK/chmod-bin:$PATH" configure)
+for copy in /etc/init.d/sing-box.forkop.*; do
+  [ -f "$copy" ] && [ "$copy" != "/etc/init.d/sing-box.forkop.$LIVE" ] || continue
+  pid="${copy##*.}"
+  if grep -q 'runtime\.uc' "/proc/$pid/cmdline" 2>/dev/null; then echo writer; else echo "not the writer: $pid"; fi >>"$WORK/initd.copy-owner"
+done
+SYNC
+chmod 0755 "$WORK/sync-bin/sync"
+(PATH="$WORK/sync-bin:$PATH" LIVE=$$ configure)
 printf '%s\n' "$dead" >"$WORK/initd.dead"
 printf '%s\n' "$$" >"$WORK/initd.live"
 # A copy a crash left while the script itself is current (another writer
@@ -101,7 +100,7 @@ printf 'stale\n' >"/etc/init.d/sing-box.forkop.$dead"
 configure
 printf '%s\n' "$dead" >"$WORK/initd.dead2"
 SH
-  REAL_CHMOD="$(command -v chmod)" unshare -rm sh "$WORK/initd-check.sh" >"$WORK/initd.out" 2>&1 ||
+  unshare -rm sh "$WORK/initd-check.sh" >"$WORK/initd.out" 2>&1 ||
     fail "configure-service failed: $(cat "$WORK/initd.out")"
   grep -q 'Forkop managed sing-box service' "$WORK/initd/sing-box" || fail "the managed init script was not installed"
   [ -x "$WORK/initd/sing-box" ] || fail "the managed init script is not executable"

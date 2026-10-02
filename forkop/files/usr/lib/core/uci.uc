@@ -2,6 +2,7 @@
 
 let fs = require("fs");
 let common = require("core.common");
+let durable = require("core.durable");
 
 let as_string = common.as_string;
 
@@ -759,20 +760,13 @@ function commit_option(config_file, path, value, keep_existing, cli) {
         else if (fs.writefile(dir + "/save/" + OWN_OPTION_PACKAGE, own + "=" + shell_arg(value) + "\n") != null &&
                  command_ok([ ...base, "commit", OWN_OPTION_PACKAGE ]) &&
                  replace(command_text([ ...base, "get", own ]), /\n$/, "") == as_string(value)) {
+            // Read back and flushed before and after the rename, as a
+            // session commit does (core/durable.uc): a full overlay takes a
+            // small write and keeps none of it, and the empty copy would
+            // replace the whole configuration.
             let after = fs.readfile(copy);
-            let tmp = fs.dirname(file) + "/." + fs.basename(file) + ".forkop-" + as_string(fs.readlink("/proc/self"));
-            let out = after != null ? fs.open(tmp, "w", 0600) : null;
-            let written = out != null && out.write(after) != null;
-            if (out != null)
-                out.close();
-            // Read back and flushed, as a session commit does: a full overlay
-            // takes a small write and keeps none of it, and the empty copy
-            // would replace the whole configuration.
-            if (written && fs.readfile(tmp) === after && fs.chmod(tmp, current.mode) && command_ok([ "sync" ]) &&
-                fs.rename(tmp, file))
+            if (after != null && durable.durable_rewrite(file, after))
                 result = "written";
-            else
-                fs.unlink(tmp);
         }
     }
     if (locked)
@@ -873,39 +867,29 @@ function session_copy(package_name, config_file, cli) {
         }
     };
     // file becomes the committed copy, written next to it, read back and
-    // flushed first. The lock is held only to check that file still holds
-    // what the session read and to rename the copy over it, so readers and
-    // other commits of the package wait no longer than for a libuci commit.
-    // A file someone else changed meanwhile is left as it is (conflict).
+    // flushed first (core/durable.uc). The lock is held only to check that
+    // file still holds what the session read and to rename the copy over it,
+    // so readers and other commits of the package wait no longer than for a
+    // libuci commit. A file someone else changed meanwhile is left as it is
+    // (conflict).
     let replace_config = function() {
         let after = fs.readfile(copy);
-        let now = fs.stat(file);
-        if (after == null || now == null)
+        if (after == null || fs.stat(file) == null)
             return false;
         if (after == before)
             return true;
-        let tmp = fs.dirname(file) + "/." + fs.basename(file) + ".forkop-" + as_string(fs.readlink("/proc/self"));
-        let out = fs.open(tmp, "w", 0600);
-        let written = out != null && out.write(after) != null;
-        if (out != null)
-            out.close();
-        let renamed = false;
-        if (written && fs.readfile(tmp) == after && fs.chmod(tmp, now.mode) && command_ok([ "sync" ])) {
+        return durable.durable_rewrite(file, after, null, function(tmp, target) {
             let lock = lock_file();
             let current = lock != null ? lock.read("all") : null;
+            let renamed = false;
             if (current != null && current != before)
                 conflict = true;
             else if (current != null)
-                renamed = fs.rename(tmp, file);
+                renamed = fs.rename(tmp, target);
             if (lock != null)
                 lock.close();
-        }
-        if (!renamed) {
-            fs.unlink(tmp);
-            return false;
-        }
-        command_ok([ "sync" ]);
-        return true;
+            return renamed;
+        });
     };
 
     return {

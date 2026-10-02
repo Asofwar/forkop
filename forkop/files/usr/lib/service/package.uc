@@ -3,6 +3,7 @@
 let fs = require("fs");
 let uci_core = require("core.uci");
 let constants = require("core.constants");
+let durable = require("core.durable");
 
 function as_string(value) {
     return value == null ? "" : "" + value;
@@ -129,23 +130,12 @@ function clear_component_update_check_cache() {
 }
 
 // rt_tables names the tables of other packages too. It is written to a copy
-// next to it, read back and renamed over it, never truncated and rewritten
-// in place, where a crash or a full overlay lost every entry (UC-076). The
-// mode stays; a symlink stays one and the file it points to is replaced.
+// next to it, read back, flushed and renamed over it, never truncated and
+// rewritten in place, where a crash or a full overlay lost every entry
+// (UC-076): core/durable.uc, as the start does (nft/apply.uc). The mode
+// stays; a symlink stays one and the file it points to is replaced.
 function replace_rt_tables(data) {
-    let file = fs.realpath(RT_TABLES_PATH) || RT_TABLES_PATH;
-    let stat = fs.stat(file);
-    let tmp = fs.dirname(file) + "/." + fs.basename(file) + ".forkop-" + as_string(fs.readlink("/proc/self"));
-    fs.unlink(tmp);
-    let out = fs.open(tmp, "w", 0644);
-    let written = out != null && out.write(data) != null;
-    if (out != null)
-        out.close();
-    if (!written || fs.readfile(tmp) !== data || (stat != null && !fs.chmod(tmp, stat.mode)) || !fs.rename(tmp, file)) {
-        fs.unlink(tmp);
-        return false;
-    }
-    return true;
+    return durable.durable_rewrite(RT_TABLES_PATH, data, 0644);
 }
 
 function remove_rt_tables_entry() {

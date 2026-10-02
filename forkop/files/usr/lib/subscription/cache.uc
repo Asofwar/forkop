@@ -2,6 +2,7 @@
 
 let fs = require("fs");
 let constants = require("core.constants");
+let durable = require("core.durable");
 let uci_core = require("core.uci");
 let connections = require("config.connections");
 let subscription_share_link = require("subscription.share_link");
@@ -520,12 +521,10 @@ function copy_file(source, target) {
     // A write that failed half-way leaves a partial copy (on flash for the
     // persistent cache): it goes too (UC-159). A full filesystem can take
     // the write and keep none of it: the copy is read back before it
-    // replaces the cache an offline start falls back on.
-    if (!write_file(tmp_path, data) || fs.readfile(tmp_path) !== data || !fs.rename(tmp_path, as_string(target))) {
-        fs.unlink(tmp_path);
-        return false;
-    }
-    return true;
+    // replaces the cache an offline start falls back on (core/durable.uc).
+    // Not flushed: a cache, checked before use and downloaded again when
+    // lost, written on each subscription update that changes it.
+    return durable.checked_replace(tmp_path, as_string(target), data);
 }
 
 function unlink_path(path) {
@@ -683,15 +682,11 @@ function write_text_if_changed(path, value) {
         return true;
     }
 
+    // Read back before the rename, as copy_file: an empty source URL in
+    // place of the cached one would make the persistent cache unusable.
     let tmp_path = sprintf("%s.%d.%d.tmp", path, clock()[0], clock()[1]);
-    if (!write_file(tmp_path, value)) {
-        unlink_path(tmp_path);
+    if (!durable.checked_replace(tmp_path, path, value))
         return false;
-    }
-    if (!fs.rename(tmp_path, path)) {
-        unlink_path(tmp_path);
-        return false;
-    }
 
     chmod_path(path, "600");
     return true;

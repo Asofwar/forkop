@@ -14,7 +14,8 @@ set -euo pipefail
 #   FORKOP_RULESET_MATCH_BUDGET seconds in sing-box, and a run never outlasts
 #   what is left of it; after that, lists are undecidable instead of asked;
 # - a caller that resolves many targets for a waiting page (autotune_groups)
-#   limits the whole process (limit_ruleset_time) the same way.
+#   limits the whole process (limit_ruleset_time) the same way;
+# - the watchdog that kills a run leaves no process behind.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB="$ROOT_DIR/forkop/files/usr/lib"
@@ -157,5 +158,27 @@ undecidable 0 null 0"
 $got
 want
 $want"
+
+# ---- the watchdog leaves nothing behind ------------------------------------
+# A sing-box that ends at once (here: true) raced the old watchdog: killed
+# before it had set its trap, it left its sleep running for the whole
+# timeout, about one run in three. 200 runs (one per target) with a timeout
+# nobody else uses; every process they leave carries RESOLVER_RUN_MARK. A
+# killed watchdog may leave its current one-second sleep: give it 3s.
+targets=""
+for n in $(seq 1 200); do targets="$targets${targets:+, }{ \"host\": \"host$n.test\" }"; done
+FORKOP_RULESET_MATCH_BIN=true FORKOP_RULESET_MATCH_TIMEOUT=29 FORKOP_RULESET_MATCH_BUDGET=59 RESOLVER_RUN_MARK="$WORK" \
+    run_steps "{ \"rule_set\": $sets, \"rules\": [ $(route yt youtube-out) ], \"steps\": [ $targets ] }" >/dev/null
+marked() {
+    local count=0 environ
+    for environ in /proc/[0-9]*/environ; do
+        if tr '\0' '\n' 2>/dev/null <"$environ" | grep -qxF "RESOLVER_RUN_MARK=$WORK"; then count=$((count + 1)); fi
+    done 2>/dev/null
+    echo "$count"
+}
+deadline=$((SECONDS + 3))
+while [ "$(marked)" != 0 ] && [ "$SECONDS" -lt "$deadline" ]; do sleep 0.2; done
+left="$(marked)"
+[ "$left" = 0 ] || fail "watchdog: $left processes of 200 runs were left behind"
 
 echo "routing_resolve_rule_set_bounds: ok"

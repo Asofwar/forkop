@@ -258,15 +258,17 @@ function limit_ruleset_time(seconds) {
 
 // One bounded sing-box run: everything it printed (stdout and stderr), or
 // null when it failed, was killed at RULESET_MATCH_TIMEOUT or at what is
-// left of the budget, or nothing is left. The watchdog takes its sleep down
-// with it.
+// left of the budget, or nothing is left. The watchdog counts the seconds
+// with one-second sleeps: killed when sing-box ends, it leaves at most one
+// of them behind for less than a second (a trap cannot reliably take a
+// longer sleep down: the kill can land before the sleep is recorded).
 function run_singbox(args) {
     let left = ruleset_seconds_left();
     if (left < 1) return null;
     let timeout = left < RULESET_MATCH_TIMEOUT ? left : RULESET_MATCH_TIMEOUT;
     let script = common.shell_command(args) + " 2>&1 & child=$!; " +
-        "( sleep " + timeout + " & s=$!; trap 'kill \"$s\" 2>/dev/null; exit 0' TERM; " +
-        "wait \"$s\"; kill -KILL \"$child\" 2>/dev/null ) >/dev/null 2>&1 & watchdog=$!; " +
+        "( i=0; while [ \"$i\" -lt " + timeout + " ]; do sleep 1; i=$((i + 1)); done; " +
+        "kill -KILL \"$child\" 2>/dev/null ) >/dev/null 2>&1 & watchdog=$!; " +
         "wait \"$child\"; rc=$?; kill \"$watchdog\" 2>/dev/null; exit \"$rc\"";
     let started = monotonic();
     let pipe = fs.popen(common.shell_command([ "sh", "-c", script ]) + " 2>/dev/null", "r");

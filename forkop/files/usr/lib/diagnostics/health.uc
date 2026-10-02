@@ -1,6 +1,7 @@
 #!/usr/bin/env ucode
 
 let fs = require("fs");
+let durable = require("core.durable");
 
 const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
 const RUNTIME_DIR = getenv("FORKOP_RUNTIME_STATE_DIR") || "/var/run/forkop";
@@ -11,7 +12,8 @@ const RELOAD_LOCK = getenv("FORKOP_RELOAD_LOCK_DIR") || "/var/run/forkop.reload.
 // Significant events survive reboots in a small journal on flash. Only
 // recorded events land there (starts, reloads, restores, autotune applies,
 // manual snapshot changes), never probes or measurements. When the journal
-// outgrows its cap it is rewritten once to the newest HISTORY_KEEP records.
+// outgrows its cap it is rewritten once to the newest HISTORY_KEEP records,
+// flushed to flash before and after the rename (UC-025).
 const HISTORY_FILE = getenv("FORKOP_HISTORY_FILE") || "/etc/forkop/history.jsonl";
 const HISTORY_MAX = 200;
 const HISTORY_MAX_BYTES = 65536;
@@ -110,12 +112,7 @@ function append_history(event) {
     let lines = "";
     for (let item in slice(events, max(0, length(events) - HISTORY_KEEP)))
         lines += sprintf("%J\n", item);
-    let path = sprintf("%s.%d.tmp", HISTORY_FILE, clock()[1]);
-    if (fs.writefile(path, lines) == null || !fs.rename(path, HISTORY_FILE)) {
-        fs.unlink(path);
-        return false;
-    }
-    return true;
+    return durable.durable_replace(sprintf("%s.%d.tmp", HISTORY_FILE, clock()[1]), HISTORY_FILE, lines);
 }
 
 function event_state() {

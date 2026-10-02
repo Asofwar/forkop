@@ -33,6 +33,7 @@ let connections = require("config.connections");
 let singbox_constants = require("singbox.constants");
 let constants = require("core.constants");
 let runtime_lock = require("core.runtime_lock");
+let durable = require("core.durable");
 
 let as_string = common.as_string;
 let array_or_empty = common.array_or_empty;
@@ -196,17 +197,11 @@ function self_pid() {
 // What the kill-switch keeps on flash (the saved policy, the block list,
 // state.json) is flushed before the rename makes it the file and again
 // after it, so a power cut leaves the old or the new file, never an empty
-// one (UC-212). Callers write only what changed.
+// one (UC-212, core/durable.uc). Callers write only what changed.
 function write_durable(path, content) {
     if (!ensure_dir(dirname(path)))
         return false;
-    let tmp = path + ".tmp." + self_pid();
-    if (fs.writefile(tmp, as_string(content)) == null || !run_quiet([ "sync" ]) || !fs.rename(tmp, path)) {
-        fs.unlink(tmp);
-        return false;
-    }
-    run_quiet([ "sync" ]);
-    return true;
+    return durable.durable_replace(path + ".tmp." + self_pid(), path, as_string(content));
 }
 
 function write_atomic(path, content) {

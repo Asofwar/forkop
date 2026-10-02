@@ -3,8 +3,8 @@
 // Persistent autotune state (flash) and the last full tune outputs (tmpfs).
 //
 // /etc/forkop/autotune/state.json — survives reboots, written atomically
-// (temporary file + rename) and only when its content changed, at most once
-// per worker run:
+// (temporary file + rename, flushed to flash before and after the rename,
+// UC-025) and only when its content changed, at most once per worker run:
 //   { version, targets: { <id>: summary }, groups: { <section>: group },
 //     applies: [ records ], next_run_at, rotation, worker, recovered_at }
 // A state file that exists but cannot be trusted (corrupt, foreign version)
@@ -20,6 +20,7 @@
 // /var/run/forkop/autotune/last/<id>.json — the complete tune output of the
 // last run of a target, for technical details; gone after a reboot.
 let fs = require("fs");
+let durable = require("core.durable");
 
 const STATE_FILE = getenv("FORKOP_AUTOTUNE_STATE_FILE") || "/etc/forkop/autotune/state.json";
 const LAST_DIR = getenv("FORKOP_AUTOTUNE_LAST_DIR") || "/var/run/forkop/autotune/last";
@@ -85,7 +86,8 @@ function write(state) {
     state.applies = slice(state.applies || [], -MAX_APPLY_RECORDS);
     let text = sprintf("%J\n", state);
     if (fs.readfile(STATE_FILE) == text) return true;
-    return write_atomic(STATE_FILE, text, 0600);
+    if (!mkdir_p(fs.dirname(STATE_FILE), 0700)) return false;
+    return durable.durable_replace(STATE_FILE + ".tmp." + as_string(fs.readlink("/proc/self")), STATE_FILE, text, 0600);
 }
 
 function round3(value) {

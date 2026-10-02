@@ -9,7 +9,7 @@ export FORKOP_RUNTIME_STATE_DIR="$TEST_DIR"
 cat > "$TEST_DIR/fixture.json" <<'JSON'
 {"ui":{"service":{"forkop":{"running":1,"dns_configured":1},"sing_box":{"running":1}}},"guard":false,"package_pending":false,"events":[]}
 JSON
-ucode "$ROOT/forkop/files/usr/lib/diagnostics/health.uc" fixture "$TEST_DIR/fixture.json" > "$TEST_DIR/output.json"
+ucode -L "$ROOT/forkop/files/usr/lib" "$ROOT/forkop/files/usr/lib/diagnostics/health.uc" fixture "$TEST_DIR/fixture.json" > "$TEST_DIR/output.json"
 node - "$TEST_DIR/output.json" <<'JS'
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -23,7 +23,7 @@ JS
 cat > "$TEST_DIR/fixture.json" <<'JSON'
 {"ui":{"service":{"forkop":{"running":1,"dns_configured":1},"sing_box":{"running":1}}},"guard":true,"package_pending":false,"events":[{"kind":"recovery","status":"recovered","timestamp":42}]}
 JSON
-ucode "$ROOT/forkop/files/usr/lib/diagnostics/health.uc" fixture "$TEST_DIR/fixture.json" > "$TEST_DIR/output.json"
+ucode -L "$ROOT/forkop/files/usr/lib" "$ROOT/forkop/files/usr/lib/diagnostics/health.uc" fixture "$TEST_DIR/fixture.json" > "$TEST_DIR/output.json"
 node - "$TEST_DIR/output.json" <<'JS'
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -35,7 +35,7 @@ JS
 cat > "$TEST_DIR/fixture.json" <<'JSON'
 {"ui":{"service":{"forkop":{"running":1,"dns_configured":1},"sing_box":{"running":1}}},"guard":false,"package_pending":false,"events":[{"kind":"recovery","status":"recovered","timestamp":42}]}
 JSON
-ucode "$ROOT/forkop/files/usr/lib/diagnostics/health.uc" fixture "$TEST_DIR/fixture.json" > "$TEST_DIR/output.json"
+ucode -L "$ROOT/forkop/files/usr/lib" "$ROOT/forkop/files/usr/lib/diagnostics/health.uc" fixture "$TEST_DIR/fixture.json" > "$TEST_DIR/output.json"
 node - "$TEST_DIR/output.json" <<'JS'
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -44,7 +44,7 @@ JS
 cat > "$TEST_DIR/fixture.json" <<'JSON'
 {"ui":{"service":{"forkop":{"running":1,"dns_configured":1},"sing_box":{"running":1}}},"guard":false,"package_pending":true,"events":[]}
 JSON
-ucode "$ROOT/forkop/files/usr/lib/diagnostics/health.uc" fixture "$TEST_DIR/fixture.json" > "$TEST_DIR/output.json"
+ucode -L "$ROOT/forkop/files/usr/lib" "$ROOT/forkop/files/usr/lib/diagnostics/health.uc" fixture "$TEST_DIR/fixture.json" > "$TEST_DIR/output.json"
 node - "$TEST_DIR/output.json" <<'JS'
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -55,7 +55,7 @@ JS
 cat > "$TEST_DIR/fixture.json" <<'JSON'
 {"ui":{"service":{"forkop":{"running":1},"sing_box":{"running":1}}},"guard":false,"package_pending":false,"events":[{"kind":"restore","status":"failure","timestamp":42}]}
 JSON
-ucode "$ROOT/forkop/files/usr/lib/diagnostics/health.uc" fixture "$TEST_DIR/fixture.json" > "$TEST_DIR/output.json"
+ucode -L "$ROOT/forkop/files/usr/lib" "$ROOT/forkop/files/usr/lib/diagnostics/health.uc" fixture "$TEST_DIR/fixture.json" > "$TEST_DIR/output.json"
 node - "$TEST_DIR/output.json" <<'JS'
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -70,7 +70,7 @@ JS
 # a guard needs no action of its own.
 recovery_case() { # recovery_case <fixture json> <expected action> <runtime> <restore>
   printf '%s\n' "$1" > "$TEST_DIR/fixture.json"
-  ucode "$ROOT/forkop/files/usr/lib/diagnostics/health.uc" fixture "$TEST_DIR/fixture.json" > "$TEST_DIR/output.json"
+  ucode -L "$ROOT/forkop/files/usr/lib" "$ROOT/forkop/files/usr/lib/diagnostics/health.uc" fixture "$TEST_DIR/fixture.json" > "$TEST_DIR/output.json"
   node - "$TEST_DIR/output.json" "$2" "$3" "$4" <<'JS'
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -93,16 +93,16 @@ recovery_case "{$RUNNING,\"restore_guard\":true,\"transaction\":true,\"events\":
 recovery_case "{$RUNNING,\"events\":[{\"kind\":\"reload\",\"status\":\"failure\",\"timestamp\":42}]}" null false false
 recovery_case "{$RUNNING,\"events\":[]}" null false false
 printf '{broken' > "$TEST_DIR/fixture.json"
-ucode "$ROOT/forkop/files/usr/lib/diagnostics/health.uc" fixture "$TEST_DIR/fixture.json" > "$TEST_DIR/output.json"
+ucode -L "$ROOT/forkop/files/usr/lib" "$ROOT/forkop/files/usr/lib/diagnostics/health.uc" fixture "$TEST_DIR/fixture.json" > "$TEST_DIR/output.json"
 node - "$TEST_DIR/output.json" <<'JS'
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 assert.equal(JSON.parse(fs.readFileSync(process.argv[2])).overall, 'unknown');
 JS
-FORKOP_RUNTIME_STATE_DIR="$TEST_DIR" ucode "$ROOT/forkop/files/usr/lib/diagnostics/health.uc" record reload success
+FORKOP_RUNTIME_STATE_DIR="$TEST_DIR" ucode -L "$ROOT/forkop/files/usr/lib" "$ROOT/forkop/files/usr/lib/diagnostics/health.uc" record reload success
 test "$(stat -c %a "$TEST_DIR/health-events.json")" = 600
 for n in 1 2 3 4 5 6 7 8 9 10 11; do
-  FORKOP_RUNTIME_STATE_DIR="$TEST_DIR" ucode "$ROOT/forkop/files/usr/lib/diagnostics/health.uc" record reload failure
+  FORKOP_RUNTIME_STATE_DIR="$TEST_DIR" ucode -L "$ROOT/forkop/files/usr/lib" "$ROOT/forkop/files/usr/lib/diagnostics/health.uc" record reload failure
 done
 node - "$TEST_DIR/health-events.json" <<'JS'
 const assert = require('node:assert/strict');

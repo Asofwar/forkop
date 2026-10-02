@@ -50,6 +50,7 @@ let runtime_lock = require("core.runtime_lock");
 let list_worker = require("core.list_worker");
 let resolver = require("routing.resolve");
 let dpi_strategy = require("core.dpi_strategy");
+let durable = require("core.durable");
 
 const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
 const CONFIG_FILE = getenv("FORKOP_CONFIG_FILE") || "/etc/config/forkop";
@@ -239,12 +240,12 @@ function state_read() {
     return type(s) == "object" && type(s.phase) == "string" ? s :
         { phase: "needs_attention", status: "needs_attention", reason: "apply_state_unreadable", unreadable: true };
 }
+// Flushed to flash before and after the rename (UC-025): a power cut leaves
+// the previous record or this one, never an empty one.
 function state_write(state) {
     let dir = fs.dirname(STATE_FILE);
     if (fs.stat(dir) == null) fs.mkdir(dir, 0700);
-    let tmp = STATE_FILE + ".tmp." + autotune_lock.owner_pid();
-    if (fs.writefile(tmp, sprintf("%J\n", state)) == null || !fs.rename(tmp, STATE_FILE)) { fs.unlink(tmp); return false; }
-    return true;
+    return durable.durable_replace(STATE_FILE + ".tmp." + autotune_lock.owner_pid(), STATE_FILE, sprintf("%J\n", state));
 }
 
 // ---- production observation --------------------------------------------------

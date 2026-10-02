@@ -131,7 +131,9 @@ function dnsDescription(status) {
 function standbyDescription(status) {
   if (status.dns_standby) {
     return badge(
-      _("In use: sing-box does not answer; other names use the regular DNS"),
+      _(
+        "In use: sing-box does not answer; names of VPN sections stay blocked, other names use the regular DNS",
+      ),
       "warn",
     );
   }

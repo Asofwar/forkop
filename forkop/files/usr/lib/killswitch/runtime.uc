@@ -58,6 +58,8 @@ const CACHE_DIR = constant_value("KILLSWITCH_CACHE_DIR", "/tmp/forkop-killswitch
 const FAKEIP_RANGE = constant_value("SB_FAKEIP_INET4_RANGE", "198.18.0.0/15");
 const FAKEIP6_RANGE = constant_value("SB_FAKEIP_INET6_RANGE", "fc00::/18");
 const DNS_BLOCKED_FILE = STATE_DIR + "/dns-blocked.servers";
+// The standby resolver's: the names of every VPN section (UC-211).
+const STANDBY_BLOCKED_FILE = STATE_DIR + "/standby-blocked.servers";
 // dnsmasq reads it (dns/apply.uc keeps it empty while it forwards to sing-box).
 const DNS_SERVERS_FILE = STATE_DIR + "/dnsmasq.servers";
 const DNSMASQ_INIT = getenv("DNSMASQ_INIT") || "/etc/init.d/dnsmasq";
@@ -230,6 +232,15 @@ function protected_section_names(sections) {
     let result = [];
     for (let section in sections)
         if (section_protected(section))
+            push(result, as_string(section[".name"]));
+    return result;
+}
+
+// Every enabled VPN (connection) section, protected or not.
+function vpn_section_names(sections) {
+    let result = [];
+    for (let section in sections)
+        if (bool_option(section, "enabled", true) && connections.is_connections_action(option(section, "action", "")))
             push(result, as_string(section[".name"]));
     return result;
 }
@@ -651,7 +662,7 @@ function rule_unrestricted(rule) {
 // clients therefore blocks nothing through DNS; one that excludes some
 // clients blocks its names for them as well (the fail-closed side for all
 // the others), and both are reported (UC-193).
-function render_dns_from_config(config, protected_names) {
+function render_dns_from_config(config, protected_names, memo) {
     let result = {
         ok: false, error: "", content: "", domains: 0, exceptions: 0, shadowed: 0,
         invalid: 0, uncovered_keyword: 0, uncovered_regex: 0, uncovered_inverted: 0,
@@ -683,7 +694,7 @@ function render_dns_from_config(config, protected_names) {
         if (protected_tags[as_string(object_or_empty(rules[i]).outbound)] != null)
             last_protected = i;
 
-    let memo = {};
+    memo = memo || {};
     let relevant = [];
     for (let i = 0; i <= last_protected; i++) {
         let rule = object_or_empty(rules[i]);
@@ -837,8 +848,10 @@ function dns_status() {
 // While Forkop runs, dnsmasq forwards everything to sing-box. If sing-box
 // dies, that would take all DNS down, not only the protected names. The
 // watcher then redirects client DNS to a standby dnsmasq that answers the
-// protected names locally and forwards the rest to the ordinary upstream,
-// and hands DNS back as soon as sing-box answers again.
+// names of every VPN section locally (the protected ones, and the others,
+// which a dead sing-box fails without the kill-switch as well) and forwards
+// the rest to the ordinary upstream, and hands DNS back as soon as sing-box
+// answers again.
 
 function fixture_uci() {
     return as_string(getenv("FORKOP_UCI_STATE_FILE") || "") != "";
@@ -910,7 +923,7 @@ function standby_config_text(settings) {
     if (match(domain, /^[A-Za-z0-9_.-]+$/) != null)
         push(lines, "server=/" + domain + "/127.0.0.1");
 
-    let blocked = fs.readfile(DNS_BLOCKED_FILE);
+    let blocked = fs.readfile(STANDBY_BLOCKED_FILE) ?? fs.readfile(DNS_BLOCKED_FILE);
     return join("\n", lines) + "\n" + (blocked == null ? "" : blocked);
 }
 
@@ -996,7 +1009,7 @@ function lift_orphaned() {
     if (ks_table_present())
         run_quiet([ "nft", "delete", "table", "inet", KS_TABLE ]);
     let detached = detach_dns_servers_file();
-    for (let path in [ DNS_SERVERS_FILE, DNS_BLOCKED_FILE, NFT_POLICY, LEGACY_NFT_INCLUDE ])
+    for (let path in [ DNS_SERVERS_FILE, DNS_BLOCKED_FILE, STANDBY_BLOCKED_FILE, NFT_POLICY, LEGACY_NFT_INCLUDE ])
         fs.unlink(path);
     if (detached)
         run_quiet([ DNSMASQ_INIT, "restart" ]);
@@ -1114,9 +1127,10 @@ function unrouted_sections(config, names) {
     return filter(names, (name) => !routed[singbox_constants.outbound_tag(name)]);
 }
 
-function sync_dns(settings, protected_names, config) {
+function sync_dns(settings, protected_names, config, vpn_names) {
     if (bool_option(settings, "dont_touch_dhcp", false)) {
         fs.unlink(DNS_BLOCKED_FILE);
+        fs.unlink(STANDBY_BLOCKED_FILE);
         dns_refresh();
         return { ok: true, managed: false, warning: "dnsmasq is not managed by Forkop (dont_touch_dhcp); protected domains are guarded by nftables and FakeIP only" };
     }
@@ -1125,14 +1139,26 @@ function sync_dns(settings, protected_names, config) {
         return { ok: false, error: "sing-box config " + sing_box_config_path(settings) + " is not readable" };
 
     ruleset_cache_used = {};
-    let rendered = render_dns_from_config(config, protected_names);
+    let memo = {};
+    let rendered = render_dns_from_config(config, protected_names, memo);
     if (!rendered.ok)
         return { ok: false, error: "DNS block list: " + rendered.error };
+    // Without the kill-switch a dead sing-box fails every VPN section, not
+    // only the protected ones: dnsmasq still forwards to it. The standby
+    // resolver that keeps other names working meanwhile must not resolve
+    // theirs either (UC-211).
+    let standby = render_dns_from_config(config, vpn_names, memo);
+    if (!standby.ok)
+        rendered.standby_error = standby.error;
+    let standby_content = standby.ok ? standby.content : rendered.content;
     prune_ruleset_cache();
 
     if (as_string(fs.readfile(DNS_BLOCKED_FILE)) != rendered.content &&
         !write_durable(DNS_BLOCKED_FILE, rendered.content))
         return { ok: false, error: "could not write " + DNS_BLOCKED_FILE };
+    if (as_string(fs.readfile(STANDBY_BLOCKED_FILE)) != standby_content &&
+        !write_durable(STANDBY_BLOCKED_FILE, standby_content))
+        rendered.standby_error = "could not write " + STANDBY_BLOCKED_FILE;
     if (!dns_refresh())
         return { ok: false, error: "dnsmasq could not be refreshed" };
 
@@ -1148,6 +1174,7 @@ function teardown(reason) {
     let ok = remove_nft_policy();
     remove_legacy_guard_table();
     fs.unlink(DNS_BLOCKED_FILE);
+    fs.unlink(STANDBY_BLOCKED_FILE);
     if (!dns_refresh())
         ok = false;
     write_state({
@@ -1198,7 +1225,8 @@ function runtime_behind_config(manual) {
 
 function protection_present() {
     return fs.stat(NFT_POLICY) != null || fs.stat(LEGACY_NFT_INCLUDE) != null ||
-        fs.stat(DNS_BLOCKED_FILE) != null || read_state().active === true || ks_table_present() ||
+        fs.stat(DNS_BLOCKED_FILE) != null || fs.stat(STANDBY_BLOCKED_FILE) != null ||
+        read_state().active === true || ks_table_present() ||
         run_quiet([ "nft", "list", "table", "inet", LEGACY_GUARD_TABLE ]);
 }
 
@@ -1245,7 +1273,7 @@ function sync_locked(reason, manual) {
     remove_legacy_guard_table();
 
     let warnings = [];
-    let dns_result = sync_dns(settings, names, config);
+    let dns_result = sync_dns(settings, names, config, vpn_section_names(sections));
     if (!dns_result.ok)
         push(warnings, as_string(dns_result.error) + "; the previous DNS block list stays in place");
     else if (dns_result.warning)
@@ -1257,6 +1285,9 @@ function sync_locked(reason, manual) {
         if (dns_result.client_limited > 0)
             push(warnings, sprintf("%d domains of client-limited rules are not blocked through DNS (it is shared by all clients); only their IP lists and FakeIP answers are blocked while Forkop is stopped",
                 dns_result.client_limited));
+        if (dns_result.standby_error)
+            push(warnings, "the standby resolver for a dead sing-box blocks the protected names only, not those of the other VPN sections: " +
+                as_string(dns_result.standby_error));
         if (dns_result.excluded_devices > 0)
             push(warnings, sprintf("%d domains of rules with excluded devices are blocked through DNS for the excluded devices as well (it is shared by all clients) while Forkop is stopped",
                 dns_result.excluded_devices));

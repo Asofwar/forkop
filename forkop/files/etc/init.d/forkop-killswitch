@@ -2,11 +2,11 @@
 # shellcheck disable=SC2034
 
 # The kill-switch's own nftables policy is loaded by fw4 (the package's
-# ruleset-post loader). This service only keeps DNS usable for unprotected
-# names when sing-box dies while dnsmasq still forwards to it: a standby
-# dnsmasq answers protected names locally and everything else through the
-# ordinary upstream, and a watcher redirects client DNS to it until sing-box
-# answers again.
+# ruleset-post loader). This service only keeps DNS usable for the names of
+# other sections when sing-box dies while dnsmasq still forwards to it: a standby
+# dnsmasq answers the names of every VPN section locally and everything else
+# through the ordinary upstream, and a watcher redirects client DNS to it
+# until sing-box answers again.
 
 START=20
 STOP=90

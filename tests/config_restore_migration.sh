@@ -356,7 +356,25 @@ cmp -s "$FORKOP_CONFIG_FILE" "$WORK/semi.uci" || fail "snapshot with ';': not re
 [ "$(lkg)" = semi ] || fail "snapshot with ';': last-known-working"
 ok "same-schema snapshot the full reader cannot follow -> restored byte for byte"
 
-# 9. The list says which snapshots a restore migrates, from which version to
+# 9. After a downgrade the configuration keeps the config_version a newer
+# release wrote; no migration of this release reaches it, so a snapshot of
+# this release (one it can raise to nothing) needs none.
+live_config
+sed -i "s/option config_version '1.0.5'/option config_version '1.0.6'/" "$FORKOP_CONFIG_FILE"
+sed "s/option marker 'live'/option marker 'downgraded'/" "$FORKOP_CONFIG_FILE" |
+  sed "s/option config_version '1.0.6'/option config_version '1.0.5'/" > "$WORK/downgraded.uci"
+put_snapshot downgraded 1.0.33-test "$WORK/downgraded.uci"
+PATH="$WORK/bin:$PATH" "$REAL_UCODE" -L "$LIB" "$SCRIPT" list > "$WORK/list.json"
+node -e '
+  const item = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).find((i) => i.id === "downgraded");
+  if (!item || item.migration !== undefined) process.exit(1);
+' "$WORK/list.json" || fail "after a downgrade: the list announces a migration"
+restore downgraded
+[ "$(json status)" = success ] && [ -z "$(json migration)" ] || fail "after a downgrade: not restored as it is"
+cmp -s "$FORKOP_CONFIG_FILE" "$WORK/downgraded.uci" || fail "after a downgrade: not restored byte for byte"
+ok "newer config_version after a downgrade -> snapshot of this release restored as it is"
+
+# 10. The list says which snapshots a restore migrates, from which version to
 # which; new snapshots record their schema; nothing secret is listed.
 live_config
 PATH="$WORK/bin:$PATH" "$REAL_UCODE" -L "$LIB" "$SCRIPT" list > "$WORK/list.json"

@@ -1536,6 +1536,13 @@ const MIGRATIONS = [
     { id: "vpn_guard_kill_switch_v1", run: migrate_vpn_guard_to_kill_switch }
 ];
 
+// Whether the migrations raise a config_version: they write 1.0.5 over an
+// older one (apply_migrations). A newer one, which a newer release wrote and
+// a downgrade kept, stays as it is.
+function raises_config_version(version) {
+    return compare_versions(version, "1.0.4") <= 0;
+}
+
 function apply_migrations(ctx) {
     ctx.source_release = option(ctx.model.settings, CONFIG_VERSION_OPTION, "");
 
@@ -1564,7 +1571,7 @@ function apply_migrations(ctx) {
     if (added)
         set_list_option(ctx, ctx.model.settings, APPLIED_MIGRATIONS_OPTION, applied);
 
-    if (release_at_most(ctx, "1.0.4"))
+    if (raises_config_version(ctx.source_release))
         set_option(ctx, ctx.model.settings, CONFIG_VERSION_OPTION, "1.0.5");
 }
 
@@ -1890,6 +1897,7 @@ function module_exports() {
         migrate_podkop_model: migrate_podkop_model,
         migration_ids: migration_ids,
         compare_versions: compare_versions,
+        raises_config_version: raises_config_version,
         migrate_sections: migrate_sections,
         mark_internal_config_guard: mark_internal_config_guard
     };

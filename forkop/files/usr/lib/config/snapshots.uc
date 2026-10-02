@@ -862,10 +862,13 @@ function sections_schema(sections) {
     return result;
 }
 // Whether a configuration with `schema` lacks a migration of this release
-// that `reference` records, or has an older config_version. A migration
-// unknown to this release (one of a newer release after a downgrade, or
-// mirror_infotechtg_ru_v1, which only the package's mirror-migration.sh
-// records) is none a restore could run.
+// that `reference` records, or has an older config_version that the
+// migrations raise. A migration unknown to this release (one of a newer
+// release after a downgrade, or mirror_infotechtg_ru_v1, which only the
+// package's mirror-migration.sh records) is none a restore could run, nor
+// is a config_version a newer release wrote: after a downgrade the
+// configuration keeps it, and a snapshot of this release has the one this
+// release writes.
 function schema_behind(schema, reference) {
     let missing = filter(reference.applied_migrations, (id) => index(schema.applied_migrations, id) < 0);
     // The common case, an equal state, needs no migration module.
@@ -873,7 +876,8 @@ function schema_behind(schema, reference) {
     let ids = migrations().migration_ids();
     for (let id in missing)
         if (index(ids, id) >= 0) return true;
-    return migrations().compare_versions(schema.config_version, reference.config_version) < 0;
+    return migrations().raises_config_version(schema.config_version) &&
+        migrations().compare_versions(schema.config_version, reference.config_version) < 0;
 }
 // The sections of a configuration as a uci cursor returns them, for
 // config/migration.uc. libuci names an anonymous section when it adds it
@@ -939,12 +943,12 @@ function uci_export(sections) {
 // retired (the old mirror, removed rule sets) and roll applied_migrations
 // back, and nothing would migrate it until the next upgrade. The package
 // migrated the configuration being replaced: a snapshot that lacks one of
-// the migrations it records, or has an older config_version, is migrated
-// the same way, on a copy in memory (config/migration.uc migrate_sections);
-// when the configuration being replaced cannot be read, to every migration
-// of this release. The source snapshot is never written. A snapshot of the
-// same state (or of a newer release after a downgrade, which no migration
-// takes back) is restored as it is, byte for byte.
+// the migrations it records, or has an older config_version that they
+// raise, is migrated the same way, on a copy in memory (config/migration.uc
+// migrate_sections); when the configuration being replaced cannot be read,
+// to every migration of this release. The source snapshot is never written.
+// A snapshot of the same state (or of a newer release after a downgrade,
+// which no migration takes back) is restored as it is, byte for byte.
 //
 // Only what migrate changes in the configuration runs. The runtime caches
 // it resets and the package feeds mirror-migration.sh rewrites (other

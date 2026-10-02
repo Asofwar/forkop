@@ -292,15 +292,20 @@ reset_lock
 printf 'config settings\n' >"$FORKOP_CONFIG_FILE"
 printf 'config settings\n\toption changed 1\n' >"$WORK_DIR/candidate"
 config_hash="$(sha256sum "$FORKOP_CONFIG_FILE" | cut -d' ' -f1)"
-snapshot_apply() { ucode -L "$LIB" "$LIB/config/snapshots.uc" apply "$WORK_DIR/candidate" "$config_hash" || true; }
+# The apply alone sees an nft that lists every guard: a fail-closed guard a
+# failed transition kept, its next check after the service action.
+mkdir -p "$WORK_DIR/guard-bin"
+printf '#!/bin/sh\nexit 0\n' >"$WORK_DIR/guard-bin/nft"
+chmod +x "$WORK_DIR/guard-bin/nft"
+snapshot_apply() { PATH="$WORK_DIR/guard-bin:$PATH" ucode -L "$LIB" "$LIB/config/snapshots.uc" apply "$WORK_DIR/candidate" "$config_hash" || true; }
 autotune_action() {
   ucode -L "$LIB" "$LIB/autotune/apply.uc" status | grep -o '"service_action": *[a-z_"]*' || true
 }
 # busy: the readers found a service action; free: they found none, and the
-# snapshot apply stops at its next check (the snapshot store is full). A
-# queued reload without a live owner is no service action.
+# snapshot apply stops at its next check (the kept guard), before it changes
+# anything. A queued reload without a live owner is no service action.
 busy_answer='{ "status": "stale", "reason": "service_action_in_progress" }'
-free_answer='{ "status": "failed", "reason": "snapshot_retention_full" }'
+free_answer='{ "status": "stale", "reason": "runtime_guard_active" }'
 reader_case() {
   local label="$1" answer
   answer="$(snapshot_apply)"
@@ -310,7 +315,6 @@ reader_case() {
   if [ "$2" = busy ]; then [ "$answer" = '"service_action": "service_action_in_progress"' ]; else [ "$answer" = '"service_action": null' ]; fi ||
     fail "$label: autotune apply saw '$answer'"
 }
-for _ in $(seq 1 10); do ucode -L "$LIB" "$LIB/config/snapshots.uc" create manual >/dev/null; done
 : >"$FORKOP_PENDING_RELOAD_FILE"
 acquire "$B" || fail "the reader lock was refused"
 reader_case "live owner" busy

@@ -1762,8 +1762,15 @@ function start() {
     return status;
 }
 
-function stop_impl(allow_process_conflict) {
+function stop_impl(explicit_stop) {
     let status = 0;
+
+    // A refused stop changes nothing, and DNS stays with the runtime that
+    // still serves traffic: refuse before DNS is restored (UC-215).
+    if (!explicit_stop && module_success(STATE_UC, [ "sing-box-process-conflict" ])) {
+        log_message("Refusing Forkop stop: sing-box process ownership is ambiguous; preserving the existing runtime", "fatal");
+        return 2;
+    }
 
     if (!setting_bool("dont_touch_dhcp", false)) {
         let dns_status = dnsmasq_restore(false);
@@ -1776,11 +1783,14 @@ function stop_impl(allow_process_conflict) {
             status = dns_status;
     }
 
-    let runtime_status = stop_main(allow_process_conflict);
-    // A refused stop left the dataplane untouched. Report that distinctly so
-    // callers can leave DNS with the runtime that is still serving it.
-    if (runtime_status == 2)
-        return 2;
+    let runtime_status = stop_main(explicit_stop);
+    // Ownership changed after the check above: the dataplane is untouched,
+    // but DNS was restored already. That is a failed stop, not a refusal
+    // that left everything as it was.
+    if (runtime_status == 2) {
+        dnsmasq_restore_fail_safe();
+        return 1;
+    }
     if (runtime_status != 0)
         status = runtime_status;
 
@@ -1813,6 +1823,29 @@ function stop_request_source() {
     return by == null || by[2] == "user" ? "user" : source;
 }
 
+// The stop is part of a managed upgrade in progress: its marker is fresh.
+// A failed or refused in-app upgrade can leave the marker behind. A stale
+// one names no transition, and start_inner would refuse the next start over
+// it, so it is removed (UC-217).
+function managed_upgrade_in_progress() {
+    if (fs.stat(MANAGED_UPGRADE_SING_BOX_MARKER) == null)
+        return false;
+    if (module_success(STATE_UC, [ "managed-upgrade-marker-fresh", MANAGED_UPGRADE_SING_BOX_MARKER,
+        as_string(MANAGED_UPGRADE_SING_BOX_MARKER_MAX_AGE_SECONDS) ]))
+        return true;
+    log_message("Removing a stale managed upgrade marker: no upgrade is in progress", "info");
+    remove_file(MANAGED_UPGRADE_SING_BOX_MARKER);
+    return false;
+}
+
+// Puts back what a refused stop recorded over (null: there was no file).
+function restore_file(path, content) {
+    if (content == null)
+        remove_file(path);
+    else
+        write_file(path, content);
+}
+
 // Also recorded by service/initd.uc before it waits for reload.lock; here for
 // a `forkop stop` that does not come through init.d. The stop also revokes
 // what would otherwise bring the runtime back or change it later: the
@@ -1823,7 +1856,24 @@ function stop_request_source() {
 // explicit start; Forkop's own stop for a package or component change keeps
 // it for the start that follows.
 function stop() {
+    // The UI button and a plain init.d stop are explicit shutdowns: they end
+    // Forkop's interception and stop the sing-box that Forkop owns.
+    // Forkop's own stop for a package or component change
+    // (FORKOP_STOP_SOURCE, an upgrade in progress) keeps the ownership
+    // guard, because it brings the same runtime back up afterwards. Its
+    // refusal changes nothing: no stop request, no ended explicit start, no
+    // stopped refresh workers, no DNS change (UC-215, UC-217).
+    let requested_by = as_string(getenv("FORKOP_STOP_SOURCE"));
+    let internal_stop = requested_by == "package" || requested_by == "component" ||
+        getenv("FORKOP_INTERNAL_SERVICE_STOP") == "1" || managed_upgrade_in_progress();
+    if (internal_stop && module_success(STATE_UC, [ "sing-box-process-conflict" ])) {
+        log_message("Refusing Forkop stop: sing-box process ownership is ambiguous; preserving the existing runtime", "fatal");
+        return 2;
+    }
+
     ensure_dir(RUNTIME_STATE_DIR);
+    let previous_request = fs.readfile(STOP_REQUESTED_FILE);
+    let previous_start = fs.readfile(EXPLICIT_START_FILE);
     let now = clock();
     let source = stop_request_source();
     write_file(STOP_REQUESTED_FILE, sprintf("%d.%09d.%s\nby=%s\n", now[0], now[1], owner_pid(), source));
@@ -1831,15 +1881,14 @@ function stop() {
         remove_file(EXPLICIT_START_FILE);
     if (refresh_worker.stop_all(LIB_DIR) > 0)
         log_message("Stopped the rule-set refresh", "info");
-    // The UI button and a plain init.d stop are explicit shutdowns: they end
-    // interception, so every sing-box goes. Forkop's own stop for a package
-    // or component change (FORKOP_STOP_SOURCE, the upgrade marker) keeps the
-    // ownership guard, because it brings the same runtime back up afterwards.
-    let requested_by = as_string(getenv("FORKOP_STOP_SOURCE"));
-    let internal_stop = requested_by == "package" || requested_by == "component" ||
-        getenv("FORKOP_INTERNAL_SERVICE_STOP") == "1" ||
-        fs.stat(MANAGED_UPGRADE_SING_BOX_MARKER) != null;
     let status = stop_impl(!internal_stop);
+    // Refused by a later check (ownership changed meanwhile): the runtime
+    // was not torn down and runs on without a stop request.
+    if (status == 2) {
+        restore_file(STOP_REQUESTED_FILE, previous_request);
+        restore_file(EXPLICIT_START_FILE, previous_start);
+        return 2;
+    }
     remove_file(PENDING_RELOAD_FILE);
     return status;
 }

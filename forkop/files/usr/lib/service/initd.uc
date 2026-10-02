@@ -1077,9 +1077,10 @@ function stop_plan(owner_pid, bin_ok) {
 
 function stop_finish(job_id, status) {
     status = int(status || 0);
-    // Exit 2 means lifecycle refused an ambiguous process owner before any
-    // teardown ran. DNS still belongs to the runtime that is serving it, so
-    // do not swap in the failsafe under a working dataplane.
+    // Exit 2 means lifecycle refused an ambiguous process owner before
+    // anything was changed, DNS included (service/lifecycle.uc stop_impl).
+    // DNS still belongs to the runtime that is serving it, so do not swap
+    // in the failsafe under a working dataplane.
     if (status != 0 && status != 2)
         restore_dnsmasq_failsafe();
     finish_external_service_action("stop", job_id, status);
@@ -1089,6 +1090,8 @@ function stop_finish(job_id, status) {
 // This process owns reload.lock for the stop: it runs `forkop stop` and
 // releases the lock itself.
 function stop_service(owner_pid) {
+    let previous_request = fs.readfile(STOP_REQUESTED_FILE);
+    let previous_start = fs.readfile(EXPLICIT_START_FILE);
     mark_stop_requested();
     // The stop wins over a pending retry, and over a deferred start whose
     // caller still waits for it.
@@ -1108,6 +1111,16 @@ function stop_service(owner_pid) {
     // get it, may have scheduled its retry before it saw this stop request.
     drop_start_retry(1);
     let status = command_status_from_args([ BIN_PATH, "stop" ]);
+    // A refused stop (2) changed nothing and the runtime runs on: withdraw
+    // the stop request recorded above, before the lock goes (UC-217).
+    if (status == 2) {
+        if (previous_request == null)
+            unlink_file(STOP_REQUESTED_FILE);
+        else
+            write_text_file(STOP_REQUESTED_FILE, previous_request);
+        if (previous_start != null)
+            write_text_file(EXPLICIT_START_FILE, previous_start);
+    }
     if (locked)
         release_runtime_dir_lock(RELOAD_LOCK_DIR, lock_owner);
     return stop_finish(job_id, status);

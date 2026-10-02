@@ -894,6 +894,16 @@ function wait_managed_upgrade_sing_box_exit(path, timeout, max_age) {
     }
 }
 
+// A valid marker of an upgrade that is still in progress: the age that
+// service/lifecycle.uc start_inner honours. A failed or refused in-app
+// upgrade can leave the marker behind; a stale one names no transition.
+function managed_upgrade_marker_fresh(path, max_age) {
+    max_age = int(max_age || 120);
+    let marker = managed_upgrade_marker_values(path);
+    let now = int(clock()[0]);
+    return marker != null && now >= int(marker.created_at) && now - int(marker.created_at) <= max_age;
+}
+
 function process_argv(pid) {
     let raw = fs.readfile("/proc/" + as_string(pid) + "/cmdline");
     if (raw == null)
@@ -2212,6 +2222,8 @@ else if (mode == "stop-owned-sing-box-runtime")
     exit(stop_owned_sing_box_and_wait(ARGV[1]) ? 0 : 1);
 else if (mode == "owned-sing-box-process-count")
     print(length(owned_sing_box_processes(forkop_sing_box_config_path())), "\n");
+else if (mode == "managed-upgrade-marker-fresh")
+    exit(managed_upgrade_marker_fresh(ARGV[1], ARGV[2]) ? 0 : 1);
 else if (mode == "stop-managed-sing-box-runtime")
     exit(stop_managed_sing_box_and_wait(ARGV[1]) ? 0 : 1);
 else if (mode == "start-managed-sing-box-runtime")

@@ -2,7 +2,8 @@
 set -euo pipefail
 
 # An explicit Stop ends Forkop's interception and stops the sing-box that
-# Forkop owns, and no other process (UC-194, UC-213, UC-216, UC-229).
+# Forkop owns, and no other process (UC-194, UC-213, UC-215, UC-216, UC-217,
+# UC-229).
 #
 # Before (1.0.28, e6c31a4d): an explicit Stop or Restart sent TERM and KILL to
 # every process whose executable is named sing-box, a user's own sing-box
@@ -11,14 +12,18 @@ set -euo pipefail
 # stopping a stopped Forkop failed, a restart of a stopped Forkop never
 # reached its start (init.d now exits on a failed stop) and recorded a stop
 # by the user, Full uninstall of a stopped Forkop failed at its stop phase,
-# and a stray Forkop runtime outside procd was not stopped at all.
+# and a stray Forkop runtime outside procd was not stopped at all. A refused
+# package stop restored DNS away from the runtime it left serving traffic,
+# and a leftover upgrade marker turned the user's Stop into a refusal.
 #
 # Now an explicit Stop removes Forkop's nft table, ip rules and DNS, and
 # signals only processes proven to be Forkop's: procd's 'sing-box' instance,
 # the process recorded for a managed upgrade, a sing-box that runs Forkop's
 # own configuration file. Each signal re-checks the process identity
 # (core/process_identity.uc) right before it is sent. An unregistered service
-# is a stopped one. Other sing-box processes are reported, not signalled.
+# is a stopped one. Other sing-box processes are reported, not signalled. A
+# refused internal stop changes nothing: not DNS, not the stop request. A
+# stale upgrade marker does not make the user's Stop an internal one.
 #
 # init.d, service/initd.uc, service/lifecycle.uc and the sing-box process
 # handling of service/state.uc are real, with procd's 'sing-box' service
@@ -392,7 +397,57 @@ gone "$stray_pid" || fail "an explicit stop left a stray sing-box that runs Fork
 alive "$foreign_pid" || fail "an explicit stop signalled a sing-box that Forkop does not own"
 [ ! -e "$NFT_TABLE_FILE" ] || fail "an explicit stop left ForkopTable next to a stray runtime"
 
-# 4. Full uninstall of a stopped Forkop passes its stop phase.
+# 4. Forkop's own stop for a package change keeps the ownership guard: with
+#    another sing-box present it refuses (2) and changes nothing - not the
+#    runtime, not DNS, not the stop request.
+reset_case
+runtime_up
+procd_instance
+forkop_pid=$LAST_DOUBLE
+foreign_sing_box
+foreign_pid=$LAST_DOUBLE
+[ "$(rc stop package)" = 2 ] || fail "a package stop with ambiguous sing-box ownership was not refused"
+alive "$forkop_pid" || fail "a refused package stop signalled Forkop's sing-box"
+alive "$foreign_pid" || fail "a refused package stop signalled another program's sing-box"
+[ -e "$NFT_TABLE_FILE" ] || fail "a refused package stop removed ForkopTable"
+[ -e "$IP_RULE_FILE" ] || fail "a refused package stop removed the ip rule at priority 105"
+no_event '^dns ' || fail "a refused package stop changed DNS under the runtime it left running"
+[ ! -e "$STOP_MARKER" ] || fail "a refused package stop left its stop request: $(cat "$STOP_MARKER")"
+[ -e "$START_RECORD" ] || fail "a refused package stop ended the explicit start"
+
+# 5. A stale upgrade marker (a failed in-app upgrade left it) does not turn
+#    the user's Stop into a refused one; a fresh one keeps the guard of the
+#    upgrade in progress, and its refusal changes nothing.
+reset_case
+runtime_up
+procd_instance
+forkop_pid=$LAST_DOUBLE
+foreign_sing_box
+foreign_pid=$LAST_DOUBLE
+start_ticks="$(ucode -L "$REAL_LIB" -e 'print(require("core.process_identity").start_ticks(ARGV[0]))' "$forkop_pid")"
+printf 'format=1\npid=%s\nstart_ticks=%s\ncreated_at=1\n' "$forkop_pid" "$start_ticks" >"$MARKER"
+[ "$(rc stop)" = 0 ] || fail "a stale upgrade marker made the user's Stop fail"
+wait_until 10 gone "$forkop_pid" || fail "a stale upgrade marker kept the user's Stop from stopping Forkop's sing-box"
+alive "$foreign_pid" || fail "the user's Stop signalled a sing-box that Forkop does not own"
+[ ! -e "$NFT_TABLE_FILE" ] || fail "a stale upgrade marker kept the user's Stop from removing ForkopTable"
+[ ! -e "$MARKER" ] || fail "a stale upgrade marker outlived the user's Stop and would refuse the next start"
+
+reset_case
+runtime_up
+procd_instance
+forkop_pid=$LAST_DOUBLE
+foreign_sing_box
+foreign_pid=$LAST_DOUBLE
+start_ticks="$(ucode -L "$REAL_LIB" -e 'print(require("core.process_identity").start_ticks(ARGV[0]))' "$forkop_pid")"
+printf 'format=1\npid=%s\nstart_ticks=%s\ncreated_at=%s\n' "$forkop_pid" "$start_ticks" "$(date +%s)" >"$MARKER"
+[ "$(rc stop)" = 2 ] || fail "a stop during a managed upgrade did not keep the ownership guard"
+alive "$forkop_pid" || fail "a refused stop during an upgrade signalled Forkop's sing-box"
+alive "$foreign_pid" || fail "a refused stop during an upgrade signalled another program's sing-box"
+[ -e "$NFT_TABLE_FILE" ] || fail "a refused stop during an upgrade tore down Forkop's interception"
+[ ! -e "$STOP_MARKER" ] || fail "a refused stop during an upgrade left its stop request"
+[ -e "$START_RECORD" ] || fail "a refused stop during an upgrade ended the explicit start"
+
+# 6. Full uninstall of a stopped Forkop passes its stop phase.
 reset_case
 UNINSTALL_ROOT="$WORK_DIR/uninstall-root"
 mkdir -p "$UNINSTALL_ROOT/etc/init.d" "$UNINSTALL_ROOT/usr/bin" "$UNINSTALL_ROOT/bin"
@@ -413,7 +468,7 @@ wait_until 30 uninstall_finished || fail "full uninstall did not finish"
 grep -q '"state":"complete"' "$UNINSTALL_ROOT"/www/forkop-uninstall.*.json ||
   fail "full uninstall of a stopped Forkop failed: $(cat "$UNINSTALL_ROOT"/www/forkop-uninstall.*.json)"
 
-# 5. Stop stays offered while Forkop owns a sing-box, not for another
+# 7. Stop stays offered while Forkop owns a sing-box, not for another
 #    program's (service/ui.uc stop_available).
 ui_stop_available() {
   env FORKOP_LIB="$REAL_LIB" FORKOP_UI_SING_BOX_BIN_PATH="$WORK_DIR/missing-sing-box" \

@@ -196,6 +196,8 @@ fi
 [ "$rc" = 0 ] || exit "$rc"
 # BREAK_FIRST_RELOAD: the candidate reload leaves an incoherent runtime; the next reload repairs it.
 if [ -n "${BREAK_FIRST_RELOAD:-}" ] && [ ! -e "$STATE/broke-once" ]; then touch "$STATE/broke-once" "$STATE/zapret-broken"; else rm -f "$STATE/zapret-broken"; fi
+# BREAK_ON_RELOAD=<n>: the n-th reload succeeds but leaves an incoherent runtime.
+[ -z "${BREAK_ON_RELOAD:-}" ] || [ "$(grep -c '^reload' "$STUB_LOG/reload.log")" != "$BREAK_ON_RELOAD" ] || touch "$STATE/zapret-broken"
 "$STATE/start-dpi"
 SH
 cat > "$STATE/start-dpi" <<'SH'
@@ -292,7 +294,7 @@ reloads() { grep -c '^reload' "$STUB_LOG/reload.log" 2>/dev/null || true; }
 dpi_args() { tr '\0' ' ' < "/proc/$(head -n 1 "$ZAPRET_CHILD_PID_DIR/Dpi.pid")/cmdline"; }
 reset_apply() {
   reset_state
-  unset PROD_PLAN PROD_SLEEP PROD_QUEUE_BUMP PROD_REMOTE DIG_SLEEP GUARD_SLEEP VALIDATE_SLEEP VALIDATE_FAIL RELOAD_SLEEP UCI_FAIL UCI_EXTRA_CHANGE BREAK_FIRST_RELOAD CONFIRM_FAIL EDIT_BEFORE_RESTORE EDIT_ON_RELOAD STAGE_BEFORE_RESTORE NFQWS_STUB_REJECT DIG_STUB_ANSWER \
+  unset PROD_PLAN PROD_SLEEP PROD_QUEUE_BUMP PROD_REMOTE DIG_SLEEP GUARD_SLEEP VALIDATE_SLEEP VALIDATE_FAIL RELOAD_SLEEP UCI_FAIL UCI_EXTRA_CHANGE BREAK_FIRST_RELOAD BREAK_ON_RELOAD CONFIRM_FAIL EDIT_BEFORE_RESTORE EDIT_ON_RELOAD STAGE_BEFORE_RESTORE NFQWS_STUB_REJECT DIG_STUB_ANSWER \
     LOCAL_DIG_ANSWER PROD_CHAINS CLASH_DOWN HOLD_SLEEP GUARD_FAIL GUARD_HOLD UCI_SLEEP SNAPSHOT_DURING_VERIFY
   pkill -f "$WORK/bin/nfqws --qnum=40" 2>/dev/null || true
   rm -rf "$FORKOP_SNAPSHOT_DIR" "$FORKOP_SNAPSHOT_HASH_DIR" "$FORKOP_AUTOTUNE_APPLY_STATE" "$STATE"/prod.* "$STATE/reload.plan" "$STATE/zapret-broken" "$STATE/broke-once"\
@@ -592,6 +594,13 @@ for case in "0 1 1:needs_attention:failure" "0 1 0:needs_attention:failure"; do
   json "a.equal(r.status, '${rest%%:*}');" "$WORK/out.json"
   [ "$(journal)" = "autotune_rollback:${rest#*:}:automatic:multisplit" ] || fail "${case%%:*}: $(journal)"
 done
+# The restore of the rollback succeeds, but the old strategy is not proven
+# back (its runtime is incoherent after the rollback's reload): the restore
+# and the record disagree, and the history follows the record.
+reset_apply; plan_ready; rm -rf "$STATE/health"; export PROD_PLAN=reset BREAK_ON_RELOAD=2; at apply "$WORK/plan.json"
+unset PROD_PLAN BREAK_ON_RELOAD
+json 'a.equal(r.status, "needs_attention", JSON.stringify(r).slice(0, 500)); a.equal(r.rollback.status, "success"); a.equal(r.rollback.runtime.ok, false);' "$WORK/out.json"
+[ "$(journal)" = "autotune_rollback:failure:automatic:multisplit" ] || fail "a rollback whose proof failed: $(journal)"
 reset_apply; plan_ready; rm -rf "$STATE/health"; rm -f "$STATE/lock-taken"
 WORK_RELOAD="$WORK/reload" FORKOP_RELOAD_COMMAND="$WORK/reload-then-lock" FORKOP_AUTOTUNE_ROLLBACK_WAIT_SECONDS=1 at apply "$WORK/plan.json"
 kill "$(holder)" 2>/dev/null || true
@@ -828,18 +837,22 @@ for content in '' 'garbage{'; do
   at apply "$WORK/plan.json"
   json 'a.equal(r.status, "failed"); a.equal(r.reason, "previous_apply_unresolved"); a.equal(r.diagnosis, "state_unreadable");' "$WORK/out.json"
   { [ "$(chash)" = "$PRE_HASH" ] && [ "$(reloads)" = 0 ]; } || fail "'$content': applied over an unreadable record"
-  at rollback
+  rm -rf "$STATE/health"; at rollback
   json 'a.equal(r.status, "rolled_back"); a.equal(r.reason, "apply_state_unreadable"); a.equal(r.rollback.status, "not_needed");' "$WORK/out.json"
   [ "$(reloads)" = 0 ] || fail "'$content': the last-known-working configuration was reloaded although active"
+  [ -z "$(journal)" ] || fail "'$content': a rollback that restored nothing was recorded: $(journal)"
   [ "$(cat "$FORKOP_AUTOTUNE_APPLY_STATE.corrupt")" = "$content" ] || fail "'$content': the unreadable record was not kept aside"
   at status; json 'a.equal(r.resolved, true);' "$WORK/out.json"
   at apply "$WORK/plan.json"; json 'a.equal(r.status, "applied");' "$WORK/out.json"
 done
 reset_apply; printf 'garbage{' > "$FORKOP_AUTOTUNE_APPLY_STATE"
 sed -i "s|option nfqws_opt '$FAKE'|option nfqws_opt '$MULTISPLIT'|" "$FORKOP_CONFIG_FILE"
-at rollback
+rm -rf "$STATE/health"; at rollback
 json 'a.equal(r.status, "rolled_back"); a.equal(r.rollback.status, "success");' "$WORK/out.json"
 { [ "$(chash)" = "$PRE_HASH" ] && [ "$(reloads)" = 1 ] && [ "$(lkg)" = "$PRE_LKG" ]; } || fail "the rollback of an unreadable record did not restore the last-known-working configuration"
+# The operator's rollback, recorded as one (the record names no candidate),
+# never as a restore (UC-060).
+[ "$(journal)" = "autotune_rollback:success:manual:" ] || fail "the rollback of an unreadable record: $(journal)"
 ok "20d unreadable apply record -> needs_attention: runs and applies wait; the rollback restores last-known-working and sets it aside"
 
 # 20e. The operator's rollback from the page (forkop autotune_rollback, the

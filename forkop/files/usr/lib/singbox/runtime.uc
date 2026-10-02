@@ -94,10 +94,6 @@ function command_exists(name) {
     return command_success_from_args([ "command", "-v", name ]);
 }
 
-function write_file(path, value) {
-    return fs.writefile(as_string(path), as_string(value)) != null;
-}
-
 function remove_file(path) {
     try {
         fs.unlink(as_string(path));
@@ -215,9 +211,17 @@ function sing_box_version_state() {
     return file_first_line(SB_VERSION_STATE_FILE);
 }
 
+// The variant marker and the version of a binary variant are written on a
+// component install and read on every start: replaced whole, read back and
+// flushed before and after the rename (core/durable.uc), never truncated
+// and rewritten in place, where a power cut left them empty.
+function write_state_marker(path, text) {
+    return ensure_parent_dir(path) && durable.durable_replace(path + ".tmp." + as_string(fs.readlink("/proc/self")), path, text);
+}
+
 function sing_box_write_version_state(version) {
     version = as_string(version);
-    return version != "" && ensure_parent_dir(SB_VERSION_STATE_FILE) && write_file(SB_VERSION_STATE_FILE, version + "\n");
+    return version != "" && write_state_marker(SB_VERSION_STATE_FILE, version + "\n");
 }
 
 function sing_box_clear_version_state() {
@@ -236,7 +240,7 @@ function sing_box_variant_marker() {
 
 function sing_box_write_variant_marker(variant) {
     variant = as_string(variant);
-    return variant != "" && ensure_parent_dir(SB_VARIANT_STATE_FILE) && write_file(SB_VARIANT_STATE_FILE, variant + "\n");
+    return variant != "" && write_state_marker(SB_VARIANT_STATE_FILE, variant + "\n");
 }
 
 function sing_box_clear_variant_marker() {

@@ -184,6 +184,7 @@ mkdir -p "$package_runtime_lib/components" "$package_runtime_lib/core" "$package
 cp "$FORKOP_LIB/core/netstat.uc" "$package_runtime_lib/core/netstat.uc"
 cp "$FORKOP_LIB/core/runtime_lock.uc" "$package_runtime_lib/core/runtime_lock.uc"
 cp "$FORKOP_LIB/core/process_identity.uc" "$package_runtime_lib/core/process_identity.uc"
+cp "$FORKOP_LIB/core/durable.uc" "$package_runtime_lib/core/durable.uc"
 cp "$UPDATER" "$package_runtime_lib/components/updater.uc"
 cat >"$package_runtime_lib/core/constants.uc" <<'UCODE'
 function module_exports() {

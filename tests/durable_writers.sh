@@ -305,4 +305,88 @@ KSFULL
   ok "a full overlay fails the servers file write and keeps the old one"
 fi
 
+# ---- 4. the other rare, critical writers ----------------------------------------
+
+# The variant marker and the version of a binary sing-box variant, read on
+# every start.
+mkdir -p "$WORK/etc/forkop"
+printf 'extended\n' >"$WORK/etc/forkop/sing-box-variant"
+printf '1.11.0\n' >"$WORK/etc/forkop/sing-box-version"
+watch "$WORK/etc/forkop"
+SB_VARIANT_STATE_FILE="$WORK/etc/forkop/sing-box-variant" ucode -L "$LIB" "$LIB/singbox/runtime.uc" write-variant-marker extended-compressed ||
+  fail "the variant marker could not be written"
+[ "$(cat "$WORK/etc/forkop/sing-box-variant")" = extended-compressed ] || fail "the variant marker was not written"
+flushed "$WORK/etc/forkop/sing-box-variant" "the sing-box variant marker"
+watch "$WORK/etc/forkop"
+SB_VERSION_STATE_FILE="$WORK/etc/forkop/sing-box-version" ucode -L "$LIB" "$LIB/singbox/runtime.uc" write-version-state 1.12.0 ||
+  fail "the version state could not be written"
+[ "$(cat "$WORK/etc/forkop/sing-box-version")" = 1.12.0 ] || fail "the version state was not written"
+flushed "$WORK/etc/forkop/sing-box-version" "the sing-box version state"
+[ -z "$(find "$WORK/etc/forkop" -name '*.tmp*' -printf '%f ')" ] || fail "the marker writers left a temporary file"
+ok "the sing-box variant marker and version state are flushed before and after the rename"
+
+# The recovery marker of an in-app Forkop upgrade, which the recovery after a
+# power cut mid-install reads (tests/helpers/forkop_upgrade_harness.sh).
+WORK_DIR="$WORK"
+# shellcheck source=tests/helpers/forkop_upgrade_harness.sh
+. "$ROOT_DIR/tests/helpers/forkop_upgrade_harness.sh"
+upgrade_harness_setup
+cp "$WORK/bin/sync" "$UPGRADE_BIN/sync"
+upgrade_harness_reset opkg
+mkdir -p "$UPGRADE_RECOVERY_DIR"
+watch "$UPGRADE_RECOVERY_DIR"
+upgrade_harness_run || fail "the in-app upgrade failed: $(cat "$UPGRADE_OUT")"
+[ "$(upgrade_harness_version forkop)" = 1.1.0-r1 ] || fail "the in-app upgrade did not install the new release"
+n=1 before="" after=""
+while [ "$n" -le "$(sync_count)" ]; do
+  snap="$WORK/sync/$n$UPGRADE_RECOVERY_DIR"
+  if [ -n "$before" ]; then
+    [ -f "$snap/pending" ] && cmp -s "$snap/pending" "$WORK/want" && [ ! -e "$snap/pending.new" ] && after=$n
+    break
+  fi
+  if [ ! -e "$snap/pending" ] && [ -f "$snap/pending.new" ] && grep -q "^1\.0\.0	1\.1\.0	" "$snap/pending.new"; then
+    cp "$snap/pending.new" "$WORK/want"
+    before=$n
+  fi
+  n=$((n + 1))
+done
+[ -n "$before" ] || fail "the upgrade recovery marker was not flushed complete before its rename"
+[ -n "$after" ] || fail "the rename of the upgrade recovery marker was not flushed right after it"
+ok "the upgrade recovery marker is flushed before and after the rename"
+
+# The managed sing-box init script that a component install
+# (components/action.uc) and the requirements check (config/validator.uc)
+# install: in a mount namespace with /etc/init.d of its own.
+if unshare -rm true 2>/dev/null; then
+  printf 'extended-compressed\n' >"$WORK/variant"
+  for writer in action validator; do
+    rm -rf "$WORK/initd-$writer"
+    mkdir -p "$WORK/initd-$writer"
+    cat >"$WORK/install-$writer.sh" <<'INSTALL'
+set -e
+mount --bind "$WORK/initd-$WRITER" /etc/init.d
+if [ "$WRITER" = action ]; then
+  ucode -L "$LIB" "$LIB/components/action.uc" install-managed-sing-box-service-fixture
+else
+  printf '#!/bin/sh\necho "sing-box version 1.12.0"\n' >"$WORK/bin/sing-box"
+  printf '#!/bin/sh\nexit 0\n' >"$WORK/bin/nft"
+  chmod 0755 "$WORK/bin/sing-box" "$WORK/bin/nft"
+  : >"$WORK/validator-uci.state"
+  FORKOP_UCI_STATE_FILE="$WORK/validator-uci.state" SB_VARIANT_STATE_FILE="$WORK/variant" \
+    SB_VERSION_STATE_FILE="$WORK/etc/forkop/sing-box-version" \
+    ucode -L "$LIB" "$LIB/config/validator.uc" check-requirements || true
+fi
+INSTALL
+    watch "$WORK/initd-$writer"
+    WRITER="$writer" unshare -rm sh "$WORK/install-$writer.sh" >"$WORK/install-$writer.out" 2>&1 ||
+      fail "the $writer install of the init script failed: $(cat "$WORK/install-$writer.out")"
+    grep -q 'Forkop managed sing-box service' "$WORK/initd-$writer/sing-box" ||
+      fail "the $writer install did not write the managed init script: $(cat "$WORK/install-$writer.out")"
+    [ "$(stat -c %a "$WORK/initd-$writer/sing-box")" = 755 ] || fail "the init script the $writer install writes is not executable"
+    flushed "$WORK/initd-$writer/sing-box" "the init script the $writer install writes"
+    [ -z "$(find "$WORK/initd-$writer" -name 'sing-box.*' -printf '%f ')" ] || fail "the $writer install left a copy of the init script"
+  done
+  ok "the init script of a component install and of the requirements check is flushed before and after the rename"
+fi
+
 printf 'durable_writers: PASS\n'

@@ -3,6 +3,7 @@
 let fs = require("fs");
 let uci_core = require("core.uci");
 let common = require("core.common");
+let durable = require("core.durable");
 let fixture_uci_data = null;
 let subscription_parser_module = null;
 let zapret_validator_module = null;
@@ -1938,19 +1939,13 @@ function managed_sing_box_service_script(marker) {
         "}\n";
 }
 
+// The copy is named after this process, as the copies of singbox/runtime.uc
+// and components/action.uc are: a start removes only copies whose writer is
+// gone. Read back and flushed before and after the rename (core/durable.uc):
+// a full overlay took the write and left an empty init script in place.
 function install_managed_sing_box_service_script(ctx) {
-    let stamp = clock();
-    let tmp_file = sprintf("/etc/init.d/sing-box.forkop.%d.%d", stamp[0], stamp[1]);
-
-    if (!fs.writefile(tmp_file, managed_sing_box_service_script(ctx.sing_box_managed_service_marker)))
-        return false;
-
-    if (!run_args([ "chmod", "0755", tmp_file ]) || !run_args([ "mv", "-f", tmp_file, "/etc/init.d/sing-box" ])) {
-        fs.unlink(tmp_file);
-        return false;
-    }
-
-    return true;
+    return durable.durable_replace("/etc/init.d/sing-box.forkop." + fs.readlink("/proc/self"), "/etc/init.d/sing-box",
+        managed_sing_box_service_script(ctx.sing_box_managed_service_marker), 0755);
 }
 
 function service_exists(service) {

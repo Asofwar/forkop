@@ -6,6 +6,7 @@ let uci_core = require("core.uci");
 let netstat = require("core.netstat");
 let runtime_lock = require("core.runtime_lock");
 let process_identity = require("core.process_identity");
+let durable = require("core.durable");
 
 const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
 const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || constants.FORKOP_CONFIG_NAME || "forkop";
@@ -950,15 +951,11 @@ function managed_sing_box_service_text() {
         "}\n";
 }
 
+// Read back and flushed before and after the rename (core/durable.uc): a
+// full overlay took the write and left an empty init script in place.
 function install_managed_sing_box_service_script() {
-    let tmp = "/etc/init.d/sing-box.forkop." + owner_pid();
-    if (!write_file(tmp, managed_sing_box_service_text()))
-        return false;
-    if (!command_success_from_args([ "chmod", "0755", tmp ])) {
-        remove_file(tmp);
-        return false;
-    }
-    return fs.rename(tmp, "/etc/init.d/sing-box");
+    return durable.durable_replace("/etc/init.d/sing-box.forkop." + owner_pid(), "/etc/init.d/sing-box",
+        managed_sing_box_service_text(), 0755);
 }
 
 function remove_managed_sing_box_service_script() {
@@ -2358,14 +2355,15 @@ function install_forkop_package_set(latest_version, backend_file, app_file, i18n
     let new_files = [ backend_file, app_file ];
     if (with_i18n)
         push(new_files, i18n_file);
+    // Read back, and flushed before and after the rename (core/durable.uc):
+    // the recovery after a power cut mid-install reads it, and a full
+    // overlay took the write and left an empty marker in place.
     let marker_tmp = FORKOP_OPKG_RECOVERY_DIR + "/pending.new";
-    if (!write_file(marker_tmp, FORKOP_VERSION + "\t" + latest_version + "\t" + (with_i18n ? "1" : "0") + "\t" + (forkop_was_running ? "1" : "0") + "\n") ||
-        !fs.rename(marker_tmp, FORKOP_OPKG_RECOVERY_DIR + "/pending")) {
+    if (!durable.durable_replace(marker_tmp, FORKOP_OPKG_RECOVERY_DIR + "/pending",
+        FORKOP_VERSION + "\t" + latest_version + "\t" + (with_i18n ? "1" : "0") + "\t" + (forkop_was_running ? "1" : "0") + "\n")) {
         command_success_from_args([ "rm", "-rf", FORKOP_OPKG_RECOVERY_DIR ]);
         return "Failed to record Forkop package-set recovery state";
     }
-    if (!command_success_from_args([ "sync" ]))
-        return "Failed to persist Forkop package-set recovery state";
 
     // apk resolves one transaction for all three files and refreshes its index
     // once, so keep that. Order still matters inside it: the backend goes last
@@ -2884,6 +2882,8 @@ else if (mode == "forkop-releases")
     forkop_releases();
 else if (mode == "available-kib-fixture")
     print(available_kib(ARGV[1]), "\n");
+else if (mode == "install-managed-sing-box-service-fixture")
+    exit(install_managed_sing_box_service_script() ? 0 : 1);
 else if (mode == "forkop-package-set-space-error-fixture") {
     // Arguments are the new files, then "--", then the staged rollback files.
     let new_files = [];

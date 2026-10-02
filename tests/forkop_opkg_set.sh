@@ -46,6 +46,8 @@ function file_nonempty(path) { return index(downloads, path) >= 0; }
 function read_file(path) { return marker; }
 function write_file(path, value) { marker_tmp = value; return true; }
 let fs = { rename: function(source, target) { marker = marker_tmp; marker_tmp = ""; return true; } };
+// core/durable.uc: the recovery marker is written, flushed and renamed.
+let durable = { durable_replace: function(tmp, path, data) { marker = data; marker_tmp = ""; return true; } };
 function check(ok, message) { if (!ok) { warn("FAIL: " + message + "\n"); exit(1); } }
 function command_success_from_args(args) {
     // The rollback's own stop is not the user's (D-15).

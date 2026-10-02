@@ -969,18 +969,40 @@ function refresh_cron() {
     return status;
 }
 
-// The scheduled jobs are not the proxy: a crontab that cannot be written
-// (a nearly full overlay, or another writer's change at the same moment:
-// components/updates.uc write_crontab_text) must not keep Forkop down or
-// roll a reload back. The failure is logged and recorded in the history,
-// not masked; the next start or reload refreshes the jobs again.
+// components/updates.uc refresh-cron-from-uci exits with this status for an
+// invalid interval in the settings: a configuration error, which fails the
+// start or reload as it always did. Any other failure is a crontab that
+// could not be read or written.
+const CRON_REFRESH_INVALID_INTERVAL = 2;
+
+let cron_refresh_failed = false;
+
+// The scheduled jobs are not the proxy: a crontab that cannot be read or
+// written (a nearly full overlay, or another writer's change at the same
+// moment: components/updates.uc write_crontab_text) must not keep Forkop
+// down or roll a reload back. The failure is logged (updates.uc logs what
+// it left in the crontab) and recorded in the history, not masked, and the
+// reload state this start or reload records keeps the cron settings
+// unapplied (keep_cron_refresh_pending): the next reload refreshes the jobs
+// again. Returns the status that fails the start or reload: 0 or an invalid
+// interval.
 function refresh_cron_reported(action) {
     let status = refresh_cron();
-    if (status == 0)
-        return;
+    if (status == 0 || status == CRON_REFRESH_INVALID_INTERVAL)
+        return status;
+    cron_refresh_failed = true;
     log_message("Could not update Forkop's scheduled jobs in the crontab (exit status " + as_string(status) +
-        "); the " + action + " goes on and the scheduled jobs stay as they were", "error");
+        "); the " + action + " goes on, and the next reload or start updates them again", "error");
     module_success(LIB_DIR + "/diagnostics/health.uc", [ "record", "cron_refresh", "failure" ]);
+    return 0;
+}
+
+// After the reload state is written: a failed cron refresh leaves the cron
+// settings unapplied in it (service/state.uc mark-reload-state-cron-unapplied).
+function keep_cron_refresh_pending(path) {
+    if (cron_refresh_failed && !module_success(STATE_UC, [ "mark-reload-state-cron-unapplied", path ]))
+        log_message("Could not record in " + path + " that the scheduled jobs were not updated; " +
+            "only the next start or a change of their settings updates them", "warn");
 }
 
 function remove_cron_jobs() {
@@ -1153,7 +1175,9 @@ function start_main() {
     if (status != 0)
         return start_phase_failed("sing-box-config", status);
 
-    refresh_cron_reported("start");
+    status = refresh_cron_reported("start");
+    if (status != 0)
+        return start_phase_failed("cron-refresh", status);
 
     if (start_abandoned_for_stop("sing-box"))
         return 1;
@@ -1240,6 +1264,7 @@ function start_impl() {
     ]);
     if (status != 0)
         return status;
+    keep_cron_refresh_pending(RELOAD_STATE_FILE);
 
     if (start_abandoned_for_stop("the DNS-failover and background workers"))
         return 1;
@@ -2457,8 +2482,11 @@ function reload(reason) {
         module_success(STATE_UC, [ "capture-reload-state", RELOAD_STATE_SNAPSHOT_FILE, as_string(RELOAD_STATE_FORMAT) ]);
     }
 
-    if (plan.needs_cron_refresh == 1)
-        refresh_cron_reported("reload");
+    if (plan.needs_cron_refresh == 1) {
+        status = refresh_cron_reported("reload");
+        if (status != 0)
+            return abort_reload(status, false);
+    }
 
     status = finish_reload_status(module_status(STATE_UC, [
         "write-captured-reload-state",
@@ -2471,6 +2499,7 @@ function reload(reason) {
     ]), reload_config_fingerprint);
     if (status != 0)
         return abort_reload(status, runtime_changed);
+    keep_cron_refresh_pending(RELOAD_STATE_FILE);
     if (dpi_singbox_backup != "")
         remove_file(dpi_singbox_backup);
     discard_dpi_snapshot();

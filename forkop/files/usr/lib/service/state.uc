@@ -5,6 +5,7 @@ let common = require("core.common");
 let uci_core = require("core.uci");
 let netstat = require("core.netstat");
 let runtime_lock = require("core.runtime_lock");
+let durable = require("core.durable");
 let process_identity = require("core.process_identity");
 let rule_config = require("config.rule");
 let connections = require("config.connections");
@@ -371,6 +372,25 @@ function write_reload_state(path, values) {
 
     if (!fs.writefile(path, reload_state_text(values)))
         exit(1);
+}
+
+// A start or reload whose cron refresh failed records the cron settings as
+// unapplied: no settings have this signature, so the next reload sees them
+// changed and refreshes the scheduled jobs again (service/lifecycle.uc
+// keep_cron_refresh_pending).
+const CRON_SIGNATURE_UNAPPLIED = "unapplied";
+
+function mark_reload_state_cron_unapplied(path) {
+    let data = fs.readfile(path);
+    if (data == null)
+        return false;
+
+    let output = "";
+    for (let line in split(data, "\n"))
+        if (line != "" && substr(line, 0, 15) != "cron_signature=")
+            output += line + "\n";
+    output += "cron_signature=" + CRON_SIGNATURE_UNAPPLIED + "\n";
+    return durable.checked_replace(durable.temp_path(path), path, output, null);
 }
 
 function copy_file(source, target) {
@@ -2272,6 +2292,8 @@ else if (mode == "write-current-reload-state-clean")
     write_current_reload_state_clean(ARGV[1], ARGV[2] || "1", ARGV[3]);
 else if (mode == "write-captured-reload-state")
     write_captured_reload_state(ARGV[1], ARGV[2], ARGV[3] || "1", ARGV[4], ARGV[5], ARGV[6]);
+else if (mode == "mark-reload-state-cron-unapplied")
+    exit(mark_reload_state_cron_unapplied(ARGV[1]) ? 0 : 1);
 else if (mode == "write-reload-state")
     write_reload_state(ARGV[1], reload_state_values_from_args(2));
 else if (mode == "write-current-reload-state")

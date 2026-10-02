@@ -15,6 +15,17 @@ set -euo pipefail
 # The real service/lifecycle.uc start and reload; every module they call is
 # a double that records its call (as tests/shutdown_state_runtime.sh and
 # tests/dnsmasq_reload_rollback.sh do).
+#
+# The next reload refreshes the jobs again: the reload state that the start
+# or reload records keeps the cron settings unapplied. It recorded them as
+# applied, so a reload with unchanged settings skipped the refresh and only
+# a start brought the jobs back (S5 integration review). Here the reload
+# state and the reload plan are the real service/state.uc and
+# service/reload.uc.
+#
+# An invalid interval in the settings (components/updates.uc exit status 2)
+# is a configuration error, not a crontab that could not be written: it
+# still fails the start and the reload, as before.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB="$ROOT_DIR/forkop/files/usr/lib"
@@ -82,7 +93,8 @@ printf 'forkop.settings=settings\nforkop.settings.yacd_secret_key=0123456789abcd
 
 # Every module call: records "<module> <arguments>" and succeeds, except as
 # below. Locks and the stop request go to the real service/state.uc. The
-# cron refresh fails while CRON_FAILS is 1; the runtime runs while RUNNING
+# cron refresh exits with CRON_FAILS (1: the crontab could not be written,
+# 2: an invalid interval in the settings); the runtime runs while RUNNING
 # is 1 (a reload), not yet otherwise (a start). The reload plan comes from
 # PLAN ("key=value ...").
 fake_module() {
@@ -109,6 +121,23 @@ if (name == "service/state.uc" && mode == "sing-box-service-runtime-pid") {
     print("4242\\n");
     exit(0);
 }
+// REAL_RELOAD_STATE=1: the reload state goes through the real service/state.uc
+// (without its cleanup of the rule-condition caches) and, without PLAN, the
+// reload plan through the real service/reload.uc.
+let real_state = { "capture-reload-state": true, "write-captured-reload-state": true,
+    "write-current-reload-state-clean": true, "mark-reload-state-cron-unapplied": true };
+if (getenv("REAL_RELOAD_STATE") == "1" && ((name == "service/state.uc" && real_state[mode]) ||
+    (name == "service/reload.uc" && mode == "plan-state-files" && getenv("PLAN") == null))) {
+    let args = [ ...ARGV ];
+    if (mode == "write-current-reload-state-clean")
+        args = [ "write-current-reload-state", ARGV[1], ARGV[2] ];
+    else if (mode == "write-captured-reload-state")
+        args = [ mode, ARGV[1], ARGV[2], ARGV[3], "", "0", ARGV[6] ];
+    let command = "ucode -L " + q(getenv("TEST_LIB")) + " " + q(getenv("TEST_LIB") + "/" + name);
+    for (let arg in args)
+        command += " " + q(arg);
+    exit(system(command));
+}
 if (name == "service/reload.uc" && mode == "plan-state-files") {
     for (let item in split(trim(getenv("PLAN") ?? ""), " "))
         if (item != "")
@@ -116,7 +145,7 @@ if (name == "service/reload.uc" && mode == "plan-state-files") {
     exit(0);
 }
 if (name == "components/updates.uc" && mode == "refresh-cron-from-uci")
-    exit(getenv("CRON_FAILS") == "1" ? 1 : 0);
+    exit(int(getenv("CRON_FAILS") ?? "0"));
 exit(mode == "runtime-cache-needs-rebuild" ? 1 : 0);
 UC
 }
@@ -169,7 +198,7 @@ cat >"$WORK_DIR/reload" <<'SH'
 #!/bin/sh
 state() { ucode -L "$TEST_LIB" "$TEST_LIB/service/state.uc" "$@"; }
 state acquire-runtime-dir-lock "$FORKOP_RELOAD_LOCK_DIR" "$$" || exit 99
-env FORKOP_LIB="$FAKE_LIB" RUNNING=1 ucode -L "$TEST_LIB" "$TEST_LIB/service/lifecycle.uc" reload ""
+env FORKOP_LIB="$FAKE_LIB" RUNNING=1 ucode -L "$TEST_LIB" "$TEST_LIB/service/lifecycle.uc" reload "${RELOAD_REASON:-}"
 status=$?
 state release-runtime-dir-lock "$FORKOP_RELOAD_LOCK_DIR" "$$"
 exit "$status"
@@ -196,5 +225,57 @@ has_event 'service/state.uc write-captured-reload-state' ||
 cron_failure_reported "the reload"
 has_event 'diagnostics/health.uc record reload success' || fail "the reload was not recorded as a success"
 ok "a reload whose cron refresh failed completes and reports the failed refresh"
+
+# ---- an invalid interval -------------------------------------------------------
+
+CRON_FAILS=2 start
+[ "$STATUS" != 0 ] || fail "a start with an invalid cron interval succeeded"
+grep -q "phase 'cron-refresh' failed" "$WORK_DIR/syslog" || fail "a start with an invalid cron interval did not fail at phase cron-refresh"
+has_event 'service/state.uc start-managed-sing-box-runtime' && fail "a start with an invalid cron interval started sing-box"
+has_event 'record cron_refresh' && fail "a start with an invalid cron interval recorded a cron_refresh event"
+CRON_FAILS=2 reload
+[ "$STATUS" != 0 ] || fail "a reload with an invalid cron interval succeeded"
+has_event "service/state.uc write-captured-reload-state $STATE_DIR/reload-state " &&
+  fail "a reload with an invalid cron interval recorded the applied state"
+ok "an invalid cron interval still fails the start and the reload"
+
+# ---- the next reload refreshes the jobs again ----------------------------------
+
+export REAL_RELOAD_STATE=1
+state() { ucode -L "$LIB" "$LIB/service/state.uc" "$@"; }
+# A reload after a change of the configuration (procd's config trigger, a
+# Save & Apply), with the real plan from the reload state recorded before it.
+reload_real() {
+  : >"$EVENTS"
+  : >"$WORK_DIR/syslog"
+  STATUS=0
+  RELOAD_REASON=on_config_change "$WORK_DIR/reload" >"$WORK_DIR/lifecycle.out" 2>&1 || STATUS=$?
+  wait_until 20 no_fake_modules || fail "the background workers of the reload did not finish"
+}
+refreshed() { has_event 'components/updates.uc refresh-cron-from-uci'; }
+
+# The cron settings changed since the last reload.
+state write-current-reload-state "$STATE_DIR/reload-state" 1 || fail "could not write the reload state"
+sed -i 's/^cron_signature=.*/cron_signature=before/' "$STATE_DIR/reload-state"
+CRON_FAILS=1 reload_real
+[ "$STATUS" = 0 ] || fail "the reload with changed cron settings failed (status $STATUS)"
+refreshed || fail "the reload with changed cron settings did not refresh the jobs"
+cron_failure_reported "the reload with changed cron settings"
+CRON_FAILS=0 reload_real
+[ "$STATUS" = 0 ] || fail "the reload after a failed cron refresh failed (status $STATUS)"
+refreshed || fail "the reload after a failed cron refresh did not refresh the jobs again"
+CRON_FAILS=0 reload_real
+[ "$STATUS" = 0 ] || fail "the reload after a cron refresh failed (status $STATUS)"
+refreshed && fail "a reload with unchanged cron settings refreshed the jobs although the last refresh succeeded"
+grep -q 'Reload skipped' "$WORK_DIR/syslog" || fail "a reload with nothing to apply was not skipped"
+ok "the next reload refreshes the jobs that a reload could not write"
+
+CRON_FAILS=1 start
+[ "$STATUS" = 0 ] || fail "a start whose cron refresh failed did not bring Forkop up (status $STATUS)"
+cron_failure_reported "the start before the reload"
+CRON_FAILS=0 reload_real
+[ "$STATUS" = 0 ] || fail "the reload after a start whose cron refresh failed failed (status $STATUS)"
+refreshed || fail "the reload after a start whose cron refresh failed did not refresh the jobs again"
+ok "the next reload refreshes the jobs that a start could not write"
 
 printf 'cron refresh failure checks passed\n'

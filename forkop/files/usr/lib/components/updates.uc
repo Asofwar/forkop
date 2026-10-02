@@ -1777,7 +1777,10 @@ function refresh_cron_from_sources(settings, sections, bin, list_marker, subscri
         exit(1);
 
     log_cron_apply_result(result);
-    exit(result.status);
+    // 2: an invalid interval in the settings, which the crontab was written
+    // without Forkop's jobs for (service/lifecycle.uc fails the start or
+    // reload on it); 1: the crontab could not be read or written.
+    exit(result.status == 0 ? 0 : 2);
 }
 
 function list_update_due_status(settings, timestamp_path, now) {

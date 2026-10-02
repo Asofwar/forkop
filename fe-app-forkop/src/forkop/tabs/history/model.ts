@@ -247,11 +247,14 @@ export function historyItems(
   filter: HistoryFilter,
   nowMs = Date.now(),
 ): HistoryItem[] {
+  // Newest first; of events in the same second (the journal's only clock),
+  // the one recorded later: an automatic autotune rollback is recorded
+  // before the apply that it ended, whatever second each falls in.
   return events
-    .filter((event) => filter === 'all' || CATEGORY[event.kind] === filter)
-    .slice()
-    .sort((a, b) => b.timestamp - a.timestamp)
-    .map((event) => ({
+    .map((event, index) => ({ event, index }))
+    .filter(({ event }) => filter === 'all' || CATEGORY[event.kind] === filter)
+    .sort((a, b) => b.event.timestamp - a.event.timestamp || b.index - a.index)
+    .map(({ event }) => ({
       title: eventTitle(event),
       outcome: eventOutcomeView(toEventOutcome(event.status)),
       time: formatTime(event.timestamp),

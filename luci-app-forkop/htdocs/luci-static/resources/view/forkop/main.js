@@ -17879,7 +17879,7 @@ function rollbackTitle(manual, candidate) {
   return (manual ? _("Autotune: manual rollback of %s") : _("Autotune: automatic rollback of %s")).replace("%s", candidate);
 }
 function historyItems(events, filter2, nowMs = Date.now()) {
-  return events.filter((event) => filter2 === "all" || CATEGORY[event.kind] === filter2).slice().sort((a, b) => b.timestamp - a.timestamp).map((event) => ({
+  return events.map((event, index) => ({ event, index })).filter(({ event }) => filter2 === "all" || CATEGORY[event.kind] === filter2).sort((a, b) => b.event.timestamp - a.event.timestamp || b.index - a.index).map(({ event }) => ({
     title: eventTitle(event),
     outcome: eventOutcomeView(toEventOutcome(event.status)),
     time: formatTime(event.timestamp),

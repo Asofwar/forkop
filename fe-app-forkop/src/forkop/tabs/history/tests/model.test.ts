@@ -287,6 +287,42 @@ describe('history list', () => {
     ).toHaveLength(0);
   });
 
+  // The journal is in the order of recording; seconds are its only clock.
+  // The automatic rollback is recorded before the apply that it ended: the
+  // pair keeps that order within a second as across one.
+  it('lists events of the same second in the order they were recorded', () => {
+    const rollback: Omit<Forkop.HistoryEvent, 'timestamp'> = {
+      kind: 'autotune_rollback',
+      status: 'success',
+      trigger: 'automatic',
+      candidate: 'fake',
+    };
+    const apply: Omit<Forkop.HistoryEvent, 'timestamp'> = {
+      kind: 'autotune_apply',
+      status: 'recovered',
+      trigger: 'automatic',
+      candidate: 'fake',
+    };
+    for (const [first, second] of [
+      [7, 7],
+      [7, 8],
+    ])
+      expect(
+        historyItems(
+          [
+            { kind: 'start', status: 'success', timestamp: 5 },
+            { ...rollback, timestamp: first },
+            { ...apply, timestamp: second },
+          ],
+          'all',
+        ).map((item) => item.title),
+      ).toEqual([
+        'Autotune: automatic apply of fake',
+        'Autotune: automatic rollback of fake',
+        'Service start',
+      ]);
+  });
+
   it('filters by category', () => {
     expect(historyItems(events, 'config').map((item) => item.title)).toEqual([
       'Snapshot deleted',

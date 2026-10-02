@@ -174,12 +174,16 @@ function forkop_version() {
 }
 // The migration state of a configuration (D-16): settings.config_version
 // and the ids of settings.applied_migrations, which config/migration.uc
-// records. A quick line reader for what a snapshot records when it is taken
-// and for the snapshot list, which runs on every refresh of the History
-// page: the settings lines a uci commit writes hold single-quoted words.
-// Whatever it misreads (a value spanning lines that holds a config line) at
-// worst misleads the list's hint: a restore reads the configuration as
-// libuci loads it (sections_schema).
+// records. A quick line reader for what a snapshot records when it is taken,
+// for the snapshot list, which runs on every refresh of the History page,
+// and for a restore to tell whether a migration is needed at all: the
+// settings lines a uci commit writes hold single-quoted words, one statement
+// a line. A restore that it finds behind reads both configurations again as
+// libuci loads them (sections_schema), which decide. Only hand-made text
+// misleads it (a quoted value spanning lines that holds a header or one of
+// these options, ';' between statements): then the list's hint is wrong, or
+// a restore takes a snapshot for migrated that such text makes look so, and
+// restores it as it is, as before D-16.
 function settings_schema(content) {
     let result = { config_version: "", applied_migrations: [] }, inside = false, applied = null;
     let word = (text) => {
@@ -187,9 +191,15 @@ function settings_schema(content) {
         return found != null ? found[1] : text;
     };
     for (let line in split(value(content), "\n")) {
+        // Only a section header and these two options matter, and only a
+        // header naming settings needs the full pattern: other lines are
+        // passed over without a regular expression (a big configuration has
+        // thousands, and the list reads every snapshot an older release
+        // took).
+        if (index(line, "config") < 0 && index(line, "applied_migrations") < 0) continue;
         line = replace(line, /\r$/, "");
         if (match(line, /^[ \t]*config([ \t]|$)/) != null) {
-            let start = match(line, /^[ \t]*config[ \t]+['"]?[^ \t'"#;\\]+['"]?[ \t]+['"]?([A-Za-z0-9_-]*)['"]?[ \t]*(#.*)?$/);
+            let start = index(line, "settings") < 0 ? null : match(line, /^[ \t]*config[ \t]+['"]?[^ \t'"#;\\]+['"]?[ \t]+['"]?([A-Za-z0-9_-]*)['"]?[ \t]*(#.*)?$/);
             inside = start != null && start[1] == "settings";
             continue;
         }
@@ -949,27 +959,40 @@ function uci_export(sections) {
 // (vpn_fail_closed) becomes the per-section kill-switch here, as on an
 // upgrade, instead of a retired option that would silently drop it.
 //
-// Fail closed: a snapshot that cannot be read as libuci loads it, has no
-// settings section, makes a migration fail, or still lacks a migration the
-// configuration being replaced records (the Clash API secret when neither
-// has one and no random source exists), or whose migrated copy would not
-// load back the same, is refused before anything changes: { status
-// "failed", reason "snapshot_migration_failed", detail }. Otherwise
+// Fail closed: a snapshot to migrate that cannot be read as libuci loads
+// it, has no settings section, makes a migration fail, or still lacks a
+// migration the configuration being replaced records (the Clash API secret
+// when neither has one and no random source exists), or whose migrated copy
+// would not load back the same, is refused before anything changes:
+// { status "failed", reason "snapshot_migration_failed", detail }. Otherwise
 // { content, migration }: migration names the release that saved the
 // snapshot, this one and the migrations that ran, or is null.
 function restore_content(target, before) {
     let versions = () => ({ from: metadata(target).forkop_version, to: forkop_version() });
     let refused = (detail) => ({ status: "failed", reason: "snapshot_migration_failed", detail, migration: versions() });
+    let as_is = { content: target.content, migration: null };
+    // Most restores need none (a snapshot of this release, the rollback of
+    // an autotune apply). The quick reader tells, as it tells the list: such
+    // a snapshot is restored as it is, without reading either configuration
+    // in full (seconds for a big one on a router), so also one that libuci
+    // loads and the full reader does not follow (see uci_statements).
+    let quick = settings_schema(before);
+    if ((length(quick.applied_migrations) || quick.config_version != "") &&
+        !schema_behind(settings_schema(target.content), quick))
+        return as_is;
+    // A migration runs on the configurations as libuci loads them, which
+    // decide again; a snapshot that the full reader cannot follow is
+    // refused then.
     let live = uci_sections(before);
     let reference = live != null ? sections_schema(live) :
         { config_version: "", applied_migrations: migrations().migration_ids() };
     if (!length(reference.applied_migrations) && reference.config_version == "")
-        return { content: target.content, migration: null };
+        return as_is;
     let sections = uci_sections(target.content);
     if (sections == null) return refused("unreadable");
     let schema = sections_schema(sections);
     if (!schema_behind(schema, reference))
-        return { content: target.content, migration: null };
+        return as_is;
     // D-1: the secret of the configuration being replaced, for a snapshot
     // from before the secret (migrate_sections).
     let active = "";

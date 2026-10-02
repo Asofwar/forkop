@@ -344,7 +344,19 @@ node -e '
 ' "$FORKOP_SNAPSHOT_DIR/$working.json" || fail "edit during guard release: last-known-working holds an unverified edit"
 ok "edit during the guard release -> last-known-working holds the migrated copy the reload proved"
 
-# 8. The list says which snapshots a restore migrates, from which version to
+# 8. A snapshot of this release needs no migration and is restored byte for
+# byte, also one that libuci loads but the full reader does not follow (a
+# hand-edited ';' between statements): only a migration needs that reader.
+live_config
+sed "s/option marker 'live'/option marker 'semi'; option other 'x'/" "$FORKOP_CONFIG_FILE" > "$WORK/semi.uci"
+put_snapshot semi 1.0.33-test "$WORK/semi.uci"
+restore semi
+[ "$(json status)" = success ] && [ -z "$(json migration)" ] || fail "snapshot with ';': not restored as it is"
+cmp -s "$FORKOP_CONFIG_FILE" "$WORK/semi.uci" || fail "snapshot with ';': not restored byte for byte"
+[ "$(lkg)" = semi ] || fail "snapshot with ';': last-known-working"
+ok "same-schema snapshot the full reader cannot follow -> restored byte for byte"
+
+# 9. The list says which snapshots a restore migrates, from which version to
 # which; new snapshots record their schema; nothing secret is listed.
 live_config
 PATH="$WORK/bin:$PATH" "$REAL_UCODE" -L "$LIB" "$SCRIPT" list > "$WORK/list.json"
@@ -358,6 +370,7 @@ const byId = Object.fromEntries(list.map((item) => [item.id, item]));
 assert.deepEqual(byId.older.migration, { from: '1.0.23', to: '1.0.33-test' });
 assert.equal(byId[currentId].migration, undefined);
 assert.equal(byId.newer.migration, undefined);
+assert.equal(byId.semi.migration, undefined);
 assert.ok(!text.includes('secret') && !text.includes('schema') && !text.includes('config_hash'));
 const current = JSON.parse(fs.readFileSync(currentFile, 'utf8'));
 assert.equal(current.schema.config_version, '1.0.5');

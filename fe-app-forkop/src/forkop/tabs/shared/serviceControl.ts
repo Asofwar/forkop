@@ -34,6 +34,9 @@ export function confirmStopForkop() {
     consequences: [
       _('Routing, DNS and DPI bypass rules stop applying'),
       _('Devices keep using the router without Forkop X'),
+      _(
+        'Sections with the VPN kill-switch are blocked instead of going directly',
+      ),
     ],
     confirmLabel: _('Stop'),
     danger: true,

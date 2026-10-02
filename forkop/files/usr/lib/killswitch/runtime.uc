@@ -223,12 +223,14 @@ function protected_section_names(sections) {
 // pid never holds them (UC-210). Global order (service/state.uc): reload.lock
 // before killswitch.lock.
 
+let lock_attempts = LOCK_ATTEMPTS;
+
 function acquire_dir_lock(lock_dir) {
     ensure_dir(dirname(lock_dir));
-    for (let attempt = 0; attempt < LOCK_ATTEMPTS; attempt++) {
+    for (let attempt = 0; attempt < lock_attempts; attempt++) {
         if (runtime_lock.acquire(lock_dir, self_pid()))
             return true;
-        if (attempt + 1 < LOCK_ATTEMPTS)
+        if (attempt + 1 < lock_attempts)
             sleep(500);
     }
     return false;
@@ -1061,17 +1063,18 @@ function teardown(reason) {
     return ok;
 }
 
+function protection_present() {
+    return fs.stat(NFT_POLICY) != null || fs.stat(LEGACY_NFT_INCLUDE) != null ||
+        fs.stat(DNS_BLOCKED_FILE) != null || read_state().active === true || ks_table_present() ||
+        run_quiet([ "nft", "list", "table", "inet", LEGACY_GUARD_TABLE ]);
+}
+
 function sync_locked(reason) {
     let settings = config_settings();
     let sections = config_sections();
     let names = protected_section_names(sections);
-    if (length(names) == 0) {
-        if (fs.stat(NFT_POLICY) != null || fs.stat(LEGACY_NFT_INCLUDE) != null ||
-            ks_table_present() || fs.stat(DNS_BLOCKED_FILE) != null ||
-            read_state().active === true || run_quiet([ "nft", "list", "table", "inet", LEGACY_GUARD_TABLE ]))
-            return teardown("no section has the kill-switch enabled") ? 0 : 1;
-        return 0;
-    }
+    if (length(names) == 0)
+        return protection_present() ? (teardown("no section has the kill-switch enabled") ? 0 : 1) : 0;
 
     if (!live_table_present()) {
         record_error("Forkop runtime table " + LIVE_TABLE + " is not present; keeping the previous protection");
@@ -1181,6 +1184,21 @@ function sync(reason, reload_lock_held) {
     return with_lock(function() { return sync_locked(reason || "manual"); }, reload_lock_held, false);
 }
 
+// Forkop stopped by the user or not started since boot (D-15): reloads,
+// restores and configuration changes never reach start or reload, which
+// refresh the kill-switch. Lifting it needs no runtime, so a configuration
+// that protects no section any more lifts it here (UC-208). One that still
+// protects a section keeps the last applied protection, the blocking side,
+// until the next start renders it again.
+function follow_stopped_config(reason, reload_lock_held) {
+    if (length(protected_section_names(config_sections())) > 0 || !protection_present())
+        return 0;
+    // A skipped reload is not held up for long behind a lifecycle action.
+    if (lock_attempts > 10)
+        lock_attempts = 10;
+    return with_lock(function() { return sync_locked(reason || "reload while Forkop is stopped"); }, reload_lock_held, false);
+}
+
 function disable(reason, force) {
     return with_lock(function() { return teardown(reason || "disabled on request") ? 0 : 1; }, false, force);
 }
@@ -1250,6 +1268,8 @@ else if (mode == "status")
     exit(status());
 else if (mode == "render-dns-fixture")
     exit(render_dns_fixture(ARGV[1], ARGV[2], ARGV[3]));
+else if (mode == "follow-stopped-config")
+    exit(follow_stopped_config(ARGV[1], ARGV[2] == "reload-lock-held"));
 else if (mode == "postinst")
     exit(postinst());
 else if (mode == "armed")
@@ -1261,5 +1281,5 @@ else if (mode == "dns-redirect")
 else if (mode == "watch")
     exit(watch());
 
-warn("Usage: killswitch/runtime.uc <sync [reason [reload-lock-held]]|disable [reason]|release [reason]|postinst|status|armed|standby-config <path>|dns-redirect <on|off>|watch>\n");
+warn("Usage: killswitch/runtime.uc <sync [reason [reload-lock-held]]|disable [reason]|release [reason]|follow-stopped-config [reason [reload-lock-held]]|postinst|status|armed|standby-config <path>|dns-redirect <on|off>|watch>\n");
 exit(1);

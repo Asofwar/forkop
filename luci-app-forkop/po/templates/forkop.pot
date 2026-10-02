@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-02 00:38+0000\n"
-"PO-Revision-Date: 2026-10-02 00:38+0000\n"
+"POT-Creation-Date: 2026-10-02 00:44+0000\n"
+"PO-Revision-Date: 2026-10-02 00:44+0000\n"
 "Last-Translator: Asofwar <7397608+Asofwar@users.noreply.github.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -29,7 +29,7 @@ msgstr ""
 msgid "%d confirmations"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/overview.ts:306
+#: src/forkop/tabs/dashboard/overview.ts:316
 msgid "%d connections now"
 msgstr ""
 
@@ -68,15 +68,15 @@ msgstr ""
 msgid "%d ms"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/overview.ts:299
+#: src/forkop/tabs/dashboard/overview.ts:309
 msgid "%d node groups"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/overview.ts:297
+#: src/forkop/tabs/dashboard/overview.ts:307
 msgid "%d rules"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/overview.ts:293
+#: src/forkop/tabs/dashboard/overview.ts:303
 msgid "%d rules · %d node groups"
 msgstr ""
 
@@ -175,7 +175,7 @@ msgstr ""
 msgid "A configuration change was not confirmed. Traffic that needs DPI bypass may be blocked; see the recovery details for the next step."
 msgstr ""
 
-#: src/forkop/tabs/dashboard/overview.ts:391
+#: src/forkop/tabs/dashboard/overview.ts:401
 msgid "A configuration restore did not finish: restore the last known good snapshot to finish it."
 msgstr ""
 
@@ -191,7 +191,7 @@ msgstr ""
 msgid "a failed change left the DPI guard in place; restart Forkop X"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/overview.ts:377
+#: src/forkop/tabs/dashboard/overview.ts:387
 msgid "A failed change left the DPI guard in place: restart Forkop X to remove it."
 msgstr ""
 
@@ -280,7 +280,7 @@ msgstr ""
 msgid "Active Main DNS"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:233
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:237
 msgid "Active until the next firewall reload"
 msgstr ""
 
@@ -547,8 +547,8 @@ msgstr ""
 msgid "Applying a strategy"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/overview.ts:175
-#: src/forkop/tabs/dashboard/overview.ts:225
+#: src/forkop/tabs/dashboard/overview.ts:182
+#: src/forkop/tabs/dashboard/overview.ts:235
 msgid "Applying changes…"
 msgstr ""
 
@@ -633,11 +633,11 @@ msgstr ""
 msgid "Automatically select the fastest node in the current level"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/overview.ts:265
+#: src/forkop/tabs/dashboard/overview.ts:275
 msgid "Autostart is off"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/overview.ts:265
+#: src/forkop/tabs/dashboard/overview.ts:275
 msgid "Autostart is on"
 msgstr ""
 
@@ -751,7 +751,7 @@ msgstr ""
 msgid "Block this section's traffic instead of sending it directly when the VPN, sing-box or Forkop itself is not running. Applies to forwarded client traffic, survives a Forkop stop, firewall reloads and reboots. Earlier Zapret and Bypass sections keep working."
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:177
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:181
 msgid "Blocked connections"
 msgstr ""
 
@@ -923,7 +923,7 @@ msgstr ""
 msgid "Cascade connection"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/overview.ts:399
+#: src/forkop/tabs/dashboard/overview.ts:409
 msgid "Change in progress"
 msgstr ""
 
@@ -1074,7 +1074,7 @@ msgstr ""
 #: src/forkop/ui/status.ts:140
 #: src/forkop/tabs/autotune/initController.ts:985
 #: src/forkop/tabs/autotune/initController.ts:1207
-#: src/forkop/tabs/dashboard/overview.ts:219
+#: src/forkop/tabs/dashboard/overview.ts:229
 #: src/forkop/tabs/diagnostic/connectivityMatrix.ts:104
 #: src/forkop/tabs/diagnostic/dpiPlayground.ts:48
 #: src/forkop/tabs/diagnostic/siteCheck.ts:243
@@ -1575,7 +1575,7 @@ msgstr ""
 msgid "Diagnostics"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/overview.ts:273
+#: src/forkop/tabs/dashboard/overview.ts:283
 msgid "Diagnostics has not been run yet"
 msgstr ""
 
@@ -1665,7 +1665,7 @@ msgstr ""
 msgid "DNS over TLS (DoT)"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:262
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:266
 msgid "DNS protection"
 msgstr ""
 
@@ -1792,8 +1792,8 @@ msgstr ""
 msgid "Domains"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:185
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:270
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:189
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:274
 msgid "Domains blocked while Forkop is stopped"
 msgstr ""
 
@@ -1801,7 +1801,7 @@ msgstr ""
 msgid "Domains in rules may not resolve, or resolve past Forkop, so their rules do not apply."
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:200
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:204
 msgid "Domains of device-limited rules not blocked through DNS (shared by all devices)"
 msgstr ""
 
@@ -2082,7 +2082,7 @@ msgstr ""
 msgid "Except: %d"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:271
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:275
 msgid "exceptions"
 msgstr ""
 
@@ -2212,7 +2212,7 @@ msgstr ""
 msgid "FakeIP checks"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:277
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:281
 msgid "FakeIP connections rejected"
 msgstr ""
 
@@ -2295,7 +2295,7 @@ msgstr ""
 msgid "Forkop manages the nfqws2 process lifecycle itself, so daemon mode is not allowed here."
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:256
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:260
 msgid "Forkop runtime"
 msgstr ""
 
@@ -2327,7 +2327,7 @@ msgstr ""
 msgid "Forkop X is busy with another operation: the change applies when it finishes."
 msgstr ""
 
-#: src/forkop/tabs/dashboard/overview.ts:241
+#: src/forkop/tabs/dashboard/overview.ts:251
 msgid "Forkop X is running"
 msgstr ""
 
@@ -2348,7 +2348,7 @@ msgid "Forkop X is stopped. Start it to run the checks."
 msgstr ""
 
 #: src/forkop/tabs/dashboard/overview.ts:152
-#: src/forkop/tabs/dashboard/overview.ts:421
+#: src/forkop/tabs/dashboard/overview.ts:431
 msgid "Forkop X kept or restored the previous configuration."
 msgstr ""
 
@@ -2360,7 +2360,7 @@ msgstr ""
 msgid "Forkop X measures the targets on schedule and shows recommendations. It does not change rules."
 msgstr ""
 
-#: src/forkop/tabs/dashboard/overview.ts:228
+#: src/forkop/tabs/dashboard/overview.ts:238
 msgid "Forkop X needs attention"
 msgstr ""
 
@@ -2385,7 +2385,7 @@ msgstr ""
 msgid "Forkop X restores the last known working configuration if the current one differs from it, and reloads the service."
 msgstr ""
 
-#: src/forkop/tabs/dashboard/overview.ts:181
+#: src/forkop/tabs/dashboard/overview.ts:188
 msgid "Forkop X stays stopped until you start it: reloads, restores and updates do not start it."
 msgstr ""
 
@@ -2393,11 +2393,11 @@ msgstr ""
 msgid "Forkop X stops handling traffic until it is started again."
 msgstr ""
 
-#: src/forkop/tabs/dashboard/overview.ts:192
+#: src/forkop/tabs/dashboard/overview.ts:200
 msgid "Forkop X was not started since the router booted: reloads, restores and updates do not start it."
 msgstr ""
 
-#: src/forkop/tabs/dashboard/overview.ts:208
+#: src/forkop/tabs/dashboard/overview.ts:217
 msgid "Forkop X was not stopped by the user: its start failed or it stopped unexpectedly."
 msgstr ""
 
@@ -2486,7 +2486,7 @@ msgstr ""
 msgid "has no effect"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/overview.ts:248
+#: src/forkop/tabs/dashboard/overview.ts:258
 msgid "Health state unavailable"
 msgstr ""
 
@@ -2566,6 +2566,10 @@ msgstr ""
 #: src/forkop/tabs/dashboard/initController.ts:1191
 #: src/forkop/tabs/dashboard/initController.ts:1443
 msgid "Idle timeout"
+msgstr ""
+
+#: src/forkop/tabs/dashboard/overview.ts:163
+msgid "If the VPN kill-switch is enabled, its sections stay blocked until Forkop X is started."
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:4644
@@ -3042,7 +3046,7 @@ msgstr ""
 msgid "Keyword must not contain spaces or commas"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:192
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:196
 msgid "Keyword/regex matchers without DNS protection"
 msgstr ""
 
@@ -3050,7 +3054,7 @@ msgstr ""
 msgid "Kill-switch status"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:309
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:313
 msgid "Kill-switch status is unavailable: %s"
 msgstr ""
 
@@ -3078,7 +3082,7 @@ msgstr ""
 msgid "Last check postponed"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/overview.ts:269
+#: src/forkop/tabs/dashboard/overview.ts:279
 msgid "Last diagnostics: %s"
 msgstr ""
 
@@ -3107,11 +3111,11 @@ msgstr ""
 msgid "Last reload"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/overview.ts:341
+#: src/forkop/tabs/dashboard/overview.ts:351
 msgid "Last reload: %s"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:281
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:285
 msgid "Last update"
 msgstr ""
 
@@ -3189,7 +3193,7 @@ msgstr ""
 msgid "Loading connections"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:295
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:299
 msgid "Loading kill-switch status…"
 msgstr ""
 
@@ -3468,7 +3472,7 @@ msgstr ""
 msgid "No connections match the filters"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/overview.ts:322
+#: src/forkop/tabs/dashboard/overview.ts:332
 msgid "no data"
 msgstr ""
 
@@ -3521,11 +3525,11 @@ msgstr ""
 msgid "No other marking rules found"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/overview.ts:427
+#: src/forkop/tabs/dashboard/overview.ts:437
 msgid "No recovery needed"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/overview.ts:348
+#: src/forkop/tabs/dashboard/overview.ts:358
 #: src/forkop/tabs/history/model.ts:154
 msgid "No reload recorded yet"
 msgstr ""
@@ -3603,7 +3607,7 @@ msgstr ""
 msgid "Nodes and groups"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:249
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:253
 msgid "none"
 msgstr ""
 
@@ -3685,7 +3689,7 @@ msgid "Not responding"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:141
-#: src/forkop/tabs/dashboard/overview.ts:205
+#: src/forkop/tabs/dashboard/overview.ts:214
 #: src/forkop/tabs/diagnostic/diagnostic.store.ts:131
 #: src/forkop/tabs/diagnostic/initController.ts:106
 #: src/forkop/tabs/diagnostic/initController.ts:330
@@ -3700,7 +3704,7 @@ msgid "not set"
 msgstr ""
 
 #: src/forkop/ui/status.ts:137
-#: src/forkop/tabs/dashboard/overview.ts:190
+#: src/forkop/tabs/dashboard/overview.ts:198
 msgid "Not started"
 msgstr ""
 
@@ -3745,7 +3749,7 @@ msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:120
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:151
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:242
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:246
 #: src/forkop/tabs/autotune/model.ts:17
 msgid "Off"
 msgstr ""
@@ -3892,7 +3896,7 @@ msgid "Package recovery"
 msgstr ""
 
 #: src/forkop/tabs/dashboard/overview.ts:142
-#: src/forkop/tabs/dashboard/overview.ts:411
+#: src/forkop/tabs/dashboard/overview.ts:421
 msgid "Package recovery has not finished"
 msgstr ""
 
@@ -4095,12 +4099,12 @@ msgstr ""
 msgid "Profile"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:248
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:252
 msgid "Protected sections"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:164
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:232
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:236
 msgid "Protection active"
 msgstr ""
 
@@ -4108,7 +4112,7 @@ msgstr ""
 msgid "Protection and recovery"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/overview.ts:403
+#: src/forkop/tabs/dashboard/overview.ts:413
 msgid "Protection is active"
 msgstr ""
 
@@ -4130,7 +4134,7 @@ msgstr ""
 msgid "RAM"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:340
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:344
 msgid "Re-apply now"
 msgstr ""
 
@@ -4229,7 +4233,7 @@ msgstr ""
 msgid "Remove permanently"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:351
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:355
 msgid "Remove protection now"
 msgstr ""
 
@@ -4245,7 +4249,7 @@ msgstr ""
 msgid "Remove target?"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:354
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:358
 msgid "Remove the kill-switch now? Protected traffic will be able to leave directly until Forkop applies it again on the next successful start or reload."
 msgstr ""
 
@@ -4317,7 +4321,7 @@ msgstr ""
 msgid "Restart Forkop X. If another add-on marks traffic, make sure it does not conflict."
 msgstr ""
 
-#: src/forkop/tabs/dashboard/overview.ts:373
+#: src/forkop/tabs/dashboard/overview.ts:383
 msgid "Restart required"
 msgstr ""
 
@@ -4357,7 +4361,7 @@ msgstr ""
 msgid "Restore normal mode"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/overview.ts:387
+#: src/forkop/tabs/dashboard/overview.ts:397
 msgid "Restore required"
 msgstr ""
 
@@ -4482,7 +4486,7 @@ msgstr ""
 msgid "Router DNS"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/overview.ts:259
+#: src/forkop/tabs/dashboard/overview.ts:269
 msgid "Router DNS is not pointed to Forkop X"
 msgstr ""
 
@@ -4494,7 +4498,7 @@ msgstr ""
 msgid "Routing"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/overview.ts:304
+#: src/forkop/tabs/dashboard/overview.ts:314
 msgid "Routing is paused while Forkop X is stopped."
 msgstr ""
 
@@ -4574,7 +4578,7 @@ msgstr ""
 msgid "Run full diagnostics"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:258
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:262
 msgid "running: traffic goes through the VPN"
 msgstr ""
 
@@ -4623,6 +4627,10 @@ msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:8398
 msgid "Section name"
+msgstr ""
+
+#: src/forkop/tabs/shared/serviceControl.ts:37
+msgid "Sections with the VPN kill-switch are blocked instead of going directly"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:2331
@@ -4827,11 +4835,11 @@ msgstr ""
 msgid "Sing-box installed"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/overview.ts:255
+#: src/forkop/tabs/dashboard/overview.ts:265
 msgid "sing-box is not running"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/overview.ts:254
+#: src/forkop/tabs/dashboard/overview.ts:264
 msgid "sing-box is running"
 msgstr ""
 
@@ -4876,7 +4884,7 @@ msgstr ""
 msgid "Snapshot saved"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/overview.ts:352
+#: src/forkop/tabs/dashboard/overview.ts:362
 msgid "Snapshots: %d"
 msgstr ""
 
@@ -4960,7 +4968,7 @@ msgstr ""
 msgid "Standalone Zapret2 service is inactive"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:264
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:268
 msgid "Standby DNS for a failed sing-box"
 msgstr ""
 
@@ -4982,7 +4990,7 @@ msgstr ""
 msgid "starting"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/overview.ts:176
+#: src/forkop/tabs/dashboard/overview.ts:183
 #: src/forkop/tabs/dashboard/overviewCards.ts:155
 #: src/forkop/tabs/shared/startService.ts:28
 #: src/forkop/tabs/shared/startService.ts:40
@@ -4996,9 +5004,9 @@ msgstr ""
 msgid "State"
 msgstr ""
 
-#: src/forkop/tabs/dashboard/overview.ts:222
-#: src/forkop/tabs/dashboard/overview.ts:333
-#: src/forkop/tabs/dashboard/overview.ts:359
+#: src/forkop/tabs/dashboard/overview.ts:232
+#: src/forkop/tabs/dashboard/overview.ts:343
+#: src/forkop/tabs/dashboard/overview.ts:369
 msgid "State unavailable"
 msgstr ""
 
@@ -5006,11 +5014,11 @@ msgstr ""
 msgid "Status"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:167
-msgid "Still enforced until the next successful reload"
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:169
+msgid "Still enforced until the next successful Forkop start or reload"
 msgstr ""
 
-#: src/forkop/tabs/shared/serviceControl.ts:38
+#: src/forkop/tabs/shared/serviceControl.ts:41
 msgid "Stop"
 msgstr ""
 
@@ -5028,11 +5036,11 @@ msgid "Stop Forkop X…"
 msgstr ""
 
 #: src/forkop/ui/status.ts:136
-#: src/forkop/tabs/dashboard/overview.ts:179
+#: src/forkop/tabs/dashboard/overview.ts:186
 msgid "Stopped by user"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:259
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:263
 msgid "stopped: protected traffic is blocked"
 msgstr ""
 
@@ -5335,7 +5343,7 @@ msgstr ""
 msgid "The last change (%s) was not confirmed by its check, and the configuration was changed since; the rule still uses that strategy. Until you choose another strategy for the rule, turn the rule off or restore a snapshot in History and recovery, Forkop X does not record this configuration as the last known working one, and autotune applies nothing."
 msgstr ""
 
-#: src/forkop/tabs/dashboard/overview.ts:244
+#: src/forkop/tabs/dashboard/overview.ts:254
 msgid "The last change was rolled back automatically."
 msgstr ""
 
@@ -5353,7 +5361,7 @@ msgid "The last check was interrupted"
 msgstr ""
 
 #: src/forkop/tabs/dashboard/overview.ts:151
-#: src/forkop/tabs/dashboard/overview.ts:418
+#: src/forkop/tabs/dashboard/overview.ts:428
 msgid "The last configuration change failed"
 msgstr ""
 
@@ -5790,7 +5798,7 @@ msgstr ""
 msgid "This rule keeps settings in a legacy form, from an earlier version, the podkop migration or the command line. The fields show what the rule matches; the legacy options stay as they are until you convert or remove them."
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:213
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:217
 msgid "This section has no IP lists, so it is protected through FakeIP and DNS only."
 msgstr ""
 
@@ -5868,9 +5876,9 @@ msgstr ""
 msgid "Traffic for this level goes directly."
 msgstr ""
 
-#: src/forkop/tabs/dashboard/overview.ts:186
-#: src/forkop/tabs/dashboard/overview.ts:197
-#: src/forkop/tabs/dashboard/overview.ts:215
+#: src/forkop/tabs/dashboard/overview.ts:193
+#: src/forkop/tabs/dashboard/overview.ts:205
+#: src/forkop/tabs/dashboard/overview.ts:224
 msgid "Traffic goes through the router without Forkop X."
 msgstr ""
 
@@ -6212,8 +6220,8 @@ msgstr ""
 msgid "Waiting"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:171
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:238
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:175
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:242
 msgid "Waiting for a successful Forkop start or reload"
 msgstr ""
 

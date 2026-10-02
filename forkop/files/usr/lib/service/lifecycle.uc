@@ -2462,9 +2462,12 @@ function reload(reason) {
 function reload_tracked(reason) {
     // Nothing was reloaded: no UI job of its own and no health record. A job
     // that init.d opened completes without waiting for the stopped runtime
-    // (service/ui.uc).
-    if (reload_skipped_after_stop(reason))
+    // (service/ui.uc). A kill-switch that no section has any more is lifted
+    // all the same (UC-208); init.d holds reload.lock for this reload.
+    if (reload_skipped_after_stop(reason)) {
+        module_success(KILLSWITCH_UC, [ "follow-stopped-config", reason, "reload-lock-held" ]);
         return 0;
+    }
 
     // A reload that gave way to a stop is recorded as neither.
     if (as_string(getenv("FORKOP_UI_ACTION_TRACKED") || "0") == "1") {

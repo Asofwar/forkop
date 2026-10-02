@@ -83,6 +83,7 @@ const STOP_ACK_REASONS = [ "config-restore", "autotune" ];
 
 const DNS_APPLY_UC = LIB_DIR + "/dns/apply.uc";
 const UI_UC = LIB_DIR + "/service/ui.uc";
+const KILLSWITCH_UC = LIB_DIR + "/killswitch/runtime.uc";
 
 function shell_quote(value) {
     return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
@@ -1142,9 +1143,12 @@ function reload_begin_value(reason, owner_pid, runtime_running_value, service_en
         return { action: "skip", job_id: "" };
     }
 
-    // Not a queued request either: the next start applies everything.
-    if (reload_skipped_after_stop(reason, runtime_running_value))
+    // Not a queued request either: the next start applies everything, but
+    // a kill-switch that no section has any more is lifted now (UC-208).
+    if (reload_skipped_after_stop(reason, runtime_running_value)) {
+        command_success_from_args(module_args(KILLSWITCH_UC, [ "follow-stopped-config", reason ]));
         return { action: "skip", job_id: "", stopped: true };
+    }
 
     active_service_action = active_service_action == null ? active_service_action_value() : as_string(active_service_action);
     if (reason == "pending" && active_service_action != "" && !ui_action_tracked()) {

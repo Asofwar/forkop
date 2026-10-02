@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-02 00:38+0000\n"
-"PO-Revision-Date: 2026-10-02 00:38+0000\n"
+"POT-Creation-Date: 2026-10-02 00:44+0000\n"
+"PO-Revision-Date: 2026-10-02 00:44+0000\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -1784,6 +1784,9 @@ msgstr "HTTPS-запрос выполняет сам роутер"
 msgid "Idle timeout"
 msgstr "Таймаут простоя"
 
+msgid "If the VPN kill-switch is enabled, its sections stay blocked until Forkop X is started."
+msgstr "Если включён VPN kill-switch, его секции остаются заблокированными, пока Forkop X не запущен."
+
 msgid "ignored: %s is used instead"
 msgstr "не используется: вместо него используется %s"
 
@@ -3194,6 +3197,9 @@ msgstr "Секрет контроллера Clash API, который испол
 msgid "Section name"
 msgstr "Имя секции"
 
+msgid "Sections with the VPN kill-switch are blocked instead of going directly"
+msgstr "Секции с VPN kill-switch блокируются, а не идут напрямую"
+
 msgid "Security"
 msgstr "Защита"
 
@@ -3464,8 +3470,8 @@ msgstr "Состояние недоступно"
 msgid "Status"
 msgstr "Состояние"
 
-msgid "Still enforced until the next successful reload"
-msgstr "Действует до следующей успешной перезагрузки"
+msgid "Still enforced until the next successful Forkop start or reload"
+msgstr "Действует до следующего успешного запуска или перезагрузки Forkop"
 
 msgid "Stop"
 msgstr "Остановить"

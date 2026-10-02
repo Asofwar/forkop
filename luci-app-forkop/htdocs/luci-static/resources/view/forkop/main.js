@@ -5937,6 +5937,9 @@ function overviewWarning(health2) {
   }
   return null;
 }
+var KILL_SWITCH_STOPPED_LINE = () => _(
+  "If the VPN kill-switch is enabled, its sections stay blocked until Forkop X is started."
+);
 function overviewState(input) {
   const { health: health2, availability } = input;
   const lines = [];
@@ -5956,6 +5959,7 @@ function overviewState(input) {
     lines.push({
       text: _("Traffic goes through the router without Forkop X.")
     });
+    lines.push({ text: KILL_SWITCH_STOPPED_LINE() });
   } else if (availability === "stopped" && input.forkopNotStarted === true) {
     status2 = "off";
     title = _("Not started");
@@ -5967,6 +5971,7 @@ function overviewState(input) {
     lines.push({
       text: _("Traffic goes through the router without Forkop X.")
     });
+    lines.push({ text: KILL_SWITCH_STOPPED_LINE() });
   } else if (availability === "stopped") {
     const failed2 = input.forkopNotStarted === false || input.forkopEnabled;
     status2 = failed2 ? "error" : "off";
@@ -5982,6 +5987,7 @@ function overviewState(input) {
     lines.push({
       text: _("Traffic goes through the router without Forkop X.")
     });
+    lines.push({ text: KILL_SWITCH_STOPPED_LINE() });
   } else if (availability === "loading") {
     status2 = "busy";
     title = _("Checking\u2026");
@@ -7096,7 +7102,10 @@ function confirmStopForkop() {
     message: _("Forkop X stops handling traffic until it is started again."),
     consequences: [
       _("Routing, DNS and DPI bypass rules stop applying"),
-      _("Devices keep using the router without Forkop X")
+      _("Devices keep using the router without Forkop X"),
+      _(
+        "Sections with the VPN kill-switch are blocked instead of going directly"
+      )
     ],
     confirmLabel: _("Stop"),
     danger: true

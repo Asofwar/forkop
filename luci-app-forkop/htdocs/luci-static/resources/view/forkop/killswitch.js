@@ -163,8 +163,12 @@ function renderSectionStatus(section_id, status) {
   if (applied && configured) {
     children.push(badge(_("Protection active"), "ok"));
   } else if (applied) {
+    // A reload of a stopped Forkop does not refresh it (D-15, UC-208).
     children.push(
-      badge(_("Still enforced until the next successful reload"), "warn"),
+      badge(
+        _("Still enforced until the next successful Forkop start or reload"),
+        "warn",
+      ),
     );
   } else {
     children.push(

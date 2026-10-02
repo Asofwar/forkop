@@ -175,6 +175,10 @@ describe('overview state', () => {
       'Forkop X stays stopped until you start it: reloads, restores and updates do not start it.',
     );
     expect(byUser.lines.some((line) => line.tone === 'error')).toBe(false);
+    // Reloads of a stopped Forkop X do not refresh the kill-switch (UC-208).
+    expect(byUser.lines.map((line) => line.text)).toContain(
+      'If the VPN kill-switch is enabled, its sections stay blocked until Forkop X is started.',
+    );
 
     const down = overviewState(input({ availability: 'stopped' }));
     expect(down.status).toBe('error');

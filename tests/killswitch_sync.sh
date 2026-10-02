@@ -187,7 +187,9 @@ if ks sync reload; then
 fi
 [ -e "$POLICY" ] && [ -e "$WORK_DIR/ks-present" ] && [ -e "$BLOCKED" ] || fail "protection must survive a sync without runtime"
 
-# 7. Unchecking the option lifts everything, even while Forkop is stopped.
+# 7. A sync without protected sections lifts everything, even without a
+#    runtime. Reloads of a stopped Forkop reach it through service/initd.uc:
+#    tests/killswitch_stopped_reload.sh (UC-208).
 write_config 0
 sed -i '/^dhcp.@dnsmasq\[0\].server=/d' "$UCI_STATE"
 printf 'dhcp.@dnsmasq[0].server=1.1.1.1\ndhcp.@dnsmasq[0].serversfile=%s\n' "$SERVERS" >> "$UCI_STATE"

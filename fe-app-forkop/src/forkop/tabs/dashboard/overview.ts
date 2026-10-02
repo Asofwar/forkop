@@ -157,6 +157,13 @@ export function overviewWarning(
   return null;
 }
 
+// The VPN kill-switch keeps blocking while Forkop X is down; a reload of a
+// stopped Forkop X never refreshes it (D-15, UC-208).
+const KILL_SWITCH_STOPPED_LINE = () =>
+  _(
+    'If the VPN kill-switch is enabled, its sections stay blocked until Forkop X is started.',
+  );
+
 export function overviewState(input: OverviewInput): OverviewState {
   const { health, availability } = input;
   const lines: OverviewLine[] = [];
@@ -185,6 +192,7 @@ export function overviewState(input: OverviewInput): OverviewState {
     lines.push({
       text: _('Traffic goes through the router without Forkop X.'),
     });
+    lines.push({ text: KILL_SWITCH_STOPPED_LINE() });
   } else if (availability === 'stopped' && input.forkopNotStarted === true) {
     status = 'off';
     title = _('Not started');
@@ -196,6 +204,7 @@ export function overviewState(input: OverviewInput): OverviewState {
     lines.push({
       text: _('Traffic goes through the router without Forkop X.'),
     });
+    lines.push({ text: KILL_SWITCH_STOPPED_LINE() });
   } else if (availability === 'stopped') {
     // Nobody stopped it: a start failed or the runtime went down after an
     // explicit start. A backend that does not report whether Forkop was
@@ -214,6 +223,7 @@ export function overviewState(input: OverviewInput): OverviewState {
     lines.push({
       text: _('Traffic goes through the router without Forkop X.'),
     });
+    lines.push({ text: KILL_SWITCH_STOPPED_LINE() });
   } else if (availability === 'loading') {
     status = 'busy';
     title = _('Checking…');

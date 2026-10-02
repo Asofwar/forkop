@@ -25,8 +25,12 @@ chmod +x "$WORK/sing-box"
 export FORKOP_RULESET_MATCH_BIN="$WORK/sing-box"
 export RULESET_STUB_CALLS="$WORK/calls"
 
-# A "binary" list of the stand-in is "SRS" + source JSON.
-binary_list() { printf 'SRS\n%s\n' "$2" >"$WORK/$1"; }
+# A "binary" list of the stand-in is "SRS" + source JSON, stored the way
+# singbox/ruleset_cache.uc leaves it: with the record of its check and shape.
+binary_list() {
+    printf 'SRS\n%s\n' "$2" >"$WORK/$1"
+    ucode -L "$LIB" "$ROOT_DIR/tests/helpers/rule_set_record.uc" "$WORK/$1"
+}
 binary_list youtube.srs '{ "version": 3, "rules": [ { "domain_suffix": [ "youtube.com" ] } ] }'
 binary_list other.srs '{ "version": 3, "rules": [ { "domain": [ "example.org" ] } ] }'
 printf '%s\n' '{ "version": 3, "rules": [ { "ip_cidr": [ "203.0.113.7/32" ] } ] }' >"$WORK/addresses.json"
@@ -139,7 +143,8 @@ unset RULESET_STUB_NOISE
 # matched" state from one rule of the list to the next. A list rule with any
 # other item (port, network, source, ...), invert or a logical rule is
 # therefore answered wrongly, and such a list is undecidable (UC-218). A
-# source list is read as it is, a binary one through "rule-set decompile".
+# source list is read as it is; a binary one is known by the shape recorded
+# where it was stored (routing_resolve_rule_set_shape.sh), never decompiled.
 shape() { # name json -> a source list <name>.json and a binary <name>.srs
     printf '%s\n' "$2" >"$WORK/$1.json"
     binary_list "$1.srs" "$2"
@@ -166,11 +171,13 @@ for name in tcp_only port_443 not_443 inverted logical source_ip port_then_addre
         fi
     done
 done
-# A binary list is decompiled with an explicit output that is not next to
-# the list (without -o sing-box writes <list>.json beside it).
-grep -q "^rule-set decompile $WORK/plain.srs " "$WORK/calls" || fail "the binary list was not decompiled"
-if grep '^rule-set decompile ' "$WORK/calls" | grep -qv -- ' -o '; then fail "decompile without -o"; fi
-if grep '^rule-set decompile ' "$WORK/calls" | grep -q -- " -o $WORK/"; then fail "decompile wrote into the list directory"; fi
+# A binary list without a record of the file as it is now: undecidable,
+# and the resolver does not decompile it to find out.
+cp "$WORK/plain.srs" "$WORK/unrecorded.srs"
+unrecorded="[ { \"type\": \"local\", \"tag\": \"shaped\", \"format\": \"binary\", \"path\": \"$WORK/unrecorded.srs\" } ]"
+list_rule='{ "action": "route", "inbound": [ "tproxy-in" ], "rule_set": [ "shaped" ], "outbound": "main-out" }'
+expect unrecorded_binary "{ \"host\": \"youtube.com\", \"rule_set\": $unrecorded, \"rules\": [ $list_rule, $yt ] }" "$undecided"
+if grep -q '^rule-set decompile ' "$WORK/calls"; then fail "unrecorded_binary: the resolver decompiled a list"; fi
 
 # A list path reaches sing-box as one argument, whatever it holds (UC-219):
 # quotes, blanks, $(...), backticks and ";" never run anything. The

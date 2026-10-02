@@ -33,7 +33,13 @@ export FORKOP_RULESET_MATCH_BIN="$WORK/sing-box"
 export RULESET_STUB_CALLS="$WORK/calls"
 : >"$WORK/calls"
 
-binary_list() { printf 'SRS\n%s\n' "$2" >"$WORK/$1"; }
+# Stored the way singbox/ruleset_cache.uc leaves a list: with its record.
+RECORD="$ROOT_DIR/tests/helpers/rule_set_record.uc"
+export RECORD
+binary_list() {
+    printf 'SRS\n%s\n' "$2" >"$WORK/$1"
+    ucode -L "$LIB" "$RECORD" "$WORK/$1"
+}
 binary_list youtube.srs '{ "version": 3, "rules": [ { "domain_suffix": [ "youtube.com" ] } ] }'
 for n in 1 2 3; do binary_list "other$n.srs" "{ \"version\": 3, \"rules\": [ { \"domain\": [ \"example$n.org\" ] } ] }"; done
 binary_list hang.srs '{ "version": 3, "rules": [ { "domain_suffix": [ "youtube.com" ] } ] }'
@@ -49,7 +55,7 @@ EOF
 
 # Resolves each step's host in ONE process and reports, per step, the answer
 # and how many "rule-set match" questions it took. A step may first rewrite
-# a list file.
+# a list file (as a refresh of the cache does: with a new record).
 cat >"$WORK/steps.uc" <<'EOF'
 let fs = require("fs"), r = require("routing.resolve");
 let sections = r.parse_config(fs.readfile(ARGV[0]));
@@ -60,7 +66,10 @@ let config = { route: { final: "direct-out", rule_set: c.rule_set, rules: c.rule
         { type: "direct", tag: "youtube-out", routing_mark: 16777217 } ] };
 let out = [];
 for (let step in c.steps) {
-    if (step.rewrite != null) fs.writefile(step.rewrite.path, step.rewrite.text);
+    if (step.rewrite != null) {
+        fs.writefile(step.rewrite.path, step.rewrite.text);
+        system([ "ucode", "-L", getenv("FORKOP_LIB"), getenv("RECORD"), step.rewrite.path ]);
+    }
     let before = asked();
     let got = r.resolve(config, sections, r.target(step.host, "198.18.0.9", { fakeip: true }));
     push(out, join(" ", map([ got.status, got.route_rule, got.section, asked() - before ], (v) => v == null ? "null" : "" + v)));

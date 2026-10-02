@@ -65,7 +65,15 @@ fi
 
 # ---- the resolver with the real binary ------------------------------------
 
+# A binary list as singbox/ruleset_cache.uc stores it: decompiled once, by
+# the real binary, and the shape of what it printed recorded next to it
+# (the resolver itself never decompiles).
+record() { # srs
+    "$SING_BOX" rule-set decompile "$1" -o "$WORK/decompiled.json"
+    ucode -L "$LIB" "$ROOT_DIR/tests/helpers/rule_set_record.uc" "$1" "$WORK/decompiled.json"
+}
 "$SING_BOX" rule-set compile "$WORK/plain.json" -o "$WORK/youtube.srs"
+record "$WORK/youtube.srs"
 list other '{ "version": 3, "rules": [ { "domain": [ "example.org" ] } ] }'
 
 cat >"$WORK/forkop" <<'EOF'
@@ -116,9 +124,11 @@ expect list_miss_all "{ \"host\": \"nothing.test\", \"rule_set\": $sets, \"rules
 
 # A list sing-box cannot answer for with the value alone (port, network,
 # source, invert, logical rules) is undecidable, as source and as binary
-# (decompiled by the real binary); a plain one is decided (UC-218).
+# (its shape recorded from the real binary's decompile); a plain one is
+# decided (UC-218).
 for name in port_first logical mixed keyword; do
     "$SING_BOX" rule-set compile "$WORK/$name.json" -o "$WORK/$name.srs"
+    record "$WORK/$name.srs"
     for format in source binary; do
         file="$WORK/$name.json"
         [ "$format" = binary ] && file="$WORK/$name.srs"
@@ -134,6 +144,7 @@ done
 mkdir "$WORK/hostile"
 hostile_path="$WORK/hostile/a';touch\${IFS}PWNED;'.srs"
 cp "$WORK/youtube.srs" "$hostile_path"
+record "$hostile_path"
 hostile="[ { \"type\": \"local\", \"tag\": \"yt\", \"format\": \"binary\", \"path\": \"$hostile_path\" } ]"
 (cd "$WORK/hostile" && expect hostile_path "{ \"host\": \"www.youtube.com\", \"rule_set\": $hostile, \"rules\": [ $yt ] }" "$zapret")
 [ ! -e "$WORK/hostile/PWNED" ] || fail "hostile_path: a command in the list path was run"

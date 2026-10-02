@@ -221,20 +221,27 @@ function valid_source(path) {
     return type(value) == "object" && type(value.rules) == "array";
 }
 
+// "<list>.validated": the decompile check of a binary list and the shape of
+// its rules (singbox/rulesets.uc), for the file as it was checked.
 function binary_validation_path(path) {
-    return as_string(path) + ".validated";
+    return rulesets.binary_validation_path(path);
 }
 
 function binary_stat_signature(path) {
-    let stat = fs.stat(path);
-    if (stat == null)
-        return "";
-    return join(":", [ stat.inode, stat.size, stat.mtime, stat.ctime ]);
+    return rulesets.stat_signature(path);
 }
 
-function mark_binary_valid(path) {
+// The shape in the record next to a file, whichever file it was written for:
+// carried over when a checked file is renamed into place.
+function recorded_shape(path) {
+    return as_string(split(as_string(fs.readfile(binary_validation_path(path))), "\n")[1]);
+}
+
+// Written after the last change of the file (rename, chmod): its ctime is
+// part of the signature.
+function mark_binary_valid(path, shape) {
     let signature = binary_stat_signature(path);
-    return signature != "" && fs.writefile(binary_validation_path(path), signature + "\n") != null;
+    return signature != "" && fs.writefile(binary_validation_path(path), signature + "\n" + as_string(shape) + "\n") != null;
 }
 
 function valid_binary(path) {
@@ -244,15 +251,18 @@ function valid_binary(path) {
         fs.unlink(validation_path);
         return false;
     }
-    if (trim(as_string(fs.readfile(validation_path))) == signature)
+    // A record without the shape (written before it was kept) is checked
+    // again, once.
+    if (rulesets.recorded_binary_shape(path) != null)
         return true;
 
     let output = parent_dir(path) + "/.validate-" + cache_key(path) + ".json";
     fs.unlink(output);
-    let ok = command_success([ "sing-box", "rule-set", "decompile", path, "-o", output ]) && valid_source(output);
+    let value = command_success([ "sing-box", "rule-set", "decompile", path, "-o", output ]) ? common.read_json_file(output) : null;
     fs.unlink(output);
+    let ok = type(value) == "object" && type(value.rules) == "array";
     if (ok)
-        mark_binary_valid(path);
+        mark_binary_valid(path, rulesets.list_shape(value));
     else
         fs.unlink(validation_path);
     return ok;
@@ -429,10 +439,11 @@ function commit_persistent_candidate(source, target, format) {
         fs.unlink(binary_validation_path(staged));
         return false;
     }
+    let shape = recorded_shape(staged);
     fs.unlink(binary_validation_path(staged));
-    if (format == "binary")
-        mark_binary_valid(target);
     command_success([ "chmod", "0600", target ]);
+    if (format == "binary")
+        mark_binary_valid(target, shape);
     return true;
 }
 
@@ -479,7 +490,7 @@ function refresh_entry(entry, proxy_address, runtime_manifest) {
             fs.unlink(temporary);
             fs.unlink(binary_validation_path(temporary));
             if (format == "binary")
-                mark_binary_valid(current);
+                mark_binary_valid(current, recorded_shape(current));
             return { ok: true, changed: false, persisted: current == persistent_target };
         }
 
@@ -488,13 +499,14 @@ function refresh_entry(entry, proxy_address, runtime_manifest) {
         let target = persisted ? persistent_target : runtime_target;
         let committed = persisted ? commit_persistent_candidate(temporary, target, format) : fs.rename(temporary, target);
         if (committed) {
+            let shape = recorded_shape(temporary);
             if (persisted)
                 fs.unlink(temporary);
             fs.unlink(binary_validation_path(temporary));
-            if (!persisted && format == "binary")
-                mark_binary_valid(target);
             if (!persisted)
                 command_success([ "chmod", "0600", target ]);
+            if (!persisted && format == "binary")
+                mark_binary_valid(target, shape);
             let key = cache_key(url);
             if (persisted) {
                 fs.unlink(runtime_target);

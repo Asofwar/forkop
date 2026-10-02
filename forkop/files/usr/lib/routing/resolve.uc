@@ -10,12 +10,13 @@
 // not downloaded), regexes, logical rules, source-scoped rules without a
 // source, unknown fields, a resolve action above the owner of a FakeIP
 // connection — the result says so with a reason instead of guessing.
-// The only commands it runs are "sing-box rule-set match" and "rule-set
-// decompile" on a local list file, bounded in time.
+// The only command it runs is "sing-box rule-set match" on a local list
+// file, bounded in time.
 let fs = require("fs");
 let common = require("core.common");
 let constants = require("core.constants");
 let dpi_strategy = require("core.dpi_strategy");
+let rulesets = require("singbox.rulesets");
 
 const TPROXY_INBOUND = constants.SB_TPROXY_INBOUND_TAG || "tproxy-in";
 const DIRECT_OUTBOUND = constants.SB_DIRECT_OUTBOUND_TAG || "direct-out";
@@ -253,39 +254,29 @@ function run_singbox(args) {
     return status == 0 ? output : null;
 }
 
-// "rule-set match" asks with the value alone (the domain, or the address
-// with port 0: no network, port or source) and carries the "address
-// matched" state from one rule of the list to the next. Its answer holds
-// only for a list whose rules are plain destination-address matchers; a
-// list with any other item, invert or a logical rule is undecidable
-// (UC-218).
-const PLAIN_LIST_KEYS = [ "domain", "domain_suffix", "domain_keyword", "domain_regex", "ip_cidr" ];
-function plain_list(value) {
-    if (type(value) != "object" || type(value.rules) != "array") return false;
-    for (let rule in value.rules) {
-        if (type(rule) != "object") return false;
-        for (let key, v in rule) {
-            if (key == "type" ? v == "default" : key == "invert" ? v === false : index(PLAIN_LIST_KEYS, key) >= 0) continue;
-            return false;
-        }
-    }
-    return true;
-}
-
 // Answers and list shapes already known in this process, by list file
 // (path, format, inode, size, mtime, ctime) and value: each is asked once,
 // however many rules name the list and however many targets are resolved.
 let ruleset_answers = {}, ruleset_shapes = {};
 
-// Whether a list file is plain: a source list is read here, a binary one is
-// decompiled by sing-box to its standard output (never next to the list).
+// Whether sing-box can answer for a list file: its rules are plain
+// destination-address matchers (singbox/rulesets.uc list_shape, UC-218). A
+// source list is read here. A binary one is never decompiled here: for a
+// large list that costs seconds and far more memory than the questions it
+// guards, in every process. Its shape is the one singbox/ruleset_cache.uc
+// recorded when it stored and checked the file; a binary list without a
+// record of the file as it is now (a local .srs of the user) is undecidable.
 function list_is_plain(entry, file) {
     if (ruleset_shapes[file] == null) {
-        let text = entry.format == "source" ? fs.readfile(entry.path)
-            : run_singbox([ RULESET_MATCH_BIN, "rule-set", "decompile", entry.path, "-o", "/proc/self/fd/1" ]);
-        let value = null;
-        try { value = text == null ? null : json(text); } catch (e) { value = null; }
-        ruleset_shapes[file] = plain_list(value);
+        let shape = null;
+        if (entry.format == "binary")
+            shape = rulesets.recorded_binary_shape(entry.path);
+        else {
+            let value = null;
+            try { value = json(fs.readfile(entry.path)); } catch (e) { value = null; }
+            shape = rulesets.list_shape(value);
+        }
+        ruleset_shapes[file] = shape == "plain";
     }
     return ruleset_shapes[file];
 }

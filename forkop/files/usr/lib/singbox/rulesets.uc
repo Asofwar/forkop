@@ -1,5 +1,6 @@
 #!/usr/bin/env ucode
 
+let fs = require("fs");
 let constants = require("core.constants");
 
 const SRS_MAIN_URL = constants.SRS_MAIN_URL;
@@ -127,6 +128,52 @@ function remote_format(reference) {
     return file_extension(reference) == "json" ? "source" : "binary";
 }
 
+// The shape of a list (its source JSON) for "sing-box rule-set match"
+// (routing/resolve.uc, UC-218). The command asks with the value alone (the
+// domain, or the address with port 0: no network, port or source) and
+// carries the "address matched" state from one rule of the list to the
+// next, so its answer holds only for "plain": every rule a default rule of
+// destination-address matchers only. Anything else (port, network, source,
+// process, invert, a logical rule) is "other".
+const PLAIN_LIST_KEYS = [ "domain", "domain_suffix", "domain_keyword", "domain_regex", "ip_cidr" ];
+function list_shape(value) {
+    if (type(value) != "object" || type(value.rules) != "array")
+        return "other";
+    for (let rule in value.rules) {
+        if (type(rule) != "object")
+            return "other";
+        for (let key, v in rule) {
+            if (key == "type" ? v == "default" : key == "invert" ? v === false : index(PLAIN_LIST_KEYS, key) >= 0)
+                continue;
+            return "other";
+        }
+    }
+    return "plain";
+}
+
+// The record singbox/ruleset_cache.uc keeps next to a binary list it stored,
+// written when it decompiled the list to check it:
+// "<inode>:<size>:<mtime>:<ctime>\n<shape>\n" of the file as it was then.
+// It spares both the cache and routing/resolve.uc another decompile, which
+// for a large list takes seconds and far more memory than a match.
+function binary_validation_path(path) {
+    return as_string(path) + ".validated";
+}
+
+function stat_signature(path) {
+    let stat = fs.stat(path);
+    return stat == null ? "" : join(":", [ stat.inode, stat.size, stat.mtime, stat.ctime ]);
+}
+
+// The shape recorded for the binary list as the file is now, or null: no
+// record, a record of an older file, or one without the shape (written
+// before the shape was kept).
+function recorded_binary_shape(path) {
+    let signature = stat_signature(path);
+    let lines = split(as_string(fs.readfile(binary_validation_path(path))), "\n");
+    return signature != "" && lines[0] == signature && (lines[1] == "plain" || lines[1] == "other") ? lines[1] : null;
+}
+
 function module_exports() {
     return {
         is_community,
@@ -135,7 +182,11 @@ function module_exports() {
         hash12,
         file_extension,
         kind_from_reference_hint,
-        remote_format
+        remote_format,
+        list_shape,
+        binary_validation_path,
+        stat_signature,
+        recorded_binary_shape
     };
 }
 

@@ -47,6 +47,11 @@ const STOP_REQUESTED_FILE = getenv("FORKOP_STOP_REQUESTED_FILE") || RUNTIME_STAT
 // written by start and restart, removed by the user's stop. A reload does
 // not start a runtime that is down without it (D-15(a), UC-056).
 const EXPLICIT_START_FILE = getenv("FORKOP_EXPLICIT_START_FILE") || RUNTIME_STATE_DIR + "/start.explicit";
+// Whether the last runtime of this boot was stopped cleanly, for dns/apply.uc:
+// "0" once a start configured dnsmasq (also when it crashed after that), "1"
+// after a stop or the cleanup of a failed start; none before the first start
+// or stop of a boot. Runtime state, not configuration (UC-160).
+const SHUTDOWN_STATE_FILE = RUNTIME_STATE_DIR + "/shutdown_correctly";
 const MANAGED_UPGRADE_SING_BOX_MARKER = getenv("FORKOP_MANAGED_UPGRADE_SING_BOX_MARKER") || "/tmp/forkop-managed-upgrade-sing-box";
 const MANAGED_UPGRADE_SING_BOX_WAIT_SECONDS = int(getenv("FORKOP_MANAGED_UPGRADE_SING_BOX_WAIT_SECONDS") || "15");
 const MANAGED_UPGRADE_SING_BOX_MARKER_MAX_AGE_SECONDS = int(getenv("FORKOP_MANAGED_UPGRADE_SING_BOX_MARKER_MAX_AGE_SECONDS") || "120");
@@ -564,10 +569,6 @@ function config_get(path, fallback) {
     return trim(uci_core.get(path));
 }
 
-function config_set(path, value) {
-    return uci_core.set(path, value);
-}
-
 function file_md5(path) {
     path = as_string(path);
     if (path == "" || fs.stat(path) == null)
@@ -596,29 +597,25 @@ function mark_internal_config_guard() {
         fs.unlink(tmp_path);
 }
 
-// A commit of the whole package: libuci also commits whatever someone staged
-// with `uci set` in /tmp/.uci/forkop. The shutdown_correctly bookkeeping of
-// start and stop still commits this way (UC-160); ensure_clash_api_secret
-// commits its option alone (core/uci.uc commit_option).
-function config_commit() {
-    if (!uci_core.commit(CONFIG_NAME))
-        return 1;
-    mark_internal_config_guard();
-    return 0;
+// SHUTDOWN_STATE_FILE, on tmpfs and only when it changes. Releases before
+// UC-160 kept it as option shutdown_correctly in /etc/config/forkop, which
+// put a flash write and a commit of the whole package (with whatever someone
+// staged with `uci set`) into every start and stop, and a full or read-only
+// overlay failed the start. A record that cannot be written costs at most
+// one dnsmasq restart more (dns/apply.uc): it fails neither start nor stop.
+function record_shutdown_state(value) {
+    value = as_string(value) + "\n";
+    if (fs.readfile(SHUTDOWN_STATE_FILE) == value)
+        return true;
+    if (ensure_dir(RUNTIME_STATE_DIR) && write_file(SHUTDOWN_STATE_FILE, value) != null)
+        return true;
+    log_message("Could not record the Forkop runtime state in " + SHUTDOWN_STATE_FILE, "warn");
+    return false;
 }
 
 function mark_runtime_stopped_clean() {
-    let status = 0;
-    if (!config_set(CONFIG_NAME + ".settings.shutdown_correctly", "1"))
-        status = 1;
-    else {
-        let commit_status = config_commit();
-        if (commit_status != 0)
-            status = commit_status;
-    }
-
+    record_shutdown_state("1");
     module_success(STATE_UC, [ "clear-reload-state", RELOAD_STATE_FILE, RELOAD_STATE_SNAPSHOT_FILE ]);
-    return status;
 }
 
 function setting_bool(name, fallback) {
@@ -1226,12 +1223,7 @@ function start_impl() {
             return status;
     }
 
-    if (!config_set(CONFIG_NAME + ".settings.shutdown_correctly", "0"))
-        return 1;
-
-    status = config_commit();
-    if (status != 0)
-        return status;
+    record_shutdown_state("0");
 
     status = module_status(STATE_UC, [
         "write-current-reload-state-clean",
@@ -1353,9 +1345,7 @@ function cleanup_failed_runtime() {
     if (dns_status != 0 && status == 0)
         status = dns_status;
 
-    let mark_status = mark_runtime_stopped_clean();
-    if (mark_status != 0 && status == 0)
-        status = mark_status;
+    mark_runtime_stopped_clean();
 
     if (status != 0)
         log_message("Failed to fully clean up Forkop runtime after start/reload failure", "warn");
@@ -1794,15 +1784,7 @@ function stop_impl(explicit_stop) {
     if (runtime_status != 0)
         status = runtime_status;
 
-    if (!config_set(CONFIG_NAME + ".settings.shutdown_correctly", "1"))
-        status = 1;
-    else {
-        let commit_status = config_commit();
-        if (commit_status != 0)
-            status = commit_status;
-    }
-
-    module_success(STATE_UC, [ "clear-reload-state", RELOAD_STATE_FILE, RELOAD_STATE_SNAPSHOT_FILE ]);
+    mark_runtime_stopped_clean();
 
     if (status != 0)
         dnsmasq_restore_fail_safe();

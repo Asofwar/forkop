@@ -142,8 +142,9 @@ function words(value) {
 }
 function normalize(opt) { return join(" ", words(opt)); }
 function valid_hash(v) { return match(as_string(v), /^[0-9a-f]{64}$/) != null; }
-// The lifecycle itself rewrites option shutdown_correctly on stop/start; the
-// user configuration is the file without it (lifecycle.external_config_fingerprint).
+// Releases before UC-160 rewrote option shutdown_correctly on every stop and
+// start; the user configuration is the file without it
+// (lifecycle.external_config_fingerprint).
 function fingerprint(text) {
     if (text == null) return "";
     let lines = [];
@@ -682,7 +683,7 @@ function find_pre_snapshot(s) {
 }
 
 // What an apply left behind, from facts only. The user configuration is
-// compared without the lifecycle's own shutdown_correctly bookkeeping.
+// compared without the shutdown_correctly bookkeeping of older releases.
 //   not_applied        config is the pre-apply file and no guard is active
 //   candidate_active   config is the candidate, no guard: reload completed or
 //                      never started; verification verdict missing
@@ -790,10 +791,11 @@ function rollback_event(restored, phase, trigger, candidate) {
 // Restore the pre-apply snapshot through the standard restore transaction
 // and prove the old configuration and runtime are back.
 // A rollback replaces only the candidate this apply wrote: the restore is
-// given the candidate's fingerprint (the lifecycle's shutdown_correctly flag
-// aside) and refuses before any change when the configuration was edited
-// since, during the verification or right before an operator's rollback. The
-// edit stays and is saved as a snapshot; LKG is not moved (UC-017).
+// given the candidate's fingerprint (the shutdown_correctly flag of older
+// releases aside) and refuses before any change when the configuration was
+// edited since, during the verification or right before an operator's
+// rollback. The edit stays and is saved as a snapshot; LKG is not moved
+// (UC-017).
 function rollback_to(audit, p, why) {
     let recorded = { phase: audit.phase, status: audit.status, reason: audit.reason };
     audit.phase = "rolling_back";

@@ -64,6 +64,9 @@ const retiredMissingCurrent = new Set([
   "tailscale_control_url", "tailscale_hostname", "tls_alpn", "tls_certificate_path",
   "tls_key_path", "tls_server_name", "transport", "transport_host", "transport_hosts",
   "transport_path", "transport_service_name", "transport_xhttp_mode", "vless_flow", "vmess_alter_id",
+  // Runtime state, not configuration (UC-160): the lifecycle records it on
+  // tmpfs; an option left in an older configuration is ignored.
+  "shutdown_correctly",
 ]);
 const missing = matrix.fields.filter((field) => field.status === "missing_current" && !retiredMissingCurrent.has(field.name));
 if (missing.length) {

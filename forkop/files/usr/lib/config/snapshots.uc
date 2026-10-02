@@ -546,8 +546,9 @@ function reload(reason) {
     let after = pending_stamp();
     return after != null && after != before ? "queued" : "ran";
 }
-// The user configuration, without the lifecycle's own shutdown_correctly
-// bookkeeping, hashed as autotune/apply.uc fingerprints it.
+// The user configuration, without the shutdown_correctly bookkeeping that
+// releases before UC-160 kept in it, hashed as autotune/apply.uc
+// fingerprints it.
 function user_fingerprint(content) {
     let lines = [];
     for (let line in split(content, "\n"))
@@ -647,8 +648,8 @@ function uci_sections(text) {
     }
     return sections;
 }
-// The user configuration as libuci loads it (without shutdown_correctly), or
-// null (see uci_sections).
+// The user configuration as libuci loads it (without the shutdown_correctly
+// of older releases), or null (see uci_sections).
 function uci_canonical(text) {
     let sections = uci_sections(text);
     if (sections == null) return null;
@@ -656,16 +657,17 @@ function uci_canonical(text) {
     return sprintf("%J", sections);
 }
 // Whether the configuration file still holds `content`: byte for byte, or as
-// libuci loads both. A start or restart inside the reload commits
-// shutdown_correctly through libuci, which rewrites the whole file in its own
-// form (quotes, indentation, blank lines; comments go): that is no edit, nor
-// is a change of comments or formatting alone, which loads the same
-// configuration (and the next uci commit drops it anyway). No hash is
-// involved, so a failing hash tool cannot make two files look equal; a file
-// this reader cannot load holds nothing (fail closed). Comparing the loaded
-// forms takes a while for a big file (seconds on a router): the file is read
-// again afterwards, and an edit committed meanwhile is one as well, so the
-// caller writes over nothing it has not compared.
+// libuci loads both. A commit inside the reload (a Clash API secret the
+// start generates; the shutdown_correctly flag of releases before UC-160)
+// rewrites the whole file in libuci's own form (quotes, indentation, blank
+// lines; comments go): that is no edit, nor is a change of comments or
+// formatting alone, which loads the same configuration (and the next uci
+// commit drops it anyway). No hash is involved, so a failing hash tool
+// cannot make two files look equal; a file this reader cannot load holds
+// nothing (fail closed). Comparing the loaded forms takes a while for a big
+// file (seconds on a router): the file is read again afterwards, and an edit
+// committed meanwhile is one as well, so the caller writes over nothing it
+// has not compared.
 function config_holds(content) {
     let current = read_config();
     if (current == null) return false;

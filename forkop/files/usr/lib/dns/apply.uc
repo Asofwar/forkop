@@ -10,6 +10,8 @@ const KILLSWITCH_STATE_DIR = getenv("KILLSWITCH_STATE_DIR") || "/etc/forkop/kill
 const KILLSWITCH_DNS_BLOCKED_FILE = KILLSWITCH_STATE_DIR + "/dns-blocked.servers";
 const KILLSWITCH_DNS_SERVERS_FILE = KILLSWITCH_STATE_DIR + "/dnsmasq.servers";
 const DNSMASQ_SERVERSFILE_OPTION = "dhcp.@dnsmasq[0].serversfile";
+// service/lifecycle.uc SHUTDOWN_STATE_FILE.
+const SHUTDOWN_STATE_FILE = (getenv("FORKOP_RUNTIME_STATE_DIR") || "/var/run/forkop") + "/shutdown_correctly";
 
 function as_string(value) {
     return value == null ? "" : "" + value;
@@ -107,6 +109,15 @@ function dnsmasq_has_forkop_managed_state() {
 
 function dnsmasq_management_disabled() {
     return truthy(uci_get(CONFIG_NAME + ".settings.dont_touch_dhcp"));
+}
+
+// "0" while Forkop runs (or after a start that crashed), "1" after it was
+// stopped, "" before the first start or stop of this boot: dnsmasq then
+// still runs with the configuration it read at boot. A runtime record
+// (service/lifecycle.uc record_shutdown_state); the shutdown_correctly
+// option older releases kept in UCI is not read (UC-160).
+function shutdown_state() {
+    return trim(as_string(fs.readfile(SHUTDOWN_STATE_FILE)));
 }
 
 // The VPN kill-switch must keep protected domains from resolving through the
@@ -308,16 +319,15 @@ function dnsmasq_configure(force) {
     if (!uci_available())
         return true;
 
-    if (as_string(force) != "force" && uci_get(CONFIG_NAME + ".settings.shutdown_correctly") == "0") {
+    if (as_string(force) != "force" && shutdown_state() != "1") {
         if (dnsmasq_default_config_is_complete()) {
-            log("Previous Forkop shutdown was unclean; dnsmasq already points to sing-box", "info");
+            log("dnsmasq already points to sing-box", "info");
             if (killswitch_dns_apply(false)) {
                 uci_commit("dhcp");
                 return restart_dnsmasq();
             }
             return true;
         }
-        log("Previous Forkop shutdown was unclean and dnsmasq is not ready; applying Forkop DNS settings", "info");
     }
 
     log("Configuring dnsmasq to forward DNS to sing-box", "info");
@@ -335,7 +345,7 @@ function dnsmasq_restore(force, quiet) {
 
     if (!quiet)
         log("Restoring DNS settings in dnsmasq", "info");
-    if (as_string(force) != "force" && uci_get(CONFIG_NAME + ".settings.shutdown_correctly") == "1") {
+    if (as_string(force) != "force" && shutdown_state() != "0") {
         if (!dnsmasq_has_forkop_dns()) {
             log("dnsmasq already uses non-Forkop DNS settings; restore is not required", "info");
             if (killswitch_dns_apply(true)) {
@@ -344,7 +354,7 @@ function dnsmasq_restore(force, quiet) {
             }
             return true;
         }
-        log("Forkop DNS settings are still present after a clean shutdown; restoring DNS settings in dnsmasq", "info");
+        log("Forkop DNS settings are still present; restoring DNS settings in dnsmasq", "info");
     }
 
     dnsmasq_cleanup_legacy_instance();

@@ -240,10 +240,38 @@ printf 'add table inet ForkopKillswitch\n# first build\n' > "$LEGACY_INCLUDE"
 ks postinst || fail "postinst adoption failed"
 [ ! -e "$LEGACY_INCLUDE" ] || fail "postinst must remove the unguarded include"
 grep -Fqx '# first build' "$POLICY" || fail "postinst must keep the protection of the first build as the saved policy"
-printf 'add table inet ForkopKillswitch\n# stale\n' > "$LEGACY_INCLUDE"
-ks postinst || fail "second postinst failed"
-[ ! -e "$LEGACY_INCLUDE" ] || fail "postinst must remove a stale unguarded include"
-grep -Fqx '# first build' "$POLICY" || fail "a saved policy wins over a stale unguarded include"
+
+# 12. Back from the first kill-switch build after a change to it kept the
+#     saved policy: that build never loads policy.nft and this one always
+#     removes the unguarded include, so whatever the first build did last is
+#     newer than the saved policy.
+printf 'add table inet ForkopKillswitch\n# saved before the change\n' > "$POLICY"
+printf 'add table inet ForkopKillswitch\n# written by the first build\n' > "$LEGACY_INCLUDE"
+printf '{ "active": true, "format": 1 }\n' > "$KILLSWITCH_STATE_DIR/state.json"
+ks postinst || fail "postinst after the first build failed"
+[ ! -e "$LEGACY_INCLUDE" ] || fail "postinst must remove the unguarded include"
+grep -Fqx '# written by the first build' "$POLICY" ||
+  fail "the include of the first build is newer than the saved policy and must replace it"
+
+# The first build removed its protection: the policy saved before it is
+# stale.
+printf 'add table inet ForkopKillswitch\n# saved before the change\n' > "$POLICY"
+printf '{ "active": false, "reason": "disabled on request", "format": 1 }\n' > "$KILLSWITCH_STATE_DIR/state.json"
+ks postinst || fail "postinst after the first build removed the protection failed"
+[ ! -e "$POLICY" ] || fail "the first build removed the protection; the policy saved before it must not come back"
+
+# A failed sync of the first build kept the previous protection.
+printf 'add table inet ForkopKillswitch\n# saved before the change\n' > "$POLICY"
+printf '{ "active": true, "last_error": "nft render failed; keeping the previous protection", "format": 1 }\n' > "$KILLSWITCH_STATE_DIR/state.json"
+ks postinst || fail "postinst after a failed sync of the first build failed"
+grep -Fqx '# saved before the change' "$POLICY" || fail "a protection the first build kept must stay"
+
+# This build's own record never drops the saved policy.
+ks sync start || fail "sync after the postinst checks failed"
+grep -Fq '"format": 2' "$KILLSWITCH_STATE_DIR/state.json" || fail "state.json must name the loader layout"
+cp "$POLICY" "$WORK_DIR/policy.saved"
+ks postinst || fail "postinst of an upgrade between loader builds failed"
+cmp -s "$POLICY" "$WORK_DIR/policy.saved" || fail "an upgrade between loader builds must keep the saved policy"
 
 [ ! -e "$FORKOP_RUNTIME_STATE_DIR/killswitch.lock" ] || fail "lock must be released"
 [ ! -e "$FORKOP_RELOAD_LOCK_DIR" ] || fail "reload.lock must be released"

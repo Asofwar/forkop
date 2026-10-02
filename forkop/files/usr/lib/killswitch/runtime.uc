@@ -85,7 +85,10 @@ const STATE_UC = LIB_DIR + "/service/state.uc";
 // Attempts, 500 ms apart, to take a held lock; tests bound it.
 const LOCK_ATTEMPTS = int(getenv("FORKOP_KILLSWITCH_LOCK_ATTEMPTS") || "120");
 const INTERFACE_SET = "ks_interfaces";
-const STATE_FORMAT = 1;
+// 2: the policy is saved at NFT_POLICY and loaded through the package's
+// loader. The first kill-switch build wrote 1 and kept only the unguarded
+// include.
+const STATE_FORMAT = 2;
 // Test-only bounds for the watcher loop; production runs it forever.
 const WATCH_ITERATIONS = int(getenv("FORKOP_KILLSWITCH_WATCH_ITERATIONS") || "0");
 const WATCH_INTERVAL_MS = int(getenv("FORKOP_KILLSWITCH_WATCH_INTERVAL_MS") || "2000");
@@ -1216,16 +1219,32 @@ function disable(reason, force) {
 // the protection stays across the upgrade, and a running watcher is
 // restarted on the new code. Neither dnsmasq nor the live table change:
 // killswitch.lock alone serializes it with a sync.
+//
+// That build may also have run after this one (a change of version that kept
+// the saved policy, and back): it never reads the saved policy, and every
+// sync or removal here deletes the unguarded include, so what it did last is
+// the newer protection. Its include replaces the saved policy; without one,
+// a removal it recorded (state.json of format 1 with active false) makes the
+// saved policy stale. A failed sync of it keeps the previous protection.
 function postinst() {
     return with_lock(function() {
         let legacy = fs.readfile(LEGACY_NFT_INCLUDE);
-        if (legacy != null) {
-            if (!policy_saved() && length(legacy) > 0 && !write_durable(NFT_POLICY, legacy)) {
+        let state = read_state();
+        if (legacy != null && length(legacy) > 0) {
+            if (fs.readfile(NFT_POLICY) != legacy && !write_durable(NFT_POLICY, legacy)) {
                 record_error("could not adopt " + LEGACY_NFT_INCLUDE);
                 return 1;
             }
-            remove_legacy_include();
         }
+        else if (policy_saved() && int(state.format) < STATE_FORMAT && state.active === false) {
+            if (!fs.unlink(NFT_POLICY)) {
+                record_error("could not remove the saved policy the first kill-switch build had removed");
+                return 1;
+            }
+            log_message("Kill-switch: the saved policy predates its removal by the first kill-switch build and is removed", "info");
+        }
+        if (legacy != null)
+            remove_legacy_include();
         if (service_running())
             service_control([ "restart" ]);
         return 0;

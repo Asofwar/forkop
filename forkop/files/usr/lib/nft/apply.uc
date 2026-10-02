@@ -145,12 +145,18 @@ function run_args(args) {
             push(words, args[i]);
         // Appended, never rewritten: element lines of large sets are long,
         // and rewriting the whole file per command grew quadratically.
+        // On a full tmpfs write() and close() report success while the
+        // line is lost, and a batch cut at a line boundary still passes
+        // `nft -c`: the batch must have grown by exactly the line (UC-223).
+        let line = join(" ", words) + "\n";
+        let before = fs.stat(NFT_BATCH_FILE);
         let batch = fs.open(NFT_BATCH_FILE, "a");
         if (!batch)
             return false;
-        let written = batch.write(join(" ", words) + "\n") != null;
+        let written = batch.write(line) != null;
         batch.close();
-        return written;
+        let after = fs.stat(NFT_BATCH_FILE);
+        return written && after != null && after.size == (before != null ? before.size : 0) + length(line);
     }
     return system(command_from_args(args)) == 0;
 }
@@ -1707,8 +1713,11 @@ function nft_transition_guard_batch(table, mark, remove) {
             " { type filter hook prerouting priority -101; policy accept; }\n" +
             "add rule inet " + as_string(table) + " " + NFT_TRANSITION_GUARD_CHAIN +
             " meta mark & " + as_string(mark) + " == " + as_string(mark) + " counter drop\n";
-    let ok = fs.writefile(path, data) != null && run_args([ "nft", "-c", "-f", path ]) &&
-        run_args([ "nft", "-f", path ]);
+    // On a full tmpfs writefile reports success and leaves the file empty,
+    // and an empty batch passes `nft -c` and `nft -f` while it changes
+    // nothing: the batch is read back first (UC-223).
+    let ok = fs.writefile(path, data) != null && fs.readfile(path) === data &&
+        run_args([ "nft", "-c", "-f", path ]) && run_args([ "nft", "-f", path ]);
     fs.unlink(path);
     return ok;
 }
@@ -1750,8 +1759,11 @@ function nft_dpi_transition_guard(table, remove) {
             "add chain inet " + guard_table + " output { type filter hook output priority -149; policy accept; }\n" +
             "add rule inet " + guard_table + " output meta mark & 0xff000000 == 0x01000000 drop\n" +
             "add rule inet " + guard_table + " output meta mark & 0xff000000 == 0x02000000 drop\n";
-    let ok = fs.writefile(path, data) != null && run_args([ "nft", "-c", "-f", path ]) &&
-        run_args([ "nft", "-f", path ]);
+    // On a full tmpfs writefile reports success and leaves the file empty,
+    // and an empty batch passes `nft -c` and `nft -f` while it changes
+    // nothing: the batch is read back first (UC-223).
+    let ok = fs.writefile(path, data) != null && fs.readfile(path) === data &&
+        run_args([ "nft", "-c", "-f", path ]) && run_args([ "nft", "-f", path ]);
     fs.unlink(path);
     return ok;
 }

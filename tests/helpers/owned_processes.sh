@@ -47,7 +47,11 @@
 #   Sends SIGNAL to every process of this test whose parent is PID.
 
 owned_processes_init() {
-    owned_processes_random="$(od -An -N8 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n')"
+    # The kernel's random UUID needs no od, which a stock OpenWrt BusyBox
+    # lacks (tests/router/ runs there).
+    owned_processes_random=""
+    IFS= read -r owned_processes_random 2>/dev/null </proc/sys/kernel/random/uuid ||
+        owned_processes_random="$(od -An -N8 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n')"
     FORKOP_TEST_OWNER="$$-$(date +%s)-${owned_processes_random:?no random bytes for the test owner mark}"
     export FORKOP_TEST_OWNER
 }

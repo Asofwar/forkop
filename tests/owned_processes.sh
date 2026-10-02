@@ -239,6 +239,22 @@ FORKOP_TEST_OWNER="$(tr '\0' '\n' <"/proc/$GROUP_PROCESS/environ" | sed -n 's/^F
   owned_kill KILL "$GROUP_PROCESS" || fail "the group's process was not killed under its mark"
 owned_kill KILL "$BEFORE" || fail "the test's process was not killed"
 
+# 6. The helper loads, and sets a new mark each time, with only what a stock
+#    OpenWrt BusyBox has: no od, no hexdump. tests/router/ runs on a router.
+mkdir "$WORK_DIR/busybox-bin"
+for tool in awk cat date tr; do ln -s "$(command -v "$tool")" "$WORK_DIR/busybox-bin/$tool"; done
+# shellcheck disable=SC2016 # expanded by the sh that loads the helper
+marks="$(env -u FORKOP_TEST_OWNER PATH="$WORK_DIR/busybox-bin" /bin/sh -c '
+  . "$1" || exit 1
+  first=$FORKOP_TEST_OWNER
+  owned_processes_init || exit 1
+  printf "%s %s\n" "$first" "$FORKOP_TEST_OWNER"
+' sh "$ROOT_DIR/tests/helpers/owned_processes.sh" 2>&1)" || fail "the helper does not load without od and hexdump: $marks"
+case "$marks" in
+  *-?*" "*-?*) [ "${marks% *}" != "${marks#* }" ] || fail "the helper set the same mark twice: $marks" ;;
+  *) fail "the helper set no mark without od and hexdump: $marks" ;;
+esac
+
 # --- Part 2: no test signals a stored PID the old way ------------------------
 
 # stale_kills FILE...: the lines that signal a stored PID, the process group

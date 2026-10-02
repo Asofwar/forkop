@@ -110,11 +110,21 @@ big() { # big N FILE: a rule set of N subnets
     print "]}]}"
   }' >"$2"
 }
+# backdate: the entries were last used by earlier reloads, long ago, in
+# the order they were last used.
+backdate() {
+  local i=0 f
+  while IFS= read -r f; do
+    i=$((i + 1))
+    touch -d "2001-01-01 00:00:$(printf '%02d' "$i")" "$f"
+  done < <(find "$WORK/cache" -name '*.json' -printf '%T@ %p\n' | sort -n | cut -d' ' -f2-)
+}
 for i in 1 2 3 4 5 6; do
   big "$((300 + i))" "$WORK/big$i.json"
   FORKOP_NFT_SUBNET_CACHE_MAX_BYTES=16384 import all "$WORK/big$i.json" "$WORK/n.log"
   total="$(find "$WORK/cache" -name '*.json' -printf '%s\n' | awk '{ s += $1 } END { print s + 0 }')"
   [ "$total" -le 16384 ] || fail "the cache outgrew its size limit: $total bytes in $(entries) entries"
+  backdate
 done
 [ -e "$(entry "$WORK/big6.json")" ] || fail "the newest entry that fits was not cached"
 # An entry larger than the whole limit is not cached; the import still works.
@@ -123,5 +133,30 @@ FORKOP_NFT_SUBNET_CACHE_MAX_BYTES=16384 import all "$WORK/huge.json" "$WORK/huge
 grep -q '10.11.183.0/24' "$WORK/huge.log" || fail "an import too large for the cache lost elements"
 [ ! -e "$(entry "$WORK/huge.json")" ] || fail "an entry larger than the size limit was cached"
 [ -e "$(entry "$WORK/big6.json")" ] || fail "an entry too large for the cache evicted the others"
+
+# The rule sets every reload imports need more room than the cache has: the
+# entries the reloads keep using stay, the one that does not fit is
+# prepared each time. Evicting the least recently used entry instead evicts
+# the next one the same reload imports, and no import ever hits.
+rm -rf "$WORK/cache"
+for x in 1 2 3; do big "$((300 + x))" "$WORK/set$x.json"; done
+reload() { # the imports of one reload: hit or miss for each rule set
+  local x
+  for x in 1 2 3; do
+    rm -f "$WORK/u" "$WORK/s"
+    FORKOP_NFT_SUBNET_CACHE_MAX_BYTES=10000 import all "$WORK/set$x.json" "$WORK/n.log"
+    grep -q '10.1.44.0/24' "$WORK/n.log" || fail "an import of set$x lost elements"
+    if [ -e "$WORK/u" ]; then printf 'miss '; else printf 'hit '; fi
+  done
+}
+first="$(reload)"
+[ "$first" = "miss miss miss " ] || fail "the first reload found entries: $first"
+for day in 2 3; do
+  backdate
+  result="$(reload)"
+  [ "$result" = "hit hit miss " ] || fail "reload $day of a working set larger than the cache: $result (cache: $(ls "$WORK/cache"))"
+done
+total="$(find "$WORK/cache" -name '*.json' -printf '%s\n' | awk '{ s += $1 } END { print s + 0 }')"
+[ "$total" -le 10000 ] || fail "the cache outgrew its size limit: $total bytes"
 
 printf 'nft_subnet_cache: PASS\n'

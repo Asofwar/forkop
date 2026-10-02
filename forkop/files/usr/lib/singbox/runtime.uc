@@ -697,11 +697,18 @@ function prepare_subscription_caches(prepared, no_refresh) {
 // between them is no rename: it removes or truncates config.json and then
 // copies, so a crash or a full overlay left it missing or cut short
 // (UC-070). A publish that cannot complete leaves the previous file, no copy
-// and the source. What config_path already holds is not written again.
+// and the source, and logs why. What config_path already holds is not
+// written again.
 function publish_config_file(source_path, config_path) {
     let data = fs.readfile(source_path);
-    if (data == null || !ensure_parent_dir(config_path))
+    if (data == null) {
+        log_message("Cannot read " + as_string(source_path) + " to publish it as " + config_path + "; " + config_path + " was left unchanged", "error");
         return false;
+    }
+    if (!ensure_parent_dir(config_path)) {
+        log_message("Cannot create the directory of " + config_path + "; the sing-box configuration was not published", "error");
+        return false;
+    }
     if (fs.readfile(config_path) !== data) {
         let staged = config_path + ".forkop-new." + as_string(fs.readlink("/proc/self"));
         remove_file(staged);
@@ -710,8 +717,11 @@ function publish_config_file(source_path, config_path) {
         if (out != null)
             out.close();
         // A full filesystem can take the write and keep none of it.
-        if (!written || fs.readfile(staged) !== data || !fs.rename(staged, config_path)) {
+        let failed = !written ? "write" : fs.readfile(staged) !== data ? "read back" :
+            !fs.rename(staged, config_path) ? "rename" : null;
+        if (failed != null) {
             remove_file(staged);
+            log_message("Cannot " + failed + " " + staged + " (is the overlay full?); " + config_path + " was left unchanged", "error");
             return false;
         }
     }
@@ -861,8 +871,10 @@ function patch_dns_config(state_path) {
     remove_file(check_log);
 
     let changed = md5_file(config_path) != md5_file(temp_config);
+    // The failover worker tries again on its next check: a candidate left in
+    // /tmp on each failed try would stay in RAM.
     if (!save_config_file(temp_config, config_path)) {
-        remove_file(backup_path);
+        remove_files([ backup_path, temp_config ]);
         exit(1);
     }
 
@@ -983,7 +995,7 @@ function init_config(populate_nft, caches_prepared, no_refresh, prepared_deferre
     }
 
     if (!save_config_file(temp_config, config_path)) {
-        remove_file(runtime_log);
+        remove_files([ temp_config, runtime_log ]);
         exit(1);
     }
     if (!publish_section_cache(temp_config)) {

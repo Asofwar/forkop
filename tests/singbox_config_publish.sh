@@ -9,10 +9,16 @@ set -euo pipefail
 # full overlay in between left config.json missing or cut short. Now the
 # content is written to a private file next to config.json, read back, and
 # renamed over it: config.json is either the previous file or the new one,
-# whole. A publish that cannot complete fails and leaves the previous file
-# and no stray copy. A restore of a backup that holds what config.json
-# already holds, and a DNS-failover patch that changes nothing, write
-# nothing; each DNS-failover switch rewrites the file once.
+# whole. A publish that cannot complete fails, logs why, and leaves the
+# previous file and no stray copy, on the overlay or in /tmp. A restore of a
+# backup that holds what config.json already holds, and a DNS-failover patch
+# that changes nothing, write nothing; each DNS-failover switch rewrites the
+# file once.
+#
+# Here /tmp and the config directory share one filesystem, where even mv is
+# a rename: section 1 tells the two apart only by the reader of the previous
+# file. The full-overlay checks, the ones that fail on the old mv, need user
+# and mount namespaces (unshare -rm) and are skipped without them.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB="$ROOT_DIR/forkop/files/usr/lib"
@@ -30,7 +36,11 @@ ok() { printf 'OK: %s\n' "$1"; }
 DIR="$WORK/etc/sing-box"
 CONFIG="$DIR/config.json"
 mkdir -p "$WORK/bin" "$WORK/tmp" "$DIR"
-printf '#!/bin/sh\nexit 0\n' >"$WORK/bin/logger"
+# logger keeps what Forkop logs.
+cat >"$WORK/bin/logger" <<'SH'
+#!/bin/sh
+printf '%s\n' "$*" >>"$WORK/log"
+SH
 # `sing-box check` accepts every candidate.
 printf '#!/bin/sh\nexit 0\n' >"$WORK/bin/sing-box"
 chmod 0755 "$WORK/bin/"*
@@ -105,22 +115,81 @@ if ! unshare -rm true 2>/dev/null; then
   printf 'NOTE: no user and mount namespaces; the full-overlay checks are skipped\n'
 else
   bytes 1000 >"$WORK/old.json"
-  for mode in save-config-file-fixture restore-config-stage restore-dns-config; do
-    bytes 9000 >"$WORK/tmp/big.json"
-    chmod 0600 "$WORK/tmp/big.json"
-    if [ "$mode" = save-config-file-fixture ]; then
-      on_full_overlay "$mode" "$WORK/tmp/big.json" "$CONFIG"
-    else
-      on_full_overlay "$mode" "$WORK/tmp/big.json"
-    fi
-    [ "$STATUS" != 0 ] || fail "$mode on a full overlay reported success"
-    [ -e "$WORK/after.json" ] || fail "$mode on a full overlay left no config.json"
-    cmp -s "$WORK/old.json" "$WORK/after.json" ||
-      fail "$mode on a full overlay damaged config.json ($(wc -c <"$WORK/after.json") bytes left)"
-    [ ! -s "$WORK/after.list" ] || fail "$mode on a full overlay left behind: $(cat "$WORK/after.list")"
-    [ -e "$WORK/tmp/big.json" ] || fail "$mode on a full overlay discarded its source"
+  # A config larger than the write buffer fails at the write; a smaller one
+  # is taken by the write and lost at the close, unreported: only reading
+  # the copy back finds that out.
+  for size in 9000 2000; do
+    for mode in save-config-file-fixture restore-config-stage restore-dns-config; do
+      bytes "$size" >"$WORK/tmp/big.json"
+      chmod 0600 "$WORK/tmp/big.json"
+      : >"$WORK/log"
+      if [ "$mode" = save-config-file-fixture ]; then
+        on_full_overlay "$mode" "$WORK/tmp/big.json" "$CONFIG"
+      else
+        on_full_overlay "$mode" "$WORK/tmp/big.json"
+      fi
+      [ "$STATUS" != 0 ] || fail "$mode on a full overlay reported success ($size bytes)"
+      [ -e "$WORK/after.json" ] || fail "$mode on a full overlay left no config.json ($size bytes)"
+      cmp -s "$WORK/old.json" "$WORK/after.json" ||
+        fail "$mode on a full overlay damaged config.json ($size bytes; $(wc -c <"$WORK/after.json") bytes left)"
+      [ ! -s "$WORK/after.list" ] || fail "$mode on a full overlay left behind: $(cat "$WORK/after.list")"
+      [ -e "$WORK/tmp/big.json" ] || fail "$mode on a full overlay discarded its source"
+      grep -F '[error]' "$WORK/log" | grep -Fq "$CONFIG" ||
+        fail "$mode on a full overlay logged no error naming $CONFIG: $(cat "$WORK/log")"
+    done
   done
-  ok "a publish or restore that a full overlay refuses keeps the previous config.json"
+  rm -f "$WORK/tmp/big.json"
+  ok "a publish or restore that a full overlay refuses keeps the previous config.json, and says so"
+
+  # A DNS failover switch and a start that a full overlay refuses leave no
+  # copy of the new config in /tmp: the failover worker tries again every
+  # few seconds, and each copy would stay in RAM.
+  cat >"$WORK/old.json" <<'JSON'
+{"dns":{"servers":[{"type":"udp","tag":"dns-server","server":"1.1.1.1","server_port":53},{"type":"udp","tag":"bootstrap-dns-server","server":"77.88.8.8","server_port":53}]}}
+JSON
+  printf '{"version":1,"dns_type":"udp","dns_detour":"","main_servers":["1.1.1.1","8.8.8.8"],"bootstrap_servers":["77.88.8.8","9.9.9.9"],"main_index":1,"bootstrap_index":0}\n' \
+    >"$WORK/candidate.json"
+  [ -z "$(ls -A "$WORK/tmp")" ] || fail "the test /tmp is not empty: $(ls -A "$WORK/tmp")"
+  for attempt in 1 2; do
+    : >"$WORK/log"
+    on_full_overlay patch-dns-config "$WORK/candidate.json"
+    [ "$STATUS" != 0 ] || fail "a DNS failover switch on a full overlay reported success (attempt $attempt)"
+    cmp -s "$WORK/old.json" "$WORK/after.json" || fail "a DNS failover switch on a full overlay changed config.json"
+    [ -z "$(ls -A "$WORK/tmp")" ] ||
+      fail "a DNS failover switch on a full overlay left in /tmp: $(ls -A "$WORK/tmp") (attempt $attempt)"
+    grep -F '[error]' "$WORK/log" | grep -Fq "$CONFIG" ||
+      fail "a DNS failover switch on a full overlay logged no error naming $CONFIG: $(cat "$WORK/log")"
+  done
+
+  # init-config, with the generator and the rule-set cache replaced: the
+  # generated config stays in /tmp only until published.
+  STUB_LIB="$WORK/stub-lib"
+  mkdir -p "$STUB_LIB/singbox" "$STUB_LIB/config"
+  for entry in "$LIB"/*; do
+    case "${entry##*/}" in singbox | config) ;; *) ln -s "$entry" "$STUB_LIB/${entry##*/}" ;; esac
+  done
+  for entry in "$LIB"/singbox/* "$LIB"/config/*; do
+    rel="${entry#"$LIB"/}"
+    ln -s "$entry" "$STUB_LIB/$rel"
+  done
+  rm -f "$STUB_LIB/singbox/generator.uc" "$STUB_LIB/singbox/ruleset_cache.uc" "$STUB_LIB/config/validator.uc"
+  cat >"$STUB_LIB/singbox/generator.uc" <<'UC'
+let fs = require("fs");
+let path = ARGV[1];
+exit(fs.writefile(path, fs.readfile(getenv("WORK") + "/generated.json")) == null ? 1 : 0);
+UC
+  printf 'exit(0);\n' >"$STUB_LIB/singbox/ruleset_cache.uc"
+  printf 'exit(1);\n' >"$STUB_LIB/config/validator.uc"
+  printf '{"generated":"%s"}\n' "$(bytes 2000)" >"$WORK/generated.json"
+  printf 'forkop.settings.service_listen_address=192.0.2.1\n' >>"$WORK/uci.state"
+  : >"$WORK/log"
+  FORKOP_LIB="$STUB_LIB" SB_VARIANT_STATE_FILE="$WORK/variant" on_full_overlay init-config 0 1 1 main
+  [ "$STATUS" != 0 ] || fail "a start on a full overlay reported success"
+  cmp -s "$WORK/old.json" "$WORK/after.json" || fail "a start on a full overlay changed config.json"
+  [ -z "$(ls -A "$WORK/tmp")" ] || fail "a start on a full overlay left in /tmp: $(ls -A "$WORK/tmp")"
+  grep -F '[error]' "$WORK/log" | grep -Fq "$CONFIG" ||
+    fail "a start on a full overlay logged no error naming $CONFIG: $(cat "$WORK/log")"
+  ok "a DNS failover switch or a start that a full overlay refuses leaves nothing in /tmp"
 fi
 
 # ---- 3. restores write only what changes ---------------------------------------

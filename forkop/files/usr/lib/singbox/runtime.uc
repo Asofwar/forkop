@@ -382,11 +382,6 @@ function uci_commit(config) {
     return uci_core.commit(config);
 }
 
-function owner_pid() {
-    let pid = trim(command_output_from_args([ "sh", "-c", "echo $PPID" ]));
-    return match(pid, /^[0-9]+$/) != null ? pid : "0";
-}
-
 function managed_service_installed() {
     let data = fs.readfile("/etc/init.d/sing-box");
     return data != null && index(as_string(data), SB_MANAGED_SERVICE_MARKER) >= 0;
@@ -442,7 +437,9 @@ function install_managed_service_script() {
         fs.readfile("/etc/init.d/sing-box") === text)
         return true;
 
-    let tmp = "/etc/init.d/sing-box.forkop." + owner_pid();
+    // Named after this process, which lives until the rename: the cleanup
+    // above in another start keeps the copy while its writer is at work.
+    let tmp = "/etc/init.d/sing-box.forkop." + as_string(fs.readlink("/proc/self"));
     if (!write_file(tmp, text) || fs.readfile(tmp) !== text ||
         !command_success_from_args([ "chmod", "0755", tmp ]) || !fs.rename(tmp, "/etc/init.d/sing-box")) {
         remove_file(tmp);

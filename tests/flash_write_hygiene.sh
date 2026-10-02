@@ -74,7 +74,22 @@ wait "$dead" || true
 printf 'stale\n' >"/etc/init.d/sing-box.forkop.$dead"
 printf 'in progress\n' >"/etc/init.d/sing-box.forkop.$$"
 printf '#!/bin/sh\n# an older managed script\n' >/etc/init.d/sing-box
-configure
+# The copy being installed is named after its writer, which lives until the
+# rename: another start must find that writer alive and keep the copy. The
+# chmod of the copy records whether the pid in its name is the writer.
+mkdir -p "$WORK/chmod-bin"
+cat >"$WORK/chmod-bin/chmod" <<'CHMOD'
+#!/bin/sh
+case "$2" in
+  /etc/init.d/sing-box.forkop.*)
+    pid="${2##*.}"
+    if grep -q 'runtime\.uc' "/proc/$pid/cmdline" 2>/dev/null; then echo writer; else echo "not the writer: $pid"; fi >>"$WORK/initd.copy-owner"
+    ;;
+esac
+exec "$REAL_CHMOD" "$@"
+CHMOD
+"$REAL_CHMOD" 0755 "$WORK/chmod-bin/chmod"
+(PATH="$WORK/chmod-bin:$PATH" configure)
 printf '%s\n' "$dead" >"$WORK/initd.dead"
 printf '%s\n' "$$" >"$WORK/initd.live"
 # A copy a crash left while the script itself is current (another writer
@@ -86,7 +101,8 @@ printf 'stale\n' >"/etc/init.d/sing-box.forkop.$dead"
 configure
 printf '%s\n' "$dead" >"$WORK/initd.dead2"
 SH
-  unshare -rm sh "$WORK/initd-check.sh" >"$WORK/initd.out" 2>&1 || fail "configure-service failed: $(cat "$WORK/initd.out")"
+  REAL_CHMOD="$(command -v chmod)" unshare -rm sh "$WORK/initd-check.sh" >"$WORK/initd.out" 2>&1 ||
+    fail "configure-service failed: $(cat "$WORK/initd.out")"
   grep -q 'Forkop managed sing-box service' "$WORK/initd/sing-box" || fail "the managed init script was not installed"
   [ -x "$WORK/initd/sing-box" ] || fail "the managed init script is not executable"
   cmp -s "$WORK/initd.first" "$WORK/initd.second" ||
@@ -96,6 +112,8 @@ SH
   [ ! -e "$WORK/initd/sing-box.forkop.$(cat "$WORK/initd.dead2")" ] ||
     fail "a copy of a writer that is gone was left in /etc/init.d next to a current script"
   [ -e "$WORK/initd/sing-box.forkop.$(cat "$WORK/initd.live")" ] || fail "a copy of a writer still at work was removed"
+  [ "$(cat "$WORK/initd.copy-owner" 2>/dev/null)" = writer ] ||
+    fail "the copy of the init script is not named after its writer: $(cat "$WORK/initd.copy-owner" 2>/dev/null)"
   ok "the managed init script is written only when it changes, stale copies are removed"
 fi
 

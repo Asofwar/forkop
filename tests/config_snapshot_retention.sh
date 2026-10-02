@@ -246,4 +246,84 @@ config s6; run create automatic
 [ "$(manual_ids)" = "$legacy" ] || fail "a manual snapshot taken before the cap was removed"
 ok "upgrade with 10 manual snapshots: autotune applied, confirmed and rolled back; no manual snapshot removed"
 
+# 5. The before-autotune snapshot that a rollback of the recorded autotune
+#    apply returns to (autotune/apply.uc) is kept like the last-known-working
+#    one while that rollback is still possible: the apply runs (verifying,
+#    rolling back), waits for a decision (needs_attention, failed with a
+#    rollback left) or applied its candidate, which the operator may still
+#    roll back. Automatic snapshots taken meanwhile (a lifecycle reload
+#    during the verification, Save & Apply) rotate without it, also next to
+#    8 manual snapshots; once the record is decided it rotates as well.
+export FORKOP_SNAPSHOT_DIR="$WORK/autotune-snapshots"
+apply_record() { # apply_record <phase> <before-autotune snapshot> [more JSON members]
+  printf '{"phase":"%s","mutation":{"section":"Dpi","option":"nfqws_opt","from":"a","to":"b"},"pre_snapshot":"%s"%s}\n' \
+    "$1" "$2" "${3:-}" > "$FORKOP_AUTOTUNE_APPLY_STATE"
+}
+for n in 1 2 3 4 5 6 7 8; do config "m$n"; run create manual; done
+manual_before="$(manual_ids)"
+config base; run confirm-working
+[ "$(field status)" = confirmed ] || fail "confirm-working next to 8 manual snapshots: $(answer)"
+run apply "$WORK/candidate" "$(hash)"
+[ "$(field status)" = success ] || fail "autotune apply next to 8 manual snapshots: $(answer)"
+before_autotune="$(field pre_snapshot)"
+apply_record verifying "$before_autotune"
+# The reload snapshot of the candidate during its verification.
+run create automatic
+[ "$(field status)" = created ] && exists "$before_autotune" ||
+  fail "a reload snapshot during the verification pushed out the before-autotune snapshot: $(answer), store $(store)"
+apply_record rolling_back "$before_autotune"
+run restore "$before_autotune" "$(hash)"
+[ "$(field status)" = success ] && [ "$(marker)" = base ] && [ "$(lkg)" = "$before_autotune" ] ||
+  fail "automatic rollback after a reload snapshot during the verification: $(answer)"
+ok "a reload snapshot during the verification next to 8 manual snapshots keeps the before-autotune snapshot; the rollback returns to it"
+
+apply_record rolled_back "$before_autotune"
+run apply "$WORK/candidate" "$(hash)"
+[ "$(field status)" = success ] || fail "second autotune apply: $(answer)"
+before_autotune="$(field pre_snapshot)"
+n=0
+for phase in verifying applied needs_attention failed; do
+  extra=""; [ "$phase" != failed ] || extra=',"rollback_available":true'
+  apply_record "$phase" "$before_autotune" "$extra"
+  for _ in 1 2; do
+    n=$((n + 1)); config "v$n"; run create automatic
+    [ "$(field status)" = created ] && exists "$before_autotune" ||
+      fail "an automatic snapshot pushed out the before-autotune snapshot of a record in phase $phase: $(answer), store $(store)"
+  done
+done
+cp "$WORK/candidate" "$FORKOP_CONFIG_FILE"
+run confirm-working autotune "$before_autotune"
+[ "$(field status)" = confirmed ] && exists "$before_autotune" || fail "confirmation after the rotation: $(answer)"
+apply_record applied "$before_autotune"
+config v-edit; run create automatic
+cp "$WORK/candidate" "$FORKOP_CONFIG_FILE"
+run restore "$before_autotune" "$(hash)"
+[ "$(field status)" = success ] && [ "$(marker)" = base ] && [ "$(lkg)" = "$before_autotune" ] ||
+  fail "operator rollback of the applied candidate after the rotation: $(answer)"
+[ "$(manual_ids)" = "$manual_before" ] || fail "the kept before-autotune snapshot cost a manual snapshot"
+ok "the before-autotune snapshot stays while the record verifies, applied, needs attention or failed with a rollback left"
+
+# A decided record keeps nothing: its before-autotune snapshot rotates like
+# any other automatic one (here an unprotected one stands in for it).
+for phase in rolled_back stale no_change_required failed; do
+  config "d-$phase"; run create automatic
+  [ "$(field status)" = created ] || fail "automatic snapshot: $(answer)"
+  old="$(field snapshot.id)"
+  apply_record "$phase" "$old"
+  config "e-$phase"; run create automatic
+  [ "$(field status)" = created ] && ! exists "$old" ||
+    fail "the before-autotune snapshot of a decided record (phase $phase) did not rotate: store $(store)"
+done
+printf '{"phase":"applied","mutation":null,"pre_snapshot":"%s"}\n' "$(lkg)" > "$FORKOP_AUTOTUNE_APPLY_STATE"
+config f1; run create automatic; old="$(field snapshot.id)"
+printf '{"phase":"verifying","mutation":null,"pre_snapshot":"%s"}\n' "$old" > "$FORKOP_AUTOTUNE_APPLY_STATE"
+config f2; run create automatic
+[ "$(field status)" = created ] && ! exists "$old" || fail "a record without a mutation kept a snapshot: store $(store)"
+echo 'not json' > "$FORKOP_AUTOTUNE_APPLY_STATE"
+config f3; run create automatic
+[ "$(field status)" = created ] || fail "an unreadable apply record refused an automatic snapshot: $(answer)"
+[ "$(manual_ids)" = "$manual_before" ] || fail "rotation removed a manual snapshot"
+rm -f "$FORKOP_AUTOTUNE_APPLY_STATE"
+ok "the before-autotune snapshot of a decided record, or of one without a mutation, rotates like the others"
+
 printf 'config_snapshot_retention: PASS\n'

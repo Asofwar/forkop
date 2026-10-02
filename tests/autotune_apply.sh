@@ -103,6 +103,11 @@ case "$url" in
     exit 0 ;;
 esac
 printf '%s\n' "$@" > "$STUB_LOG/curl.args"
+# SNAPSHOT_DURING_VERIFY: a lifecycle reload (WAN up, a list update) takes its
+# automatic snapshot while the candidate is verified, once.
+if [ -n "${SNAPSHOT_DURING_VERIFY:-}" ] && [ ! -e "$STATE/prod.verify-snapshot" ]; then
+  "$REAL_UCODE" -L "$FORKOP_LIB" "$FORKOP_LIB/config/snapshots.uc" create automatic > "$STATE/prod.verify-snapshot" || true
+fi
 if printf '%s\n' "$@" | grep -q -- '--resolve'; then echo "curl isolated" >> "$STUB_LOG/curl.log"; else echo "curl production" >> "$STUB_LOG/curl.log"; fi
 [ -z "${PROD_SLEEP:-}" ] || sleep "$PROD_SLEEP"
 n=$(( $(cat "$STATE/prod.calls" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$STATE/prod.calls"
@@ -285,7 +290,7 @@ dpi_args() { tr '\0' ' ' < "/proc/$(head -n 1 "$ZAPRET_CHILD_PID_DIR/Dpi.pid")/c
 reset_apply() {
   reset_state
   unset PROD_PLAN PROD_SLEEP PROD_QUEUE_BUMP PROD_REMOTE DIG_SLEEP GUARD_SLEEP VALIDATE_SLEEP VALIDATE_FAIL RELOAD_SLEEP UCI_FAIL UCI_EXTRA_CHANGE BREAK_FIRST_RELOAD CONFIRM_FAIL EDIT_BEFORE_RESTORE EDIT_ON_RELOAD STAGE_BEFORE_RESTORE NFQWS_STUB_REJECT DIG_STUB_ANSWER \
-    LOCAL_DIG_ANSWER PROD_CHAINS CLASH_DOWN HOLD_SLEEP GUARD_FAIL GUARD_HOLD UCI_SLEEP
+    LOCAL_DIG_ANSWER PROD_CHAINS CLASH_DOWN HOLD_SLEEP GUARD_FAIL GUARD_HOLD UCI_SLEEP SNAPSHOT_DURING_VERIFY
   pkill -f "$WORK/bin/nfqws --qnum=40" 2>/dev/null || true
   rm -rf "$FORKOP_SNAPSHOT_DIR" "$FORKOP_SNAPSHOT_HASH_DIR" "$FORKOP_AUTOTUNE_APPLY_STATE" "$STATE"/prod.* "$STATE/reload.plan" "$STATE/zapret-broken" "$STATE/broke-once"\
     "$ZAPRET_CHILD_PID_DIR"/*.pid "$NFT_STATE/tables/ForkopConfigRestoreDpiGuard" "$FORKOP_SNAPSHOT_LOCK_DIR" "$WORK/run"/* \
@@ -399,6 +404,29 @@ json 'a.equal(r.status, "applied"); a.equal(r.lkg, "confirmed");' "$WORK/out.jso
 at rollback; json 'a.equal(r.status, "rolled_back"); a.equal(r.rollback.lkg_is_pre_snapshot, true);' "$WORK/out.json"
 { [ "$(chash)" = "$PRE_HASH" ] && [ "$(manual_snaps)" = "$manual_before" ]; } || fail "rollback next to manual snapshots"
 ok "5 manual snapshots at their limit -> apply, confirmation and rollback still work; no manual snapshot removed"
+# An automatic snapshot taken while the candidate is verified (a lifecycle
+# reload) never pushes out the pre-apply snapshot: with 8 manual snapshots
+# and the last-known-working one it is the only other automatic snapshot,
+# yet the automatic rollback and, after a confirmation, the operator's
+# rollback still return to it (D-14, UC-022).
+pre_of() { node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).pre_snapshot)' "$1"; }
+reset_apply; plan_ready
+for _ in $(seq 1 8); do ucode -L "$LIB" "$LIB/config/snapshots.uc" create manual > /dev/null || true; done
+manual_before="$(manual_snaps)"
+export PROD_PLAN=reset SNAPSHOT_DURING_VERIFY=1; at apply "$WORK/plan.json"
+grep -q '"created"' "$STATE/prod.verify-snapshot" || fail "fixture: no snapshot during the verification"
+json 'a.equal(r.status, "rolled_back", JSON.stringify(r).slice(0, 400)); a.equal(r.rollback.status, "success"); a.equal(r.rollback.lkg_is_pre_snapshot, true);' "$WORK/out.json"
+{ [ "$(chash)" = "$PRE_HASH" ] && [ "$(manual_snaps)" = "$manual_before" ]; } || fail "automatic rollback after a reload snapshot during the verification"
+reset_apply; plan_ready
+for _ in $(seq 1 8); do ucode -L "$LIB" "$LIB/config/snapshots.uc" create manual > /dev/null || true; done
+manual_before="$(manual_snaps)"
+export SNAPSHOT_DURING_VERIFY=1; at apply "$WORK/plan.json"
+grep -q '"created"' "$STATE/prod.verify-snapshot" || fail "fixture: no snapshot during the verification"
+json 'a.equal(r.status, "applied"); a.equal(r.lkg, "confirmed");' "$WORK/out.json"
+[ -e "$FORKOP_SNAPSHOT_DIR/$(pre_of "$WORK/out.json").json" ] || fail "a reload snapshot during the verification removed the pre-apply snapshot"
+at rollback; json 'a.equal(r.status, "rolled_back", JSON.stringify(r).slice(0, 400)); a.equal(r.rollback.lkg_is_pre_snapshot, true);' "$WORK/out.json"
+{ [ "$(chash)" = "$PRE_HASH" ] && [ "$(manual_snaps)" = "$manual_before" ]; } || fail "operator rollback after a reload snapshot during the verification"
+ok "5 a reload snapshot during the verification next to 8 manual snapshots -> automatic and operator rollback return to the pre-apply snapshot"
 
 # 6. already-active candidate -> no_change_required
 reset_apply; selection fake; at plan "$WORK/selection.json"

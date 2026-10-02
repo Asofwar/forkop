@@ -190,25 +190,46 @@ function list_snapshots() {
 function manual_count(all) {
     return length(filter(all, (item) => item.kind == "manual"));
 }
+// The before-autotune snapshot that a rollback of the recorded autotune apply
+// returns to (autotune/apply.uc rollback_to, rollback), or null: while the
+// apply runs (its verification, its automatic rollback), waits for a decision
+// (needs_attention, failed with a rollback left) or applied its candidate,
+// which the operator may still roll back. A decided record, one without a
+// mutation and an unreadable one name none.
+function autotune_rollback_snapshot() {
+    if (fs.stat(AUTOTUNE_APPLY_STATE) == null) return null;
+    let record = null;
+    try { record = json(value(fs.readfile(AUTOTUNE_APPLY_STATE))); } catch (e) { record = null; }
+    if (type(record) != "object" || type(record.phase) != "string" || record.mutation == null || !valid_id(record.pre_snapshot))
+        return null;
+    let rollback = index(AUTOTUNE_TERMINAL_PHASES, record.phase) < 0 || record.phase == "applied" ||
+        record.phase == "needs_attention" || (record.phase == "failed" && record.rollback_available === true);
+    return rollback ? record.pre_snapshot : null;
+}
 // Retention (D-14, UC-022). Nothing removes a manual snapshot, and create
 // refuses one more beyond MANUAL_LIMIT, so RESERVED places stay for the
 // automatic safety snapshots: before a restore, before Save & Apply or a
 // reload, before an autotune apply, the last-known-working one and a
 // concurrent edit. Only automatic snapshots rotate, oldest first and among
-// themselves; never the last-known-working one, nor one that the running
+// themselves; never the last-known-working one, nor the before-autotune one
+// that the recorded autotune apply may still roll back to (an automatic
+// snapshot taken during its verification, or after it applied, would
+// otherwise push it out next to many manual ones), nor one that the running
 // operation still needs (keep). The store holds RETENTION snapshots, or
 // manual + RESERVED while more manual ones are left from before the limit.
 // automatic: a safety snapshot is never refused for room. When nothing but
-// manual, last-known-working and kept snapshots is left, it is taken beyond
-// that size; the next automatic snapshot rotates the store back.
+// manual, protected and kept snapshots is left, it is taken beyond that
+// size; the next automatic snapshot replaces it, and once the protected ones
+// rotate again the store returns to its size.
 function trim_retention(keep, automatic) {
     let all = list_snapshots();
     let working = trim(value(fs.readfile(LKG)));
+    let rollback = autotune_rollback_snapshot();
     let limit = max(RETENTION, manual_count(all) + RESERVED);
     while (length(all) >= limit) {
         let candidate = null;
         for (let item in all)
-            if (item.kind != "manual" && item.id != working && index(keep || [], item.id) < 0) { candidate = item; break; }
+            if (item.kind != "manual" && item.id != working && item.id != rollback && index(keep || [], item.id) < 0) { candidate = item; break; }
         if (candidate == null || !fs.unlink(snapshot_path(candidate.id))) return automatic;
         all = list_snapshots();
     }
@@ -810,9 +831,10 @@ function do_apply(candidate_file, expected_hash, keep_id) {
         return { status: "stale", reason: service_action() ?? "runtime_guard_active" };
     // Retention never refuses the before-autotune snapshot, nor the
     // pre-restore snapshot of the rollback, which keeps it; the confirmation
-    // of the candidate keeps it too (confirm-working autotune <id>), so
-    // manual snapshots never stand in the way of an apply or its rollback
-    // (D-14, UC-022).
+    // of the candidate keeps it too (confirm-working autotune <id>), and so
+    // does every automatic snapshot while the apply record may still roll
+    // back to it (trim_retention), so manual snapshots never stand in the
+    // way of an apply or its rollback (D-14, UC-022).
     let pre = create("automatic", "before-autotune", false, keep);
     if (pre.status != "created") return { status: "failed", reason: "pre_apply_snapshot_failed" };
     if (sha(before) != sha(read_config())) return { status: "failed", reason: "concurrent_change", pre_snapshot: pre.snapshot.id };

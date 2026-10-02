@@ -25,9 +25,10 @@ fake_test() { # NAME BODY
 
 # The runner as a developer calls it, but with its logs and durations cache
 # inside $WORK. GITHUB_ACTIONS is dropped: without TEST arguments the runner
-# would otherwise leave the suite to the CI loop.
+# would otherwise leave the suite to the CI loop; so is FORKOP_TEST_GROUP_JOBS,
+# which the runner running this test sets.
 runner() {
-  env -u GITHUB_ACTIONS TMPDIR="$WORK/tmp" \
+  env -u GITHUB_ACTIONS -u FORKOP_TEST_GROUP_JOBS TMPDIR="$WORK/tmp" \
     bash "$REPO/tests/run.sh" --durations "$WORK/durations.tsv" "$@"
 }
 
@@ -83,6 +84,9 @@ runner pass flaky >"$WORK/flaky.out" 2>&1 || {
   fail "a flaky test failed the run"
 }
 expect_line "$WORK/flaky.out" 'PASS 1  FLAKY 1  FAIL 0  of 2 tests'
+# A new duration is averaged with the cached one (5.0 s for pass).
+grep -Eq '^pass'$'\t''2\.[5-9]$' "$WORK/durations.tsv" ||
+  fail "the duration of pass was not averaged with the cached 5.0 s: $(cat "$WORK/durations.tsv")"
 
 # 4. --no-rerun reports the first failure.
 rm -f "$STATE/flaky"
@@ -109,6 +113,25 @@ runner -j 3 --no-rerun 'barrier_*' >"$WORK/parallel.out" 2>&1 || {
   fail "tests did not run in parallel"
 }
 expect_line "$WORK/parallel.out" 'PASS 3  FLAKY 0  FAIL 0  of 3 tests'
+
+# 5b. Groups of cases at once (tests/helpers/case_groups.sh): next to other
+# tests 2 x CPUs / jobs of them (at least 2), a test run alone all of them; a
+# value set by the caller applies to every test.
+for name in gj_a gj_b gj_c; do
+  fake_test "$name" "printf '%s\n' \"\${FORKOP_TEST_GROUP_JOBS:-unset}\" >'$STATE/$name.gj'"
+done
+printf 'gj_a\t9.0\ngj_b\t5.0\ngj_c\t1.0\n' >"$WORK/durations.tsv"
+cpus="$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)"
+[ "$cpus" -gt 2 ] || cpus=2
+runner -j 2 'gj_*' >"$WORK/gj.out" 2>&1 || fail "the group-jobs tests failed: $(cat "$WORK/gj.out")"
+[ "$(cat "$STATE/gj_a.gj" "$STATE/gj_b.gj" "$STATE/gj_c.gj" | tr '\n' ' ')" = "$cpus $cpus $cpus " ] ||
+  fail "FORKOP_TEST_GROUP_JOBS of the tests: $(cat "$STATE"/gj_*.gj | tr '\n' ' ')"
+runner gj_b >"$WORK/gj.out" 2>&1 || fail "a single group-jobs test failed: $(cat "$WORK/gj.out")"
+[ "$(cat "$STATE/gj_b.gj")" = unset ] || fail "a test run alone was limited: $(cat "$STATE/gj_b.gj")"
+env -u GITHUB_ACTIONS FORKOP_TEST_GROUP_JOBS=7 TMPDIR="$WORK/tmp" bash "$REPO/tests/run.sh" \
+  --durations "$WORK/durations.tsv" -j 2 'gj_*' >"$WORK/gj.out" 2>&1 || fail "the group-jobs tests failed: $(cat "$WORK/gj.out")"
+[ "$(cat "$STATE/gj_a.gj" "$STATE/gj_b.gj" "$STATE/gj_c.gj" | tr '\n' ' ')" = "7 7 7 " ] ||
+  fail "a caller's FORKOP_TEST_GROUP_JOBS was not kept: $(cat "$STATE"/gj_*.gj | tr '\n' ' ')"
 
 # 6. --affected selects by path, basename, module name, users of a changed
 # module or helper, changed tests and the safety set.

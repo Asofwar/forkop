@@ -39,7 +39,8 @@
 # not fail the run. While several tests run at once, a test that runs groups
 # of its cases in parallel (tests/helpers/case_groups.sh) runs at most
 # FORKOP_TEST_GROUP_JOBS of them at a time (default: 2 x CPUs / jobs, at
-# least 2; set it to override).
+# least 2; a value set in the environment is kept). A test run alone runs all
+# its groups at once.
 #
 # Exit status: 0 when no test failed, 1 when a test failed, 2 on a usage
 # error, 130 when interrupted.
@@ -385,12 +386,18 @@ to_ms() { # 1m2.345s -> 62345
 # Runs one test in a background subshell; writes "STATUS<TAB>EXIT<TAB>MS<TAB>CPU_MS"
 # to RESULT. timeout puts the test in its own process group; on timeout or
 # interrupt the whole group is signalled.
-run_test() { # PATH LOG RESULT
-  local path=$1 log=$2 result=$3 start end rc status _ user system
+run_test() { # PATH LOG RESULT [GROUP_JOBS]
+  local path=$1 log=$2 result=$3 group_jobs=${4:-} start end rc status _ user system
   local run_path=$path
   [[ $path == "$ROOT_DIR"/* ]] && run_path=${path#"$ROOT_DIR"/}
   start="$(now_us)"
-  (cd "$ROOT_DIR" && exec timeout -k "$KILL_GRACE" "$timeout_s" bash "$run_path") </dev/null >"$log" 2>&1 &
+  (
+    cd "$ROOT_DIR" || exit 1
+    if [[ -n $group_jobs ]]; then
+      exec env FORKOP_TEST_GROUP_JOBS="$group_jobs" timeout -k "$KILL_GRACE" "$timeout_s" bash "$run_path"
+    fi
+    exec timeout -k "$KILL_GRACE" "$timeout_s" bash "$run_path"
+  ) </dev/null >"$log" 2>&1 &
   printf '%s\n' "$!" >"$result.pid"
   wait "$!"
   rc=$?
@@ -453,10 +460,12 @@ if ((jobs_n > total)); then jobs_n=$total; fi
 # A test that runs groups of its cases at once (tests/helpers/case_groups.sh)
 # runs only a few of them while other tests run beside it: the CPUs are
 # shared already, and an overloaded host fails the tests that bound a wait.
-if [[ -z ${FORKOP_TEST_GROUP_JOBS:-} ]] && ((jobs_n > 1)); then
+# More groups for the longest test made the run no shorter on a loaded host,
+# and the tests that bound a wait then failed.
+group_jobs=${FORKOP_TEST_GROUP_JOBS:-}
+if [[ -z $group_jobs ]] && ((jobs_n > 1)); then
   group_jobs=$(((cpus * 2 + jobs_n - 1) / jobs_n))
   ((group_jobs >= 2)) || group_jobs=2
-  export FORKOP_TEST_GROUP_JOBS=$group_jobs
 fi
 printf 'Running %d tests, %d at a time, timeout %ss; logs in %s\n' "$total" "$jobs_n" "$timeout_s" "$LOG_DIR"
 
@@ -468,8 +477,8 @@ finished=0
 while ((started < total || running > 0)); do
   while ((started < total && running < jobs_n)); do
     name=${queue[started]}
+    run_test "${TEST_PATH[$name]}" "$LOG_DIR/$name.log" "$LOG_DIR/$name.result" "$group_jobs" &
     started=$((started + 1))
-    run_test "${TEST_PATH[$name]}" "$LOG_DIR/$name.log" "$LOG_DIR/$name.result" &
     PID_NAME[$!]=$name
     running=$((running + 1))
   done
@@ -496,8 +505,9 @@ for name in "${queue[@]}"; do
   [[ ${STATUS[$name]} == PASS ]] || failed+=("$name")
 done
 
-# Durations of the parallel pass feed the next run's order; a test that
-# timed out is recorded with the timeout.
+# Durations of the parallel pass feed the next run's order, averaged with the
+# cached ones: one run on a loaded host does not reorder the next. A test that
+# timed out counts with the timeout.
 update_durations() {
   local dir tmp name ms
   dir="$(dirname "$durations")"
@@ -510,7 +520,8 @@ update_durations() {
       [[ ${STATUS[$name]} == TIMEOUT ]] && ms=$((timeout_s * 1000))
       printf '%s\t%s\n' "$name" "$(seconds "$ms")"
     done
-  } | awk -F '\t' 'NF == 2 { d[$1] = $2 } END { for (n in d) print n "\t" d[n] }' |
+  } | awk -F '\t' 'NF == 2 { if ($1 in d) d[$1] = sprintf("%.1f", (d[$1] + $2) / 2); else d[$1] = $2 }
+      END { for (n in d) print n "\t" d[n] }' |
     LC_ALL=C sort >"$tmp"
   mv "$tmp" "$durations" 2>/dev/null || rm -f "$tmp"
 }
@@ -520,7 +531,7 @@ flaky=()
 if ((rerun)) && ((${#failed[@]})); then
   printf '\nRe-running %d failed test(s) one at a time\n' "${#failed[@]}"
   for name in "${failed[@]}"; do
-    run_test "${TEST_PATH[$name]}" "$LOG_DIR/$name.rerun.log" "$LOG_DIR/$name.rerun.result" &
+    run_test "${TEST_PATH[$name]}" "$LOG_DIR/$name.rerun.log" "$LOG_DIR/$name.rerun.result" "${FORKOP_TEST_GROUP_JOBS:-}" &
     wait "$!"
     read_result "$name" "$LOG_DIR/$name.rerun.result"
     printf 'rerun   %-7s %6ss  %s\n' "${STATUS[$name]}" "$(seconds "${ELAPSED[$name]}")" "$name"

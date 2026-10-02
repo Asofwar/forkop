@@ -9,7 +9,7 @@ set -eu
 # ("create before-apply", reason before-apply): it holds the configuration
 # before the change. Both are automatic snapshots and reuse a snapshot that
 # already holds the same configuration; the list keeps both reasons.
-ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+ROOT="$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)"
 LIB="$ROOT/forkop/files/usr/lib"
 SCRIPT="$LIB/config/snapshots.uc"
 WORK="$(mktemp -d)"

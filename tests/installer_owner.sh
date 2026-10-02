@@ -112,12 +112,19 @@ if grep -n -E 'wget.*[[:space:]]-t([[:space:]]|$)' "$INSTALLER" >/dev/null; then
 fi
 run_with_deadline_source="$(source_function "$INSTALLER" run_with_deadline)" || exit 1
 eval "$run_with_deadline_source"
-deadline_started="$(date +%s)"
-if run_with_deadline 1 sh -c 'sleep 5'; then
-  fail "installer deadline watchdog must fail a command that exceeds its deadline"
-fi
-deadline_elapsed="$(($(date +%s) - deadline_started))"
-[ "$deadline_elapsed" -lt 4 ] ||
+# A command that overruns its deadline is stopped at the deadline, as the
+# records of the watchdog and of the command show (UC-238): the call ends
+# with 124, which only the watchdog's timeout record makes it return, and the
+# command, which would write its own record 3 s after it started, never
+# does. The wall-clock time of the call shows neither: once the watchdog
+# fires it stops the command at once, but then walks /proc for descendants,
+# twice with 1 s between, and under load the walks take seconds.
+deadline_record="$WORK_DIR/deadline-command.finished"
+deadline_status=0
+run_with_deadline 1 sh -c 'sleep 3; : >"$1"' sh "$deadline_record" || deadline_status=$?
+[ "$deadline_status" = 124 ] ||
+  fail "installer deadline watchdog must fail a command that exceeds its deadline (status $deadline_status, not 124)"
+[ ! -e "$deadline_record" ] ||
   fail "installer deadline watchdog did not stop the command promptly"
 run_with_deadline 3 sh -c 'exit 0' ||
   fail "installer deadline watchdog must preserve successful command status"
@@ -132,9 +139,11 @@ if run_with_deadline 1 sh -c '
   fail "installer deadline watchdog must fail a stubborn process tree"
 fi
 [ -s "$deadline_child_pid" ] || fail "deadline process-tree fixture did not record its child"
-if process_running "$(cat "$deadline_child_pid")"; then
+# The descendant ignores TERM and loops for ever unless the watchdog kills
+# it. A killed process still shows as running until it has finished its
+# exit, which under load can come after the call returns.
+wait_until 10 process_gone "$(cat "$deadline_child_pid")" ||
   fail "installer deadline watchdog left a descendant running"
-fi
 grep -Fq 'curl --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --max-time "$METADATA_TIMEOUT_SECONDS"' "$INSTALLER" ||
   fail "installer curl metadata requests must have connect and total timeouts"
 grep -Fq 'curl --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --max-time "$DOWNLOAD_TIMEOUT_SECONDS"' "$INSTALLER" ||

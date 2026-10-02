@@ -5,10 +5,10 @@ set -euo pipefail
 # (UC-071).
 #
 # The reload copied the whole of /etc/config/dhcp aside before its dnsmasq
-# step and, when a later step failed (the cron refresh, the reload state),
-# copied it back with cp: in place, around the UCI commit lock, and over
-# whatever someone committed to dhcp meanwhile (a static lease added in
-# LuCI). Now the rollback goes through the operations that own Forkop's
+# step and, when a later step failed (recording the reload state; before
+# the S5 integration also the cron refresh), copied it back with cp: in
+# place, around the UCI commit lock, and over whatever someone committed to
+# dhcp meanwhile (a static lease added in LuCI). Now the rollback goes through the operations that own Forkop's
 # dnsmasq settings (dns/apply.uc): it restores the forwarding the reload
 # found, through the same edit as start and stop (only Forkop's options, a
 # commit that starts over from a file someone else changed). Other dhcp
@@ -103,6 +103,16 @@ if (mode == "sing-box-service-runtime-pid") {
     print("4242\n");
     exit(0);
 }
+// The last step of the reload, after dnsmasq (the record of the applied
+// state, not the one the plan is computed from): someone else commits a
+// dhcp change meanwhile (\$WORK_DIR/foreign, a shell command), then the
+// record fails when STATE_FAILS is set.
+if (mode == "write-captured-reload-state" && ARGV[5] == "1") {
+    if (fs.stat(getenv("WORK_DIR") + "/foreign") != null)
+        system("sh " + q(getenv("WORK_DIR") + "/foreign"));
+    ev("reload state" + (getenv("STATE_FAILS") == "1" ? " failed" : ""));
+    exit(getenv("STATE_FAILS") == "1" ? 1 : 0);
+}
 exit(0);
 UC
 
@@ -117,17 +127,12 @@ for (let item in split(trim(getenv("PLAN") ?? ""), " "))
 exit(0);
 UC
 
-# The cron refresh, the step after dnsmasq: someone else commits a dhcp
-# change meanwhile ($WORK_DIR/foreign, a shell command), then the refresh
-# fails when CRON_FAILS is set.
+# The cron refresh, a step after dnsmasq. A failed one no longer rolls the
+# reload back (tests/cron_refresh_failure.sh).
 cat >"$FAKE_LIB/components/updates.uc" <<UC
 $fake_header
-if (mode == "refresh-cron-from-uci") {
-    if (fs.stat(getenv("WORK_DIR") + "/foreign") != null)
-        system("sh " + q(getenv("WORK_DIR") + "/foreign"));
-    ev("cron refresh" + (getenv("CRON_FAILS") == "1" ? " failed" : ""));
-    exit(getenv("CRON_FAILS") == "1" ? 1 : 0);
-}
+if (mode == "refresh-cron-from-uci")
+    ev("cron refresh");
 exit(0);
 UC
 
@@ -200,17 +205,17 @@ forwarding=(
 
 # a. Control: a reload that completes keeps its dnsmasq change.
 { forkop_settings 0; printf '%s\n' "${not_forwarding[@]}"; } >"$STATE"
-CRON_FAILS=0 run_reload "$PLAN_CONFIGURE"
+STATE_FAILS=0 run_reload "$PLAN_CONFIGURE"
 [ "$STATUS" = 0 ] || fail "a reload that configures dnsmasq failed"
 grep -Fxq 'dhcp.@dnsmasq[0].server=127.0.0.42' "$STATE" || fail "the reload did not forward dnsmasq to sing-box"
 
 # b. The reload forwarded dnsmasq to sing-box, someone added a dhcp option,
-# the cron refresh failed: the forwarding is taken back, the option stays.
+# recording the reload state failed: the forwarding is taken back, the option stays.
 { forkop_settings 0; printf '%s\n' "${not_forwarding[@]}"; } >"$STATE"
 dhcp_lines >"$WORK_DIR/before"
-CRON_FAILS=1 run_reload "$PLAN_CONFIGURE"
-[ "$STATUS" != 0 ] || fail "a reload whose cron refresh failed reported success"
-has_event '^cron refresh failed$' || fail "the reload did not reach the cron refresh"
+STATE_FAILS=1 run_reload "$PLAN_CONFIGURE"
+[ "$STATUS" != 0 ] || fail "a reload whose last step failed reported success"
+has_event '^reload state failed$' || fail "the reload did not reach recording its state"
 printf '%s\n' dhcp.lan.leasetime=1h >>"$WORK_DIR/before"
 sort -o "$WORK_DIR/before" "$WORK_DIR/before"
 dhcp_lines | cmp -s "$WORK_DIR/before" - ||
@@ -218,12 +223,12 @@ dhcp_lines | cmp -s "$WORK_DIR/before" - ||
 [ "$(restarts)" -ge 2 ] || fail "dnsmasq was not restarted with the restored settings"
 ok "a failed reload takes back the dnsmasq forwarding it set, and only that"
 
-# c. The reload took the forwarding back (dont_touch_dhcp was set), the cron
-# refresh failed: the forwarding is set again, as it was.
+# c. The reload took the forwarding back (dont_touch_dhcp was set),
+# recording the reload state failed: the forwarding is set again, as it was.
 { forkop_settings 1; printf '%s\n' "${forwarding[@]}"; } >"$STATE"
 dhcp_lines >"$WORK_DIR/before"
-CRON_FAILS=1 run_reload "$PLAN_RESTORE"
-[ "$STATUS" != 0 ] || fail "a reload whose cron refresh failed reported success"
+STATE_FAILS=1 run_reload "$PLAN_RESTORE"
+[ "$STATUS" != 0 ] || fail "a reload whose last step failed reported success"
 has_event '^dns restore force$' || fail "the reload did not restore dnsmasq"
 printf '%s\n' dhcp.lan.leasetime=1h >>"$WORK_DIR/before"
 sort -o "$WORK_DIR/before" "$WORK_DIR/before"
@@ -236,8 +241,8 @@ ok "a failed reload sets the dnsmasq forwarding it took back again"
 { forkop_settings 0; printf '%s\n' "${forwarding[@]}"; } >"$STATE"
 dhcp_lines >"$WORK_DIR/before"
 rm -f "$WORK_DIR/foreign"
-CRON_FAILS=1 run_reload "$PLAN_CONFIGURE"
-[ "$STATUS" != 0 ] || fail "a reload whose cron refresh failed reported success"
+STATE_FAILS=1 run_reload "$PLAN_CONFIGURE"
+[ "$STATUS" != 0 ] || fail "a reload whose last step failed reported success"
 dhcp_lines | cmp -s "$WORK_DIR/before" - ||
   fail "a failed reload changed a dnsmasq that already forwarded to sing-box: $(dhcp_lines | diff "$WORK_DIR/before" - | tr '\n' ' ')"
 ok "a failed reload keeps a forwarding that was there before it"
@@ -277,8 +282,8 @@ cat >"$WORK_DIR/foreign" <<SH
 "$UCI_REAL" -q -c "$WORK_DIR/etc" -t "$WORK_DIR/foreign-uci" commit dhcp
 SH
 options >"$WORK_DIR/options.before"
-CRON_FAILS=1 run_reload "$PLAN_CONFIGURE"
-[ "$STATUS" != 0 ] || fail "a reload whose cron refresh failed reported success"
+STATE_FAILS=1 run_reload "$PLAN_CONFIGURE"
+[ "$STATUS" != 0 ] || fail "a reload whose last step failed reported success"
 has_event '^dns configure force$' || fail "the reload did not configure dnsmasq"
 [ "$("$UCI_REAL" -q -c "$WORK_DIR/etc" get dhcp.printer.mac || true)" = 00:11:22:33:44:55 ] ||
   fail "the failed reload lost the static lease committed during it: $(cat "$DHCP")"

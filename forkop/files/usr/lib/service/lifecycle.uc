@@ -969,6 +969,20 @@ function refresh_cron() {
     return status;
 }
 
+// The scheduled jobs are not the proxy: a crontab that cannot be written
+// (a nearly full overlay, or another writer's change at the same moment:
+// components/updates.uc write_crontab_text) must not keep Forkop down or
+// roll a reload back. The failure is logged and recorded in the history,
+// not masked; the next start or reload refreshes the jobs again.
+function refresh_cron_reported(action) {
+    let status = refresh_cron();
+    if (status == 0)
+        return;
+    log_message("Could not update Forkop's scheduled jobs in the crontab (exit status " + as_string(status) +
+        "); the " + action + " goes on and the scheduled jobs stay as they were", "error");
+    module_success(LIB_DIR + "/diagnostics/health.uc", [ "record", "cron_refresh", "failure" ]);
+}
+
 function remove_cron_jobs() {
     let status = module_status(UPDATES_UC, [
         "remove-cron-jobs",
@@ -1139,9 +1153,7 @@ function start_main() {
     if (status != 0)
         return start_phase_failed("sing-box-config", status);
 
-    status = refresh_cron();
-    if (status != 0)
-        return start_phase_failed("cron-refresh", status);
+    refresh_cron_reported("start");
 
     if (start_abandoned_for_stop("sing-box"))
         return 1;
@@ -2445,11 +2457,8 @@ function reload(reason) {
         module_success(STATE_UC, [ "capture-reload-state", RELOAD_STATE_SNAPSHOT_FILE, as_string(RELOAD_STATE_FORMAT) ]);
     }
 
-    if (plan.needs_cron_refresh == 1) {
-        status = refresh_cron();
-        if (status != 0)
-            return abort_reload(status, false);
-    }
+    if (plan.needs_cron_refresh == 1)
+        refresh_cron_reported("reload");
 
     status = finish_reload_status(module_status(STATE_UC, [
         "write-captured-reload-state",

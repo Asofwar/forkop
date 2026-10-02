@@ -175,6 +175,7 @@ const CATEGORY: Record<string, Exclude<HistoryFilter, 'all'>> = {
   snapshot_delete: 'config',
   start: 'service',
   recovery: 'service',
+  cron_refresh: 'service',
   autotune_apply: 'autotune',
   autotune_rollback: 'autotune',
   autotune_mode: 'autotune',

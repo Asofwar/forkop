@@ -27,9 +27,10 @@ const HISTORY_MAX = 200;
 const HISTORY_MAX_BYTES = 65536;
 const HISTORY_KEEP = 150;
 // An autotune apply and its rollback have kinds of their own, never restore
-// (UC-060, design H.6).
+// (UC-060, design H.6). cron_refresh: a start or reload that could not
+// update the scheduled jobs and went on without them.
 const EVENT_KINDS = [ "start", "reload", "restore", "recovery", "autotune_apply", "autotune_rollback", "snapshot_create",
-    "snapshot_delete", "autotune_mode", "autotune_recommendation", "autotune_run" ];
+    "snapshot_delete", "autotune_mode", "autotune_recommendation", "autotune_run", "cron_refresh" ];
 // "not_started": a snapshot restore replaced the configuration while an
 // explicit stop held the runtime down; nothing verified it (D-15, UC-056).
 const EVENT_STATUSES = [ "success", "failure", "recovered", "not_started" ];

@@ -292,6 +292,8 @@ export function eventKindLabel(kind: string): string {
       return _('Snapshot created');
     case 'snapshot_delete':
       return _('Snapshot deleted');
+    case 'cron_refresh':
+      return _('Scheduled jobs update');
     default:
       return _('Other event');
   }

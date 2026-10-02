@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-02 19:57+0000\n"
-"PO-Revision-Date: 2026-10-02 19:57+0000\n"
+"POT-Creation-Date: 2026-10-02 22:49+0000\n"
+"PO-Revision-Date: 2026-10-02 22:49+0000\n"
 "Last-Translator: Asofwar <7397608+Asofwar@users.noreply.github.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -393,7 +393,7 @@ msgstr ""
 msgid "Advanced settings"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:194
+#: src/forkop/tabs/history/model.ts:195
 msgid "All"
 msgstr ""
 
@@ -477,7 +477,7 @@ msgid "An IP address needs no DNS"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:342
-#: src/forkop/tabs/history/model.ts:369
+#: src/forkop/tabs/history/model.ts:370
 msgid "and %d more"
 msgstr ""
 
@@ -506,7 +506,7 @@ msgstr ""
 msgid "Another snapshot operation is already in progress. Changes were not applied; try again in a moment."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:387
+#: src/forkop/tabs/history/model.ts:388
 msgid "Another snapshot operation is already in progress. Try again in a moment."
 msgstr ""
 
@@ -518,7 +518,7 @@ msgstr ""
 msgid "Any device"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:273
+#: src/forkop/tabs/history/model.ts:274
 msgid "Applied by reload"
 msgstr ""
 
@@ -645,7 +645,7 @@ msgstr ""
 msgid "Autostart is on"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:192
+#: src/forkop/tabs/history/model.ts:193
 msgid "Autotune"
 msgstr ""
 
@@ -690,43 +690,43 @@ msgstr ""
 msgid "Autotune state is unavailable"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:223
+#: src/forkop/tabs/history/model.ts:224
 msgid "Autotune: %s applied automatically"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:222
+#: src/forkop/tabs/history/model.ts:223
 msgid "Autotune: %s applied manually"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:218
+#: src/forkop/tabs/history/model.ts:219
 msgid "Autotune: automatic apply"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:228
+#: src/forkop/tabs/history/model.ts:229
 msgid "Autotune: automatic apply of %s"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:236
+#: src/forkop/tabs/history/model.ts:237
 msgid "Autotune: automatic rollback"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:240
+#: src/forkop/tabs/history/model.ts:241
 msgid "Autotune: automatic rollback of %s"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:217
+#: src/forkop/tabs/history/model.ts:218
 msgid "Autotune: manual apply"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:227
+#: src/forkop/tabs/history/model.ts:228
 msgid "Autotune: manual apply of %s"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:235
+#: src/forkop/tabs/history/model.ts:236
 msgid "Autotune: manual rollback"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:239
+#: src/forkop/tabs/history/model.ts:240
 msgid "Autotune: manual rollback of %s"
 msgstr ""
 
@@ -745,15 +745,15 @@ msgstr ""
 msgid "Basics"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:276
+#: src/forkop/tabs/history/model.ts:277
 msgid "Before applying changes"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:282
+#: src/forkop/tabs/history/model.ts:283
 msgid "Before autotune"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:278
+#: src/forkop/tabs/history/model.ts:279
 msgid "Before restore"
 msgstr ""
 
@@ -900,11 +900,11 @@ msgstr ""
 msgid "Cache file path cannot be empty"
 msgstr ""
 
-#: src/forkop/ui/status.ts:310
+#: src/forkop/ui/status.ts:312
 msgid "Calculated"
 msgstr ""
 
-#: src/forkop/ui/status.ts:323
+#: src/forkop/ui/status.ts:325
 msgid "Calculated result"
 msgstr ""
 
@@ -1110,14 +1110,14 @@ msgstr ""
 msgid "Checks and changes wait until it is rolled back."
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:10
 #: src/forkop/tabs/diagnostic/helpers/getMeta.ts:26
+#: src/forkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:10
 msgid "Checks failed"
 msgstr ""
 
+#: src/forkop/tabs/diagnostic/helpers/getMeta.ts:13
 #: src/forkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:23
 #: src/forkop/tabs/diagnostic/checks/runFakeIPCheck.ts:43
-#: src/forkop/tabs/diagnostic/helpers/getMeta.ts:13
 msgid "Checks passed"
 msgstr ""
 
@@ -1237,7 +1237,7 @@ msgstr ""
 msgid "compressed"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:287
+#: src/forkop/tabs/history/model.ts:288
 msgid "Concurrent edit"
 msgstr ""
 
@@ -1258,7 +1258,7 @@ msgstr ""
 msgid "Config File Path"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:188
+#: src/forkop/tabs/history/model.ts:189
 msgid "Configuration"
 msgstr ""
 
@@ -1271,11 +1271,11 @@ msgstr ""
 msgid "Configuration reload"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:596
+#: src/forkop/tabs/history/model.ts:597
 msgid "Configuration restored and reloaded"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:606
+#: src/forkop/tabs/history/model.ts:607
 msgid "Configuration restored, but Forkop X is stopped: it was not started or checked. The restored configuration takes effect when Forkop X is started."
 msgstr ""
 
@@ -1404,7 +1404,7 @@ msgstr ""
 msgid "Could not confirm completion. Check the removal log before retrying."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:465
+#: src/forkop/tabs/history/model.ts:466
 msgid "Could not create snapshot"
 msgstr ""
 
@@ -1546,7 +1546,7 @@ msgstr ""
 msgid "Delete…"
 msgstr ""
 
-#: src/forkop/ui/status.ts:321
+#: src/forkop/ui/status.ts:323
 msgid "Derived from configuration"
 msgstr ""
 
@@ -2399,7 +2399,7 @@ msgstr ""
 msgid "Forkop X is stopped: the change applies when it is started."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:535
+#: src/forkop/tabs/history/model.ts:536
 msgid "Forkop X is stopped: the configuration is replaced and checked, but Forkop X is not started. It takes effect when you start Forkop X."
 msgstr ""
 
@@ -2433,7 +2433,7 @@ msgstr ""
 msgid "Forkop X never turns DPI bypass off by itself."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:538
+#: src/forkop/tabs/history/model.ts:539
 msgid "Forkop X reloads the configuration. If the reload fails, the previous configuration is restored automatically."
 msgstr ""
 
@@ -2513,7 +2513,7 @@ msgstr ""
 msgid "Forkop-managed nfqws2 runtime is ready"
 msgstr ""
 
-#: src/forkop/ui/status.ts:308
+#: src/forkop/ui/status.ts:310
 msgid "From configuration"
 msgstr ""
 
@@ -3022,8 +3022,8 @@ msgstr ""
 msgid "IPv6 only"
 msgstr ""
 
-#: src/forkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:17
 #: src/forkop/tabs/diagnostic/helpers/getMeta.ts:20
+#: src/forkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:17
 msgid "Issues detected"
 msgstr ""
 
@@ -3155,7 +3155,7 @@ msgid "Last important event"
 msgstr ""
 
 #: src/forkop/tabs/history/initController.ts:374
-#: src/forkop/tabs/history/model.ts:280
+#: src/forkop/tabs/history/model.ts:281
 msgid "Last known good"
 msgstr ""
 
@@ -3308,7 +3308,7 @@ msgstr ""
 msgid "Make sure the provider is installed and the rule strategy is valid, then restart Forkop X."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:268
+#: src/forkop/tabs/history/model.ts:269
 msgid "Manual"
 msgstr ""
 
@@ -3703,8 +3703,8 @@ msgstr ""
 msgid "Not checked yet"
 msgstr ""
 
-#: src/forkop/ui/status.ts:312
-#: src/forkop/ui/status.ts:325
+#: src/forkop/ui/status.ts:314
+#: src/forkop/ui/status.ts:327
 #: src/forkop/tabs/autotune/model.ts:52
 msgid "Not determined"
 msgstr ""
@@ -3759,7 +3759,7 @@ msgid "Not running"
 msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:332
-#: src/forkop/tabs/history/model.ts:313
+#: src/forkop/tabs/history/model.ts:314
 msgid "not set"
 msgstr ""
 
@@ -3803,7 +3803,7 @@ msgstr ""
 msgid "Now"
 msgstr ""
 
-#: src/forkop/ui/status.ts:306
+#: src/forkop/ui/status.ts:308
 msgid "Observed"
 msgstr ""
 
@@ -3844,7 +3844,7 @@ msgstr ""
 msgid "Only servers with one of the selected transports."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:356
+#: src/forkop/tabs/history/model.ts:357
 msgid "Only the first %d changes are listed; %d changes in total."
 msgstr ""
 
@@ -3913,12 +3913,12 @@ msgstr ""
 msgid "OS"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:289
+#: src/forkop/tabs/history/model.ts:290
 #: src/forkop/tabs/monitoring/connectionView.ts:122
 msgid "Other"
 msgstr ""
 
-#: src/forkop/ui/status.ts:296
+#: src/forkop/ui/status.ts:298
 msgid "Other event"
 msgstr ""
 
@@ -4393,27 +4393,27 @@ msgstr ""
 msgid "Restore configuration snapshot?"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:715
+#: src/forkop/tabs/history/model.ts:716
 msgid "Restore did not finish: a failed change left the DPI guard in place, and the DPI guard stays active. Restart Forkop X, then restore the snapshot again."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:706
+#: src/forkop/tabs/history/model.ts:707
 msgid "Restore did not finish: the configuration was changed while the snapshot was being applied."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:705
+#: src/forkop/tabs/history/model.ts:706
 msgid "Restore did not finish: the configuration was changed while the snapshot was being applied. Forkop X was reloaded, but it is not known whether with the snapshot or with the change."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:723
+#: src/forkop/tabs/history/model.ts:724
 msgid "Restore did not finish: the service was busy and only queued the reload. The DPI guard stays active; restore again when the service is idle."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:732
+#: src/forkop/tabs/history/model.ts:733
 msgid "Restore failed; check the recovery state before retrying"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:621
+#: src/forkop/tabs/history/model.ts:622
 msgid "Restore failed; previous configuration and runtime recovered"
 msgstr ""
 
@@ -4429,64 +4429,64 @@ msgstr ""
 msgid "Restore the last known good snapshot: the restore finishes and removes the DPI guard."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:705
+#: src/forkop/tabs/history/model.ts:706
 msgid "Restore the snapshot you need to finish."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:679
+#: src/forkop/tabs/history/model.ts:680
 msgid "Restore was not applied: Forkop X was stopped during the restore. The previous configuration is kept."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:702
+#: src/forkop/tabs/history/model.ts:703
 msgid "Restore was not applied: Forkop X was stopped, and the configuration was changed during the restore."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:652
 #: src/forkop/tabs/history/model.ts:653
+#: src/forkop/tabs/history/model.ts:654
 msgid "Restore was not applied: the configuration file could not be written. The previous configuration is kept."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:618
+#: src/forkop/tabs/history/model.ts:619
 msgid "Restore was not applied: the service was busy and only queued the reload. The previous configuration is kept."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:676
+#: src/forkop/tabs/history/model.ts:677
 msgid "Restore was not applied: the snapshot configuration did not pass validation. The previous configuration is kept; Forkop X stays stopped."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:630
+#: src/forkop/tabs/history/model.ts:631
 msgid "Restore was not started: a failed change left the DPI guard in place, and nothing can be reloaded until Forkop X is restarted. Restart Forkop X, then restore the snapshot if it is still needed."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:489
+#: src/forkop/tabs/history/model.ts:490
 msgid "Restore was not started: the configuration was changed while the restore was starting. Nothing was changed; check the change and try again."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:485
+#: src/forkop/tabs/history/model.ts:486
 msgid "Restore was not started: the current configuration could not be read. Nothing was changed."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:477
+#: src/forkop/tabs/history/model.ts:478
 msgid "Restore was not started: the current configuration could not be saved as a snapshot first. Nothing was changed. Check the free space on the router."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:493
+#: src/forkop/tabs/history/model.ts:494
 msgid "Restore was not started: the DPI guard that protects traffic during the restore could not be installed. Nothing was changed."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:640
+#: src/forkop/tabs/history/model.ts:641
 msgid "Restore was not started: the router has uncommitted uci changes of Forkop X (made with \"uci set\" without a commit). Commit or revert them, then restore again."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:481
+#: src/forkop/tabs/history/model.ts:482
 msgid "Restore was not started: the snapshot is missing or damaged. Nothing was changed."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:497
+#: src/forkop/tabs/history/model.ts:498
 msgid "Restore was not started: the snapshot storage could not be locked. Nothing was changed."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:503
+#: src/forkop/tabs/history/model.ts:504
 msgid "Restore was not started: the snapshot was saved by an older version of Forkop X, and its configuration could not be migrated to this version. Nothing was changed."
 msgstr ""
 
@@ -4702,6 +4702,10 @@ msgstr ""
 msgid "Saving URLTest settings…"
 msgstr ""
 
+#: src/forkop/ui/status.ts:296
+msgid "Scheduled jobs update"
+msgstr ""
+
 #: src/forkop/tabs/autotune/model.ts:32
 msgid "Scheduled measurements are off. An administrator can still check targets manually."
 msgstr ""
@@ -4734,7 +4738,7 @@ msgstr ""
 msgid "See connections to this address"
 msgstr ""
 
-#: src/forkop/ui/status.ts:319
+#: src/forkop/ui/status.ts:321
 msgid "Seen in an active connection"
 msgstr ""
 
@@ -4850,7 +4854,7 @@ msgstr ""
 msgid "server_port must be a number from 1 to 65535"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:190
+#: src/forkop/tabs/history/model.ts:191
 msgid "Service"
 msgstr ""
 
@@ -4969,23 +4973,23 @@ msgstr ""
 msgid "Snapshot deleted"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:429
+#: src/forkop/tabs/history/model.ts:430
 msgid "Snapshot not saved: at most %d manual snapshots are kept, so that the automatic snapshots taken before a restore, Save & Apply or autotune always have room. Delete a manual snapshot you no longer need, then try again."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:423
+#: src/forkop/tabs/history/model.ts:424
 msgid "Snapshot not saved: at most %d manual snapshots are kept, so that the automatic snapshots taken before a restore, Save & Apply or autotune always have room. There are %d manual snapshots now: delete %d you no longer need, then try again."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:447
+#: src/forkop/tabs/history/model.ts:448
 msgid "Snapshot not saved: it could not be written. Check the free space on the router."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:438
+#: src/forkop/tabs/history/model.ts:439
 msgid "Snapshot not saved: the configuration file could not be read."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:455
+#: src/forkop/tabs/history/model.ts:456
 msgid "Snapshot not saved: the snapshot storage could not be locked. Try again in a moment."
 msgstr ""
 
@@ -4993,7 +4997,7 @@ msgstr ""
 msgid "Snapshot restore"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:405
+#: src/forkop/tabs/history/model.ts:406
 msgid "Snapshot saved"
 msgstr ""
 
@@ -5354,11 +5358,11 @@ msgstr ""
 msgid "The change affects the whole group:"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:693
+#: src/forkop/tabs/history/model.ts:694
 msgid "The change is kept and saved as a snapshot (\"Concurrent edit\")."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:694
+#: src/forkop/tabs/history/model.ts:695
 msgid "The change is kept in the configuration, but no snapshot of it could be saved."
 msgstr ""
 
@@ -5395,11 +5399,11 @@ msgstr ""
 msgid "The configuration before the change is restored."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:570
+#: src/forkop/tabs/history/model.ts:571
 msgid "The configuration of the snapshot was migrated from Forkop X %s to %s."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:575
+#: src/forkop/tabs/history/model.ts:576
 msgid "The configuration of the snapshot was migrated to Forkop X %s."
 msgstr ""
 
@@ -5436,12 +5440,12 @@ msgstr ""
 msgid "The DNS server must be an IPv4 address."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:652
-#: src/forkop/tabs/history/model.ts:666
+#: src/forkop/tabs/history/model.ts:653
+#: src/forkop/tabs/history/model.ts:667
 msgid "The DPI guard of an earlier restore stays active."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:706
+#: src/forkop/tabs/history/model.ts:707
 msgid "The DPI guard stays active. Restore the snapshot you need to finish."
 msgstr ""
 
@@ -5741,7 +5745,7 @@ msgstr ""
 msgid "the service is busy"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:384
+#: src/forkop/tabs/history/model.ts:385
 msgid "The service is busy with another operation (list or subscription update, reload or start). Nothing was changed; try again when it finishes."
 msgstr ""
 
@@ -5869,7 +5873,7 @@ msgstr ""
 msgid "There are rules using Zapret2"
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:524
+#: src/forkop/tabs/history/model.ts:525
 msgid "There are unsaved changes of Forkop X in this session. Save & Apply or revert them, then restore the snapshot."
 msgstr ""
 
@@ -5959,11 +5963,11 @@ msgstr ""
 msgid "This section has no IP lists, so it is protected through FakeIP and DNS only."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:557
+#: src/forkop/tabs/history/model.ts:558
 msgid "This snapshot was saved by an older version of Forkop X. Before the restore, its configuration is migrated to the current version %s, as an upgrade migrates it: settings retired since then are updated. The snapshot itself is not changed; the changes listed above compare the snapshot as it was saved."
 msgstr ""
 
-#: src/forkop/tabs/history/model.ts:552
+#: src/forkop/tabs/history/model.ts:553
 msgid "This snapshot was saved by Forkop X %s. Before the restore, its configuration is migrated to the current version %s, as an upgrade migrates it: settings retired since then are updated. The snapshot itself is not changed; the changes listed above compare the snapshot as it was saved."
 msgstr ""
 

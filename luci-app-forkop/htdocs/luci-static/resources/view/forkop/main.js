@@ -5826,6 +5826,8 @@ function eventKindLabel(kind) {
       return _("Snapshot created");
     case "snapshot_delete":
       return _("Snapshot deleted");
+    case "cron_refresh":
+      return _("Scheduled jobs update");
     default:
       return _("Other event");
   }
@@ -17842,6 +17844,7 @@ var CATEGORY = {
   snapshot_delete: "config",
   start: "service",
   recovery: "service",
+  cron_refresh: "service",
   autotune_apply: "autotune",
   autotune_rollback: "autotune",
   autotune_mode: "autotune",

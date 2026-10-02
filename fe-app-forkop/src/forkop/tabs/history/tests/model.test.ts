@@ -348,6 +348,23 @@ describe('history list', () => {
       'Service start',
     ]);
   });
+
+  // A start or reload that could not update the scheduled jobs goes on
+  // without them; the failure stays visible in the history.
+  it('names a failed update of the scheduled jobs as a service event', () => {
+    const items = historyItems(
+      [
+        { kind: 'start', status: 'success', timestamp: 2 },
+        { kind: 'cron_refresh', status: 'failure', timestamp: 1 },
+      ],
+      'service',
+    );
+    expect(items.map((item) => item.title)).toEqual([
+      'Service start',
+      'Scheduled jobs update',
+    ]);
+    expect(items[1].outcome.label).toBe('Failed');
+  });
 });
 
 describe('snapshots', () => {

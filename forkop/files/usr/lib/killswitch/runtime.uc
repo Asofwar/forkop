@@ -1260,6 +1260,13 @@ function postinst() {
         }
         if (legacy != null)
             remove_legacy_include();
+        // A reinstall after a sysupgrade to an image without Forkop finds
+        // the saved policy (lib/upgrade/keep.d) but no rc.d link of the
+        // service: fw4 loads the policy again through this package's
+        // loader, and only the service's boot() attaches the DNS block list
+        // that goes with it.
+        if (policy_saved())
+            service_control([ "enable" ]);
         if (service_running())
             service_control([ "restart" ]);
         return 0;

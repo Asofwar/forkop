@@ -273,6 +273,21 @@ cp "$POLICY" "$WORK_DIR/policy.saved"
 ks postinst || fail "postinst of an upgrade between loader builds failed"
 cmp -s "$POLICY" "$WORK_DIR/policy.saved" || fail "an upgrade between loader builds must keep the saved policy"
 
+# 13. Reinstall after a sysupgrade to an image without Forkop: the sysupgrade
+#     kept the saved policy and block list (lib/upgrade/keep.d), never the
+#     service's rc.d link. The reinstalled loader makes fw4 load the policy
+#     again, so the service must be enabled for its boot() to attach the DNS
+#     block list again.
+: > "$WORK_DIR/service.log"
+ks postinst || fail "postinst of a reinstall with a saved policy failed"
+grep -Fqx enable "$WORK_DIR/service.log" ||
+  fail "postinst must enable the kill-switch service while a policy is saved: $(cat "$WORK_DIR/service.log")"
+# Without a saved policy there is nothing for boot() to attach.
+ks disable || fail "disable before the reinstall without a policy failed"
+: > "$WORK_DIR/service.log"
+ks postinst || fail "postinst of a reinstall without a saved policy failed"
+! grep -Fqx enable "$WORK_DIR/service.log" || fail "postinst must not enable the kill-switch service without a saved policy"
+
 [ ! -e "$FORKOP_RUNTIME_STATE_DIR/killswitch.lock" ] || fail "lock must be released"
 [ ! -e "$FORKOP_RELOAD_LOCK_DIR" ] || fail "reload.lock must be released"
 

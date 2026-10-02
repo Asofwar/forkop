@@ -1149,6 +1149,15 @@ function section_kill_switch_enabled(section) {
     return value == "1" || value == "true" || value == "yes" || value == "on";
 }
 
+// D-23: whether the excluded devices of a protected section resolve its
+// names while Forkop is stopped (killswitch/runtime.uc). A value the runtime
+// would read as off must not pass for one meaning on.
+function validate_kill_switch_dns_exempt(section) {
+    let value = option(section, "kill_switch_dns_exempt", "");
+    if (value != "" && !contains([ "0", "1", "true", "false", "yes", "no", "on", "off" ], value))
+        fail_validation("Invalid kill_switch_dns_exempt value '" + value + "' in rule '" + section_name(section) + "'. Use 0 or 1. Aborted.");
+}
+
 function validate_priority_group(section, group_id) {
     let name = section_name(section);
     validate_priority_identifier_value(group_id, name);
@@ -1428,6 +1437,7 @@ function validate_rule(section, sections, context) {
     if (!rule_action_supported(action))
         fail_validation("Enabled rule '" + name + "' uses unsupported action '" + action + "'. Aborted.");
     validate_unsupported_legacy_matchers(section);
+    validate_kill_switch_dns_exempt(section);
 
     if (action != "dns")
         for (let value in list_option(section, "ports"))

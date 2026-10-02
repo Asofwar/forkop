@@ -6,7 +6,9 @@
 # other sections when sing-box dies while dnsmasq still forwards to it: a standby
 # dnsmasq answers the names of every VPN section locally and everything else
 # through the ordinary upstream, and a watcher redirects client DNS to it
-# until sing-box answers again.
+# until sing-box answers again. The excluded devices of sections that exempt
+# them from the DNS block get a dnsmasq of their own for while Forkop is
+# stopped; the watcher redirects exactly their DNS to it.
 
 START=20
 STOP=90
@@ -14,7 +16,8 @@ USE_PROCD=1
 
 FORKOP_LIB="/usr/lib/forkop"
 KILLSWITCH_UC="$FORKOP_LIB/killswitch/runtime.uc"
-STANDBY_CONF="/tmp/forkop-killswitch/standby.conf"
+STANDBY_DIR="/tmp/forkop-killswitch"
+STANDBY_CONF="$STANDBY_DIR/standby.conf"
 
 killswitch() {
     ucode -L "$FORKOP_LIB" "$KILLSWITCH_UC" "$@"
@@ -44,6 +47,16 @@ start_service() {
     procd_set_param file "$STANDBY_CONF"
     procd_set_param respawn 3600 5 0
     procd_close_instance
+
+    for conf in $(killswitch exempt-configs "$STANDBY_DIR" 2>/dev/null); do
+        name="${conf##*/}"
+        procd_open_instance "${name%.conf}"
+        procd_set_param command /usr/sbin/dnsmasq --keep-in-foreground \
+            --conf-file="$conf" --pid-file=
+        procd_set_param file "$conf"
+        procd_set_param respawn 3600 5 0
+        procd_close_instance
+    done
 
     procd_open_instance watch
     procd_set_param command /usr/bin/ucode -L "$FORKOP_LIB" "$KILLSWITCH_UC" watch

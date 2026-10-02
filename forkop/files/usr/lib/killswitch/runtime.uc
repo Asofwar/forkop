@@ -18,7 +18,9 @@
 //    section in Forkop's own first-match order, plus any FakeIP destination.
 //  * DNS: protected domains are answered locally (NXDOMAIN) by dnsmasq
 //    whenever dnsmasq does not forward to sing-box; dns/apply.uc switches the
-//    servers file on every configure/restore.
+//    servers file on every configure/restore. A section may exempt its
+//    excluded devices (D-23): while Forkop is stopped they resolve through
+//    resolvers of their own, every other client keeps the block list.
 //
 // Only a successful Forkop start/reload refreshes the policy. A failed one,
 // a stop or a missing runtime keep the last applied protection. Removing it
@@ -65,6 +67,21 @@ const DNS_BLOCKED_FILE = STATE_DIR + "/dns-blocked.servers";
 const STANDBY_BLOCKED_FILE = CACHE_DIR + "/standby-blocked.servers";
 // dnsmasq reads it (dns/apply.uc keeps it empty while it forwards to sing-box).
 const DNS_SERVERS_FILE = STATE_DIR + "/dnsmasq.servers";
+// D-23: a section with this option lets its excluded devices resolve its
+// names while Forkop is stopped. The block list dnsmasq reads is shared by
+// all clients, so they get resolvers of their own: groups of excluded
+// addresses with the block list that applies to them, kept as a difference
+// to the shared one (on flash, like it), one standby dnsmasq per group, and
+// a redirect of exactly those addresses' DNS to it.
+const EXEMPT_OPTION = "kill_switch_dns_exempt";
+const EXEMPT_FILE = STATE_DIR + "/dns-exempt.json";
+const EXEMPT_FORMAT = 1;
+const EXEMPT_PORT_BASE = int(constant_value("KILLSWITCH_EXEMPT_PORT", "18055"));
+// Groups beyond it stay with the shared block list (fail closed).
+const EXEMPT_MAX_GROUPS = 4;
+// Answered by the resolver of a group with the configuration it was
+// generated for and by no other (RFC 6761: never a real name).
+const EXEMPT_PROBE_ZONE = "exempt.forkop.invalid";
 const DNSMASQ_INIT = getenv("DNSMASQ_INIT") || "/etc/init.d/dnsmasq";
 // The package file this process runs from.
 const OWNER_FILE = sourcepath() || LIB_DIR + "/killswitch/runtime.uc";
@@ -246,6 +263,28 @@ function vpn_section_names(sections) {
         if (bool_option(section, "enabled", true) && connections.is_connections_action(option(section, "action", "")))
             push(result, as_string(section[".name"]));
     return result;
+}
+
+// Protected sections that exempt their excluded devices from the DNS block
+// while Forkop is stopped (D-23).
+function section_exempts_devices(section) {
+    return section_protected(section) && bool_option(section, EXEMPT_OPTION, false);
+}
+
+// What of the configuration decides who is exempt: a change of it after the
+// last refresh ends the exemption until the next one (fail closed).
+function exempt_fingerprint(sections) {
+    let result = [];
+    for (let section in sections) {
+        if (!section_exempts_devices(section))
+            continue;
+        let item = { name: as_string(section[".name"]) };
+        for (let key in sort(keys(section)))
+            if (index(key, "excluded_source_ip_cidr") == 0 || key == "conditions_text_mode")
+                item[key] = section[key];
+        push(result, item);
+    }
+    return sprintf("%J", result);
 }
 
 // ------------------------------------------------------------------- lock
@@ -492,6 +531,15 @@ function file_md5(path) {
     return found == null ? "" : found[1];
 }
 
+function text_md5(text) {
+    let tmp = trim(capture([ "mktemp" ]).output);
+    if (tmp == "")
+        return "";
+    let md5 = fs.writefile(tmp, as_string(text)) != null ? file_md5(tmp) : "";
+    fs.unlink(tmp);
+    return md5;
+}
+
 function binary_ruleset(definition) {
     let format = as_string(definition.format);
     if (format != "")
@@ -644,6 +692,110 @@ function rule_clients(rule) {
     return result;
 }
 
+// The source addresses a route rule excludes in the form the generator
+// gives every rule of a section with excluded devices (generator.uc
+// exclude_sources_from_matchers: an inverted condition of source_ip_cidr
+// alone), or null for a rule that excludes none or in any other form.
+function rule_excluded_sources(rule) {
+    let result = [];
+    for (let condition in and_conditions(rule, [])) {
+        if (condition.invert !== true)
+            continue;
+        let has_source = false;
+        for (let key in SOURCE_RULE_KEYS)
+            if (condition[key] != null)
+                has_source = true;
+        if (!has_source)
+            continue;
+        for (let key in keys(condition))
+            if (key != "source_ip_cidr" && key != "invert")
+                return null;
+        for (let value in array_of(condition.source_ip_cidr))
+            push(result, as_string(value));
+    }
+    return length(result) > 0 ? result : null;
+}
+
+// An address or a network as 16-bit words (2 for IPv4, 8 for IPv6) with
+// the host bits cleared, and its text for nft; null for anything else
+// (zones, embedded IPv4, leading zeros), which then stays blocked.
+function cidr_word_mask(prefix, index) {
+    let bits = prefix - 16 * index;
+    if (bits <= 0)
+        return 0;
+    return bits >= 16 ? 0xffff : (0xffff << (16 - bits)) & 0xffff;
+}
+
+function ipv6_words(address) {
+    let halves = split(address, "::");
+    if (length(halves) > 2)
+        return null;
+    let head = halves[0] == "" ? [] : split(halves[0], ":");
+    let tail = length(halves) == 2 && halves[1] != "" ? split(halves[1], ":") : [];
+    let missing = 8 - length(head) - length(tail);
+    if (length(halves) == 2 ? missing < 1 : missing != 0)
+        return null;
+    let words = [];
+    for (let part in head)
+        push(words, part);
+    for (let i = 0; length(halves) == 2 && i < missing; i++)
+        push(words, "0");
+    for (let part in tail)
+        push(words, part);
+    for (let i = 0; i < 8; i++) {
+        if (match(words[i], /^[0-9A-Fa-f]{1,4}$/) == null)
+            return null;
+        words[i] = hex(words[i]);
+    }
+    return words;
+}
+
+function parse_cidr(value) {
+    value = trim(as_string(value));
+    let slash = index(value, "/");
+    let address = slash < 0 ? value : substr(value, 0, slash);
+    let family = 6;
+    let words = null;
+    let v4 = match(address, /^(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]{0,2})$/);
+    if (v4 != null) {
+        let octets = map(slice(v4, 1), (octet) => int(octet));
+        for (let octet in octets)
+            if (octet > 255)
+                return null;
+        family = 4;
+        words = [ (octets[0] << 8) | octets[1], (octets[2] << 8) | octets[3] ];
+    }
+    else if (index(address, ":") >= 0)
+        words = ipv6_words(address);
+    if (words == null)
+        return null;
+    let bits = family == 4 ? 32 : 128;
+    let prefix = bits;
+    if (slash >= 0) {
+        let text = substr(value, slash + 1);
+        if (match(text, /^(0|[1-9][0-9]{0,2})$/) == null || int(text) > bits)
+            return null;
+        prefix = int(text);
+    }
+    for (let i = 0; i < length(words); i++)
+        words[i] = words[i] & cidr_word_mask(prefix, i);
+    let text = family == 4
+        ? sprintf("%d.%d.%d.%d", words[0] >> 8, words[0] & 0xff, words[1] >> 8, words[1] & 0xff)
+        : join(":", map(words, (word) => sprintf("%x", word)));
+    return { family, words, prefix, text: text + "/" + prefix };
+}
+
+function cidr_contains(outer, inner) {
+    if (outer.family != inner.family || outer.prefix > inner.prefix)
+        return false;
+    for (let i = 0; i < length(outer.words); i++) {
+        let mask = cidr_word_mask(outer.prefix, i);
+        if ((outer.words[i] & mask) != (inner.words[i] & mask))
+            return false;
+    }
+    return true;
+}
+
 function rule_unrestricted(rule) {
     if (rule.invert === true)
         return false;
@@ -669,7 +821,13 @@ function rule_unrestricted(rule) {
 // An unreadable list fails the render, except in the rules of the sections
 // named in optional_names: their readable names are blocked all the same,
 // and the rest is counted (unreadable).
-function render_dns_from_config(config, protected_names, memo, optional_names) {
+//
+// options.skip names rules (by index) that do not apply to the clients the
+// list is for: the block list of a group of excluded devices (D-23).
+// options.exempt names the sections whose excluded devices get such lists;
+// the names of their rules with excluded devices are counted apart
+// (excluded_exempt) instead of as blocked for those devices as well.
+function render_dns_from_config(config, protected_names, memo, optional_names, options) {
     let result = {
         ok: false, error: "", content: "", domains: 0, exceptions: 0, shadowed: 0,
         invalid: 0, uncovered_keyword: 0, uncovered_regex: 0, uncovered_inverted: 0,
@@ -678,6 +836,9 @@ function render_dns_from_config(config, protected_names, memo, optional_names) {
     let optional = {};
     for (let name in array_or_empty(optional_names))
         optional[name] = true;
+    options = object_or_empty(options);
+    let skip = object_or_empty(options.skip);
+    let exempt = object_or_empty(options.exempt);
     config = object_or_empty(config);
     let route = object_or_empty(config.route);
     let rules = route.rules;
@@ -701,12 +862,14 @@ function render_dns_from_config(config, protected_names, memo, optional_names) {
     // protected name; skip them, together with their (often huge) lists.
     let last_protected = -1;
     for (let i = 0; i < length(rules); i++)
-        if (protected_tags[as_string(object_or_empty(rules[i]).outbound)] != null)
+        if (!skip[i] && protected_tags[as_string(object_or_empty(rules[i]).outbound)] != null)
             last_protected = i;
 
     memo = memo || {};
     let relevant = [];
     for (let i = 0; i <= last_protected; i++) {
+        if (skip[i])
+            continue;
         let rule = object_or_empty(rules[i]);
         let action = as_string(rule.action);
         if (action != "route" && action != "reject" && !(action == "" && rule.outbound != null))
@@ -745,7 +908,11 @@ function render_dns_from_config(config, protected_names, memo, optional_names) {
             result.sections[item.section].client_limited += names;
             continue;
         }
-        if (clients == "excluded") {
+        if (clients == "excluded" && exempt[item.section] && rule_excluded_sources(rule) != null) {
+            result.excluded_exempt = int(result.excluded_exempt) + names;
+            result.sections[item.section].excluded_exempt = int(result.sections[item.section].excluded_exempt) + names;
+        }
+        else if (clients == "excluded") {
             result.excluded_devices += names;
             result.sections[item.section].excluded_devices += names;
         }
@@ -900,12 +1067,15 @@ function dnsmasq_forwards_to_sing_box() {
     return index(words(dnsmasq_option("server")), SB_DNS_ADDRESS) >= 0;
 }
 
-function standby_config_text(settings) {
+// A standby dnsmasq on port: the ordinary upstream, local names through the
+// main dnsmasq. The standby resolver and the resolvers of excluded devices
+// (D-23) differ in their port and their block list.
+function resolver_config_lines(settings, title, port) {
     let lines = [
-        "# Forkop VPN kill-switch standby resolver. Generated; do not edit.",
+        "# Forkop VPN kill-switch " + title + ". Generated; do not edit.",
         "no-hosts",
         "bind-dynamic",
-        "port=" + STANDBY_PORT,
+        "port=" + port,
         "cache-size=1000",
         // Answers given during an outage must not outlive it for long:
         // afterwards these names have to resolve through Forkop again.
@@ -937,7 +1107,11 @@ function standby_config_text(settings) {
     let domain = dnsmasq_option("domain") || "lan";
     if (match(domain, /^[A-Za-z0-9_.-]+$/) != null)
         push(lines, "server=/" + domain + "/127.0.0.1");
+    return lines;
+}
 
+function standby_config_text(settings) {
+    let lines = resolver_config_lines(settings, "standby resolver", STANDBY_PORT);
     let blocked = fs.readfile(STANDBY_BLOCKED_FILE) ?? fs.readfile(DNS_BLOCKED_FILE);
     return join("\n", lines) + "\n" + (blocked == null ? "" : blocked);
 }
@@ -949,26 +1123,185 @@ function write_standby_config(path) {
     return write_atomic(path, content);
 }
 
+// ---------------------------------------- resolvers of excluded devices
+//
+// D-23: while Forkop is stopped, the excluded devices of a section that
+// exempts them resolve its names through a standby dnsmasq of their group;
+// every other client keeps the shared block list of the main dnsmasq. The
+// firewall policy does not change: its rules of such a section never
+// matched these devices.
+
+let exempt_cache = { key: "", data: null };
+
+// The groups of excluded devices the last refresh saved, or null.
+function exempt_data() {
+    let stat = fs.stat(EXEMPT_FILE);
+    if (stat == null) {
+        exempt_cache = { key: "", data: null };
+        return null;
+    }
+    let key = sprintf("%d:%d:%d", stat.inode, stat.mtime, stat.size);
+    if (exempt_cache.key != key) {
+        let data = common.read_json_file(EXEMPT_FILE);
+        let valid = type(data) == "object" && data.format == EXEMPT_FORMAT &&
+            type(data.groups) == "array" && length(data.groups) > 0 &&
+            match(as_string(data.sig), /^[0-9a-f]{32}$/) != null;
+        exempt_cache = { key, data: valid ? data : null };
+    }
+    return exempt_cache.data;
+}
+
+function exempt_port(index) {
+    return EXEMPT_PORT_BASE + index;
+}
+
+function exempt_probe_name(index, sig) {
+    return "g" + index + "-" + sig + "." + EXEMPT_PROBE_ZONE;
+}
+
+// The block list of a group: the shared one without the lines that do not
+// apply to its devices, with the ones that only apply to them.
+function exempt_group_content(main, group) {
+    let removed = {};
+    for (let line in array_or_empty(group.removed))
+        removed[as_string(line)] = true;
+    let lines = filter(split(as_string(main), "\n"), (line) => line != "" && !removed[line]);
+    // Only what render_dns_from_config writes goes into a configuration.
+    for (let line in array_or_empty(group.added))
+        if (match(as_string(line), /^server=\/[a-z0-9_.-]+\/#?$/) != null)
+            push(lines, as_string(line));
+    return join("\n", lines) + "\n";
+}
+
+function remove_exempt_configs(dir, keep) {
+    keep = object_or_empty(keep);
+    for (let name in array_or_empty(fs.lsdir(dir)))
+        if (match(name, /^exempt-[0-9]+\.conf$/) != null && !keep[name])
+            fs.unlink(dir + "/" + name);
+}
+
+// Writes the configuration of the resolver of every group to dir and prints
+// its path; the init script runs a dnsmasq for each. Only groups saved for
+// the block list and the configuration in place now get one: after a change
+// (by a release that does not know them, or while Forkop was stopped) every
+// excluded device keeps the shared block list until the next refresh.
+function write_exempt_configs(dir) {
+    let wanted = {};
+    let settings = config_settings();
+    let data = exempt_data();
+    let main = fs.readfile(DNS_BLOCKED_FILE);
+    if (data != null && main != null && !bool_option(settings, "dont_touch_dhcp", false) &&
+        as_string(data.blocked_md5) == file_md5(DNS_BLOCKED_FILE) &&
+        as_string(data.fingerprint) == exempt_fingerprint(config_sections())) {
+        for (let i = 0; i < length(data.groups) && i < EXEMPT_MAX_GROUPS; i++) {
+            let name = "exempt-" + i + ".conf";
+            let path = dir + "/" + name;
+            let lines = resolver_config_lines(settings, "resolver for excluded devices", exempt_port(i));
+            push(lines, "interface=lo", "address=/" + exempt_probe_name(i, data.sig) + "/127.0.0.1");
+            let content = join("\n", lines) + "\n" + exempt_group_content(main, object_or_empty(data.groups[i]));
+            if (as_string(fs.readfile(path)) != content && !write_atomic(path, content))
+                continue;
+            wanted[name] = true;
+            print(path, "\n");
+        }
+    }
+    remove_exempt_configs(dir, wanted);
+    return true;
+}
+
+// A short stable hash of a text (FNV-1a, 32 bits).
+function text_hash(text) {
+    text = as_string(text);
+    let hash = 0x811c9dc5;
+    for (let i = 0; i < length(text); i++)
+        hash = ((hash ^ ord(text, i)) * 0x01000193) & 0xffffffff;
+    return sprintf("%08x", hash);
+}
+
+// Only a resolver that runs the configuration of its group answers the
+// probe name of the group with 127.0.0.1.
+function exempt_resolver_answers(index, sig) {
+    let answer = capture([ "dig", "+short", "+time=1", "+tries=1", "-p", as_string(exempt_port(index)),
+        "@127.0.0.1", exempt_probe_name(index, sig), "A" ]);
+    return answer.status == 0 && trim(answer.output) == "127.0.0.1";
+}
+
+// The redirect of the excluded devices' DNS to the resolvers of their
+// groups: only while dnsmasq answers with the shared block list itself
+// (Forkop stopped), only to resolvers that answer with the configuration of
+// their group, and only DNS for the router itself, which is what the shared
+// list answers. The narrowest source comes first: an address belongs to the
+// group of the narrowest source that contains it, which is exempt from no
+// rule a wider one does not exclude it from as well. null when none applies.
+function exempt_redirect(forwarding) {
+    if (forwarding || dnsmasq_option("serversfile") != DNS_SERVERS_FILE)
+        return null;
+    let servers = fs.stat(DNS_SERVERS_FILE);
+    let data = servers != null && servers.size > 0 ? exempt_data() : null;
+    if (data == null)
+        return null;
+    let entries = [];
+    for (let i = 0; i < length(data.groups) && i < EXEMPT_MAX_GROUPS; i++) {
+        if (!exempt_resolver_answers(i, data.sig))
+            continue;
+        for (let source in array_or_empty(object_or_empty(data.groups[i]).sources)) {
+            let cidr = parse_cidr(source);
+            if (cidr != null)
+                push(entries, { cidr, port: exempt_port(i) });
+        }
+    }
+    if (length(entries) == 0)
+        return null;
+    sort(entries, (a, b) => a.cidr.family - b.cidr.family || b.cidr.prefix - a.cidr.prefix ||
+        (a.cidr.text < b.cidr.text ? -1 : (a.cidr.text > b.cidr.text ? 1 : 0)));
+    let rules = [];
+    for (let entry in entries)
+        for (let proto in [ "udp", "tcp" ])
+            push(rules, "iifname @" + INTERFACE_SET + " " + (entry.cidr.family == 6 ? "ip6" : "ip") + " saddr " +
+                entry.cidr.text + " fib daddr type local " + proto + " dport 53 counter redirect to :" + entry.port);
+    return { rules, tag: "forkop-exempt-" + text_hash(join("\n", rules)) };
+}
+
 function sing_box_answers() {
     // Any reply counts, including NXDOMAIN: only a dead or hung resolver
     // fails. The FakeIP test name is answered by sing-box itself.
     return run_quiet([ "dig", "+time=1", "+tries=1", "@" + SB_DNS_ADDRESS, SB_PROBE_DOMAIN, "A" ]);
 }
 
-function dns_redirect_state() {
+// The DNS chain of the live table, or null without one.
+function dns_chain_listing() {
     let listed = capture([ "nft", "list", "chain", "inet", KS_TABLE, DNS_CHAIN ]);
-    if (listed.status != 0)
-        return null;
-    return index(listed.output, "redirect") >= 0;
+    return listed.status != 0 ? null : listed.output;
 }
 
-function set_dns_redirect(enabled) {
+function standby_redirected(listed) {
+    return index(listed, "redirect to :" + STANDBY_PORT) >= 0;
+}
+
+// The tag the rules of the exemption redirect carry, "" without them.
+function exempt_redirect_tag(listed) {
+    let found = match(listed, /comment "(forkop-exempt-[0-9a-f]+)"/);
+    return found == null ? "" : found[1];
+}
+
+function dns_redirect_state() {
+    let listed = dns_chain_listing();
+    return listed == null ? null : standby_redirected(listed);
+}
+
+// Client DNS goes to the standby resolver (a dead sing-box), the excluded
+// devices' DNS to their resolvers (exempt, Forkop stopped) or nowhere else.
+function set_dns_chain(standby, exempt) {
     let t = "inet " + KS_TABLE;
     let lines = [ "flush chain " + t + " " + DNS_CHAIN ];
-    if (enabled) {
+    if (standby) {
         for (let proto in [ "udp", "tcp" ])
             push(lines, "add rule " + t + " " + DNS_CHAIN + " iifname @" + INTERFACE_SET + " " + proto +
                 " dport 53 counter redirect to :" + STANDBY_PORT);
+    }
+    else if (exempt != null) {
+        for (let rule in exempt.rules)
+            push(lines, "add rule " + t + " " + DNS_CHAIN + " " + rule + " comment \"" + exempt.tag + "\"");
     }
     let tmp = trim(capture([ "mktemp" ]).output);
     if (tmp == "")
@@ -986,7 +1319,7 @@ function set_dns_redirect(enabled) {
 function dns_redirect(mode) {
     if (dns_redirect_state() == null)
         return 0;
-    return set_dns_redirect(mode == "on") ? 0 : 1;
+    return set_dns_chain(mode == "on", null) ? 0 : 1;
 }
 
 // ---------------------------------------------------------------- orphaned
@@ -1024,8 +1357,9 @@ function lift_orphaned() {
     if (ks_table_present())
         run_quiet([ "nft", "delete", "table", "inet", KS_TABLE ]);
     let detached = detach_dns_servers_file();
-    for (let path in [ DNS_SERVERS_FILE, DNS_BLOCKED_FILE, STANDBY_BLOCKED_FILE, NFT_POLICY, LEGACY_NFT_INCLUDE ])
+    for (let path in [ DNS_SERVERS_FILE, DNS_BLOCKED_FILE, STANDBY_BLOCKED_FILE, EXEMPT_FILE, NFT_POLICY, LEGACY_NFT_INCLUDE ])
         fs.unlink(path);
+    remove_exempt_configs(CACHE_DIR);
     if (detached)
         run_quiet([ DNSMASQ_INIT, "restart" ]);
     // procd would keep the standby dnsmasq; this ends the watcher as well.
@@ -1058,7 +1392,8 @@ function watch() {
             continue;
         }
 
-        if (!dnsmasq_forwards_to_sing_box() || fs.stat(DNS_BLOCKED_FILE) == null) {
+        let forwarding = dnsmasq_forwards_to_sing_box();
+        if (!forwarding || fs.stat(DNS_BLOCKED_FILE) == null) {
             // Forkop is stopped and dnsmasq answers with the block list
             // itself, or there is no block list a standby could enforce.
             standby = false;
@@ -1089,9 +1424,21 @@ function watch() {
 
         // Reconcile every pass: a firewall reload or a policy refresh
         // recreates the table with an empty DNS chain.
-        let actual = dns_redirect_state();
-        if (actual != null && actual != standby && !set_dns_redirect(standby))
-            log_message("Kill-switch: could not switch client DNS to the " + (standby ? "standby resolver" : "Forkop resolver"), "error");
+        let listed = dns_chain_listing();
+        if (listed != null) {
+            let exempt = standby ? null : exempt_redirect(forwarding);
+            let tag = exempt == null ? "" : exempt.tag;
+            let current = exempt_redirect_tag(listed);
+            if (standby_redirected(listed) != standby || current != tag) {
+                if (!set_dns_chain(standby, exempt))
+                    log_message("Kill-switch: could not switch client DNS to the " +
+                        (standby ? "standby resolver" : (tag != "" ? "resolvers of excluded devices" : "Forkop resolver")), "error");
+                else if (current != tag)
+                    log_message(tag != ""
+                        ? "Kill-switch: excluded devices of sections that exempt them resolve their names through their own resolvers while Forkop is stopped"
+                        : "Kill-switch: excluded devices resolve through the shared DNS block list", "info");
+            }
+        }
 
         sleep(WATCH_INTERVAL_MS);
     }
@@ -1142,10 +1489,126 @@ function unrouted_sections(config, names) {
     return filter(names, (name) => !routed[singbox_constants.outbound_tag(name)]);
 }
 
-function sync_dns(settings, protected_names, config, vpn_names, unrouted) {
+// The excluded addresses of the sections that exempt them, grouped by the
+// route rules that do not apply to them: an address is excluded from every
+// rule of such a section that excludes a source containing it (D-23).
+function exempt_groups(config, sections) {
+    let tags = {};
+    for (let section in sections)
+        if (section_exempts_devices(section))
+            tags[singbox_constants.outbound_tag(as_string(section[".name"]))] = as_string(section[".name"]);
+    let rules = array_or_empty(object_or_empty(object_or_empty(config).route).rules);
+    let excluding = [];
+    let entries = {};
+    let invalid = {};
+    for (let i = 0; i < length(rules); i++) {
+        let rule = object_or_empty(rules[i]);
+        let section = tags[as_string(rule.outbound)];
+        let sources = section != null && rule_clients(rule) == "excluded" ? rule_excluded_sources(rule) : null;
+        if (sources == null)
+            continue;
+        let cidrs = [];
+        for (let value in sources) {
+            let cidr = parse_cidr(value);
+            if (cidr == null) {
+                invalid[value] = true;
+                continue;
+            }
+            push(cidrs, cidr);
+            entries[cidr.text] = cidr;
+        }
+        push(excluding, { index: i, section, cidrs });
+    }
+    let groups = {};
+    for (let text in sort(keys(entries))) {
+        let skip = {};
+        let indices = [];
+        let names = [];
+        for (let rule in excluding) {
+            for (let cidr in rule.cidrs) {
+                if (!cidr_contains(cidr, entries[text]))
+                    continue;
+                skip[rule.index] = true;
+                push(indices, rule.index);
+                if (index(names, rule.section) < 0)
+                    push(names, rule.section);
+                break;
+            }
+        }
+        let key = join(",", indices);
+        if (groups[key] == null)
+            groups[key] = { skip, sections: names, sources: [] };
+        push(groups[key].sources, text);
+    }
+    return { groups: map(sort(keys(groups)), (key) => groups[key]), invalid: length(keys(invalid)) };
+}
+
+// Saves the groups of excluded devices for the block list main_content
+// just saved, as the lines their own lists lack or add, with what they were
+// rendered for. Without a group that changes anything no file is kept.
+function sync_exempt(config, protected_names, sections, memo, main_content) {
+    let result = { groups: 0, warnings: [] };
+    let built = exempt_groups(config, sections);
+    let main_lines = {};
+    for (let line in split(main_content, "\n"))
+        if (line != "")
+            main_lines[line] = true;
+    let groups = [];
+    for (let group in built.groups) {
+        let rendered = render_dns_from_config(config, protected_names, memo, null, { skip: group.skip });
+        if (!rendered.ok)
+            continue;
+        let lines = {};
+        let added = [];
+        for (let line in split(rendered.content, "\n")) {
+            if (line == "" || lines[line])
+                continue;
+            lines[line] = true;
+            if (!main_lines[line])
+                push(added, line);
+        }
+        let removed = filter(keys(main_lines), (line) => !lines[line]);
+        if (length(removed) > 0 || length(added) > 0)
+            push(groups, { sections: group.sections, sources: group.sources, removed, added });
+    }
+    if (built.invalid > 0)
+        push(result.warnings, sprintf("%d excluded device addresses of sections that exempt their excluded devices cannot be read; those devices stay blocked through DNS while Forkop is stopped",
+            built.invalid));
+    if (length(groups) > EXEMPT_MAX_GROUPS) {
+        let sources = 0;
+        for (let group in slice(groups, EXEMPT_MAX_GROUPS))
+            sources += length(group.sources);
+        push(result.warnings, sprintf("the excluded devices form %d groups with different blocked names, at most %d get their own resolver; %d device addresses stay blocked through DNS while Forkop is stopped",
+            length(groups), EXEMPT_MAX_GROUPS, sources));
+        groups = slice(groups, 0, EXEMPT_MAX_GROUPS);
+    }
+    let data = length(groups) > 0 ? {
+        format: EXEMPT_FORMAT,
+        fingerprint: exempt_fingerprint(sections),
+        blocked_md5: file_md5(DNS_BLOCKED_FILE),
+        groups
+    } : null;
+    if (data != null)
+        data.sig = data.blocked_md5 != "" ? text_md5(sprintf("%J", data)) : "";
+    let content = data != null && data.sig != "" ? sprintf("%J", data) + "\n" : null;
+    if (content != null && (as_string(fs.readfile(EXEMPT_FILE)) == content || write_durable(EXEMPT_FILE, content))) {
+        result.groups = length(groups);
+        return result;
+    }
+    // Groups that do not belong to the block list just saved are never
+    // used: keep none.
+    if (fs.stat(EXEMPT_FILE) != null && !fs.unlink(EXEMPT_FILE))
+        push(result.warnings, "could not remove " + EXEMPT_FILE);
+    if (data != null)
+        push(result.warnings, "could not save the block lists of excluded devices; they stay blocked through DNS while Forkop is stopped");
+    return result;
+}
+
+function sync_dns(settings, protected_names, config, vpn_names, unrouted, sections) {
     if (bool_option(settings, "dont_touch_dhcp", false)) {
         fs.unlink(DNS_BLOCKED_FILE);
         fs.unlink(STANDBY_BLOCKED_FILE);
+        fs.unlink(EXEMPT_FILE);
         dns_refresh();
         return { ok: true, managed: false, warning: "dnsmasq is not managed by Forkop (dont_touch_dhcp); protected domains are guarded by nftables and FakeIP only" };
     }
@@ -1158,7 +1621,11 @@ function sync_dns(settings, protected_names, config, vpn_names, unrouted) {
 
     ruleset_cache_used = {};
     let memo = {};
-    let rendered = render_dns_from_config(config, protected_names, memo);
+    let exempting = {};
+    for (let section in sections)
+        if (section_exempts_devices(section))
+            exempting[as_string(section[".name"])] = true;
+    let rendered = render_dns_from_config(config, protected_names, memo, null, { exempt: exempting });
     if (!rendered.ok)
         return { ok: false, error: "DNS block list: " + rendered.error };
     // Without the kill-switch a dead sing-box fails every VPN section, not
@@ -1188,6 +1655,11 @@ function sync_dns(settings, protected_names, config, vpn_names, unrouted) {
     if (as_string(fs.readfile(STANDBY_BLOCKED_FILE)) != standby_content &&
         !write_atomic(STANDBY_BLOCKED_FILE, standby_content))
         rendered.standby_error = "could not write " + STANDBY_BLOCKED_FILE;
+    let exempt = sync_exempt(config, protected_names, sections, memo, rendered.content);
+    if (exempt.groups > 0)
+        rendered.exempt_groups = exempt.groups;
+    if (length(exempt.warnings) > 0)
+        rendered.exempt_warnings = exempt.warnings;
     if (!dns_refresh())
         return { ok: false, error: "dnsmasq could not be refreshed" };
 
@@ -1204,6 +1676,9 @@ function teardown(reason) {
     remove_legacy_guard_table();
     fs.unlink(DNS_BLOCKED_FILE);
     fs.unlink(STANDBY_BLOCKED_FILE);
+    if (fs.stat(EXEMPT_FILE) != null && !fs.unlink(EXEMPT_FILE))
+        ok = false;
+    remove_exempt_configs(CACHE_DIR);
     if (!dns_refresh())
         ok = false;
     write_state({
@@ -1254,9 +1729,25 @@ function runtime_behind_config(manual) {
 
 function protection_present() {
     return fs.stat(NFT_POLICY) != null || fs.stat(LEGACY_NFT_INCLUDE) != null ||
-        fs.stat(DNS_BLOCKED_FILE) != null || fs.stat(STANDBY_BLOCKED_FILE) != null ||
+        fs.stat(DNS_BLOCKED_FILE) != null || fs.stat(STANDBY_BLOCKED_FILE) != null || fs.stat(EXEMPT_FILE) != null ||
         read_state().active === true || ks_table_present() ||
         run_quiet([ "nft", "list", "table", "inet", LEGACY_GUARD_TABLE ]);
+}
+
+// Excluded devices resolve through the shared block list again (D-23): the
+// fail-closed side, which needs no runtime.
+function drop_exemption(reason) {
+    if (fs.stat(EXEMPT_FILE) == null)
+        return true;
+    let ok = fs.unlink(EXEMPT_FILE) == true;
+    let listed = dns_chain_listing();
+    if (listed != null && exempt_redirect_tag(listed) != "" && !set_dns_chain(false, null))
+        ok = false;
+    // The service runs the resolvers the saved groups describe.
+    if (service_running() && !service_control([ "start" ]))
+        ok = false;
+    log_message("Kill-switch: excluded devices resolve through the shared DNS block list again: " + as_string(reason), ok ? "info" : "error");
+    return ok;
 }
 
 function sync_locked(reason, manual) {
@@ -1267,6 +1758,7 @@ function sync_locked(reason, manual) {
         if (!protection_present())
             return 0;
         if (!config_readable()) {
+            drop_exemption("the Forkop configuration could not be read");
             record_error("the Forkop configuration could not be read; keeping the previous protection");
             return 1;
         }
@@ -1297,7 +1789,7 @@ function sync_locked(reason, manual) {
     remove_legacy_guard_table();
 
     let warnings = [];
-    let dns_result = sync_dns(settings, names, config, vpn_section_names(sections), unrouted);
+    let dns_result = sync_dns(settings, names, config, vpn_section_names(sections), unrouted, sections);
     if (!dns_result.ok)
         push(warnings, as_string(dns_result.error) + "; the previous DNS block list stays in place");
     else if (dns_result.warning)
@@ -1320,6 +1812,8 @@ function sync_locked(reason, manual) {
         if (dns_result.excluded_devices > 0)
             push(warnings, sprintf("%d domains of rules with excluded devices are blocked through DNS for the excluded devices as well (it is shared by all clients) while Forkop is stopped",
                 dns_result.excluded_devices));
+        for (let warning in array_or_empty(dns_result.exempt_warnings))
+            push(warnings, as_string(warning));
         let ds = dns_status();
         if (ds.conflict)
             push(warnings, "dnsmasq already uses servers file " + as_string(ds.serversfile) + "; DNS protection is not attached");
@@ -1349,6 +1843,12 @@ function sync_locked(reason, manual) {
         last_error: "",
         last_error_at: 0
     };
+    // Only with an exemption (D-23): the state of every other configuration
+    // stays as it was.
+    if (dns_result.ok && int(dns_result.excluded_exempt) > 0)
+        state.dns.excluded_exempt = int(dns_result.excluded_exempt);
+    if (dns_result.ok && int(dns_result.exempt_groups) > 0)
+        state.dns.exempt_groups = int(dns_result.exempt_groups);
     if (!service_control([ "enable", "start" ]))
         push(warnings, "the kill-switch service could not be started; DNS will not fail over to the standby resolver if sing-box dies");
     write_state(state);
@@ -1417,12 +1917,28 @@ function sync(reason, reload_lock_held) {
 // protects a section keeps the last applied protection, the blocking side,
 // until the next start renders it again. A start or reload whose table lacks
 // the list generation of the configuration (UC-209) follows it the same way.
+// Who is exempt from the DNS block (D-23) follows a change at once, to the
+// blocking side: a changed exemption ends until the next start renders it.
+function exempt_outdated(sections) {
+    if (fs.stat(EXEMPT_FILE) == null)
+        return false;
+    let data = common.read_json_file(EXEMPT_FILE);
+    return type(data) != "object" || as_string(data.fingerprint) != exempt_fingerprint(sections);
+}
+
 function follow_stopped_config(reason, reload_lock_held) {
-    if (length(protected_section_names(config_sections())) > 0 || !protection_present())
+    let sections = config_sections();
+    let protecting = length(protected_section_names(sections)) > 0;
+    let outdated = protecting && exempt_outdated(sections);
+    if ((protecting && !outdated) || !protection_present())
         return 0;
     // A skipped reload is not held up for long behind a lifecycle action.
     if (lock_attempts > 10)
         lock_attempts = 10;
+    if (outdated)
+        return with_lock(function() {
+            return drop_exemption("the exemption changed while Forkop is stopped") ? 0 : 1;
+        }, { reload_lock_held });
     return with_lock(function() { return sync_locked(reason || "reload while Forkop is stopped"); },
         { reload_lock_held });
 }
@@ -1496,6 +2012,8 @@ function status() {
         counters: table_present ? nft_counters() : {},
         dns: dns_status(),
         dns_standby: table_present && dns_redirect_state() === true,
+        // The excluded devices of exempting sections use their resolvers now.
+        dns_exempt: table_present && exempt_redirect_tag(as_string(dns_chain_listing())) != "",
         service_running: service_running(),
         state
     }), "\n");
@@ -1533,10 +2051,12 @@ else if (mode == "armed")
     exit(policy_saved() ? 0 : 1);
 else if (mode == "standby-config")
     exit(write_standby_config(ARGV[1]) ? 0 : 1);
+else if (mode == "exempt-configs")
+    exit(write_exempt_configs(ARGV[1] || CACHE_DIR) ? 0 : 1);
 else if (mode == "dns-redirect")
     exit(dns_redirect(ARGV[1]));
 else if (mode == "watch")
     exit(watch());
 
-warn("Usage: killswitch/runtime.uc <sync [reason [reload-lock-held]]|disable [reason]|release [reason]|follow-stopped-config [reason [reload-lock-held]]|postinst|status|armed|standby-config <path>|dns-redirect <on|off>|watch>\n");
+warn("Usage: killswitch/runtime.uc <sync [reason [reload-lock-held]]|disable [reason]|release [reason]|follow-stopped-config [reason [reload-lock-held]]|postinst|status|armed|standby-config <path>|exempt-configs <dir>|dns-redirect <on|off>|watch>\n");
 exit(1);

@@ -77,6 +77,8 @@ function constants_map() {
     c.KILLSWITCH_NFT_INCLUDE = env("KILLSWITCH_NFT_INCLUDE", "/usr/share/nftables.d/ruleset-post/90-forkop-killswitch.nft");
     c.KILLSWITCH_CACHE_DIR = env("KILLSWITCH_CACHE_DIR", "/tmp/forkop-killswitch");
     c.KILLSWITCH_STANDBY_PORT = env("KILLSWITCH_STANDBY_PORT", "18054");
+    // The first of the ports of the resolvers for excluded devices (D-23).
+    c.KILLSWITCH_EXEMPT_PORT = env("KILLSWITCH_EXEMPT_PORT", "18055");
 
     c.SB_REQUIRED_VERSION = env("SB_REQUIRED_VERSION", "1.12.0");
     c.SB_MANAGED_SERVICE_MARKER = env("SB_MANAGED_SERVICE_MARKER", "Forkop managed sing-box service for binary variants");

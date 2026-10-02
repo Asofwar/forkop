@@ -102,6 +102,9 @@ export FORKOP_KILLSWITCH_LOCK_ATTEMPTS=2
 POLICY="$KILLSWITCH_STATE_DIR/policy.nft"
 SERVERS="$KILLSWITCH_STATE_DIR/dnsmasq.servers"
 BLOCKED="$KILLSWITCH_STATE_DIR/dns-blocked.servers"
+# The resolvers of excluded devices that their sections exempt (D-23).
+EXEMPT="$KILLSWITCH_STATE_DIR/dns-exempt.json"
+EXEMPT_CONF="$KILLSWITCH_CACHE_DIR/exempt-0.conf"
 
 uci_value() {
   awk -F= -v key="$1" '$1 == key { print substr($0, length($1) + 2) }' "$FORKOP_UCI_STATE_FILE"
@@ -124,6 +127,9 @@ EOF
   printf 'add table inet ForkopKillswitch\n' >"$POLICY"
   printf 'server=/example.com/\n' >"$BLOCKED"
   cp "$BLOCKED" "$SERVERS"
+  printf '{"format":1,"groups":[{"sources":["192.168.1.50/32"],"removed":["server=/example.com/"],"added":[]}]}\n' >"$EXEMPT"
+  mkdir -p "$KILLSWITCH_CACHE_DIR"
+  printf 'port=18055\n' >"$EXEMPT_CONF"
   touch "$WORK_DIR/ks-present"
 }
 
@@ -131,6 +137,7 @@ assert_kept() {
   [ -s "$POLICY" ] || fail "$1: the saved policy must stay"
   [ -e "$WORK_DIR/ks-present" ] || fail "$1: the live policy must stay"
   [ "$(uci_value 'dhcp.@dnsmasq[0].serversfile')" = "$SERVERS" ] || fail "$1: the DNS block list must stay attached"
+  [ -s "$EXEMPT" ] || fail "$1: the groups of excluded devices must stay with the block list"
 }
 
 assert_lifted() {
@@ -139,6 +146,8 @@ assert_lifted() {
   [ -z "$(uci_value 'dhcp.@dnsmasq[0].serversfile')" ] || fail "$1: dnsmasq must not read the block list any more"
   [ ! -e "$SERVERS" ] || fail "$1: the DNS servers file must be removed"
   [ ! -e "$BLOCKED" ] || fail "$1: the saved block list must be removed"
+  [ ! -e "$EXEMPT" ] || fail "$1: the groups of excluded devices must be removed"
+  [ ! -e "$EXEMPT_CONF" ] || fail "$1: the configuration of their resolvers must be removed"
 }
 
 # The text of a package script as shipped, its /usr/bin/forkop being the
@@ -380,6 +389,7 @@ config dnsmasq
 EOF
 printf 'server=/example.com/\n' >"$ROOT/etc/forkop/killswitch/dnsmasq.servers"
 printf 'add table inet ForkopKillswitch\n' >"$ROOT/etc/forkop/killswitch/policy.nft"
+printf '{"format":1}\n' >"$ROOT/etc/forkop/killswitch/dns-exempt.json"
 printf '# loader\n' >"$ROOT/usr/share/nftables.d/ruleset-post/90-forkop-killswitch-loader.nft"
 printf 'add table inet ForkopKillswitch\n' >"$ROOT/usr/share/nftables.d/ruleset-post/90-forkop-killswitch.nft"
 

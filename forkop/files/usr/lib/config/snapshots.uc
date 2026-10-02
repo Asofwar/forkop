@@ -167,12 +167,63 @@ function metadata(snapshot) {
         config_hash: snapshot.config_hash,
         forkop_version: match(value(snapshot.forkop_version), /^[A-Za-z0-9._-]{1,64}$/) != null ? snapshot.forkop_version : "unknown" };
 }
+// The version of the running release, as a snapshot records it.
+function forkop_version() {
+    let version = trim(capture([ BIN, "show_version" ]));
+    return match(version, /^[A-Za-z0-9._-]{1,64}$/) != null ? version : "unknown";
+}
+// The migration state of a configuration (D-16): settings.config_version
+// and the ids of settings.applied_migrations, which config/migration.uc
+// records. A quick line reader for what a snapshot records when it is taken
+// and for the snapshot list, which runs on every refresh of the History
+// page: the settings lines a uci commit writes hold single-quoted words.
+// Whatever it misreads (a value spanning lines that holds a config line) at
+// worst misleads the list's hint: a restore reads the configuration as
+// libuci loads it (sections_schema).
+function settings_schema(content) {
+    let result = { config_version: "", applied_migrations: [] }, inside = false, applied = null;
+    let word = (text) => {
+        let found = match(text, /^'([^']*)'/) ?? match(text, /^"([^"\\]*)"/) ?? match(text, /^([^ \t'"#\\]+)/);
+        return found != null ? found[1] : text;
+    };
+    for (let line in split(value(content), "\n")) {
+        line = replace(line, /\r$/, "");
+        if (match(line, /^[ \t]*config([ \t]|$)/) != null) {
+            let start = match(line, /^[ \t]*config[ \t]+['"]?[^ \t'"#;\\]+['"]?[ \t]+['"]?([A-Za-z0-9_-]*)['"]?[ \t]*(#.*)?$/);
+            inside = start != null && start[1] == "settings";
+            continue;
+        }
+        let opt = inside ? match(line, /^[ \t]*(option|list)[ \t]+(config_version|applied_migrations)[ \t]+(.+)$/) : null;
+        if (opt == null) continue;
+        let raw = word(trim(opt[3]));
+        if (opt[2] == "config_version") {
+            if (raw != "") result.config_version = raw;
+        }
+        else if (opt[1] == "list") {
+            if (type(applied) != "array") applied = applied == null ? [] : [ applied ];
+            push(applied, raw);
+        }
+        else if (raw != "") applied = raw;
+    }
+    result.applied_migrations = type(applied) == "array" ? applied :
+        filter(split(trim(value(applied)), " "), (id) => id != "");
+    return result;
+}
 // Hash of the configuration the last-known-working snapshot holds.
 function lkg_hash() {
     let item = read_snapshot(trim(value(fs.readfile(LKG))), false);
     return item != null ? item.config_hash : "";
 }
-function list_snapshots() {
+// The migration state a snapshot recorded when it was taken, or, for one an
+// older release wrote, the one its configuration holds.
+function snapshot_schema(snapshot) {
+    let schema = snapshot.schema;
+    if (type(schema) == "object" && type(schema.config_version) == "string" && type(schema.applied_migrations) == "array")
+        return schema;
+    return settings_schema(snapshot.content);
+}
+// with_schema: each entry also has the schema of its snapshot.
+function list_snapshots(with_schema) {
     let result = [];
     let working = trim(value(fs.readfile(LKG)));
     for (let file in fs.lsdir(ROOT) || []) {
@@ -182,6 +233,7 @@ function list_snapshots() {
         if (item == null) continue;
         let entry = metadata(item);
         entry.is_lkg = id == working;
+        if (with_schema) entry.schema = snapshot_schema(item);
         push(result, entry);
     }
     result = sort(result, function(a, b) { return a.created_at - b.created_at; });
@@ -236,7 +288,9 @@ function trim_retention(keep, automatic) {
     return true;
 }
 // dedupe: true returns any snapshot that already holds the configuration, a
-// reason only one of that reason.
+// reason only one of that reason. A new snapshot records the release that
+// took it and the migration state of its configuration (schema, D-16); one
+// that an older release wrote has no schema, its configuration tells.
 function create(kind, reason, dedupe, keep) {
     let content = read_config();
     if (content == null) return { status: "failed", reason: "config_unavailable" };
@@ -253,9 +307,8 @@ function create(kind, reason, dedupe, keep) {
         return { status: "failed", reason: "manual_limit_reached", limit: MANUAL_LIMIT, manual };
     if (!trim_retention(keep, kind != "manual")) return { status: "failed", reason: "retention_full" };
     let id = sprintf("%d_%d", clock()[0], clock()[1]);
-    let version = trim(capture([ BIN, "show_version" ]));
     let snapshot = { id, created_at: int(clock()[0]), kind, reason,
-        config_hash: hash, forkop_version: match(version, /^[A-Za-z0-9._-]{1,64}$/) != null ? version : "unknown", content };
+        config_hash: hash, forkop_version: forkop_version(), schema: settings_schema(content), content };
     if (fs.stat(snapshot_path(id)) != null ||
         !atomic(snapshot_path(id), sprintf("%J\n", snapshot)))
         return { status: "failed", reason: "write_failed" };
@@ -772,6 +825,174 @@ function autotune_objection(content) {
     if (!candidate && record.applied !== true) candidate = runs_strategy(content, record.mutation);
     return candidate ? "autotune_apply_unresolved" : null;
 }
+// config/migration.uc, loaded when a snapshot may need it (D-16).
+let migration_module = null;
+function migrations() {
+    if (migration_module == null)
+        migration_module = require("config.migration");
+    return migration_module;
+}
+// The migration state of a configuration read as libuci loads it
+// (uci_sections), as config/migration.uc reads it: the options of the
+// section named settings.
+function sections_schema(sections) {
+    let result = { config_version: "", applied_migrations: [] };
+    for (let s in sections) {
+        if (s.name !== "settings") continue;
+        for (let o in s.options) {
+            if (o.name == "config_version")
+                result.config_version = o.list ? join(" ", o.value) : o.value;
+            else if (o.name == "applied_migrations")
+                result.applied_migrations = o.list ? o.value : filter(split(trim(o.value), " "), (id) => id != "");
+        }
+    }
+    return result;
+}
+// Whether a configuration with `schema` lacks a migration of this release
+// that `reference` records, or has an older config_version. A migration
+// unknown to this release (one of a newer release after a downgrade, or
+// mirror_infotechtg_ru_v1, which only the package's mirror-migration.sh
+// records) is none a restore could run.
+function schema_behind(schema, reference) {
+    let missing = filter(reference.applied_migrations, (id) => index(schema.applied_migrations, id) < 0);
+    // The common case, an equal state, needs no migration module.
+    if (!length(missing) && schema.config_version == reference.config_version) return false;
+    let ids = migrations().migration_ids();
+    for (let id in missing)
+        if (index(ids, id) >= 0) return true;
+    return migrations().compare_versions(schema.config_version, reference.config_version) < 0;
+}
+// The sections of a configuration as a uci cursor returns them, for
+// config/migration.uc. libuci names an anonymous section when it adds it
+// while loading the file, before its options: cfg, its place among the
+// sections the file adds (%02x), then the djb hash of its type cut to 16
+// bits (%04x) (libuci list.c uci_fixup_section). The type is printable
+// ASCII, so the name is the same on every platform; a URLTest group that
+// urltest_section_names_v1 names keeps it, and its dashboard overrides
+// follow.
+function loaded_sections(sections) {
+    let result = [];
+    for (let i = 0; i < length(sections); i++) {
+        let s = sections[i], hash = 5381;
+        for (let c = 0; c < length(s.type); c++)
+            hash = (hash * 33 + ord(s.type, c)) & 0xFFFFFFFF;
+        let section = { ".anonymous": s.name == null, ".type": s.type,
+            ".name": s.name ?? sprintf("cfg%02x%04x", i + 1, hash & 0xFFFF) };
+        for (let o in s.options)
+            section[o.name] = o.list ? [ ...o.value ] : o.value;
+        push(result, section);
+    }
+    return result;
+}
+// Sections from config/migration.uc in the shape uci_sections reads: an
+// anonymous section (one the file had and no migration named, or one a
+// migration added) has no name, an empty value is no option (libuci deletes
+// an option set to it), a list keeps its order.
+function exported_sections(sections, created) {
+    let result = [];
+    for (let section in sections) {
+        let anonymous = section[".anonymous"] === true || created[section[".name"]] === true;
+        let shaped = { name: anonymous ? null : value(section[".name"]), type: value(section[".type"]), options: [] };
+        for (let key, v in section) {
+            if (substr(key, 0, 1) == ".") continue;
+            if (type(v) == "array") {
+                if (length(v)) push(shaped.options, { name: key, list: true, value: map(v, (item) => value(item)) });
+            }
+            else if (value(v) != "")
+                push(shaped.options, { name: key, list: false, value: value(v) });
+        }
+        push(result, shaped);
+    }
+    return result;
+}
+// Sections as a uci commit writes them (libuci file.c uci_export_package).
+// Comments and the file's own layout go, as after any commit through libuci,
+// the package's migration included.
+function uci_export(sections) {
+    let escape = (v) => replace(v, /'/g, "'\\''");
+    let text = "";
+    for (let s in sections) {
+        text += "\nconfig " + escape(s.type) + (s.name == null ? "" : " '" + escape(s.name) + "'") + "\n";
+        for (let o in s.options)
+            for (let v in (o.list ? o.value : [ o.value ]))
+                text += "\t" + (o.list ? "list " : "option ") + escape(o.name) + " '" + escape(v) + "'\n";
+    }
+    return text + "\n";
+}
+// The configuration a restore writes for `target` (D-16 (a), UC-065). A
+// restore must not take the configuration back behind the migrations of
+// the release that runs: config/migration.uc runs only in the package
+// scripts, so a snapshot an older release saved would bring back what they
+// retired (the old mirror, removed rule sets) and roll applied_migrations
+// back, and nothing would migrate it until the next upgrade. The package
+// migrated the configuration being replaced: a snapshot that lacks one of
+// the migrations it records, or has an older config_version, is migrated
+// the same way, on a copy in memory (config/migration.uc migrate_sections);
+// when the configuration being replaced cannot be read, to every migration
+// of this release. The source snapshot is never written. A snapshot of the
+// same state (or of a newer release after a downgrade, which no migration
+// takes back) is restored as it is, byte for byte.
+//
+// Only what migrate changes in the configuration runs. The runtime caches
+// it resets and the package feeds mirror-migration.sh rewrites (other
+// packages) belong to the installed package, which already brought them to
+// this release; the restore leaves them alone.
+//
+// The kill-switch follows the restored configuration like any other
+// change: the restore's reload syncs it, and a reload that a stop skips
+// (D-15) still lifts a protection that no section of the restored
+// configuration has (killswitch/runtime.uc follow-stopped-config). The
+// global VPN guard of a snapshot from before the kill-switch
+// (vpn_fail_closed) becomes the per-section kill-switch here, as on an
+// upgrade, instead of a retired option that would silently drop it.
+//
+// Fail closed: a snapshot that cannot be read as libuci loads it, has no
+// settings section, makes a migration fail, or still lacks a migration the
+// configuration being replaced records (the Clash API secret when neither
+// has one and no random source exists), or whose migrated copy would not
+// load back the same, is refused before anything changes: { status
+// "failed", reason "snapshot_migration_failed", detail }. Otherwise
+// { content, migration }: migration names the release that saved the
+// snapshot, this one and the migrations that ran, or is null.
+function restore_content(target, before) {
+    let versions = () => ({ from: metadata(target).forkop_version, to: forkop_version() });
+    let refused = (detail) => ({ status: "failed", reason: "snapshot_migration_failed", detail, migration: versions() });
+    let live = uci_sections(before);
+    let reference = live != null ? sections_schema(live) :
+        { config_version: "", applied_migrations: migrations().migration_ids() };
+    if (!length(reference.applied_migrations) && reference.config_version == "")
+        return { content: target.content, migration: null };
+    let sections = uci_sections(target.content);
+    if (sections == null) return refused("unreadable");
+    let schema = sections_schema(sections);
+    if (!schema_behind(schema, reference))
+        return { content: target.content, migration: null };
+    // D-1: the secret of the configuration being replaced, for a snapshot
+    // from before the secret (migrate_sections).
+    let active = "";
+    for (let s in live ?? [])
+        if (s.name === "settings")
+            for (let o in s.options)
+                if (o.name == "yacd_secret_key" && !o.list) active = o.value;
+    let migrated = null;
+    try {
+        migrated = migrations().migrate_sections(loaded_sections(sections), active);
+    }
+    catch (e) {
+        return refused("migration_error");
+    }
+    if (migrated == null) return refused("no_settings");
+    let shaped = exported_sections(migrated.sections, migrated.created_anonymous);
+    let content = uci_export(shaped);
+    let loaded = uci_sections(content);
+    if (loaded == null || sprintf("%J", loaded) != sprintf("%J", shaped) || length(content) > MAX_CONFIG)
+        return refused("export_failed");
+    let result = sections_schema(loaded);
+    if (schema_behind(result, reference)) return refused("incomplete");
+    let migration = versions();
+    migration.migrations = filter(result.applied_migrations, (id) => index(schema.applied_migrations, id) < 0);
+    return { content, migration };
+}
 // expected (optional): the hash, or the user fingerprint, of the
 // configuration the caller means to replace. The automatic rollback of
 // autotune passes its candidate's: a configuration edited since (during the
@@ -797,17 +1018,32 @@ function do_restore(id, expected) {
     if (runtime_guard_kept())
         return service_action() != null ? { status: "busy", reason: "service_action_in_progress" } :
             { status: "failed", reason: "runtime_guard_active" };
+    // A snapshot of an older release is migrated on a copy; one that cannot
+    // be is refused here, before anything changes (D-16, UC-065). The copy
+    // is what the transaction validates, reloads and checks.
+    let restored = restore_content(target, before);
+    if (restored.status != null) return restored;
+    let content = restored.content, migration = restored.migration;
     let pre = create("automatic", "pre-restore", false, [ id ]);
     if (pre.status != "created") return { status: "failed", reason: "pre_restore_snapshot_failed" };
     if (sha(before) != sha(read_config())) return { status: "failed", reason: "concurrent_change" };
-    return guarded_replace(before, target.content, pre, () => {
-        if (!atomic(LKG, id + "\n")) return { status: "needs_attention", reason: "lkg_update_failed", guard: "inactive" };
-        return { status: "success", snapshot: metadata(target), changes: diff(before, target.content) };
+    let result = guarded_replace(before, content, pre, () => {
+        // Last-known-working names the configuration the reload proved. A
+        // migrated copy is not the source snapshot, which stays as it was:
+        // a snapshot of the copy is taken (or found) for it.
+        let working = id;
+        if (migration != null)
+            working = create("automatic", "last-known-working", true, [ id, pre.snapshot.id ]).snapshot?.id;
+        if (working == null || !atomic(LKG, working + "\n"))
+            return { status: "needs_attention", reason: "lkg_update_failed", guard: "inactive" };
+        return { status: "success", snapshot: metadata(target), changes: diff(before, content) };
     }, "config-restore", false, () => ({
         // Replaced and validated; no runtime proved it, so LKG stays.
         status: "restored_not_started", reason: "service_stopped", guard: "inactive",
-        snapshot: metadata(target), changes: diff(before, target.content)
+        snapshot: metadata(target), changes: diff(before, content)
     }), [ id ]);
+    if (migration != null) result.migration = migration;
+    return result;
 }
 // Apply a candidate configuration prepared elsewhere (DPI autotune stage 5)
 // through the same transaction as a restore. The current configuration must
@@ -848,10 +1084,20 @@ function do_apply(candidate_file, expected_hash, keep_id) {
 }
 let mode = value(ARGV[0]);
 // The list is read-only output: the hash of the whole config (secrets
-// included) stays internal (UC-150).
+// included) stays internal (UC-150). D-16 (b): a snapshot that a restore
+// migrates says from which release to this one (restore_content decides
+// the same from the configurations as libuci loads them).
 if (mode == "list") {
-    let result = fs.stat(ROOT) == null ? [] : list_snapshots();
-    for (let item in result) delete item.config_hash;
+    let result = fs.stat(ROOT) == null ? [] : list_snapshots(true);
+    let live = settings_schema(read_config()), current = null;
+    for (let item in result) {
+        if (schema_behind(item.schema, live)) {
+            if (current == null) current = forkop_version();
+            item.migration = { from: item.forkop_version, to: current };
+        }
+        delete item.schema;
+        delete item.config_hash;
+    }
     print(sprintf("%J\n", result));
     exit(0);
 }

@@ -1606,6 +1606,65 @@ function migrate_forkop_model(model) {
     return ctx;
 }
 
+// The ids of this release's migrations, in the order they run.
+function migration_ids() {
+    return map(MIGRATIONS, (migration) => migration.id);
+}
+
+// A configuration that is not the live UCI package, migrated in memory: a
+// History snapshot that config/snapshots.uc restores (D-16, UC-065).
+// `sections` are those libuci loads from it, in file order, each shaped as a
+// uci cursor returns it (".name", ".type", ".anonymous" and the options, a
+// list as an array). The same migrations as `migrate` runs on a package
+// upgrade (migrate_forkop_model) change them in place; nothing else is read
+// or written. No UCI package is loaded or committed, and the runtime caches
+// that migrate_runtime resets and the package feeds of mirror-migration.sh
+// belong to the installed package, not to a configuration: the package
+// scripts keep them for the release that runs. Returns the sections to
+// write, these and then those the migrations created (libuci appends an
+// added section), the names of the created ones that stay anonymous and
+// whether anything changed; null without a settings section, where no
+// migration can be recorded.
+//
+// D-1 (b): a snapshot saved before the Clash API secret existed (it lacks
+// clash_api_secret_v1) and holding none takes `active_secret`, the secret of
+// the configuration it replaces, which the dashboard and other clients use
+// now; a new random one would lock them out. A secret the snapshot holds is
+// never replaced, and without an active one the migration generates one, as
+// on an upgrade.
+function migrate_sections(sections, active_secret) {
+    let model = { settings: null, rules: [], sections: [], names: [] };
+    for (let type_name in MODEL_SECTION_TYPES)
+        model[type_name] = [];
+    for (let section in sections) {
+        let type_name = option(section, ".type", "");
+        push(model.names, section_name(section));
+        if (section_name(section) == "settings" && model.settings == null)
+            model.settings = section;
+        if (type_name == "rule")
+            push(model.rules, section);
+        else if (type_name == "section")
+            push(model.sections, section);
+        else if (index(MODEL_SECTION_TYPES, type_name) >= 0)
+            push(model[type_name], section);
+    }
+    if (model.settings == null)
+        return null;
+
+    active_secret = trim(as_string(active_secret));
+    if (!list_contains(model.settings, APPLIED_MIGRATIONS_OPTION, "clash_api_secret_v1") &&
+        common.clash_api_secret(model.settings) == "" && active_secret != "")
+        model.settings.yacd_secret_key = active_secret;
+
+    let ctx = migrate_forkop_model(model);
+    let result = [ ...sections ];
+    for (let type_name in MODEL_SECTION_TYPES)
+        for (let section in model[type_name])
+            if (index(result, section) < 0)
+                push(result, section);
+    return { sections: result, created_anonymous: ctx.created_anonymous, changed: ctx.changed };
+}
+
 // Runtime UCI adapter and external command dispatcher.
 function first_line(path) {
     let data = fs.readfile(as_string(path));
@@ -1829,6 +1888,9 @@ function module_exports() {
         migrate_model: migrate_model,
         migrate_forkop_model: migrate_forkop_model,
         migrate_podkop_model: migrate_podkop_model,
+        migration_ids: migration_ids,
+        compare_versions: compare_versions,
+        migrate_sections: migrate_sections,
         mark_internal_config_guard: mark_internal_config_guard
     };
 }

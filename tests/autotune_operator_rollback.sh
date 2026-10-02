@@ -157,9 +157,13 @@ a.equal(r.status, "failed"); a.equal(r.result, "failed"); a.equal(r.reason, "rol
 [ "$(cat "$FORKOP_AUTOTUNE_STATE_FILE")" = "$before" ] || fail "a refused rollback changed the autotune state"
 rm -f "$WORK/tune/rollback.json"
 
-# 5. Never next to a run of the worker.
+# 5. Never next to a run of the worker. The tool of the run keeps it busy
+#    until the test releases it, not for a fixed time.
 rm -f "$WORK/tune/calls.log"
-STUB_TUNE_SLEEP=5 ucode -L "$LIB" "$LIB/autotune/manager.uc" run youtube >/dev/null &
+cat >"$WORK/tune/www.youtube.com.hook" <<SH
+while [ ! -e "$WORK/run.release" ] && [ -d "$WORK" ]; do sleep 0.05; done
+SH
+ucode -L "$LIB" "$LIB/autotune/manager.uc" run youtube >/dev/null &
 run_pid=$!; BG_PIDS+=("$run_pid")
 for _ in $(seq 100); do [ -s "$WORK/tune/calls.log" ] && break; sleep 0.1; done
 [ -s "$WORK/tune/calls.log" ] || fail "fixture: the run did not start measuring"
@@ -168,6 +172,7 @@ if manager rollback >"$WORK/rollback.json"; then fail "a rollback next to a run 
 [ "$(json_get "$WORK/rollback.json" status)" = '"busy"' ] || fail "rollback next to a run: $(cat "$WORK/rollback.json")"
 [ "$(json_get "$WORK/rollback.json" reason)" = '"autotune_worker_running"' ] || fail "busy reason"
 [ "$(rollbacks)" = "$count" ] || fail "the Stage 5 rollback ran next to a run"
+: >"$WORK/run.release"
 wait "$run_pid" || true
 
 echo "autotune operator rollback: OK"

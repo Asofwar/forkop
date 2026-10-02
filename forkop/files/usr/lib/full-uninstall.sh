@@ -14,6 +14,16 @@ COMPONENT_LOCK="$ROOT/var/run/forkop/component-action.lock"
 PACKAGES="luci-i18n-forkop-ru luci-app-forkop forkop sing-box sing-box-tiny sing-box-extended"
 PHASE=preflight
 
+# uci on the filesystem root; a test root keeps the changes uci stages under
+# it too, never in the host's /tmp/.uci.
+root_uci() {
+    if [ -z "$ROOT" ]; then
+        uci "$@"
+        return
+    fi
+    mkdir -p "$ROOT/tmp/.uci" && uci -c "$ROOT/etc/config" -t "$ROOT/tmp/.uci" "$@"
+}
+
 has_mirror() {
     grep -Fq "${MIRROR%/}/" "$1" || grep -Fq 'mirror.51343.ru/' "$1" ||
         grep -Fq 'mirror.infotechtg.ru/' "$1"
@@ -139,9 +149,9 @@ run() {
     # Whatever the kill-switch left (its removal above failed or an older
     # Forkop never lifted it) must not outlive the product (UC-191).
     if [ -z "$ROOT" ]; then nft delete table inet ForkopKillswitch 2>/dev/null || true; fi
-    if [ "$(uci -c "$ROOT/etc/config" -q get dhcp.@dnsmasq[0].serversfile 2>/dev/null || true)" = /etc/forkop/killswitch/dnsmasq.servers ]; then
-        if uci -c "$ROOT/etc/config" -q delete dhcp.@dnsmasq[0].serversfile &&
-            uci -c "$ROOT/etc/config" -q commit dhcp && [ -x "$ROOT/etc/init.d/dnsmasq" ]; then
+    if [ "$(root_uci -q get dhcp.@dnsmasq[0].serversfile 2>/dev/null || true)" = /etc/forkop/killswitch/dnsmasq.servers ]; then
+        if root_uci -q delete dhcp.@dnsmasq[0].serversfile &&
+            root_uci -q commit dhcp && [ -x "$ROOT/etc/init.d/dnsmasq" ]; then
             "$ROOT/etc/init.d/dnsmasq" restart || true
         fi
     fi

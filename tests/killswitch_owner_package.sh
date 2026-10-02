@@ -297,7 +297,13 @@ cat >"$ROOT/etc/init.d/dnsmasq" <<'SH'
 #!/bin/sh
 printf '%s\n' "$*" >> "$FORKOP_UNINSTALL_ROOT/dnsmasq-calls"
 SH
-chmod +x "$ROOT/usr/bin/forkop" "$ROOT/bin/opkg" "$ROOT/etc/init.d/dnsmasq"
+# Every uci call of the full uninstall, run by the real uci.
+cat >"$ROOT/bin/uci" <<SH
+#!/bin/sh
+printf '%s\n' "\$*" >> "\$FORKOP_UNINSTALL_ROOT/uci-calls"
+exec "$(command -v uci)" "\$@"
+SH
+chmod +x "$ROOT/usr/bin/forkop" "$ROOT/bin/opkg" "$ROOT/bin/uci" "$ROOT/etc/init.d/dnsmasq"
 cat >"$ROOT/etc/config/dhcp" <<'EOF'
 config dnsmasq
 	option domain 'lan'
@@ -308,7 +314,8 @@ printf 'add table inet ForkopKillswitch\n' >"$ROOT/etc/forkop/killswitch/policy.
 printf '# loader\n' >"$ROOT/usr/share/nftables.d/ruleset-post/90-forkop-killswitch-loader.nft"
 printf 'add table inet ForkopKillswitch\n' >"$ROOT/usr/share/nftables.d/ruleset-post/90-forkop-killswitch.nft"
 
-FORKOP_UNINSTALL_ROOT="$ROOT" PATH="$ROOT/bin:$PATH" sh "$FULL_UNINSTALL" start >"$ROOT/response"
+FORKOP_UNINSTALL_ROOT="$ROOT" FORKOP_MIRROR_BASE_URL="http://mirror.test" PATH="$ROOT/bin:$PATH" \
+  sh "$FULL_UNINSTALL" start >"$ROOT/response"
 uninstall_done() {
   status="$(cat "$ROOT"/www/forkop-uninstall.*.json 2>/dev/null)"
   case "$status" in *'"state":"complete"'* | *'"state":"failed"'*) return 0 ;; esac
@@ -321,9 +328,16 @@ for path in /usr/share/nftables.d/ruleset-post/90-forkop-killswitch-loader.nft \
   /usr/share/nftables.d/ruleset-post/90-forkop-killswitch.nft /etc/forkop; do
   [ ! -e "$ROOT$path" ] || fail "full uninstall left $path behind"
 done
-[ -z "$(uci -c "$ROOT/etc/config" -q get dhcp.@dnsmasq[0].serversfile)" ] ||
+[ -z "$(uci -c "$ROOT/etc/config" -t "$ROOT/tmp/.uci" -q get dhcp.@dnsmasq[0].serversfile)" ] ||
   fail "full uninstall must detach the kill-switch servers file from dnsmasq"
-[ "$(uci -c "$ROOT/etc/config" -q get dhcp.@dnsmasq[0].domain)" = lan ] || fail "full uninstall must keep the rest of dhcp"
+[ "$(uci -c "$ROOT/etc/config" -t "$ROOT/tmp/.uci" -q get dhcp.@dnsmasq[0].domain)" = lan ] ||
+  fail "full uninstall must keep the rest of dhcp"
+# The changes it stages stay under the fixture root: the host's /tmp/.uci
+# is neither read nor committed.
+grep -Fq 'commit dhcp' "$ROOT/uci-calls" || fail "full uninstall must commit dhcp through uci"
+if grep -Fv -- "-c $ROOT/etc/config -t $ROOT/tmp/.uci " "$ROOT/uci-calls" >"$WORK_DIR/host-uci-calls"; then
+  fail "full uninstall on a fixture root must keep uci's staged changes under it: $(cat "$WORK_DIR/host-uci-calls")"
+fi
 grep -Fqx restart "$ROOT/dnsmasq-calls" || fail "dnsmasq must be restarted without the block list"
 
 # ---- the package went away and nothing lifted the protection -------------------

@@ -153,6 +153,8 @@ cat >"$WORK_DIR/gen/fixture.json" <<JSON
     { ".name": "excl2", ".type": "section", "enabled": "1", "action": "connection", "kill_switch": "1",
       "outbound_jsons": [ "$(outbound_json c)" ], "domain_suffix": [ "excl2-inline.example" ],
       "excluded_source_ip_cidr": [ "192.168.1.5" ] },
+    { ".name": "free", ".type": "section", "enabled": "1", "action": "connection",
+      "outbound_jsons": [ "$(outbound_json e)" ], "domain_suffix": [ "sub.shared.example" ] },
     { ".name": "late", ".type": "section", "enabled": "1", "action": "connection", "kill_switch": "1",
       "outbound_jsons": [ "$(outbound_json d)" ], "domain_suffix": [ "shared.example" ] }
   ]
@@ -163,10 +165,11 @@ ucode -L "$FORKOP_LIB" "$FORKOP_LIB/singbox/generator.uc" generate-config-fixtur
   fail "the generator fixture could not be generated"
 
 # $1: whether excl and excl2 exempt their excluded devices; $2: the server
-# dnsmasq forwards to (127.0.0.42 while Forkop runs).
+# dnsmasq forwards to (127.0.0.42 while Forkop runs); IFACES: the LAN
+# interfaces (br-lan).
 write_uci() {
   {
-    printf 'forkop.settings=settings\nforkop.settings.source_network_interfaces=br-lan\n'
+    printf 'forkop.settings=settings\nforkop.settings.source_network_interfaces=%s\n' "${IFACES:-br-lan}"
     printf 'forkop.settings.config_path=%s\n' "$WORK_DIR/config.json"
     printf 'forkop.main=section\nforkop.main.action=connection\nforkop.main.kill_switch=1\n'
     printf 'forkop.main.ip_cidr=3.3.3.0/24\nforkop.main.excluded_source_ip_cidr=192.168.1.50\n'
@@ -177,6 +180,7 @@ write_uci() {
     if [ "$1" = 1 ]; then
       printf 'forkop.excl.kill_switch_dns_exempt=1\nforkop.excl2.kill_switch_dns_exempt=1\n'
     fi
+    printf 'forkop.free=section\nforkop.free.action=connection\n'
     printf 'forkop.late=section\nforkop.late.action=connection\nforkop.late.kill_switch=1\n'
     printf 'dhcp.@dnsmasq[0]=dnsmasq\ndhcp.@dnsmasq[0].server=%s\ndhcp.@dnsmasq[0].forkop_server=1.1.1.1\n' "$2"
     printf 'dhcp.@dnsmasq[0].serversfile=%s\n' "$SERVERS"
@@ -198,6 +202,7 @@ nft list table inet ForkopKillswitch >/dev/null 2>&1 || fail "the synced policy 
 [ -s "$EXEMPT" ] || fail "the groups of excluded devices must be saved"
 cp "$STATE_DIR/policy.nft" "$WORK_DIR/policy.exempt"
 if grep -q redirect "$WORK_DIR/policy.exempt"; then fail "the saved firewall policy redirects nothing"; fi
+grep -q ' ks_exempt_guard ' "$WORK_DIR/policy.exempt" || fail "the saved firewall policy guards the resolvers of excluded devices"
 
 # Forkop stops: dnsmasq answers with the shared block list.
 write_uci 1 1.1.1.1
@@ -206,11 +211,17 @@ grep -Fqx 'server=/excl-inline.example/' "$SERVERS" || fail "a stopped Forkop bl
 
 ks exempt-configs "$CONF_DIR" >"$WORK_DIR/confs" || fail "exempt-configs failed"
 [ "$(wc -l <"$WORK_DIR/confs")" = 2 ] || fail "two groups of excluded devices expected: $(cat "$WORK_DIR/confs")"
-# shellcheck disable=SC2046
-python3 "$HELPER" serve "$SERVERS" $(cat "$WORK_DIR/confs") >"$WORK_DIR/serve.out" 2>&1 &
-RESOLVERS=$!
-resolvers_ready() { grep -qx ready "$WORK_DIR/serve.out"; }
-wait_until 10 resolvers_ready || fail "the resolvers did not start: $(cat "$WORK_DIR/serve.out")"
+# The router's resolvers for the configurations in $WORK_DIR/confs.
+serve() {
+  [ -z "$RESOLVERS" ] || owned_kill TERM "$RESOLVERS" || true
+  : >"$WORK_DIR/serve.out"
+  # shellcheck disable=SC2046
+  python3 "$HELPER" serve "$SERVERS" $(cat "$WORK_DIR/confs") >"$WORK_DIR/serve.out" 2>&1 &
+  RESOLVERS=$!
+  wait_until 10 resolvers_ready || fail "the resolvers did not start: $(cat "$WORK_DIR/serve.out")"
+}
+resolvers_ready() { grep -qxs ready "$WORK_DIR/serve.out"; }
+serve
 
 FORKOP_KILLSWITCH_WATCH_ITERATIONS=2 ks watch || fail "watch failed"
 chain="$(nft list chain inet ForkopKillswitch ks_dns)"
@@ -220,14 +231,14 @@ grep -Fq 'ip6 saddr fd00::50 fib daddr type local' <<<"$chain" || fail "the IPv6
 
 # ---- what the clients get --------------------------------------------------------
 
-ask() { python3 "$HELPER" query br-lan "$1" "$2" "$3"; }
+ask() { python3 "$HELPER" query br-lan "$1" "$2" "$3" "${4:-53}"; }
 expect() {
-  local src="$1" name="$2" want="$3" dst="${4:-192.168.1.1}" got
+  local src="$1" name="$2" want="$3" dst="${4:-192.168.1.1}" port="${5:-53}" got
   if [[ "$src" == *:* ]]; then
     [ "$IPV6" = 1 ] || return 0
     [ "$dst" != 192.168.1.1 ] || dst=fd00::1
   fi
-  got="$(ask "$src" "$dst" "$name")"
+  got="$(ask "$src" "$dst" "$name" "$port")"
   case "$want" in
     blocked) [[ "$got" == "rcode=3 "* ]] || fail "$src must get NXDOMAIN for $name, got: $got" ;;
     exempt) [[ "$got" =~ ^rcode=0\ answer=203\.0\.113\.5[5-8]\ sport=53$ ]] ||
@@ -244,6 +255,8 @@ expect 192.168.1.50 unrelated.example exempt
 expect 192.168.1.50 main-inline.example blocked
 expect 192.168.1.50 excl2-inline.example blocked
 expect 192.168.1.50 shared.example blocked
+# For .50 shared.example is blocked by late, after the unprotected free.
+expect 192.168.1.50 sub.shared.example exempt
 expect 192.168.1.10 excl-inline.example exempt
 expect 192.168.1.10 excl2-inline.example blocked
 # Excluded from excl and excl2.
@@ -258,9 +271,20 @@ for client in 192.168.1.70 192.168.1.16 fd00::70; do
   expect "$client" excl-inline.example blocked
   expect "$client" excl2-inline.example blocked
   expect "$client" second-list.example blocked
+  expect "$client" sub.shared.example blocked
   expect "$client" unrelated.example shared
 done
 ok "every other client stays blocked"
+
+# The resolvers of excluded devices answer only DNS the kill-switch
+# redirected to them, not clients that ask them directly.
+for port in 18055 18056; do
+  for client in 192.168.1.70 192.168.1.50 fd00::70; do
+    expect "$client" excl-inline.example noreply 192.168.1.1 "$port"
+  done
+done
+expect 192.168.1.50 excl-inline.example exempt
+ok "clients cannot ask the resolvers of excluded devices directly"
 
 # Only DNS for the router itself goes to their resolvers.
 : >"$WORK_DIR/resolvers.log"
@@ -282,7 +306,8 @@ ok "the watcher restores the redirect after a firewall reload"
 write_uci 0 127.0.0.42
 ks sync start || fail "sync without the option failed"
 [ ! -e "$EXEMPT" ] || fail "without the option no groups may be saved"
-cmp -s "$STATE_DIR/policy.nft" "$WORK_DIR/policy.exempt" || fail "the option must not change the firewall policy"
+cmp -s "$STATE_DIR/policy.nft" <(grep -v ' ks_exempt_guard ' "$WORK_DIR/policy.exempt") ||
+  fail "the option must not change the firewall policy apart from the guard of its resolvers"
 write_uci 0 1.1.1.1
 ucode -L "$FORKOP_LIB" "$DNS_UC" killswitch-refresh || fail "DNS refresh failed"
 [ -z "$(ks exempt-configs "$CONF_DIR")" ] || fail "without the option no resolver of excluded devices may run"
@@ -295,6 +320,22 @@ for client in 192.168.1.50 192.168.1.5 fd00::50 192.168.1.70; do
 done
 expect 192.168.1.50 unrelated.example shared
 ok "without the option every client keeps the shared block list"
+
+# ---- LAN interfaces dnsmasq cannot be given by name --------------------------------
+#
+# A wildcard matches br-lan in the kill-switch's interface set; the
+# resolvers of excluded devices must then listen on br-lan as well.
+IFACES='br-*' write_uci 1 127.0.0.42
+ks sync start || fail "sync with a wildcard interface failed"
+IFACES='br-*' write_uci 1 1.1.1.1
+ucode -L "$FORKOP_LIB" "$DNS_UC" killswitch-refresh || fail "DNS refresh failed"
+ks exempt-configs "$CONF_DIR" >"$WORK_DIR/confs" || fail "exempt-configs failed"
+serve
+FORKOP_KILLSWITCH_WATCH_ITERATIONS=1 ks watch || fail "watch failed"
+expect 192.168.1.50 excl-inline.example exempt
+expect 192.168.1.5 excl2-inline.example exempt
+expect 192.168.1.70 excl-inline.example blocked
+ok "with a wildcard interface the excluded devices reach their resolvers"
 
 # ---- the owner goes: nothing stays --------------------------------------------------
 

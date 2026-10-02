@@ -91,6 +91,10 @@ while [ "$#" -gt 0 ]; do
 done
 if [ "$server" = 127.0.0.42 ]; then [ -e "$WORK_DIR/sing-box-alive" ]; exit $?; fi
 [ ! -e "$WORK_DIR/dead-$port" ] || exit 9
+# fail-at-PORT: the numbers of the probes of that port that fail.
+calls=$(( $(cat "$WORK_DIR/calls-$port" 2>/dev/null || echo 0) + 1 ))
+printf '%s\n' "$calls" >"$WORK_DIR/calls-$port"
+if [ -e "$WORK_DIR/fail-at-$port" ] && grep -qx "$calls" "$WORK_DIR/fail-at-$port"; then exit 9; fi
 for conf in "$WORK_DIR"/conf/exempt-*.conf; do
   [ -e "$conf" ] && grep -qx "port=$port" "$conf" || continue
   grep -qx "address=/$name/127.0.0.1" "$conf" && printf '127.0.0.1\n'
@@ -178,7 +182,7 @@ grep -Fq '"invert": true' "$WORK_DIR/config.json" || fail "the generator must wr
 write_uci() {
   {
     printf 'forkop.settings=settings\n'
-    printf 'forkop.settings.source_network_interfaces=br-lan\n'
+    printf 'forkop.settings.source_network_interfaces=%s\n' "${IFACES:-br-lan}"
     printf 'forkop.settings.config_path=%s\n' "$WORK_DIR/config.json"
     printf 'forkop.main=section\nforkop.main.action=connection\nforkop.main.kill_switch=1\n'
     printf 'forkop.main.excluded_source_ip_cidr=192.168.1.50\n'
@@ -209,7 +213,8 @@ start_forkop() {
   [ ! -s "$SERVERS" ] || fail "a running Forkop must empty the block list dnsmasq reads"
 }
 fresh() {
-  rm -rf "$KILLSWITCH_STATE_DIR" "$CONF_DIR" "$WORK_DIR/ks-present" "$WORK_DIR/ks_dns" "$WORK_DIR"/dead-*
+  rm -rf "$KILLSWITCH_STATE_DIR" "$CONF_DIR" "$WORK_DIR/ks-present" "$WORK_DIR/ks_dns" "$WORK_DIR"/dead-* \
+    "$WORK_DIR"/calls-* "$WORK_DIR"/fail-at-*
   mkdir -p "$CONF_DIR"
   touch "$WORK_DIR/live-present"
 }
@@ -258,13 +263,24 @@ fresh
 write_uci 1 1
 ks sync start || fail "sync with the option failed"
 cmp -s "$BLOCKED" "$WORK_DIR/blocked.off" || fail "the shared block list must stay the same for every other client"
-cmp -s "$KILLSWITCH_STATE_DIR/policy.nft" "$WORK_DIR/policy.off" || fail "the firewall policy must not change"
+# The firewall policy only gains the guard of the resolvers of excluded
+# devices: clients reach them only through the redirect.
+cmp -s <(grep -v ' ks_exempt_guard' "$KILLSWITCH_STATE_DIR/policy.nft") "$WORK_DIR/policy.off" ||
+  fail "the firewall policy must not change apart from the guard of the resolvers"
+grep -Fqx 'add chain inet ForkopKillswitch ks_exempt_guard { type filter hook input priority -1; policy accept; }' "$KILLSWITCH_STATE_DIR/policy.nft" ||
+  fail "the guard of the resolvers must be an input chain"
+grep -Fqx 'add rule inet ForkopKillswitch ks_exempt_guard iifname != "lo" meta l4proto { tcp, udp } th dport 18055-18058 ct direction original ct status & dnat == 0 drop' \
+  "$KILLSWITCH_STATE_DIR/policy.nft" || fail "only redirected DNS may reach the resolvers of excluded devices"
+if grep -Fq ' ks_exempt_guard' "$WORK_DIR/policy.off"; then fail "without the option there is no guard"; fi
 ks standby-config "$WORK_DIR/standby.on" || fail "standby config failed"
 cmp -s "$WORK_DIR/standby.on" "$WORK_DIR/standby.off" || fail "the standby resolver must not change"
 [ -s "$EXEMPT" ] || fail "the groups of excluded devices must be saved for a stopped Forkop"
 grep -Fqx '/etc/forkop/killswitch/dns-exempt.json' "$KEEP_LIST" || fail "sysupgrade must keep the groups with the block list"
-[ "$(state_value dns.sections.excl.excluded_exempt)" = 3 ] || fail "the exempted names of excl must be reported"
-[ "$(state_value dns.sections.excl.excluded_devices)" = 0 ] || fail "excl blocks none of its names for its excluded devices"
+# Only names the saved groups really resolve count: shared.example stays
+# blocked for the excluded devices of excl through late.
+[ "$(state_value dns.sections.excl.excluded_exempt)" = 2 ] || fail "the exempted names of excl must be reported"
+[ "$(state_value dns.sections.excl.excluded_devices)" = 1 ] || fail "shared.example stays blocked for the excluded devices of excl"
+[ "$(state_value dns.excluded_exempt)" = 3 ] || fail "three names are resolved by excluded devices in all"
 [ "$(state_value dns.sections.excl2.excluded_exempt)" = 1 ] || fail "the exempted name of excl2 must be reported"
 [ "$(state_value dns.sections.main.excluded_devices)" = 1 ] || fail "main does not exempt its excluded device"
 [ "$(state_value dns.exempt_groups)" = 2 ] || fail "two groups of excluded devices: .5 and the rest of excl"
@@ -279,7 +295,9 @@ for conf in $configs; do
 done
 if [ -z "$both" ] || [ -z "$single" ]; then fail "one group exempt from excl and excl2, one from excl only"; fi
 for conf in "$both" "$single"; do
-  for line in "bind-dynamic" "interface=br-lan" "interface=lo" "server=1.1.1.1" "max-ttl=30" \
+  # dnsmasq listens on loopback by itself whenever an interface is named.
+  if grep -Fqx 'interface=lo' "$conf"; then fail "$conf must listen where the standby resolver does"; fi
+  for line in "bind-dynamic" "interface=br-lan" "server=1.1.1.1" "max-ttl=30" \
     "server=/main-inline.example/" "server=/shared.example/" "server=/late-only.example/"; do
     grep -Fqx "$line" "$conf" || fail "$conf must contain '$line'"
   done
@@ -295,6 +313,23 @@ if [ "$port_both" = "$port_single" ] || [ "$port_both" -lt 18055 ] || [ "$port_s
   fail "each group needs a port of its own: $port_both $port_single"
 fi
 printf 'ok - excluded devices are grouped by the rules that do not apply to them\n'
+
+# Interfaces dnsmasq cannot be given by name (a wildcard): the resolvers
+# listen everywhere, like the standby resolver, so that the redirect to the
+# router's LAN address reaches them.
+IFACES='br-*' write_uci 1 1
+ks sync reload || fail "sync with a wildcard interface failed"
+wild="$(ks exempt-configs "$CONF_DIR")" || fail "exempt-configs failed"
+[ "$(printf '%s\n' "$wild" | wc -l)" = 2 ] || fail "two resolvers expected with a wildcard interface: $wild"
+ks standby-config "$WORK_DIR/standby.wild" || fail "standby config failed"
+for conf in $wild "$WORK_DIR/standby.wild"; do
+  if grep -q '^interface=' "$conf"; then fail "$conf must listen on every interface: $(grep '^interface=' "$conf")"; fi
+done
+write_uci 1 1
+ks sync reload || fail "sync failed"
+ks exempt-configs "$CONF_DIR" >/dev/null || fail "exempt-configs failed"
+grep -Fqx 'interface=br-lan' "$both" || fail "a named interface is named again"
+printf 'ok - the resolvers of excluded devices listen where the standby resolver does\n'
 
 # ---- the watcher -----------------------------------------------------------------
 
@@ -348,6 +383,31 @@ ks exempt-configs "$CONF_DIR" >/dev/null || fail "exempt-configs failed"
 watch_passes 1
 cmp -s <(printf '%s\n' "$rules") "$WORK_DIR/ks_dns" || fail "a resolver with its configuration again gets its clients back"
 
+# A resolver that answers is probed again only every fifth pass.
+: >"$WORK_DIR/dig.log"
+watch_passes 10
+probes="$(grep -c -- "-p $port_both " "$WORK_DIR/dig.log" || true)"
+[ "$probes" = 2 ] || fail "a resolver that answers is probed every fifth pass, not $probes times in 10"
+cmp -s <(printf '%s\n' "$rules") "$WORK_DIR/ks_dns" || fail "the redirect stays while the resolvers answer"
+
+# One failed probe in a row does not move its clients (it would flush the
+# chain and the DNS conntrack entries of every client twice); two do.
+rm -f "$WORK_DIR"/calls-*
+: >"$WORK_DIR/nft.log"
+printf '2\n' >"$WORK_DIR/fail-at-$port_both"
+FORKOP_KILLSWITCH_EXEMPT_PROBE_PASSES=1 FORKOP_KILLSWITCH_WATCH_ITERATIONS=3 ks watch || fail "watch failed"
+[ "$(cat "$WORK_DIR/calls-$port_both")" = 3 ] || fail "every pass must probe with FORKOP_KILLSWITCH_EXEMPT_PROBE_PASSES=1"
+if grep -q '^-f ' "$WORK_DIR/nft.log"; then fail "a single failed probe must not change the DNS chain"; fi
+cmp -s <(printf '%s\n' "$rules") "$WORK_DIR/ks_dns" || fail "a single failed probe keeps the redirect"
+rm -f "$WORK_DIR"/calls-*
+printf '2\n3\n' >"$WORK_DIR/fail-at-$port_both"
+FORKOP_KILLSWITCH_EXEMPT_PROBE_PASSES=1 FORKOP_KILLSWITCH_WATCH_ITERATIONS=3 ks watch || fail "watch failed"
+if grep -Fq 'saddr 192.168.1.5/32' "$WORK_DIR/ks_dns"; then fail "two failed probes in a row hand the devices back to the shared list"; fi
+grep -Fq 'saddr 192.168.1.0/28' "$WORK_DIR/ks_dns" || fail "the other group keeps its resolver"
+rm -f "$WORK_DIR"/calls-* "$WORK_DIR"/fail-at-*
+watch_passes 1
+cmp -s <(printf '%s\n' "$rules") "$WORK_DIR/ks_dns" || fail "an answering resolver gets its clients back"
+
 # Forkop starts again: the excluded devices use sing-box like everybody else.
 start_forkop 1 1
 watch_passes 1
@@ -398,6 +458,36 @@ stop_forkop 1 1
 [ -n "$(ks exempt-configs "$CONF_DIR")" ] || fail "the saved groups are used again with the configuration they were saved for"
 printf 'ok - groups are used only with the block list and configuration they were saved for\n'
 
+# Groups belong to the sync that saved them. A later sync that did not (a
+# release without the exemption after a downgrade rewrites the state and
+# leaves a file it does not know; its block list can come out the same)
+# leaves them unused: no resolver runs them and the watcher redirects no
+# device to one still running them.
+fresh
+write_uci 1 1
+ks sync start || fail "sync failed"
+cp "$EXEMPT" "$WORK_DIR/exempt.saved"
+stop_forkop 1 1
+ks exempt-configs "$CONF_DIR" >"$WORK_DIR/confs.saved" || fail "exempt-configs failed"
+watch_passes 1
+grep -Fq 'forkop-exempt' "$WORK_DIR/ks_dns" || fail "the exemption is in use before the other sync"
+start_forkop "" ""
+ks sync reload || fail "sync without the option failed"
+cp "$WORK_DIR/exempt.saved" "$EXEMPT"
+cmp -s "$BLOCKED" "$WORK_DIR/blocked.off" || fail "the other sync saved the same shared block list"
+stop_forkop 1 1
+watch_passes 1
+if grep -Fq 'forkop-exempt' "$WORK_DIR/ks_dns"; then fail "groups of another sync must not be redirected to"; fi
+[ -z "$(ks exempt-configs "$CONF_DIR")" ] || fail "groups of another sync must not get a resolver"
+ks follow-stopped-config "reload while Forkop is stopped" || fail "follow-stopped-config failed"
+[ ! -e "$EXEMPT" ] || fail "a reload while Forkop is stopped removes groups of another sync"
+printf 'ok - groups are used only after the sync that saved them\n'
+fresh
+write_uci 1 1
+ks sync start || fail "sync failed"
+stop_forkop 1 1
+ks exempt-configs "$CONF_DIR" >/dev/null || fail "exempt-configs failed"
+
 # A reload while Forkop is stopped (D-15) does not render anything; a
 # changed exemption ends at once, to the blocking side.
 watch_passes 1
@@ -411,6 +501,24 @@ cmp -s "$BLOCKED" "$SERVERS" || fail "the shared block list stays"
 watch_passes 1
 [ ! -s "$WORK_DIR/ks_dns" ] || fail "nothing may bring the redirect back until the next start"
 printf 'ok - a changed exemption ends while Forkop is stopped\n'
+
+# A configuration that cannot be read keeps the protection, but not the
+# exemption: who is exempt cannot be known.
+fresh
+write_uci 1 1
+ks sync start || fail "sync failed"
+stop_forkop 1 1
+ks exempt-configs "$CONF_DIR" >/dev/null || fail "exempt-configs failed"
+watch_passes 1
+grep -Fq 'forkop-exempt' "$WORK_DIR/ks_dns" || fail "the exemption is in use before the configuration breaks"
+sed -i '/^forkop\./d' "$FORKOP_UCI_STATE_FILE"
+if ks follow-stopped-config "reload while Forkop is stopped"; then fail "an unreadable configuration is an error"; fi
+[ ! -e "$EXEMPT" ] || fail "an unreadable configuration ends the exemption"
+if grep -Fq 'forkop-exempt' "$WORK_DIR/ks_dns"; then fail "an unreadable configuration ends the redirect at once"; fi
+[ -s "$KILLSWITCH_STATE_DIR/policy.nft" ] || fail "an unreadable configuration keeps the protection"
+cmp -s "$BLOCKED" "$SERVERS" || fail "an unreadable configuration keeps the shared block list"
+grep -Fq 'could not be read' "$KILLSWITCH_STATE_DIR/state.json" || fail "the unreadable configuration must be reported"
+printf 'ok - an unreadable configuration ends the exemption\n'
 
 # An unchanged one stays.
 fresh
@@ -450,6 +558,45 @@ ks sync reload || fail "sync failed"
 cmp -s "$BLOCKED" "$WORK_DIR/blocked.off" || fail "the block list is the one without the option"
 printf 'ok - the groups go with the kill-switch, the managed DNS and the option\n'
 
+# ---- names a group resolves -----------------------------------------------------
+#
+#   exa   protected, exempts its excluded .50: example.com, exa-only.example
+#   free  unprotected: sub.example.com
+#   prot  protected: example.com
+#
+# For .50 example.com stays blocked through prot, which comes after free:
+# its list gets the exception for sub.example.com that only it has. Only
+# exa-only.example counts as resolved by the excluded devices of exa.
+cat >"$WORK_DIR/added.json" <<'JSON'
+{ "route": { "rules": [
+  { "action": "route", "outbound": "exa-out", "type": "logical", "mode": "and", "rules": [
+    { "domain_suffix": [ "example.com", "exa-only.example" ] }, { "source_ip_cidr": [ "192.168.1.50" ], "invert": true } ] },
+  { "action": "route", "outbound": "free-out", "domain_suffix": [ "sub.example.com" ] },
+  { "action": "route", "outbound": "prot-out", "domain_suffix": [ "example.com" ] }
+], "rule_set": [] } }
+JSON
+fresh
+{
+  printf 'forkop.settings=settings\nforkop.settings.source_network_interfaces=br-lan\n'
+  printf 'forkop.settings.config_path=%s\n' "$WORK_DIR/added.json"
+  printf 'forkop.exa=section\nforkop.exa.action=connection\nforkop.exa.kill_switch=1\nforkop.exa.kill_switch_dns_exempt=1\n'
+  printf 'forkop.exa.excluded_source_ip_cidr=192.168.1.50\n'
+  printf 'forkop.free=section\nforkop.free.action=connection\n'
+  printf 'forkop.prot=section\nforkop.prot.action=connection\nforkop.prot.kill_switch=1\n'
+  printf 'dhcp.@dnsmasq[0]=dnsmasq\ndhcp.@dnsmasq[0].server=127.0.0.42\n'
+} >"$FORKOP_UCI_STATE_FILE"
+ks sync start || fail "sync failed"
+grep -Fqx 'server=/example.com/' "$BLOCKED" || fail "example.com is blocked for every client"
+if grep -Fq 'sub.example.com' "$BLOCKED"; then fail "every other client gets no exception for sub.example.com"; fi
+conf="$(ks exempt-configs "$CONF_DIR")" || fail "exempt-configs failed"
+[ "$(printf '%s\n' "$conf" | wc -l)" = 1 ] || fail "one group expected: $conf"
+grep -Fqx 'server=/sub.example.com/#' "$conf" || fail "the group's list must resolve sub.example.com"
+grep -Fqx 'server=/example.com/' "$conf" || fail "example.com stays blocked for .50 through prot"
+if grep -Fq 'exa-only.example' "$conf"; then fail "the group's list must resolve exa-only.example"; fi
+[ "$(state_value dns.sections.exa.excluded_exempt)" = 1 ] || fail "only exa-only.example is resolved by the excluded devices of exa"
+[ "$(state_value dns.sections.exa.excluded_devices)" = 1 ] || fail "example.com stays blocked for the excluded devices of exa"
+printf 'ok - a group gets the exceptions only it has, and only what it resolves is reported\n'
+
 # ---- limits ------------------------------------------------------------------------
 
 # Five exempting sections, five groups: four get a resolver, the rest stays
@@ -475,7 +622,7 @@ fresh
 } >"$FORKOP_UCI_STATE_FILE"
 ks sync start || fail "sync with many groups failed"
 [ "$(state_value dns.exempt_groups)" = 4 ] || fail "at most four groups get a resolver"
-grep -Fq 'at most 4 get their own resolver; 2 device addresses stay blocked' "$KILLSWITCH_STATE_DIR/state.json" ||
+grep -Fq 'more than 4 groups with different blocked names, only 4 get their own resolver; 2 device addresses stay blocked' "$KILLSWITCH_STATE_DIR/state.json" ||
   fail "the groups beyond the limit must be reported"
 grep -Fq '2 excluded device addresses of sections that exempt their excluded devices cannot be read' "$KILLSWITCH_STATE_DIR/state.json" ||
   fail "unreadable excluded addresses must be reported"

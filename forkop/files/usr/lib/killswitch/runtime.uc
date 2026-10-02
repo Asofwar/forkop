@@ -82,6 +82,11 @@ const EXEMPT_MAX_GROUPS = 4;
 // Answered by the resolver of a group with the configuration it was
 // generated for and by no other (RFC 6761: never a real name).
 const EXEMPT_PROBE_ZONE = "exempt.forkop.invalid";
+// The input chain that lets only redirected DNS reach those resolvers.
+const EXEMPT_GUARD_CHAIN = "ks_exempt_guard";
+// A resolver that answered is probed again only every this many watcher
+// passes; tests set it to 1.
+const EXEMPT_PROBE_PASSES = int(getenv("FORKOP_KILLSWITCH_EXEMPT_PROBE_PASSES") || "5");
 const DNSMASQ_INIT = getenv("DNSMASQ_INIT") || "/etc/init.d/dnsmasq";
 // The package file this process runs from.
 const OWNER_FILE = sourcepath() || LIB_DIR + "/killswitch/runtime.uc";
@@ -271,6 +276,13 @@ function section_exempts_devices(section) {
     return section_protected(section) && bool_option(section, EXEMPT_OPTION, false);
 }
 
+function any_section_exempts_devices(sections) {
+    for (let section in sections)
+        if (section_exempts_devices(section))
+            return true;
+    return false;
+}
+
 // What of the configuration decides who is exempt: a change of it after the
 // last refresh ends the exemption until the next one (fail closed).
 function exempt_fingerprint(sections) {
@@ -379,7 +391,22 @@ function policy_saved() {
     return stat != null && stat.size > 0;
 }
 
-function apply_nft_policy() {
+// D-23: the resolvers of excluded devices listen on the router's own
+// addresses. Only DNS the watcher redirected there (dnat) may reach them, so
+// that no other client resolves the exempted names by asking them directly.
+// Replies to their own upstream queries are not new connections.
+function exempt_guard_lines() {
+    let t = "inet " + KS_TABLE;
+    return [
+        "add chain " + t + " " + EXEMPT_GUARD_CHAIN + " { type filter hook input priority -1; policy accept; }",
+        "add rule " + t + " " + EXEMPT_GUARD_CHAIN + " iifname != \"lo\" meta l4proto { tcp, udp } th dport " +
+            EXEMPT_PORT_BASE + "-" + (EXEMPT_PORT_BASE + EXEMPT_MAX_GROUPS - 1) +
+            " ct direction original ct status & dnat == 0 drop"
+    ];
+}
+
+// exempt_guard: some protected section exempts its excluded devices.
+function apply_nft_policy(exempt_guard) {
     let tmp = trim(capture([ "mktemp" ]).output);
     if (tmp == "")
         return { ok: false, error: "mktemp failed" };
@@ -396,6 +423,13 @@ function apply_nft_policy() {
     if (rendered.status != 0 || summary.ok !== true) {
         fs.unlink(tmp);
         return { ok: false, error: "nft render failed: " + (as_string(summary.error) || "unknown error") };
+    }
+    if (exempt_guard) {
+        let policy = fs.readfile(tmp);
+        if (policy == null || fs.writefile(tmp, policy + join("\n", exempt_guard_lines()) + "\n") == null) {
+            fs.unlink(tmp);
+            return { ok: false, error: "could not add the guard of the resolvers of excluded devices" };
+        }
     }
 
     // A broken saved policy would take the whole firewall down on the next
@@ -824,9 +858,8 @@ function rule_unrestricted(rule) {
 //
 // options.skip names rules (by index) that do not apply to the clients the
 // list is for: the block list of a group of excluded devices (D-23).
-// options.exempt names the sections whose excluded devices get such lists;
-// the names of their rules with excluded devices are counted apart
-// (excluded_exempt) instead of as blocked for those devices as well.
+// options.attribute adds the section that blocks every blocked name
+// (blocked_by), which tells whose names such a group resolves.
 function render_dns_from_config(config, protected_names, memo, optional_names, options) {
     let result = {
         ok: false, error: "", content: "", domains: 0, exceptions: 0, shadowed: 0,
@@ -838,7 +871,8 @@ function render_dns_from_config(config, protected_names, memo, optional_names, o
         optional[name] = true;
     options = object_or_empty(options);
     let skip = object_or_empty(options.skip);
-    let exempt = object_or_empty(options.exempt);
+    if (options.attribute)
+        result.blocked_by = {};
     config = object_or_empty(config);
     let route = object_or_empty(config.route);
     let rules = route.rules;
@@ -908,11 +942,7 @@ function render_dns_from_config(config, protected_names, memo, optional_names, o
             result.sections[item.section].client_limited += names;
             continue;
         }
-        if (clients == "excluded" && exempt[item.section] && rule_excluded_sources(rule) != null) {
-            result.excluded_exempt = int(result.excluded_exempt) + names;
-            result.sections[item.section].excluded_exempt = int(result.sections[item.section].excluded_exempt) + names;
-        }
-        else if (clients == "excluded") {
+        if (clients == "excluded") {
             result.excluded_devices += names;
             result.sections[item.section].excluded_devices += names;
         }
@@ -981,6 +1011,8 @@ function render_dns_from_config(config, protected_names, memo, optional_names, o
             continue;
         }
         blocked[domain] = protected_at;
+        if (result.blocked_by != null)
+            result.blocked_by[domain] = first[domain].section;
         result.sections[first[domain].section].domains++;
         result.domains++;
         push(lines, "server=/" + domain + "/");
@@ -1132,15 +1164,33 @@ function write_standby_config(path) {
 // matched these devices.
 
 let exempt_cache = { key: "", data: null };
+let exempt_state_cache = { key: "", sig: "" };
 
-// The groups of excluded devices the last refresh saved, or null.
+function file_key(path) {
+    let stat = fs.stat(path);
+    return stat == null ? "" : sprintf("%d:%d:%d", stat.inode, stat.mtime, stat.size);
+}
+
+// The signature of the groups the last sync saved (state.dns.exempt_sig).
+// Every sync rewrites the state, also one of a release that does not know
+// the groups and leaves their file behind.
+function exempt_state_sig() {
+    let key = file_key(STATE_FILE);
+    if (exempt_state_cache.key != key || key == "") {
+        let dns = object_or_empty(object_or_empty(common.read_json_file(STATE_FILE)).dns);
+        exempt_state_cache = { key, sig: as_string(dns.exempt_sig) };
+    }
+    return exempt_state_cache.sig;
+}
+
+// The groups of excluded devices the last sync saved, or null: also for
+// groups another sync left behind.
 function exempt_data() {
-    let stat = fs.stat(EXEMPT_FILE);
-    if (stat == null) {
+    let key = file_key(EXEMPT_FILE);
+    if (key == "") {
         exempt_cache = { key: "", data: null };
         return null;
     }
-    let key = sprintf("%d:%d:%d", stat.inode, stat.mtime, stat.size);
     if (exempt_cache.key != key) {
         let data = common.read_json_file(EXEMPT_FILE);
         let valid = type(data) == "object" && data.format == EXEMPT_FORMAT &&
@@ -1148,7 +1198,8 @@ function exempt_data() {
             match(as_string(data.sig), /^[0-9a-f]{32}$/) != null;
         exempt_cache = { key, data: valid ? data : null };
     }
-    return exempt_cache.data;
+    let data = exempt_cache.data;
+    return data != null && data.sig == exempt_state_sig() ? data : null;
 }
 
 function exempt_port(index) {
@@ -1196,8 +1247,10 @@ function write_exempt_configs(dir) {
         for (let i = 0; i < length(data.groups) && i < EXEMPT_MAX_GROUPS; i++) {
             let name = "exempt-" + i + ".conf";
             let path = dir + "/" + name;
+            // It listens where the standby does: dnsmasq adds loopback,
+            // where the watcher probes it, to any interface it is given.
             let lines = resolver_config_lines(settings, "resolver for excluded devices", exempt_port(i));
-            push(lines, "interface=lo", "address=/" + exempt_probe_name(i, data.sig) + "/127.0.0.1");
+            push(lines, "address=/" + exempt_probe_name(i, data.sig) + "/127.0.0.1");
             let content = join("\n", lines) + "\n" + exempt_group_content(main, object_or_empty(data.groups[i]));
             if (as_string(fs.readfile(path)) != content && !write_atomic(path, content))
                 continue;
@@ -1226,24 +1279,31 @@ function exempt_resolver_answers(index, sig) {
     return answer.status == 0 && trim(answer.output) == "127.0.0.1";
 }
 
-// The redirect of the excluded devices' DNS to the resolvers of their
-// groups: only while dnsmasq answers with the shared block list itself
-// (Forkop stopped), only to resolvers that answer with the configuration of
-// their group, and only DNS for the router itself, which is what the shared
-// list answers. The narrowest source comes first: an address belongs to the
-// group of the narrowest source that contains it, which is exempt from no
-// rule a wider one does not exclude it from as well. null when none applies.
-function exempt_redirect(forwarding) {
-    if (forwarding || dnsmasq_option("serversfile") != DNS_SERVERS_FILE)
-        return null;
-    let servers = fs.stat(DNS_SERVERS_FILE);
-    let data = servers != null && servers.size > 0 ? exempt_data() : null;
-    if (data == null)
-        return null;
+// The watcher's probes of those resolvers while Forkop is stopped, by group
+// and configuration. One that answered is asked again only every
+// EXEMPT_PROBE_PASSES passes and keeps its devices after one failed probe:
+// a single slow answer must not flush the DNS chain (and the DNS
+// conntrack entries of every client) twice. A second failure in a row, or a
+// first one of a resolver that never answered, hands them back to the
+// shared block list.
+let exempt_probes = {};
+let exempt_redirect_cache = { key: "", result: null };
+
+function exempt_resolver_usable(index, sig) {
+    let key = index + ":" + sig;
+    let probe = exempt_probes[key];
+    if (probe != null && probe.failures == 0 && ++probe.skipped < EXEMPT_PROBE_PASSES)
+        return true;
+    let failures = exempt_resolver_answers(index, sig) ? 0 : (probe == null ? 2 : probe.failures + 1);
+    exempt_probes[key] = { failures, skipped: 0 };
+    return failures < 2;
+}
+
+// The rules that redirect the DNS of the groups usable, narrowest source
+// first (see exempt_redirect), or null without any.
+function exempt_redirect_rules(data, usable) {
     let entries = [];
-    for (let i = 0; i < length(data.groups) && i < EXEMPT_MAX_GROUPS; i++) {
-        if (!exempt_resolver_answers(i, data.sig))
-            continue;
+    for (let i in usable) {
         for (let source in array_or_empty(object_or_empty(data.groups[i]).sources)) {
             let cidr = parse_cidr(source);
             if (cidr != null)
@@ -1260,6 +1320,33 @@ function exempt_redirect(forwarding) {
             push(rules, "iifname @" + INTERFACE_SET + " " + (entry.cidr.family == 6 ? "ip6" : "ip") + " saddr " +
                 entry.cidr.text + " fib daddr type local " + proto + " dport 53 counter redirect to :" + entry.port);
     return { rules, tag: "forkop-exempt-" + text_hash(join("\n", rules)) };
+}
+
+// The redirect of the excluded devices' DNS to the resolvers of their
+// groups: only for the groups the last sync saved, only while dnsmasq
+// answers with the shared block list itself (Forkop stopped), only to
+// resolvers that answer with the configuration of their group
+// (exempt_resolver_usable), and only DNS for the router itself, which is
+// what the shared list answers. The narrowest source comes first: an
+// address belongs to the group of the narrowest source that contains it,
+// which is exempt from no rule a wider one does not exclude it from as well.
+// null when none applies.
+function exempt_redirect(forwarding) {
+    let servers = forwarding || dnsmasq_option("serversfile") != DNS_SERVERS_FILE ? null : fs.stat(DNS_SERVERS_FILE);
+    let data = servers != null && servers.size > 0 ? exempt_data() : null;
+    if (data == null) {
+        // The next stop starts with fresh probes.
+        exempt_probes = {};
+        return null;
+    }
+    let usable = [];
+    for (let i = 0; i < length(data.groups) && i < EXEMPT_MAX_GROUPS; i++)
+        if (exempt_resolver_usable(i, data.sig))
+            push(usable, i);
+    let key = data.sig + ":" + join(",", usable);
+    if (exempt_redirect_cache.key != key)
+        exempt_redirect_cache = { key, result: exempt_redirect_rules(data, usable) };
+    return exempt_redirect_cache.result;
 }
 
 function sing_box_answers() {
@@ -1543,18 +1630,28 @@ function exempt_groups(config, sections) {
     return { groups: map(sort(keys(groups)), (key) => groups[key]), invalid: length(keys(invalid)) };
 }
 
-// Saves the groups of excluded devices for the block list main_content
-// just saved, as the lines their own lists lack or add, with what they were
-// rendered for. Without a group that changes anything no file is kept.
-function sync_exempt(config, protected_names, sections, memo, main_content) {
-    let result = { groups: 0, warnings: [] };
+// Saves the groups of excluded devices for the block list main just
+// rendered and saved (with blocked_by), as the lines their own lists lack or
+// add, with what they were rendered for. Without a group that changes
+// anything no file is kept. unblocked counts, by section, the blocked names
+// of the section the excluded devices of a saved group resolve; sig is
+// what the state records for the groups saved.
+function sync_exempt(config, protected_names, sections, memo, main) {
+    let result = { groups: 0, sig: "", unblocked: {}, warnings: [] };
     let built = exempt_groups(config, sections);
     let main_lines = {};
-    for (let line in split(main_content, "\n"))
+    for (let line in split(main.content, "\n"))
         if (line != "")
             main_lines[line] = true;
     let groups = [];
+    // Only the groups that can get a resolver are rendered; the devices of
+    // the others stay blocked.
+    let beyond = 0;
     for (let group in built.groups) {
+        if (length(groups) > EXEMPT_MAX_GROUPS) {
+            beyond += length(group.sources);
+            continue;
+        }
         let rendered = render_dns_from_config(config, protected_names, memo, null, { skip: group.skip });
         if (!rendered.ok)
             continue;
@@ -1575,11 +1672,10 @@ function sync_exempt(config, protected_names, sections, memo, main_content) {
         push(result.warnings, sprintf("%d excluded device addresses of sections that exempt their excluded devices cannot be read; those devices stay blocked through DNS while Forkop is stopped",
             built.invalid));
     if (length(groups) > EXEMPT_MAX_GROUPS) {
-        let sources = 0;
         for (let group in slice(groups, EXEMPT_MAX_GROUPS))
-            sources += length(group.sources);
-        push(result.warnings, sprintf("the excluded devices form %d groups with different blocked names, at most %d get their own resolver; %d device addresses stay blocked through DNS while Forkop is stopped",
-            length(groups), EXEMPT_MAX_GROUPS, sources));
+            beyond += length(group.sources);
+        push(result.warnings, sprintf("the excluded devices form more than %d groups with different blocked names, only %d get their own resolver; %d device addresses stay blocked through DNS while Forkop is stopped",
+            EXEMPT_MAX_GROUPS, EXEMPT_MAX_GROUPS, beyond));
         groups = slice(groups, 0, EXEMPT_MAX_GROUPS);
     }
     let data = length(groups) > 0 ? {
@@ -1593,6 +1689,25 @@ function sync_exempt(config, protected_names, sections, memo, main_content) {
     let content = data != null && data.sig != "" ? sprintf("%J", data) + "\n" : null;
     if (content != null && (as_string(fs.readfile(EXEMPT_FILE)) == content || write_durable(EXEMPT_FILE, content))) {
         result.groups = length(groups);
+        result.sig = data.sig;
+        // A name leaves the list of a group only if every rule that blocks
+        // it for the group's devices is one they are excluded from: its
+        // first one belongs to a section the group is exempt from.
+        let blocked_by = object_or_empty(main.blocked_by);
+        let unblocked = {};
+        for (let group in groups) {
+            for (let line in group.removed) {
+                let found = match(line, /^server=\/([^\/#]+)\/$/);
+                let section = found == null ? null : blocked_by[found[1]];
+                if (section == null || index(group.sections, section) < 0)
+                    continue;
+                if (unblocked[section] == null)
+                    unblocked[section] = {};
+                unblocked[section][found[1]] = true;
+            }
+        }
+        for (let section in keys(unblocked))
+            result.unblocked[section] = length(keys(unblocked[section]));
         return result;
     }
     // Groups that do not belong to the block list just saved are never
@@ -1621,11 +1736,8 @@ function sync_dns(settings, protected_names, config, vpn_names, unrouted, sectio
 
     ruleset_cache_used = {};
     let memo = {};
-    let exempting = {};
-    for (let section in sections)
-        if (section_exempts_devices(section))
-            exempting[as_string(section[".name"])] = true;
-    let rendered = render_dns_from_config(config, protected_names, memo, null, { exempt: exempting });
+    let rendered = render_dns_from_config(config, protected_names, memo, null,
+        any_section_exempts_devices(sections) ? { attribute: true } : null);
     if (!rendered.ok)
         return { ok: false, error: "DNS block list: " + rendered.error };
     // Without the kill-switch a dead sing-box fails every VPN section, not
@@ -1655,9 +1767,23 @@ function sync_dns(settings, protected_names, config, vpn_names, unrouted, sectio
     if (as_string(fs.readfile(STANDBY_BLOCKED_FILE)) != standby_content &&
         !write_atomic(STANDBY_BLOCKED_FILE, standby_content))
         rendered.standby_error = "could not write " + STANDBY_BLOCKED_FILE;
-    let exempt = sync_exempt(config, protected_names, sections, memo, rendered.content);
-    if (exempt.groups > 0)
+    let exempt = sync_exempt(config, protected_names, sections, memo, rendered);
+    delete rendered.blocked_by;
+    if (exempt.groups > 0) {
         rendered.exempt_groups = exempt.groups;
+        rendered.exempt_sig = exempt.sig;
+    }
+    // Names the excluded devices of a section resolve through their own
+    // resolver are no longer blocked for them as well.
+    for (let name in keys(exempt.unblocked)) {
+        let section = rendered.sections[name];
+        let count = exempt.unblocked[name];
+        let moved = count < section.excluded_devices ? count : section.excluded_devices;
+        section.excluded_exempt = count;
+        section.excluded_devices -= moved;
+        rendered.excluded_devices -= moved;
+        rendered.excluded_exempt = int(rendered.excluded_exempt) + count;
+    }
     if (length(exempt.warnings) > 0)
         rendered.exempt_warnings = exempt.warnings;
     if (!dns_refresh())
@@ -1781,7 +1907,7 @@ function sync_locked(reason, manual) {
     let config = common.read_json_file(sing_box_config_path(settings));
     let unrouted = type(config) == "object" ? unrouted_sections(config, names) : [];
 
-    let nft_result = apply_nft_policy();
+    let nft_result = apply_nft_policy(any_section_exempts_devices(sections));
     if (!nft_result.ok) {
         record_error(nft_result.error + "; keeping the previous protection");
         return 1;
@@ -1847,11 +1973,16 @@ function sync_locked(reason, manual) {
     // stays as it was.
     if (dns_result.ok && int(dns_result.excluded_exempt) > 0)
         state.dns.excluded_exempt = int(dns_result.excluded_exempt);
-    if (dns_result.ok && int(dns_result.exempt_groups) > 0)
+    if (dns_result.ok && int(dns_result.exempt_groups) > 0) {
         state.dns.exempt_groups = int(dns_result.exempt_groups);
-    if (!service_control([ "enable", "start" ]))
-        push(warnings, "the kill-switch service could not be started; DNS will not fail over to the standby resolver if sing-box dies");
+        state.dns.exempt_sig = as_string(dns_result.exempt_sig);
+    }
+    // The service runs the resolvers of the groups the state names.
     write_state(state);
+    if (!service_control([ "enable", "start" ])) {
+        push(warnings, "the kill-switch service could not be started; DNS will not fail over to the standby resolver if sing-box dies");
+        write_state(state);
+    }
     log_message(sprintf("Kill-switch protection refreshed for %s (%s)", join(", ", names), as_string(reason)), "info");
     for (let warning in warnings)
         log_message("Kill-switch: " + warning, "warn");
@@ -1919,11 +2050,12 @@ function sync(reason, reload_lock_held) {
 // the list generation of the configuration (UC-209) follows it the same way.
 // Who is exempt from the DNS block (D-23) follows a change at once, to the
 // blocking side: a changed exemption ends until the next start renders it.
+// So do groups another sync left behind (exempt_data).
 function exempt_outdated(sections) {
     if (fs.stat(EXEMPT_FILE) == null)
         return false;
-    let data = common.read_json_file(EXEMPT_FILE);
-    return type(data) != "object" || as_string(data.fingerprint) != exempt_fingerprint(sections);
+    let data = exempt_data();
+    return data == null || as_string(data.fingerprint) != exempt_fingerprint(sections);
 }
 
 function follow_stopped_config(reason, reload_lock_held) {

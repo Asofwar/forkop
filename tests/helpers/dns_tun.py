@@ -9,12 +9,13 @@ namespace (tests/killswitch_dns_exempt_nft_real.sh).
       answers DNS like the router's resolvers: the main dnsmasq on port 53
       with the block list it reads (MAIN_SERVERS_FILE, read at every query),
       and one dnsmasq per CONF on the port the configuration names, with its
-      server= and address= lines. A name a resolver does not block is
-      answered with 203.0.113.N, N standing for the resolver (53 for the
-      main one, PORT - 18000 for the others); a blocked one with NXDOMAIN
-  query IFNAME SRC DST NAME
-      sends an A query for NAME from client SRC to DST port 53 into the LAN
-      interface and prints what comes back to the client:
+      server= and address= lines, listening where such a dnsmasq listens
+      (its interface= lines). A name a resolver does not block is answered
+      with 203.0.113.N, N standing for the resolver (53 for the main one,
+      PORT - 18000 for the others); a blocked one with NXDOMAIN
+  query IFNAME SRC DST NAME [PORT]
+      sends an A query for NAME from client SRC to DST (port 53 by default)
+      into the LAN interface and prints what comes back to the client:
       "rcode=R answer=A sport=P" or "noreply"
   dig [+short] [+time=N] [+tries=N] [-p PORT] @SERVER NAME [A]
       what the kill-switch watcher runs: a query to SERVER, +short output
@@ -34,6 +35,7 @@ TUNSETIFF = 0x400454CA
 TUNSETPERSIST = 0x400454CB
 IFF_TUN = 0x0001
 IFF_NO_PI = 0x1000
+SIOCGIFADDR = 0x8915
 SIOCSIFADDR = 0x8916
 SIOCSIFNETMASK = 0x891C
 SIOCGIFFLAGS = 0x8913
@@ -181,32 +183,77 @@ def answer(rules, name, own_address):
     return 0, own_address
 
 
-def resolver(port, rules_path):
+def listen_addresses(names):
+    """Where a dnsmasq with --bind-dynamic and these --interface names
+    listens: every address without a name; otherwise the addresses of the
+    interfaces they match (a trailing * is a wildcard) and of loopback,
+    which dnsmasq adds itself whenever an interface is named."""
+    if not names:
+        return None
+
+    def wanted(ifname):
+        return any(ifname.startswith(name[:-1]) if name.endswith("*") else ifname == name for name in names + ["lo"])
+
+    addresses = []
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    for _index, ifname in socket.if_nameindex():
+        if not wanted(ifname):
+            continue
+        try:
+            packed = fcntl.ioctl(sock, SIOCGIFADDR, struct.pack("256s", ifname.encode()[:15]))
+            addresses.append(socket.inet_ntoa(packed[20:24]))
+        except OSError:
+            pass
+    try:
+        lines = open("/proc/net/if_inet6", encoding="utf-8").read().splitlines()
+    except OSError:
+        lines = []
+    for line in lines:
+        fields = line.split()
+        # Global and host scope only; link-local needs a scope id.
+        if len(fields) == 6 and wanted(fields[5]) and int(fields[3], 16) in (0x00, 0x10):
+            addresses.append(socket.inet_ntop(socket.AF_INET6, bytes.fromhex(fields[0])))
+    return addresses
+
+
+def resolver(port, rules_path, interfaces=None):
     own = f"203.0.113.{port - 18000 if port >= 18000 else port}"
-    if socket.has_ipv6 and os.path.isdir("/proc/sys/net/ipv6"):
+    addresses = listen_addresses(interfaces)
+    socks = []
+    if addresses is None and socket.has_ipv6 and os.path.isdir("/proc/sys/net/ipv6"):
         sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
         sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
         sock.bind(("::", port))
-    else:
+        socks.append(sock)
+    elif addresses is None:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.bind(("0.0.0.0", port))
+        socks.append(sock)
+    for address in addresses or []:
+        sock = socket.socket(socket.AF_INET6 if ":" in address else socket.AF_INET, socket.SOCK_DGRAM)
+        sock.bind((address, port))
+        socks.append(sock)
     while True:
-        data, peer = sock.recvfrom(4096)
-        try:
-            ident, name, question = parse_query(data)
-        except (IndexError, struct.error, UnicodeDecodeError):
-            continue
-        rcode, address = answer(read_rules(rules_path), name, own)
-        with open(os.environ["DNS_TUN_LOG"], "a", encoding="utf-8") as log:
-            log.write(f"{port} {peer[0]} {name} rcode={rcode}\n")
-        sock.sendto(build_response(ident, question, rcode, address), peer)
+        ready, _, _ = select.select(socks, [], [])
+        for sock in ready:
+            data, peer = sock.recvfrom(4096)
+            try:
+                ident, name, question = parse_query(data)
+            except (IndexError, struct.error, UnicodeDecodeError):
+                continue
+            rcode, address = answer(read_rules(rules_path), name, own)
+            with open(os.environ["DNS_TUN_LOG"], "a", encoding="utf-8") as log:
+                log.write(f"{port} {peer[0]} {name} rcode={rcode}\n")
+            sock.sendto(build_response(ident, question, rcode, address), peer)
 
 
 def serve(main_servers, confs):
     threads = [threading.Thread(target=resolver, args=(53, main_servers), daemon=True)]
     for conf in confs:
-        port = next(int(line[5:]) for line in open(conf, encoding="utf-8").read().splitlines() if line.startswith("port="))
-        threads.append(threading.Thread(target=resolver, args=(port, conf), daemon=True))
+        lines = open(conf, encoding="utf-8").read().splitlines()
+        port = next(int(line[5:]) for line in lines if line.startswith("port="))
+        interfaces = [line[10:] for line in lines if line.startswith("interface=")]
+        threads.append(threading.Thread(target=resolver, args=(port, conf, interfaces), daemon=True))
     for thread in threads:
         thread.start()
     print("ready", flush=True)
@@ -256,11 +303,11 @@ def reply_to(packet, client, sport):
     return (udp[8:], source) if destination == sport else None
 
 
-def query(name, src, dst, qname):
+def query(name, src, dst, qname, dport=53):
     fd = open_tun(name)
     sport = random.randint(20000, 60000)
     ident = random.randint(0, 0xFFFF)
-    os.write(fd, udp_packet(src, dst, sport, 53, build_query(qname, ident)))
+    os.write(fd, udp_packet(src, dst, sport, dport, build_query(qname, ident)))
     deadline = time.time() + 2
     while time.time() < deadline:
         ready, _, _ = select.select([fd], [], [], max(0, deadline - time.time()))
@@ -310,7 +357,7 @@ def main(argv):
     elif command == "serve":
         serve(argv[2], argv[3:])
     elif command == "query":
-        return query(argv[2], argv[3], argv[4], argv[5])
+        return query(argv[2], argv[3], argv[4], argv[5], int(argv[6]) if len(argv) > 6 else 53)
     elif command == "dig":
         return dig(argv[2:])
     return 0

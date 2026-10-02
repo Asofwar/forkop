@@ -4224,7 +4224,7 @@ function getRuleActionDisplayMarkup(section_id) {
   const label = getRuleActionDisplayValue(section_id);
   if (
     killswitch.isKillSwitchAction(getRuleResolvedAction(section_id)) &&
-    uci.get(UCI_PACKAGE, section_id, "kill_switch") === "1"
+    backendFlag(section_id, "kill_switch")
   ) {
     return `${label} <span title="${_("VPN kill-switch")}">🛡</span>`;
   }
@@ -4285,6 +4285,39 @@ function backendFlag(section_id, key) {
   return ["1", "true", "yes", "on"].includes(
     backendOptionText(uci.get(UCI_PACKAGE, section_id, key)),
   );
+}
+
+// A form.Flag over an option the backend reads with bool_option(): "true",
+// "yes" and "on" (the CLI's spellings) show checked like "1". Only a changed
+// checkbox writes "1" or removes the option; an untouched save keeps what
+// is stored.
+function keepBackendFlagSpelling(o) {
+  o.cfgvalue = function (section_id) {
+    const value = uci.get(UCI_PACKAGE, section_id, this.option);
+    if (value === null || value === undefined) {
+      return value;
+    }
+
+    return backendFlag(section_id, this.option) ? this.enabled : this.disabled;
+  };
+  o.write = function (section_id, formvalue) {
+    if (formvalue === this.enabled && backendFlag(section_id, this.option)) {
+      return;
+    }
+
+    return form.Flag.prototype.write.call(this, section_id, formvalue);
+  };
+  o.remove = function (section_id) {
+    if (
+      this.isActive(section_id) &&
+      backendOptionText(uci.get(UCI_PACKAGE, section_id, this.option)) !== "" &&
+      !backendFlag(section_id, this.option)
+    ) {
+      return;
+    }
+
+    return form.Flag.prototype.remove.call(this, section_id);
+  };
 }
 
 // config/rule.uc text_list_values(value, "comma-space"): comments cut at
@@ -9083,6 +9116,7 @@ function createSectionContent(section) {
   );
   // Unchecked means absent: saving an untouched rule must not write "0".
   o.default = "0";
+  keepBackendFlagSpelling(o);
   killswitch.KILL_SWITCH_ACTIONS.forEach((action) =>
     o.depends("action", action),
   );
@@ -9096,13 +9130,14 @@ function createSectionContent(section) {
     "kill_switch_dns_exempt",
     _("Excluded devices resolve these names while Forkop is stopped"),
     _(
-      "While Forkop is stopped, the kill-switch answers this rule's names with NXDOMAIN for every device, the devices excluded from this rule included: DNS is shared by all devices. With this option the excluded devices of this rule resolve its names through a separate resolver of their own; every other device stays blocked and the firewall part of the kill-switch does not change. Applies from the next successful Forkop start or reload.",
+      "While Forkop is stopped, the kill-switch answers this rule's names with NXDOMAIN for every device, the devices excluded from this rule included: DNS is shared by all devices. With this option the excluded devices of this rule resolve its names through a separate resolver of their own; every other device stays blocked and the firewall part of the kill-switch does not change. While Forkop is stopped, all DNS of these devices goes through that resolver, past the router's own DNS settings: host names without the local domain, address overrides, blocking lists and rebind protection of the router do not apply to them. Each group of excluded devices with different blocked names gets its own resolver with a copy of the block list in memory, at most 4; the devices of further groups stay blocked. Applies from the next successful Forkop start or reload.",
     ),
   );
   // Unchecked means absent; kept while the kill-switch is off, so that an
   // untouched save never drops it.
   o.default = "0";
   o.retain = true;
+  keepBackendFlagSpelling(o);
   killswitch.KILL_SWITCH_ACTIONS.forEach((action) =>
     o.depends({ action, kill_switch: "1" }),
   );

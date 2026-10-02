@@ -94,6 +94,8 @@ vm.runInNewContext(`${helper[0]}\n${source.slice(start, end)}`, {
   getRuleResolvedAction: sid => uci.get(UCI_PACKAGE, sid, 'action') || 'connection',
   hiddenCascadeState: () => null,
   refreshOutboundDetourSectionOptionValues() {},
+  // The kill-switch flags between the hidden options (luci_killswitch_dns_exempt.sh).
+  keepBackendFlagSpelling() {},
 });
 
 const saved = {

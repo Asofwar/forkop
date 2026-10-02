@@ -42,6 +42,11 @@ async function check(label, fn) {
       const modal = await env.openRule('rule');
       const option = modal.option(NAME);
       assert.equal(option.tab, 'advanced', 'next to the kill-switch on the Advanced tab');
+      // What it costs: the devices' whole DNS bypasses the router's own
+      // settings while Forkop is stopped, and every group runs a resolver.
+      assert.match(option.description, /all DNS of these devices goes through that resolver, past the router's own DNS settings/);
+      assert.match(option.description, /rebind protection/);
+      assert.match(option.description, /own resolver with a copy of the block list in memory, at most 4/);
       const names = modal.map.children[0].children.map((child) => child.option);
       assert.equal(names.indexOf(NAME), names.indexOf('kill_switch') + 1, 'right after the kill-switch');
       assert.equal(modal.active(NAME), true, 'shown while the kill-switch is on');
@@ -87,6 +92,55 @@ async function check(label, fn) {
         assert.deepEqual(env.uci.data.rule, fixture, 'an unchanged Rules page save changed UCI');
       });
     }
+
+    // The CLI may spell both flags as core/common.uc bool_option() reads
+    // them: they show as the backend reads them, and an untouched save keeps
+    // the spelling. Before, a kill-switch stored as "yes" showed unchecked
+    // and an untouched save removed it.
+    for (const [killSwitch, exempt, checked] of [
+      ['yes', 'true', true], ['on', 'yes', true], ['true', 'on', true], ['1', 'off', false],
+      ['TRUE', '1', false], ['yes', 'no', false], ['true', 'false', false], ['on', '0', false],
+    ]) {
+      const values = { kill_switch: killSwitch, [NAME]: exempt };
+      const ksOn = ['1', 'true', 'yes', 'on'].includes(killSwitch);
+      await check(`${version} spelled ${killSwitch}/${exempt}`, async () => {
+        const fixture = rule(values);
+        const env = createEnvironment({ version, config: { rule: fixture } });
+        const modal = await env.openRule('rule');
+        assert.equal(modal.option('kill_switch').getUIElement('rule').isChecked(), ksOn,
+          'the kill-switch shows as the backend reads it');
+        if (ksOn) {
+          assert.equal(modal.active(NAME), true, 'the option shows while the kill-switch is on');
+          assert.equal(modal.option(NAME).getUIElement('rule').isChecked(), checked,
+            'the option shows as the backend reads it');
+        }
+        await modal.save();
+        assert.deepEqual(env.uci.data.rule, fixture, 'an unchanged rule modal save changed UCI');
+      });
+    }
+    await check(`${version} spelled kill-switch marker`, async () => {
+      const env = createEnvironment({ version, config: { rule: rule({ kill_switch: 'yes' }) } });
+      const rules = await env.openRules();
+      const column = rules.grid.children.find((child) => child.option === '_action_display');
+      assert.match(column.cfgvalue('rule'), /🛡/, 'the Rules page marks a kill-switch stored as "yes"');
+    });
+    await check(`${version} spelled flags changed`, async () => {
+      const env = createEnvironment({ version, config: { rule: rule({ kill_switch: 'yes', [NAME]: 'on' }) } });
+      let modal = await env.openRule('rule');
+      modal.option(NAME).getUIElement('rule').setValue('0');
+      await modal.save();
+      assert.equal(NAME in env.uci.data.rule, false, 'unchecking a stored "on" removes the option');
+      assert.equal(env.uci.data.rule.kill_switch, 'yes', 'the untouched kill-switch keeps its spelling');
+      modal = await env.openRule('rule');
+      modal.option('kill_switch').getUIElement('rule').setValue('0');
+      await modal.save();
+      assert.equal('kill_switch' in env.uci.data.rule, false, 'unchecking a stored "yes" removes the kill-switch');
+      const off = createEnvironment({ version, config: { rule: rule({ kill_switch: 'yes', [NAME]: 'no' }) } });
+      modal = await off.openRule('rule');
+      modal.option(NAME).getUIElement('rule').setValue('1');
+      await modal.save();
+      assert.equal(off.uci.data.rule[NAME], '1', 'checking a stored "no" stores 1');
+    });
 
     // The status of the rule: how many of its names its excluded devices
     // resolve, instead of the count of names blocked for them as well.

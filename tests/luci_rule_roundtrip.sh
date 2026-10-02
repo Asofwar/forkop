@@ -90,6 +90,11 @@ const fixtures = {
     kill_switch_dns_exempt: '1', excluded_source_ip_cidr: ['192.168.1.9'] }),
   killswitch_dns_exempt_kept: rule({ action: 'connection', ...routed, domain: 'example.com',
     kill_switch_dns_exempt: '1', excluded_source_ip_cidr: ['192.168.1.9'] }),
+  // Both flags as the CLI may spell them (core/common.uc bool_option).
+  killswitch_spelled_yes: rule({ action: 'connection', ...routed, domain: 'example.com', kill_switch: 'yes',
+    kill_switch_dns_exempt: 'on', excluded_source_ip_cidr: ['192.168.1.9'] }),
+  killswitch_spelled_no: rule({ action: 'connection', ...routed, domain: 'example.com', kill_switch: 'true',
+    kill_switch_dns_exempt: 'no', excluded_source_ip_cidr: ['192.168.1.9'] }),
 };
 
 // UC-046: DNS rules with Built-in rule sets #2 (only the CLI or an older

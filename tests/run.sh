@@ -36,7 +36,10 @@
 # from the repository root with stdin from /dev/null; its output goes to a
 # log file in a temporary directory. After the parallel pass each failed test
 # is run once more, alone: one that passes then is reported as FLAKY and does
-# not fail the run.
+# not fail the run. While several tests run at once, a test that runs groups
+# of its cases in parallel (tests/helpers/case_groups.sh) runs at most
+# FORKOP_TEST_GROUP_JOBS of them at a time (default: 2 x CPUs / jobs, at
+# least 2; set it to override).
 #
 # Exit status: 0 when no test failed, 1 when a test failed, 2 on a usage
 # error, 130 when interrupted.
@@ -106,8 +109,8 @@ while (($#)); do
   esac
 done
 
+cpus="$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)"
 if [[ -z $jobs_n ]]; then
-  cpus="$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)"
   jobs_n=$((cpus * 2))
 fi
 [[ $jobs_n =~ ^[1-9][0-9]*$ ]] || die "-j needs a positive number, got '$jobs_n'"
@@ -447,6 +450,14 @@ label() { # STATUS EXIT_CODE
 
 total=${#queue[@]}
 if ((jobs_n > total)); then jobs_n=$total; fi
+# A test that runs groups of its cases at once (tests/helpers/case_groups.sh)
+# runs only a few of them while other tests run beside it: the CPUs are
+# shared already, and an overloaded host fails the tests that bound a wait.
+if [[ -z ${FORKOP_TEST_GROUP_JOBS:-} ]] && ((jobs_n > 1)); then
+  group_jobs=$(((cpus * 2 + jobs_n - 1) / jobs_n))
+  ((group_jobs >= 2)) || group_jobs=2
+  export FORKOP_TEST_GROUP_JOBS=$group_jobs
+fi
 printf 'Running %d tests, %d at a time, timeout %ss; logs in %s\n' "$total" "$jobs_n" "$timeout_s" "$LOG_DIR"
 
 wall_start="$(now_us)"

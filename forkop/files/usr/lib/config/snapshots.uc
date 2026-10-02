@@ -865,12 +865,13 @@ else if (mode == "delete") {
 }
 else if (mode == "restore") {
     answer = do_restore(value(ARGV[1]), value(ARGV[2]));
-    // A busy refusal changed nothing and is not a restore attempt, nor is a
-    // refusal because of staged uci changes or a kept runtime guard.
+    // Health records a restore only when its transaction started, as for an
+    // apply: a refusal before it (busy, staged uci changes, a kept runtime
+    // guard, a missing snapshot, no pre-restore snapshot) changed nothing
+    // and is no recovery that failed (UC-022).
     // A restore that an explicit stop kept from starting the runtime is no
     // success: nothing verified it.
-    if (answer.status != "busy" && answer.reason != "uncommitted_uci_changes" &&
-        (answer.started || answer.reason != "runtime_guard_active"))
+    if (answer.started)
         success([ "ucode", "-L", LIB_DIR, LIB_DIR + "/diagnostics/health.uc", "record", "restore",
             answer.status == "success" ? "success" : answer.status == "recovered" ? "recovered" :
             answer.status == "restored_not_started" ? "not_started" : "failure" ]);

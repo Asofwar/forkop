@@ -85,7 +85,9 @@ restore valid
 ! grep -q '^reload:' "$STATE/events" || fail "inherited guard: a reload ran"
 grep -q "marker 'bad'" "$FORKOP_CONFIG_FILE" || fail "inherited guard: configuration changed"
 [ "$(cat "$FORKOP_SNAPSHOT_DIR/last-known-working")" = stale ] || fail "inherited guard: last-known-working moved"
-grep -q '^health:restore:failure$' "$STATE/events" || fail "inherited guard: failure not recorded"
+# Nothing was written: no restore transaction started, so no restore event
+# (UC-022); the guard that stays keeps the recovery pending in health.
+! grep -q '^health:' "$STATE/events" || fail "inherited guard: a restore that wrote nothing was recorded"
 
 # 2. No guard before the restore: the guard it installed is released again,
 #    so the failed restore leaves the state it found.
@@ -97,5 +99,6 @@ grep -q '^ensure-dpi-transition-guard:absent$' "$STATE/events" || fail "own guar
 ! grep -q '^reload:' "$STATE/events" || fail "own guard: a reload ran"
 grep -q "marker 'bad'" "$FORKOP_CONFIG_FILE" || fail "own guard: configuration changed"
 [ "$(cat "$FORKOP_SNAPSHOT_DIR/last-known-working")" = stale ] || fail "own guard: last-known-working moved"
+! grep -q '^health:' "$STATE/events" || fail "own guard: a restore that wrote nothing was recorded"
 
 printf 'config_restore_replace_failure: PASS\n'

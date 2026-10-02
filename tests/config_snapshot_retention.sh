@@ -11,7 +11,9 @@ set -eu
 # the last-known-working snapshot, a manual one or one that the running
 # operation still needs. An install that already holds 10 manual snapshots
 # (taken before the cap) keeps every one of them and still restores, confirms
-# the last-known-working configuration and applies autotune.
+# the last-known-working configuration and applies autotune. A restore that
+# was refused before its transaction started changed nothing and is no
+# restore event in the history.
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 LIB="$ROOT/forkop/files/usr/lib"
 SCRIPT="$LIB/config/snapshots.uc"
@@ -159,6 +161,21 @@ run restore "$before_autotune" "$(hash)"
 [ "$(manual_ids)" = "$manual_before" ] || fail "autotune removed a manual snapshot"
 ok "autotune next to 8 manual snapshots: applied, confirmed and rolled back"
 
+# 3. A restore refused before its transaction started is no history event;
+#    one that started and failed still is.
+run restore nosuch
+[ "$(field status)" = failed ] && [ "$(field reason)" = invalid_snapshot ] || fail "restore of a missing snapshot: $(answer)"
+[ ! -s "$STATE/events" ] || fail "a refused restore was recorded or started: $(events)"
+mv "$FORKOP_CONFIG_FILE" "$WORK/config.saved"
+run restore "$before_autotune"
+mv "$WORK/config.saved" "$FORKOP_CONFIG_FILE"
+[ "$(field status)" = failed ] && [ "$(field reason)" = config_unavailable ] || fail "restore without a configuration: $(answer)"
+[ ! -s "$STATE/events" ] || fail "a refused restore was recorded or started: $(events)"
+config a8; export FAIL_RELOAD=1; run restore "$before_autotune"; unset FAIL_RELOAD
+[ "$(field status)" = needs_attention ] && [ "$(field started)" = true ] || fail "failed restore: $(answer)"
+grep -q '^health:restore:failure$' "$STATE/events" || fail "a restore that started and failed was not recorded: $(events)"
+ok "refused restore (missing snapshot, unreadable configuration) not recorded; a started one that failed is"
+
 # Below the cap a manual snapshot is taken again; it pushes out only
 # automatic snapshots that nothing protects.
 lkg_now="$(lkg)"
@@ -170,7 +187,7 @@ config m10; run create manual
   fail "manual snapshot below the cap: $(answer), store $(store)"
 ok "a manual snapshot below the cap is taken; LKG stays"
 
-# 3. Upgrade: 10 manual snapshots taken before the cap, the newest of them
+# 4. Upgrade: 10 manual snapshots taken before the cap, the newest of them
 #    the last-known-working one. Nothing is removed; safety operations work.
 export FORKOP_SNAPSHOT_DIR="$WORK/legacy-snapshots"
 node - "$FORKOP_SNAPSHOT_DIR" <<'JS'

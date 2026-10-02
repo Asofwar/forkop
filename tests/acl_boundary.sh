@@ -65,6 +65,8 @@ for (const command of [
 ]) {
   if (allowed(RO + ' ' + command)) throw Error(`read role may execute ${command}`);
 }
+// killswitch_status: the kill-switch status of Settings and Rules, which a
+// viewer role opens read-only (luci_killswitch_status_readonly.sh, UC-231).
 for (const command of [
   RO + ' get_status', RO + ' get_ui_state', RO + ' killswitch_status',
   RO + ' get_readonly_config_sections',

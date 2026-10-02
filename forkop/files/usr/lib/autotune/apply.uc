@@ -955,7 +955,8 @@ function apply(plan_file, resolver) {
     }
     // The one confirmation of a candidate: a start or reload never confirms
     // it while this record is unfinished or undecided (config/snapshots.uc).
-    let confirmed = snapshots([ "confirm-working", "autotune" ]);
+    // Its snapshot may not push out the pre-apply one the rollback needs.
+    let confirmed = snapshots([ "confirm-working", "autotune", as_string(audit.pre_snapshot) ]);
     audit.lkg = confirmed.status;
     audit.finished_at = now();
     if (confirmed.status != "confirmed") {

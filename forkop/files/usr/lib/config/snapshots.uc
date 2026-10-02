@@ -29,6 +29,10 @@ const AUTOTUNE_TERMINAL_PHASES = [ "applied", "rolled_back", "failed", "stale", 
 // override FORKOP_AUTOTUNE_UCI_SAVEDIR). Tests that restore set it.
 const UCI_SAVEDIR = getenv("FORKOP_UCI_SAVEDIR") || "/tmp/.uci";
 const RETENTION = 10;
+// Places that manual snapshots never take: they stay for the automatic
+// safety snapshots (D-14, UC-022). See trim_retention.
+const RESERVED = 2;
+const MANUAL_LIMIT = RETENTION - RESERVED;
 const GUARD_SETTLE_SECONDS = int(getenv("FORKOP_RUNTIME_GUARD_SETTLE_SECONDS") || "30");
 
 function value(v) { return v == null ? "" : "" + v; }
@@ -183,29 +187,32 @@ function list_snapshots() {
     result = sort(result, function(a, b) { return a.created_at - b.created_at; });
     return result;
 }
-// Oldest automatic snapshots go first; manual ones, LKG and the ids the
-// running operation still needs (keep) are never removed.
-function trim_retention(keep) {
+function manual_count(all) {
+    return length(filter(all, (item) => item.kind == "manual"));
+}
+// Retention (D-14, UC-022). Nothing removes a manual snapshot, and create
+// refuses one more beyond MANUAL_LIMIT, so RESERVED places stay for the
+// automatic safety snapshots: before a restore, before Save & Apply or a
+// reload, before an autotune apply, the last-known-working one and a
+// concurrent edit. Only automatic snapshots rotate, oldest first and among
+// themselves; never the last-known-working one, nor one that the running
+// operation still needs (keep). The store holds RETENTION snapshots, or
+// manual + RESERVED while more manual ones are left from before the limit.
+// automatic: a safety snapshot is never refused for room. When nothing but
+// manual, last-known-working and kept snapshots is left, it is taken beyond
+// that size; the next automatic snapshot rotates the store back.
+function trim_retention(keep, automatic) {
     let all = list_snapshots();
     let working = trim(value(fs.readfile(LKG)));
-    while (length(all) >= RETENTION) {
+    let limit = max(RETENTION, manual_count(all) + RESERVED);
+    while (length(all) >= limit) {
         let candidate = null;
         for (let item in all)
             if (item.kind != "manual" && item.id != working && index(keep || [], item.id) < 0) { candidate = item; break; }
-        if (candidate == null) return false;
-        fs.unlink(snapshot_path(candidate.id));
+        if (candidate == null || !fs.unlink(snapshot_path(candidate.id))) return automatic;
         all = list_snapshots();
     }
     return true;
-}
-// Snapshots that can still be created without touching LKG, manual ones or keep.
-function headroom(keep) {
-    let all = list_snapshots();
-    let working = trim(value(fs.readfile(LKG)));
-    let free = RETENTION - length(all);
-    for (let item in all)
-        if (item.kind != "manual" && item.id != working && index(keep || [], item.id) < 0) free++;
-    return free;
 }
 // dedupe: true returns any snapshot that already holds the configuration, a
 // reason only one of that reason.
@@ -217,7 +224,11 @@ function create(kind, reason, dedupe, keep) {
     if (dedupe)
         for (let item in list_snapshots())
             if (item.config_hash == hash && (dedupe === true || item.reason == dedupe)) return { status: "existing", snapshot: item };
-    if (!trim_retention(keep)) return { status: "failed", reason: "retention_full" };
+    // A manual snapshot never takes a reserved place, and never pushes out
+    // another manual one: the user deletes one first (the page says so).
+    if (kind == "manual" && manual_count(list_snapshots()) >= MANUAL_LIMIT)
+        return { status: "failed", reason: "manual_limit_reached", limit: MANUAL_LIMIT };
+    if (!trim_retention(keep, kind != "manual")) return { status: "failed", reason: "retention_full" };
     let id = sprintf("%d_%d", clock()[0], clock()[1]);
     let version = trim(capture([ BIN, "show_version" ]));
     let snapshot = { id, created_at: int(clock()[0]), kind, reason,
@@ -570,7 +581,8 @@ function config_holds(content) {
 // same configuration does not count: the id returned is always a "Concurrent
 // edit" one, as the page names it, and not, say, a pre-restore snapshot next
 // in line for retention. The id, or null when no snapshot could be written
-// (retention full of manual snapshots): the edit then lives in the file only.
+// (the store could not be written; retention never refuses it, D-14): the
+// edit then lives in the file only.
 function save_concurrent_edit(keep) {
     let saved = create("automatic", "concurrent-change", "concurrent-change", keep);
     return saved.snapshot != null ? saved.snapshot.id : null;
@@ -796,12 +808,11 @@ function do_apply(candidate_file, expected_hash, keep_id) {
     if (action != null) return { status: "stale", reason: action };
     if (runtime_guard_kept())
         return { status: "stale", reason: service_action() ?? "runtime_guard_active" };
-    // Room for the before-autotune snapshot and for the pre-restore snapshot
-    // of a later rollback, which may not remove the before-autotune one. A
-    // manual LKG stays protected after the candidate is confirmed, so it
-    // costs one more slot.
-    let working = read_snapshot(trim(value(fs.readfile(LKG))), false);
-    if (headroom(keep) < (working != null && working.kind == "manual" ? 3 : 2)) return { status: "failed", reason: "snapshot_retention_full" };
+    // Retention never refuses the before-autotune snapshot, nor the
+    // pre-restore snapshot of the rollback, which keeps it; the confirmation
+    // of the candidate keeps it too (confirm-working autotune <id>), so
+    // manual snapshots never stand in the way of an apply or its rollback
+    // (D-14, UC-022).
     let pre = create("automatic", "before-autotune", false, keep);
     if (pre.status != "created") return { status: "failed", reason: "pre_apply_snapshot_failed" };
     if (sha(before) != sha(read_config())) return { status: "failed", reason: "concurrent_change", pre_snapshot: pre.snapshot.id };
@@ -873,12 +884,15 @@ else if (mode == "apply") {
 }
 else if (mode == "confirm-working") {
     // A start or reload of the lifecycle; "autotune": the apply that has
-    // just verified its candidate in production.
+    // just verified its candidate in production, with the id of its
+    // before-autotune snapshot, which this snapshot may not push out: the
+    // rollback returns to it.
     let content = read_config();
     let objection = content == null || value(ARGV[1]) == "autotune" ? null : autotune_objection(content);
     if (objection != null) answer = { status: "not_confirmed", reason: objection };
     else {
-        let found = create("automatic", "last-known-working", true);
+        let keep = value(ARGV[1]) == "autotune" && valid_id(value(ARGV[2])) ? [ value(ARGV[2]) ] : [];
+        let found = create("automatic", "last-known-working", true, keep);
         if (found.snapshot != null &&
             (trim(value(fs.readfile(LKG))) == found.snapshot.id || atomic(LKG, found.snapshot.id + "\n")))
             answer = { status: "confirmed" };

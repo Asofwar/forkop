@@ -294,22 +294,29 @@ config bad
 restore absent "e1"
 [ "$(field saved_snapshot)" = "$saved" ] && [ "$(snapshot_count)" = "$((count + 1))" ] ||
   fail "the same edit is saved twice as a Concurrent edit: $(cat "$WORK/result.json"), $(snapshot_count) snapshots"
-# Retention full: 8 manual snapshots, last-known-working and the
-# pre-restore snapshot leave no room, so nothing is saved, nor named.
+# Manual snapshots at their limit (8), last-known-working, the restore
+# target and the pre-restore snapshot leave no place to rotate: the edit is
+# still saved and named, beyond the usual size, and no protected snapshot
+# goes (D-14, UC-022).
 rm -rf "$FORKOP_SNAPSHOT_DIR"
 for i in 1 2 3 4 5 6 7 8; do
   config "manual$(printf '%s' "$i" | tr 0-9 a-j)"
   "$REAL_UCODE" -L "$LIB" "$SCRIPT" create manual >/dev/null
 done
 config working; "$REAL_UCODE" -L "$LIB" "$SCRIPT" confirm-working >/dev/null
+working_id="$(lkg)"
 config other; "$REAL_UCODE" -L "$LIB" "$SCRIPT" create automatic >/dev/null
 [ "$(snapshot_count)" = 10 ] || fail "fixture: $(snapshot_count) snapshots instead of 10"
 good_id="$(snapshot_holding manualb manual)"
 config bad
 restore absent "e1"
 [ "$(field status)" = needs_attention ] && [ "$(field reason)" = config_changed_during_transaction ] && [ "$(marker)" = edit ] ||
-  fail "retention full: $(cat "$WORK/result.json"), config $(marker)"
-[ -z "$(field saved_snapshot)" ] && [ -z "$(snapshot_holding edit)" ] || fail "retention full: a snapshot is named or saved: $(cat "$WORK/result.json")"
-ok "edit already held by another kind of snapshot -> saved as a Concurrent edit of its own, once; retention full -> none named"
+  fail "store at its limit: $(cat "$WORK/result.json"), config $(marker)"
+saved="$(field saved_snapshot)"
+[ -n "$saved" ] && [ "$saved" = "$(snapshot_holding edit concurrent-change)" ] ||
+  fail "store at its limit: the edit is not saved and named: $(cat "$WORK/result.json")"
+[ "$(grep -l '"kind": *"manual"' "$FORKOP_SNAPSHOT_DIR"/*.json | wc -l)" = 8 ] && [ "$(lkg)" = "$working_id" ] &&
+  [ -n "$(snapshot_holding working)" ] || fail "store at its limit: a protected snapshot was removed"
+ok "edit already held by another kind of snapshot -> saved as a Concurrent edit of its own, once; also with the store at its limit"
 
 printf 'config_restore_concurrent_edit: PASS\n'

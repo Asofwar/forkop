@@ -385,13 +385,20 @@ selection multisplit example.com low; at plan "$WORK/selection.json"
 json 'a.equal(r.status, "failed"); a.equal(r.reason, "selection_confidence_too_low");' "$WORK/out.json"
 ok "4 unsupported candidate or weak selection -> no plan"
 
-# 5. snapshot failure -> no mutation (manual snapshots fill the retention)
+# 5. manual snapshots never block the pre-apply snapshot (D-14, UC-022):
+# they stop at 8 of 10, and nothing removes one.
 reset_apply; plan_ready
 for _ in $(seq 1 10); do ucode -L "$LIB" "$LIB/config/snapshots.uc" create manual > /dev/null || true; done
-before_snaps="$(snaps)"; at apply "$WORK/plan.json"
-json 'a.equal(r.status, "failed"); a.equal(r.reason, "apply_failed:snapshot_retention_full"); a.equal(r.applied, false);' "$WORK/out.json"
-{ [ "$(chash)" = "$PRE_HASH" ] && [ "$(reloads)" = 0 ] && [ "$(snaps)" = "$before_snaps" ]; } || fail "applied without a snapshot"
-ok "5 no room for the pre-apply snapshot -> no mutation"
+manual_snaps() { grep -l '"kind": *"manual"' "$FORKOP_SNAPSHOT_DIR"/*.json 2>/dev/null | sort; }
+manual_before="$(manual_snaps)"
+[ "$(printf '%s\n' "$manual_before" | wc -l)" = 8 ] || fail "manual snapshots beyond the limit"
+at apply "$WORK/plan.json"
+json 'a.equal(r.status, "applied"); a.equal(r.lkg, "confirmed");' "$WORK/out.json"
+[ -e "$FORKOP_SNAPSHOT_DIR/$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).pre_snapshot)' "$WORK/out.json").json" ] ||
+  fail "the confirmation removed the pre-apply snapshot"
+at rollback; json 'a.equal(r.status, "rolled_back"); a.equal(r.rollback.lkg_is_pre_snapshot, true);' "$WORK/out.json"
+{ [ "$(chash)" = "$PRE_HASH" ] && [ "$(manual_snaps)" = "$manual_before" ]; } || fail "rollback next to manual snapshots"
+ok "5 manual snapshots at their limit -> apply, confirmation and rollback still work; no manual snapshot removed"
 
 # 6. already-active candidate -> no_change_required
 reset_apply; selection fake; at plan "$WORK/selection.json"
@@ -1144,26 +1151,23 @@ for plan in "q q" "m m" "1 q" "t t"; do
 done
 ok "queued reload -> config put back and recovered; queued twice (token, same-second marker or token alone) -> needs_attention with the guard kept"
 
-# Retention: room for the rollback's pre-restore snapshot is reserved.
+# Retention: manual snapshots at their limit leave room for the rollback's
+# pre-restore snapshot (D-14).
 reset_apply; plan_ready
 for _ in $(seq 1 8); do ucode -L "$LIB" "$LIB/config/snapshots.uc" create manual > /dev/null || true; done
-at apply "$WORK/plan.json"
-json 'a.equal(r.status, "failed"); a.equal(r.reason, "apply_failed:snapshot_retention_full");' "$WORK/out.json"
-{ [ "$(chash)" = "$PRE_HASH" ] && [ "$(reloads)" = 0 ]; } || fail "applied without rollback room"
-reset_apply; plan_ready
-for _ in $(seq 1 7); do ucode -L "$LIB" "$LIB/config/snapshots.uc" create manual > /dev/null || true; done
 export PROD_PLAN=reset; at apply "$WORK/plan.json"
 json 'a.equal(r.status, "rolled_back"); a.equal(r.rollback.lkg_is_pre_snapshot, true);' "$WORK/out.json"
-[ -e "$FORKOP_SNAPSHOT_DIR/$(lkg).json" ] || fail "LKG names a removed snapshot"
+{ [ "$(chash)" = "$PRE_HASH" ] && [ -e "$FORKOP_SNAPSHOT_DIR/$(lkg).json" ]; } || fail "LKG names a removed snapshot"
 reset_apply
 sed -i "s/option dns_rewrite_ttl '60'/option dns_rewrite_ttl '30'/" "$FORKOP_CONFIG_FILE"
 target_id="$(ucode -L "$LIB" "$LIB/config/snapshots.uc" create automatic | node -e 'console.log(JSON.parse(require("fs").readFileSync(0,"utf8")).snapshot.id)')"
 write_config
 for _ in $(seq 1 8); do ucode -L "$LIB" "$LIB/config/snapshots.uc" create manual > /dev/null || true; done
 ucode -L "$LIB" "$LIB/config/snapshots.uc" restore "$target_id" > "$WORK/out.json" || true
-json 'a.equal(r.status, "failed"); a.equal(r.reason, "pre_restore_snapshot_failed");' "$WORK/out.json"
-{ [ -e "$FORKOP_SNAPSHOT_DIR/$target_id.json" ] && [ "$(lkg)" = "$PRE_LKG" ] && [ "$(chash)" = "$PRE_HASH" ]; } || fail "restore removed its own target"
-ok "retention: no apply without rollback room; rollback LKG snapshot kept; a restore never deletes its target"
+json 'a.equal(r.status, "success");' "$WORK/out.json"
+{ [ -e "$FORKOP_SNAPSHOT_DIR/$target_id.json" ] && [ "$(lkg)" = "$target_id" ] && [ -e "$FORKOP_SNAPSHOT_DIR/$PRE_LKG.json" ]; } ||
+  fail "restore next to manual snapshots at their limit"
+ok "retention: rollback and restore next to manual snapshots at their limit; LKG and the restore target kept"
 
 # Refusals of the transaction itself keep an earlier apply record.
 reset_apply; plan_ready; at apply "$WORK/plan.json"; json 'a.equal(r.status, "applied");' "$WORK/out.json"
@@ -1252,22 +1256,19 @@ json 'a.equal(r.status, "failed"); a.equal(r.reason, "interrupted_before_mutatio
 { [ "$(chash)" = "$PRE_HASH" ] && [ "$(reloads)" = 0 ] && [ "$(snaps)" = 1 ]; } || fail "interrupted candidate generation mutated"
 ok "hangup during candidate generation -> interrupted_before_mutation"
 
-# A manual LKG stays protected after confirmation: its slot is reserved too.
+# A manual LKG stays protected after confirmation; with the manual
+# snapshots at their limit the apply and its rollback still have room (D-14).
 reset_apply; plan_ready
 manual_id="$(ucode -L "$LIB" "$LIB/config/snapshots.uc" create manual | node -e 'console.log(JSON.parse(require("fs").readFileSync(0,"utf8")).snapshot.id)')"
 echo "$manual_id" > "$FORKOP_SNAPSHOT_DIR/last-known-working"
 for _ in $(seq 1 7); do ucode -L "$LIB" "$LIB/config/snapshots.uc" create manual > /dev/null || true; done
-at apply "$WORK/plan.json"
-json 'a.equal(r.status, "failed"); a.equal(r.reason, "apply_failed:snapshot_retention_full");' "$WORK/out.json"
-reset_apply; plan_ready
-manual_id="$(ucode -L "$LIB" "$LIB/config/snapshots.uc" create manual | node -e 'console.log(JSON.parse(require("fs").readFileSync(0,"utf8")).snapshot.id)')"
-echo "$manual_id" > "$FORKOP_SNAPSHOT_DIR/last-known-working"
-for _ in $(seq 1 6); do ucode -L "$LIB" "$LIB/config/snapshots.uc" create manual > /dev/null || true; done
 at apply "$WORK/plan.json"; json 'a.equal(r.status, "applied");' "$WORK/out.json"
 at rollback; json 'a.equal(r.status, "rolled_back");' "$WORK/out.json"
-ok "manual LKG: apply refused without room for the later operator rollback; with room, rollback works"
+[ -e "$FORKOP_SNAPSHOT_DIR/$manual_id.json" ] || fail "the manual LKG snapshot was removed"
+ok "manual LKG next to manual snapshots at their limit: apply and operator rollback work, the manual LKG stays"
 
-# A refused apply never evicts the earlier apply's pre-apply snapshot.
+# An apply refused after its pre-apply snapshot never evicts the earlier
+# apply's pre-apply snapshot, even with the store full.
 reset_apply; plan_ready; first_lkg="$PRE_LKG"
 at apply "$WORK/plan.json"; json 'a.equal(r.status, "applied");' "$WORK/out.json"
 ba1="$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).pre_snapshot)' "$WORK/out.json")"
@@ -1277,11 +1278,11 @@ sed -i "s/option dns_rewrite_ttl '60'/option dns_rewrite_ttl '33'/" "$FORKOP_CON
 ucode -L "$LIB" "$LIB/config/snapshots.uc" create automatic > /dev/null
 sed -i "s/option dns_rewrite_ttl '33'/option dns_rewrite_ttl '60'/" "$FORKOP_CONFIG_FILE"
 for _ in $(seq 1 7); do ucode -L "$LIB" "$LIB/config/snapshots.uc" create manual > /dev/null || true; done
-at apply "$WORK/plan2.json"
-json 'a.equal(r.status, "failed"); a.equal(r.reason, "apply_failed:snapshot_retention_full");' "$WORK/out.json"
+export GUARD_FAIL=1; at apply "$WORK/plan2.json"; unset GUARD_FAIL
+json 'a.equal(r.status, "failed"); a.equal(r.reason, "apply_failed:guard_unavailable");' "$WORK/out.json"
 [ -e "$FORKOP_SNAPSHOT_DIR/$ba1.json" ] || fail "refused apply evicted the earlier pre-apply snapshot"
 at rollback; json 'a.equal(r.status, "rolled_back");' "$WORK/out.json"
-ok "earlier pre-apply snapshot kept through a refused apply; its rollback still works"
+ok "earlier pre-apply snapshot kept through a refused apply next to a full store; its rollback still works"
 
 # Unresolved record whose before-autotune snapshot is gone -> LKG is the source.
 reset_apply; plan_ready; export PROD_SLEEP=1

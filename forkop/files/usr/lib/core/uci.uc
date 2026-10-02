@@ -751,7 +751,7 @@ function commit_option(config_file, path, value, keep_existing, cli) {
     let current = locked ? fs.stat(file) : null;
     let held = locked ? fs.stat("/proc/self/fd/" + handle.fileno()) : null;
     let before = current != null && held != null && current.inode == held.inode ? fs.readfile(file) : null;
-    if (before != null && fs.mkdir(dir + "/save", 0700) && fs.writefile(copy, before) != null) {
+    if (before != null && fs.mkdir(dir + "/save", 0700) && fs.writefile(copy, before) != null && fs.readfile(copy) === before) {
         if (keep_existing && trim(command_text([ ...base, "get", own ])) != "")
             result = "kept";
         // uci skips a staged option whose section does not exist, and the
@@ -825,7 +825,9 @@ function session_copy(package_name, config_file, cli) {
     let release = function() {
         command_ok([ "rm", "-rf", dir ]);
     };
-    if (!fs.mkdir(dir + "/save", 0700) || fs.writefile(copy, before) == null) {
+    // Read back: a full /tmp can take the write and keep none of it, and an
+    // empty copy reads as a package without a section.
+    if (!fs.mkdir(dir + "/save", 0700) || fs.writefile(copy, before) == null || fs.readfile(copy) !== before) {
         release();
         return null;
     }

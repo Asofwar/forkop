@@ -286,6 +286,37 @@ else
     grep -q 'Could not save the dnsmasq settings' "$WORK/syslog" || fail "configure on a $kind overlay logged no error"
   done
   ok "a read-only or full overlay fails the configure and keeps the dhcp file"
+
+  # A full /tmp takes the write of the private copy the edit works on and
+  # keeps none of it: read as an empty dhcp package, it had no dnsmasq
+  # section, so configure did nothing and restore left the forwarding, both
+  # reporting success. Now the copy is read back and the operation fails.
+  mkdir -p "$WORK/full-tmp"
+  full_tmp() {
+    # shellcheck disable=SC2016 # expanded by the sh that runs it
+    unshare -rm sh -c '
+      mount -t tmpfs -o size=16k tmpfs "$WORK/full-tmp" || exit 90
+      dd if=/dev/zero of="$WORK/full-tmp/fill" bs=1k 2>/dev/null
+      TMPDIR="$WORK/full-tmp" ucode -L "$LIB" "$APPLY" "$1" force
+    ' sh "$1" >/dev/null 2>&1 && STATUS=0 || STATUS=$?
+    [ "$STATUS" != 90 ] || fail "could not mount the test filesystem"
+  }
+  cp "$WORK/dhcp.orig" "$DHCP"
+  : >"$WORK/dnsmasq.log"
+  full_tmp configure
+  [ "$STATUS" != 0 ] || fail "configure with a full /tmp reported success"
+  cmp -s "$WORK/dhcp.orig" "$DHCP" || fail "configure with a full /tmp changed the dhcp file: $(cat "$DHCP")"
+  restarted && fail "configure with a full /tmp restarted dnsmasq"
+  dns_apply configure force
+  [ "$STATUS" = 0 ] || fail "configure through the uci CLI failed"
+  cp "$DHCP" "$WORK/dhcp.forwarding"
+  : >"$WORK/dnsmasq.log"
+  full_tmp restore
+  [ "$STATUS" != 0 ] || fail "restore with a full /tmp reported success"
+  cmp -s "$WORK/dhcp.forwarding" "$DHCP" || fail "restore with a full /tmp changed the dhcp file: $(cat "$DHCP")"
+  dns_apply restore force
+  [ "$STATUS" = 0 ] || fail "restore through the uci CLI failed"
+  ok "a full /tmp fails configure and restore instead of reading an empty dhcp"
 fi
 
 no_leftovers() {

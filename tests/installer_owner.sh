@@ -372,7 +372,24 @@ RETRY_TICKS="$(sed 's/.*) //' "/proc/$RETRY_PID/stat" | cut -d' ' -f20)"
 printf '%s\n%s\n' "$RETRY_PID" "$RETRY_TICKS" > "$WORK_DIR/start-retry.pid"
 printf '%s\n' pending > "$WORK_DIR/start.retry"
 
-hanging_started="$(date +%s)"
+# The probes hang for ever: the cleanup ends only because it runs every
+# init.d call under the deadline helper with the timeouts it is given, which
+# the helper's records show (UC-238). A stand-in logs each call of the real
+# helper as "COMMAND ACTION SECONDS STATUS". The wall-clock time of the
+# cleanup shows nothing more and depends on the load: the helper walks /proc
+# twice for every probe it stops.
+cat >"$WORK_DIR/logging-deadline" <<'SH'
+#!/bin/sh
+"$FORKOP_REAL_DEADLINE_HELPER" "$@"
+status=$?
+[ "$1" != run ] || printf '%s %s %s %s\n' "${4##*/}" "$5" "$2" "$status" >>"$FORKOP_DEADLINE_LOG"
+exit "$status"
+SH
+chmod 0755 "$WORK_DIR/logging-deadline"
+: >"$WORK_DIR/hanging-deadline.log"
+FORKOP_REAL_DEADLINE_HELPER="$deadline_helper" \
+FORKOP_DEADLINE_LOG="$WORK_DIR/hanging-deadline.log" \
+FORKOP_INSTALLER_DEADLINE_HELPER="$WORK_DIR/logging-deadline" \
 PATH="$WORK_DIR:$PATH" \
 FORKOP_INSTALLER_OPKG_LOG="$WORK_DIR/opkg.log" \
 FORKOP_INSTALLER_INIT="$WORK_DIR/hanging-init" \
@@ -399,9 +416,17 @@ FORKOP_INSTALLER_INIT_LOG="$WORK_DIR/hanging-init.log" \
 FORKOP_INSTALLER_HANG_PID_LOG="$HANG_PID_LOG" \
 FORKOP_UCI_STATE_FILE="$WORK_DIR/empty-uci.state" \
   ucode "$helper" installer-cleanup-legacy > "$WORK_DIR/hanging-state.env"
-hanging_elapsed="$(($(date +%s) - hanging_started))"
-[ "$hanging_elapsed" -lt 15 ] ||
-  fail "installer cleanup did not bound hanging init.d probes (${hanging_elapsed}s)"
+for probe in enabled status running; do
+  grep -Fxq "hanging-init $probe 1 124" "$WORK_DIR/hanging-deadline.log" ||
+    fail "installer cleanup did not bound the hanging init.d probe $probe by its 1 s timeout: $(tr '\n' ';' <"$WORK_DIR/hanging-deadline.log")"
+done
+for action in stop disable; do
+  grep -Fxq "hanging-init $action 3 0" "$WORK_DIR/hanging-deadline.log" ||
+    fail "installer cleanup did not bound the init.d action $action by its 3 s timeout: $(tr '\n' ';' <"$WORK_DIR/hanging-deadline.log")"
+done
+if awk '$1 == "hanging-init" && $3 != 1 && $3 != 3 { found = 1 } END { exit !found }' "$WORK_DIR/hanging-deadline.log"; then
+  fail "installer cleanup ran an init.d call without the timeouts it was given: $(tr '\n' ';' <"$WORK_DIR/hanging-deadline.log")"
+fi
 grep -Fxq 'FORKOP_WAS_ENABLED=1' "$WORK_DIR/hanging-state.env" ||
   fail "installer cleanup must recover enabled state from rc.d after a probe timeout"
 for action in enabled status running stop disable; do
@@ -414,14 +439,14 @@ fi
 wait_until 10 process_gone "$RETRY_PID" || fail "installer cleanup left the scheduled retry running"
 wait "$RETRY_PID" 2>/dev/null || true
 RETRY_PID=""
-if process_running "$ORPHAN_PROBE_PID"; then
+# The probes loop for ever unless the cleanup kills them; a killed process
+# still shows as running until it has finished its exit.
+wait_until 10 process_gone "$ORPHAN_PROBE_PID" ||
   fail "installer cleanup left an orphaned init.d probe running"
-fi
 ORPHAN_PROBE_PID=""
 while IFS= read -r pid; do
-  if process_running "$pid"; then
+  wait_until 10 process_gone "$pid" ||
     fail "installer cleanup left a timed-out service process running: $pid"
-  fi
 done < "$HANG_PID_LOG"
 
 : >"$WORK_DIR/opkg.log"

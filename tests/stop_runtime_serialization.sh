@@ -58,6 +58,7 @@ EOF
 export TMPDIR="$WORK_DIR/tmp"
 export PATH="$WORK_DIR/bin:$PATH"
 export EVENTS REAL_LIB REAL_INITD
+export UNMODELLED_MODES="$WORK_DIR/unmodelled-state-modes"
 export RELOAD_LOCK="$WORK_DIR/run/forkop.reload.lock"
 export SING_BOX_STATE="$WORK_DIR/singbox.state"
 export NFT_TABLE_FILE="$WORK_DIR/nft.table"
@@ -183,8 +184,8 @@ function stop_requested_meanwhile() {
     if (armed("stop-meanwhile"))
         fs.writefile(getenv("STOP_MARKER"), "stop\n");
 }
-if (mode == "stop-managed-sing-box-runtime") {
-    ev("stop-managed");
+if (mode == "stop-managed-sing-box-runtime" || mode == "stop-owned-sing-box-runtime") {
+    ev(mode == "stop-managed-sing-box-runtime" ? "stop-managed" : "stop-owned");
     if (armed("nft-list-fails"))
         fs.writefile(getenv("NFT_TABLE_FILE") + ".list-fails", "1\n");
     if (armed("stop-fails")) {
@@ -228,8 +229,13 @@ if (mode == "run-pending-reload-if-requested") {
     ev("state " + mode + (fs.stat(getenv("RELOAD_LOCK")) == null ? "" : " (reload.lock held)"));
     exit(0);
 }
-ev("state " + mode);
-exit(0);
+if (index([ "clear-reload-state", "mark-pending-reload", "write-current-reload-state-clean" ], mode) >= 0) {
+    ev("state " + mode);
+    exit(0);
+}
+// A mode the model does not know must not pass as a success (UC-229).
+system("printf '%s\\n' " + q(mode) + " >> " + q(getenv("UNMODELLED_MODES")));
+exit(97);
 UC
 
 cat >"$WORK_DIR/fake-lib/subscription/cache.uc" <<UC
@@ -640,5 +646,8 @@ env FORKOP_LIB="$WORK_DIR/fake-lib" ucode -L "$REAL_LIB" "$REAL_LIB/service/life
   fail "a duplicate start of a running runtime failed: $(cat "$WORK_DIR/lifecycle.out")"
 grep -q 'already stably running' "$WORK_DIR/syslog" || fail "the running runtime was not recognised by the start"
 [ ! -e "$STOP_MARKER" ] || fail "a start of an already running runtime kept the explicit stop"
+
+[ ! -s "$UNMODELLED_MODES" ] ||
+  fail "the lifecycle asked the modelled service/state.uc for modes it does not model: $(sort -u "$UNMODELLED_MODES" | tr '\n' ' ')"
 
 printf 'stop runtime serialization checks passed\n'

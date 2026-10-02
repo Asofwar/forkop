@@ -77,6 +77,7 @@ STATE_DIR="$WORK_DIR/run/forkop"
 export TMPDIR="$WORK_DIR/tmp"
 export PATH="$WORK_DIR/bin:$PATH"
 export EVENTS REAL_LIB REAL_INITD LIB
+export UNMODELLED_MODES="$WORK_DIR/unmodelled-state-modes"
 export TEST_WORK="$WORK_DIR"
 export SING_BOX_STATE="$WORK_DIR/singbox.state"
 export NFT_TABLE_FILE="$WORK_DIR/nft.table"
@@ -181,8 +182,8 @@ if (mode == "forkop-running" || mode == "forkop-stably-running")
     exit(trim(fs.readfile(getenv("SING_BOX_STATE")) ?? "") == "running" && fs.stat(getenv("NFT_TABLE_FILE")) != null ? 0 : 1);
 if (mode == "sing-box-process-conflict")
     exit(1);
-if (mode == "stop-managed-sing-box-runtime") {
-    ev("stop-managed");
+if (mode == "stop-managed-sing-box-runtime" || mode == "stop-owned-sing-box-runtime") {
+    ev(mode == "stop-managed-sing-box-runtime" ? "stop-managed" : "stop-owned");
     fs.writefile(getenv("SING_BOX_STATE"), "stopped\n");
     exit(0);
 }
@@ -190,8 +191,14 @@ if (mode == "start-managed-sing-box-runtime") {
     ev("start-managed");
     exit(1);
 }
-ev("state " + mode);
-exit(0);
+if (index([ "capture-reload-state", "clear-reload-state", "has-list-update-sources",
+    "has-nft-list-update-sources", "write-captured-reload-state" ], mode) >= 0) {
+    ev("state " + mode);
+    exit(0);
+}
+// A mode the model does not know must not pass as a success (UC-229).
+system("printf '%s\\n' " + q(mode) + " >> " + q(getenv("UNMODELLED_MODES")));
+exit(97);
 UC
 
 cat >"$LIB/config/validator.uc" <<UC
@@ -510,5 +517,8 @@ runtime_down
 printf '1.000000001.42\nby=package\n' >"$STOP_MARKER"
 lifecycle reload "" || fail "reload after a package stop failed"
 grep -q "Reload '' skipped: Forkop was stopped" "$WORK_DIR/syslog" || fail "a reload started a runtime that a package stop took down"
+
+[ ! -s "$UNMODELLED_MODES" ] ||
+  fail "the lifecycle asked the modelled service/state.uc for modes it does not model: $(sort -u "$UNMODELLED_MODES" | tr '\n' ' ')"
 
 printf 'user stop sticky checks passed\n'

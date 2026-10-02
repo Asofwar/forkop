@@ -1282,6 +1282,15 @@ function section_rule_condition_csv(section, key, kind) {
     );
 }
 
+// A subscription section deferred at start is rejected by sing-box and
+// captured by nft while the kill-switch protects it (singbox/generator.uc,
+// nft/apply.uc; UC-192); turning the option on or off there changes both.
+// Only then: elsewhere the kill-switch needs no runtime reload.
+function deferred_section_rejected(section) {
+    return connections.is_connections_action(option(section, "action", "")) &&
+        length(connections.subscription_urls(section)) > 0 && bool_option(section, "kill_switch", false);
+}
+
 function nft_runtime_signature_body(settings, sections) {
     let body = "";
 
@@ -1317,6 +1326,8 @@ function nft_runtime_signature_body(settings, sections) {
         body = signature_add_value(body, "rule." + name + ".remote_subnet_lists", option(section, "remote_subnet_lists", ""));
         body = signature_add_value(body, "rule." + name + ".rule_set_with_subnets", connections.rule_sets_with_subnets_value(section));
         body = signature_add_value(body, "rule." + name + ".domain_ip_lists", option(section, "domain_ip_lists", ""));
+        if (deferred_section_rejected(section))
+            body = signature_add_value(body, "rule." + name + ".deferred_rejected", "1");
     }
 
     return body;
@@ -1649,6 +1660,8 @@ function append_sing_box_rule_signature_body(body, section, sections) {
         body = signature_add_outbound_detour_body(body, section, prefix);
         body = signature_add_mixed_proxy_body(body, section, prefix);
         body = signature_add_value(body, prefix + ".resolve_real_ip_for_routing", bool_option_value(section, "resolve_real_ip_for_routing", false));
+        if (deferred_section_rejected(section))
+            body = signature_add_value(body, prefix + ".deferred_rejected", "1");
     }
     else if (action == "byedpi") {
         body = signature_add_value(body, prefix + ".byedpi_index", sing_box_signature_enabled_action_index(sections, name, "byedpi"));

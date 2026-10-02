@@ -2200,7 +2200,7 @@ function reload(reason) {
         ]);
         if (status == 0) {
             log_message("Reload skipped: runtime-relevant configuration is unchanged", "info");
-            // The kill-switch option itself is not part of the runtime plan.
+            // Only a subscription section's kill-switch is in the plan.
             killswitch_sync("reload");
         }
         return finish_reload_status(status, reload_config_fingerprint);

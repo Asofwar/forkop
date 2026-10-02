@@ -107,6 +107,30 @@ if grep -Fq '203.0.113.0/24' "$WORK_DIR/populate.nft" || grep -Eq 'forkop_dns_so
 fi
 printf 'ok - the destinations of a deferred protected section reach sing-box\n'
 
+# The option decides what a deferred subscription section gets from sing-box
+# and nft, so turning it on or off there must reach the runtime: the reload
+# plan sees it in the sing-box and nft signatures. Elsewhere it changes
+# neither (killswitch/runtime.uc follows it without a runtime reload).
+signatures() {
+  ucode -L "$FORKOP_LIB" "$FORKOP_LIB/service/state.uc" reload-state-text-fixture "$1" 1 |
+    grep -E '^(sing_box|nft)_signature='
+}
+signature_fixture() {
+  cat >"$WORK_DIR/signature.json" <<JSON
+{ "settings": { ".name": "settings", ".type": "settings" },
+  "section": [ { ".name": "vpn", ".type": "section", "action": "connection", $1 "kill_switch": "$2",
+    "ip_cidr": [ "93.184.216.0/24" ] } ] }
+JSON
+  signatures "$WORK_DIR/signature.json"
+}
+subscription='"subscription_urls": [ "https://sub.example/vpn" ],'
+[ "$(signature_fixture "$subscription" 0)" != "$(signature_fixture "$subscription" 1)" ] ||
+  fail "turning the kill-switch on for a subscription section must reload the runtime that defers it"
+links='"connection_urls": [ "vless://00000000-0000-4000-8000-000000000001@a.example:443?security=tls#A" ],'
+[ "$(signature_fixture "$links" 0)" = "$(signature_fixture "$links" 1)" ] ||
+  fail "the kill-switch of a section that is never deferred must not reload the runtime"
+printf 'ok - the kill-switch of a subscription section reaches the runtime\n'
+
 # ---- the kill-switch keeps its previous protection ------------------------------
 
 mkdir -p "$WORK_DIR/bin" "$WORK_DIR/run"

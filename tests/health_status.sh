@@ -92,6 +92,35 @@ recovery_case "{$RELOADING,\"restore_guard\":true,\"events\":[]}" wait false tru
 recovery_case "{$RUNNING,\"restore_guard\":true,\"transaction\":true,\"events\":[]}" wait false true
 recovery_case "{$RUNNING,\"events\":[{\"kind\":\"reload\",\"status\":\"failure\",\"timestamp\":42}]}" null false false
 recovery_case "{$RUNNING,\"events\":[]}" null false false
+# A cron_refresh failure (a start or reload that could not update the
+# scheduled jobs and went on) is no failed configuration change: last in the
+# history when the start gave way to a stop, it must not turn the health red
+# or ask for recovery. A failed change before it still counts.
+cat > "$TEST_DIR/fixture.json" <<JSON
+{$RUNNING,"events":[{"kind":"start","status":"success","timestamp":40},{"kind":"cron_refresh","status":"failure","timestamp":42}]}
+JSON
+ucode -L "$ROOT/forkop/files/usr/lib" "$ROOT/forkop/files/usr/lib/diagnostics/health.uc" fixture "$TEST_DIR/fixture.json" > "$TEST_DIR/output.json"
+node - "$TEST_DIR/output.json" <<'JS'
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const value = JSON.parse(fs.readFileSync(process.argv[2]));
+assert.equal(value.overall, 'ok', 'a failed cron refresh turned the health red');
+assert.equal(value.recovery.pending, false, 'a failed cron refresh asked for recovery');
+assert.equal(value.recovery.last_event.kind, 'start');
+assert.equal(value.recent_activity[1].kind, 'cron_refresh', 'the failed cron refresh must stay in the recent activity');
+JS
+cat > "$TEST_DIR/fixture.json" <<JSON
+{$RUNNING,"events":[{"kind":"reload","status":"failure","timestamp":40},{"kind":"cron_refresh","status":"failure","timestamp":42}]}
+JSON
+ucode -L "$ROOT/forkop/files/usr/lib" "$ROOT/forkop/files/usr/lib/diagnostics/health.uc" fixture "$TEST_DIR/fixture.json" > "$TEST_DIR/output.json"
+node - "$TEST_DIR/output.json" <<'JS'
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const value = JSON.parse(fs.readFileSync(process.argv[2]));
+assert.equal(value.overall, 'error');
+assert.equal(value.recovery.pending, true);
+assert.equal(value.recovery.last_event.kind, 'reload');
+JS
 printf '{broken' > "$TEST_DIR/fixture.json"
 ucode -L "$ROOT/forkop/files/usr/lib" "$ROOT/forkop/files/usr/lib/diagnostics/health.uc" fixture "$TEST_DIR/fixture.json" > "$TEST_DIR/output.json"
 node - "$TEST_DIR/output.json" <<'JS'

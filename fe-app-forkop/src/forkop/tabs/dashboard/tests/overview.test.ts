@@ -139,6 +139,30 @@ describe('overview warning', () => {
       )?.title,
     ).toBe('The last configuration change failed');
   });
+
+  it('does not take a failed scheduled jobs update for a failed change', () => {
+    // A start that gave way to a stop records nothing after it.
+    expect(
+      overviewWarning(
+        health({
+          recent_activity: [
+            { kind: 'start', status: 'success', timestamp: ts(20) },
+            { kind: 'cron_refresh', status: 'failure', timestamp: ts(10) },
+          ],
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      overviewWarning(
+        health({
+          recent_activity: [
+            { kind: 'reload', status: 'failure', timestamp: ts(20) },
+            { kind: 'cron_refresh', status: 'failure', timestamp: ts(10) },
+          ],
+        }),
+      )?.title,
+    ).toBe('The last configuration change failed');
+  });
 });
 
 describe('overview state', () => {

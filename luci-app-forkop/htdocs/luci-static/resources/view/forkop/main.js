@@ -5892,6 +5892,12 @@ function lastEvent(health2) {
   const events = health2?.recent_activity || [];
   return events.length ? events[events.length - 1] : null;
 }
+function lastChangeEvent(health2) {
+  const events = (health2?.recent_activity || []).filter(
+    (event) => event.kind !== "cron_refresh"
+  );
+  return events.length ? events[events.length - 1] : null;
+}
 function guardWarningText(action) {
   switch (action) {
     case "restart":
@@ -5934,7 +5940,7 @@ function overviewWarning(health2) {
       link: details
     };
   }
-  if (lastEvent(health2)?.status === "failure") {
+  if (lastChangeEvent(health2)?.status === "failure") {
     return {
       title: _("The last configuration change failed"),
       text: _("Forkop X kept or restored the previous configuration."),

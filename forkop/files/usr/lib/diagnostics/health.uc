@@ -235,7 +235,13 @@ function health(ui, guards, package_pending, events, reload_busy) {
     let service_status = transition ? "transitioning" :
         forkop.running == null ? "unknown" : forkop.running == 1 ? "ok" :
         forkop.stopped_by_user == 1 ? "stopped" : forkop.not_started == 1 ? "not_started" : "error";
-    let last = length(events) ? events[length(events) - 1] : null;
+    // The last configuration change: a cron_refresh event tells about the
+    // scheduled jobs only, and is last in the history when its start or
+    // reload gave way to a stop; it never asks for recovery.
+    let last = null;
+    for (let i = length(events) - 1; i >= 0 && last == null; i--)
+        if (events[i].kind != "cron_refresh")
+            last = events[i];
     let last_reload = null;
     for (let i = length(events) - 1; i >= 0; i--)
         if (index([ "reload", "restore", "autotune_apply", "autotune_rollback" ], events[i].kind) >= 0) {

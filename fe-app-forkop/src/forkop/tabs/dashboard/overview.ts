@@ -97,6 +97,16 @@ function lastEvent(health: Forkop.HealthStatus | null) {
   return events.length ? events[events.length - 1] : null;
 }
 
+// The last configuration change: a failed scheduled jobs update
+// (cron_refresh) is no failed change, also when it is the last event because
+// its start or reload gave way to a stop (diagnostics/health.uc).
+function lastChangeEvent(health: Forkop.HealthStatus | null) {
+  const events = (health?.recent_activity || []).filter(
+    (event) => event.kind !== 'cron_refresh',
+  );
+  return events.length ? events[events.length - 1] : null;
+}
+
 // What the DPI guard that is left means, by what ends it
 // (diagnostics/health.uc recovery.action): it does not go on its own unless
 // a change still holds it (UC-019, UC-066).
@@ -146,7 +156,7 @@ export function overviewWarning(
       link: details,
     };
   }
-  if (lastEvent(health)?.status === 'failure') {
+  if (lastChangeEvent(health)?.status === 'failure') {
     return {
       title: _('The last configuration change failed'),
       text: _('Forkop X kept or restored the previous configuration.'),

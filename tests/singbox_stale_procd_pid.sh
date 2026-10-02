@@ -104,18 +104,18 @@ grep -q 'Controlled sing-box transition refused' "$LOGGER_LOG" &&
 stop_with_reused_pid() {
   : >"$SLEEP_LOG"; : >"$LOGGER_LOG"
   # shellcheck disable=SC2016 # expanded by the inner shell
-  "${ISOLATE[@]}" bash -c '
+  OWNED_PROCESSES="$ROOT_DIR/tests/helpers/owned_processes.sh" "${ISOLATE[@]}" bash -c '
     "$1" 60 &
     decoy=$!
     printf "%s\n" "$decoy" >"$STALE_PID_MARKER"
     rc=0
     ucode -L "$2" "$3" stop-managed-sing-box-runtime 3 || rc=$?
     state="$(sed -n "s/^[0-9]* (.*) \([A-Za-z]\) .*/\1/p" "/proc/$decoy/stat" 2>/dev/null)"
-    . "$4"
+    . "$OWNED_PROCESSES"
     owned_kill KILL "$decoy" || :
     wait "$decoy" 2>/dev/null
     printf "%s %s\n" "$rc" "${state:-gone}"
-  ' _ "$REAL_SLEEP" "$FORKOP_LIB" "$STATE_UC" "$ROOT_DIR/tests/helpers/owned_processes.sh"
+  ' _ "$REAL_SLEEP" "$FORKOP_LIB" "$STATE_UC"
 }
 result="$(stop_with_reused_pid)"
 [ "${result%% *}" != 0 ] ||

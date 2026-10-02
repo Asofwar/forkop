@@ -11,8 +11,11 @@ set -eu
 # restore's own reload drains it, so recovery stays possible while the
 # current configuration cannot reload and keeps failing to drain the queue.
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+export OWNED_PROCESSES="$ROOT/tests/helpers/owned_processes.sh"
 # shellcheck source=tests/helpers/owned_processes.sh
-. "$ROOT/tests/helpers/owned_processes.sh"
+. "$OWNED_PROCESSES"
+# shellcheck source=tests/helpers/wait.sh
+. "$ROOT/tests/helpers/wait.sh"
 LIB="$ROOT/forkop/files/usr/lib"
 SCRIPT="$LIB/config/snapshots.uc"
 REAL_UCODE="$(command -v ucode)"
@@ -41,7 +44,9 @@ mkdir -p "$WORK/bin" "$WORK/run/forkop" "$STATE"
 echo absent > "$STATE/guard"
 
 # Lock helpers shared by the stand-ins: a live lifecycle action owns reload.lock.
+# A stand-in that ends the holder signals it as a process of the test.
 cat > "$WORK/lock.sh" <<'SH'
+OWNED_PROCESSES_KEEP_MARK=1 . "$OWNED_PROCESSES"
 hold_lock() {
   mkdir "$FORKOP_RELOAD_LOCK_DIR"
   sleep 300 >/dev/null 2>&1 </dev/null &
@@ -49,7 +54,9 @@ hold_lock() {
   echo "$!" > "$STATE/holder"
 }
 release_lock() {
-  owned_kill TERM "$(cat "$STATE/holder")" || true
+  holder="$(cat "$STATE/holder")"
+  owned_kill TERM "$holder" || true
+  echo "$holder" >> "$STATE/released"
   rm -f "$STATE/holder" "$FORKOP_RELOAD_LOCK_DIR/pid"
   rmdir "$FORKOP_RELOAD_LOCK_DIR"
 }
@@ -121,6 +128,7 @@ snaps() { find "$FORKOP_SNAPSHOT_DIR" -maxdepth 1 -name '*.json' | wc -l; }
 chash() { sha256sum "$FORKOP_CONFIG_FILE" | cut -d' ' -f1; }
 marker() { grep -o "marker '[a-z]*'" "$FORKOP_CONFIG_FILE"; }
 events() { cat "$STATE/events" 2>/dev/null || true; }
+holder_ended() { ! owned_process "$1"; }
 # run <snapshots.uc args...>: result in $WORK/result.json, exit status in $rc.
 run() {
   : > "$STATE/events"
@@ -286,5 +294,11 @@ PATH="$WORK/bin:$PATH" "$REAL_UCODE" -L "$LIB" "$LIB/service/state.uc" run-pendi
 run restore "$good_id"
 expect success "" "restore after a failed config-change drain"
 { [ "$(cat "$STATE/guard")" = absent ] && [ "$(marker)" = "marker 'good'" ] && [ ! -e "$FORKOP_PENDING_RELOAD_FILE" ]; } || fail "restore after a failed drain did not complete"
+
+# Every lifecycle action the test let finish has ended: release_lock, in the
+# test and in the init.d stand-in alike, ends the process that held the lock.
+for holder in $(cat "$STATE/released"); do
+  wait_until 10 holder_ended "$holder" || fail "the lock holder $holder survived release_lock"
+done
 
 printf 'config_restore_queued_reload: PASS\n'

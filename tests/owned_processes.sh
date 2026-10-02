@@ -18,7 +18,8 @@ set -euo pipefail
 # helper against processes under PIDs the test stored that are not its own
 # (what a stored PID names once the number was reused): a host process, a
 # process and a process group of another test. Part 2 checks that no test
-# signals a stored PID the old way.
+# signals a stored PID the old way, and that the helper is loaded wherever a
+# test or a stand-in it writes calls it.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=tests/helpers/wait.sh
@@ -268,6 +269,90 @@ SH
 found="$(stale_kills "$WORK_DIR/sample.sh" | cut -d: -f2 | tr '\n' ' ')"
 [ "$found" = "1 2 3 4 5 6 7 8 9 10 " ] || fail "the check of the old forms found lines '$found', not 1 to 10"
 
+# unloaded_kills FILE...: the calls of owned_kill and owned_kill_children
+# where the helper is not loaded. There the call fails with "not found", the
+# `|| true` of a cleanup hides that, and the process is never signalled. A
+# stand-in that a test writes (a here document) runs in a process of its
+# own, or is sourced by one, and loads the helper itself; a test or helper
+# loads it, or a helper of tests/helpers that does.
+unloaded_kills() {
+  awk '
+    function loads(line) {
+      return line ~ /^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*(\.|source)[[:space:]]/ &&
+        line ~ /owned_processes\.sh|[$][{]?OWNED_PROCESSES([^A-Za-z0-9_]|$)|helpers\/autotune_stubs\.sh|helpers\/autotune_scheduler\/setup\.sh/
+    }
+    function calls(line) {
+      return line !~ /^[[:space:]]*#/ && line ~ /(^|[^A-Za-z0-9_])owned_kill(_children)?([^A-Za-z0-9_]|$)/
+    }
+    function finish_file() {
+      if (file != "" && !file_loads)
+        printf "%s", file_calls
+      # A here document that never ends (or the text of one taken for it).
+      if (tag != "" && !body_loads)
+        printf "%s", body_calls
+    }
+    FNR == 1 { finish_file(); file = FILENAME; file_loads = 0; file_calls = ""; tag = "" }
+    tag != "" {
+      line = $0
+      if (strip) sub(/^\t+/, "", line)
+      if (line == tag) {
+        if (!body_loads)
+          printf "%s", body_calls
+        tag = ""
+      } else if (loads($0))
+        body_loads = 1
+      else if (calls($0))
+        body_calls = body_calls sprintf("%s:%d: a stand-in calls the helper without loading it: %s\n", FILENAME, FNR, $0)
+      next
+    }
+    {
+      if (loads($0))
+        file_loads = 1
+      else if (calls($0))
+        file_calls = file_calls sprintf("%s:%d: calls the helper without loading it: %s\n", FILENAME, FNR, $0)
+      # A here document starts: <<TAG, <<-TAG, <<\047TAG\047, <<"TAG"; not a
+      # here-string (<<<) and not the text of one inside a string.
+      if (match($0, /(^|[^<])<<-?[[:space:]]*(\047[A-Za-z_][A-Za-z0-9_]*\047|"[A-Za-z_][A-Za-z0-9_]*"|\\?[A-Za-z_][A-Za-z0-9_]*)([[:space:];|&)>]|$)/)) {
+        tag = substr($0, RSTART, RLENGTH)
+        sub(/^[^<]?<<-?[[:space:]]*/, "", tag)
+        strip = substr($0, RSTART, RLENGTH) ~ /<<-/
+        sub(/[[:space:];|&)>]$/, "", tag)
+        gsub(/[\047"\\]/, "", tag)
+        body_loads = 0
+        body_calls = ""
+      }
+    }
+    END { finish_file() }
+  ' "$@"
+}
+
+# The check finds a call without the helper, in a test and in a stand-in.
+cat >"$WORK_DIR/unloaded.sh" <<'SH'
+cleanup() { owned_kill KILL "$pid" || true; }
+SH
+cat >"$WORK_DIR/stand-ins.sh" <<'SH'
+. "$ROOT/tests/helpers/owned_processes.sh"
+cat >"$WORK/loaded" <<'STUB'
+OWNED_PROCESSES_KEEP_MARK=1 . "$OWNED_PROCESSES"
+owned_kill TERM "$holder" || true
+STUB
+cat >"$WORK/lock.sh" <<'STUB'
+release_lock() { owned_kill TERM "$(cat "$STATE/holder")" || true; }
+STUB
+cat >"$WORK/unquoted" <<-STUB
+	owned_kill_children KILL "\$pid"
+	STUB
+heredoc_script "$BUILD_SCRIPT" "  cat > \"\$control_dir/prerm\" <<'EOF'" "$WORK/prerm"
+owned_kill KILL "$pid" || true
+cat >"$WORK/notes" <<EOF
+EOF
+SH
+printf '%s\n' "cat >\"\$WORK/stand-in\" <<'STUB'" 'owned_kill KILL "$pid" || true' >"$WORK_DIR/unterminated.sh"
+found="$(unloaded_kills "$WORK_DIR/unloaded.sh" "$WORK_DIR/stand-ins.sh" "$WORK_DIR/unterminated.sh" |
+  sed "s|^$WORK_DIR/||" | cut -d: -f1,2 | tr '\n' ' ')"
+[ "$found" = "unloaded.sh:1 stand-ins.sh:7 stand-ins.sh:10 unterminated.sh:2 " ] ||
+  fail "the check of calls without the helper found '$found', not unloaded.sh:1, stand-ins.sh:7 and 10, unterminated.sh:2"
+
 TEST_FILES=()
 while IFS= read -r file; do
   case "${file#"$ROOT_DIR"/}" in
@@ -285,6 +370,10 @@ source_require "${TEST_FILES[@]}"
 if old="$(stale_kills "${TEST_FILES[@]}")" && [ -n "$old" ]; then
   printf '%s\n' "$old" | sed "s|^$ROOT_DIR/||" >&2
   fail "tests signal stored PIDs other than through tests/helpers/owned_processes.sh (UC-233)"
+fi
+if unloaded="$(unloaded_kills "${TEST_FILES[@]}")" && [ -n "$unloaded" ]; then
+  printf '%s\n' "$unloaded" | sed "s|^$ROOT_DIR/||" >&2
+  fail "tests call owned_kill where tests/helpers/owned_processes.sh is not loaded"
 fi
 
 printf 'owned processes checks passed\n'

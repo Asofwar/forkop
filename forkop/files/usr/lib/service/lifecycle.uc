@@ -168,8 +168,9 @@ let dpi_restart_plan = null;
 let dpi_nft_rollback_file = "";
 let dpi_nft_committed = false;
 let dpi_singbox_backup = "";
-let dns_reload_backup = "";
-const DNSMASQ_CONFIG_FILE = getenv("FORKOP_DNSMASQ_CONFIG_FILE") || "/etc/config/dhcp";
+// How a failed reload takes its dnsmasq step back
+// (snapshot_dnsmasq_reload_config); "" before that step.
+let dns_reload_rollback = "";
 let dpi_guard_active = false;
 // Set once the reload in progress has given way to a stop request
 // (reload_gives_way_to_stop).
@@ -665,37 +666,31 @@ function dnsmasq_has_forkop_managed_state() {
     return dns_apply_success([ "has-managed-state" ]);
 }
 
+// Before the reload's dnsmasq step: whether dnsmasq forwards to sing-box.
+// A reload that fails after that step sets this forwarding again or takes
+// it back (dns/apply.uc configure or restore, which restart dnsmasq), never
+// by copying /etc/config/dhcp back: that copy was not atomic, went around
+// the UCI commit lock and discarded what anyone committed to dhcp during the
+// reload (UC-071). dns/apply.uc edits only Forkop's dnsmasq options, a
+// restore puts back what the configure found, and an edit starts over from
+// a file someone else changed meanwhile.
 function snapshot_dnsmasq_reload_config() {
-    if (dns_reload_backup != "")
-        return true;
-    if (fs.stat(DNSMASQ_CONFIG_FILE) == null)
-        return false;
-    let backup = trim(command_output_from_args([ "mktemp" ]));
-    if (backup == "")
-        return false;
-    if (!command_success_from_args([ "cp", DNSMASQ_CONFIG_FILE, backup ])) {
-        remove_file(backup);
-        return false;
-    }
-    dns_reload_backup = backup;
+    if (dns_reload_rollback == "")
+        dns_reload_rollback = dns_apply_success([ "has-forkop-dns" ]) ? "configure" : "restore";
     return true;
 }
 
 function restore_dnsmasq_reload_config() {
-    if (dns_reload_backup == "")
+    if (dns_reload_rollback == "")
         return true;
-    if (!command_success_from_args([ "cp", dns_reload_backup, DNSMASQ_CONFIG_FILE ]) ||
-        !command_success_from_args([ getenv("DNSMASQ_INIT") || "/etc/init.d/dnsmasq", "restart" ]))
+    if (dns_apply_status([ dns_reload_rollback, "force" ]) != 0)
         return false;
-    remove_file(dns_reload_backup);
-    dns_reload_backup = "";
+    dns_reload_rollback = "";
     return true;
 }
 
 function discard_dnsmasq_reload_config() {
-    if (dns_reload_backup != "")
-        remove_file(dns_reload_backup);
-    dns_reload_backup = "";
+    dns_reload_rollback = "";
 }
 
 // D-1 (b), UC-007: the Clash API secret is mandatory. The package postinst

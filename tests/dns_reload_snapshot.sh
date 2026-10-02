@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# The dnsmasq step of a reload and its rollback (UC-071): the snapshot
+# records whether dnsmasq forwarded to sing-box before the step, a rollback
+# runs the dns/apply.uc operation that brings that back (restore or
+# configure, forced), a rollback that failed is kept for a retry and a
+# completed reload discards it. Nothing copies /etc/config/dhcp: the probe
+# defines no command runner, so a copy would fail it.
+# tests/dnsmasq_reload_rollback.sh runs the whole reload.
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
@@ -21,49 +29,50 @@ for name in names:
     functions.append(match.group())
 
 prefix = r'''
-let fs = require("fs");
-const DNSMASQ_CONFIG_FILE = ARGV[0];
-let dns_reload_backup = "";
-let backup_path = ARGV[1];
-let restart_ok = true;
-let restart_calls = 0;
+let dns_reload_rollback = "";
+let forwarding = false;
+let apply_ok = true;
+let calls = [];
 function check(ok, message) { if (!ok) { warn("FAIL: " + message + "\n"); exit(1); } }
-function command_output_from_args(args) {
-    check(args[0] == "mktemp", "unexpected temporary-file command");
-    fs.writefile(backup_path, "");
-    return backup_path;
+function dns_apply_success(args) {
+    push(calls, join(" ", args));
+    return args[0] == "has-forkop-dns" ? forwarding : true;
 }
-function command_success_from_args(args) {
-    if (args[0] == "cp")
-        return system("cp '" + args[1] + "' '" + args[2] + "'") == 0;
-    if (args[1] == "restart") { restart_calls++; return restart_ok; }
-    check(false, "unexpected command");
+function dns_apply_status(args) {
+    push(calls, join(" ", args));
+    return apply_ok ? 0 : 1;
 }
-function remove_file(path) { fs.unlink(path); }
 '''
 suffix = r'''
-fs.writefile(DNSMASQ_CONFIG_FILE, "old dns\n");
+// dnsmasq did not forward to sing-box: the rollback takes the forwarding
+// back. A second snapshot of the same reload keeps the first answer.
 check(snapshot_dnsmasq_reload_config(), "snapshot failed");
-fs.writefile(DNSMASQ_CONFIG_FILE, "new dns\n");
-check(restore_dnsmasq_reload_config(), "restore failed");
-check(fs.readfile(DNSMASQ_CONFIG_FILE) == "old dns\n" && dns_reload_backup == "" &&
-    fs.stat(backup_path) == null && restart_calls == 1, "previous DNS state was not restored");
-
+forwarding = true;
 check(snapshot_dnsmasq_reload_config(), "second snapshot failed");
-fs.writefile(DNSMASQ_CONFIG_FILE, "changed dns\n");
-restart_ok = false;
-check(!restore_dnsmasq_reload_config() && dns_reload_backup == backup_path &&
-    fs.stat(backup_path) != null, "failed restart discarded rollback copy");
-restart_ok = true;
-check(restore_dnsmasq_reload_config() && fs.readfile(DNSMASQ_CONFIG_FILE) == "old dns\n",
-    "retry did not restore DNS");
+check(restore_dnsmasq_reload_config(), "rollback failed");
+check(join(",", calls) == "has-forkop-dns,restore force" && dns_reload_rollback == "",
+    "the rollback did not restore dnsmasq: " + join(",", calls));
 
+// dnsmasq forwarded to sing-box: the rollback sets the forwarding again. A
+// rollback that failed is kept and retried.
+calls = [];
+check(snapshot_dnsmasq_reload_config(), "snapshot failed");
+apply_ok = false;
+check(!restore_dnsmasq_reload_config() && dns_reload_rollback == "configure",
+    "a failed rollback was discarded");
+apply_ok = true;
+check(restore_dnsmasq_reload_config() && dns_reload_rollback == "", "the retry failed");
+check(join(",", calls) == "has-forkop-dns,configure force,configure force",
+    "the rollback did not configure dnsmasq again: " + join(",", calls));
+
+// A completed reload discards it: no rollback.
 check(snapshot_dnsmasq_reload_config(), "third snapshot failed");
 discard_dnsmasq_reload_config();
-check(fs.stat(backup_path) == null && dns_reload_backup == "", "commit retained DNS backup");
+calls = [];
+check(restore_dnsmasq_reload_config() && length(calls) == 0, "a completed reload was rolled back");
 print("dnsmasq reload snapshot checks passed\n");
 '''
 pathlib.Path(sys.argv[2]).write_text(prefix + '\n\n'.join(functions) + suffix)
 PY
 
-ucode "$WORK_DIR/probe.uc" "$WORK_DIR/dhcp" "$WORK_DIR/dhcp.backup"
+ucode "$WORK_DIR/probe.uc"

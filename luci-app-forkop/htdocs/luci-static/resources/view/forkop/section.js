@@ -8352,12 +8352,16 @@ function createSectionContent(section) {
   o.width = "6rem";
   // The grid row and the rule modal: a rule that Settings use stays enabled
   // (UC-199). LuCI validates a checkbox with the value it sends when
-  // checked, so the state comes from formvalue(). A rule that was already
-  // disabled is fixed in Settings and does not hold up this save.
+  // checked, so the state comes from formvalue(). A rule that Settings could
+  // not use already (disabled, or an action that carries no DNS or
+  // downloads) is fixed in Settings and does not hold up this save.
   o.validate = function (section_id) {
     if (
       this.formvalue(section_id) !== this.disabled ||
-      !ruleSectionFlag({ enabled: this.cfgvalue(section_id) }, "enabled", true)
+      !settingsSectionUsable(
+        this.cfgvalue(section_id),
+        getRuleConfiguredAction(section_id),
+      )
     ) {
       return true;
     }
@@ -8446,6 +8450,17 @@ function createSectionContent(section) {
       return _(
         "Built-in rule sets #2 are not supported for DNS rules. Remove them on the What tab or choose another action.",
       );
+    }
+    // A rule that Settings use keeps an action that carries DNS and
+    // downloads, as long as they could use it before this save (UC-199).
+    if (
+      !settingsSectionAction(value) &&
+      settingsSectionUsable(
+        uci.get(UCI_PACKAGE, section_id, "enabled"),
+        this.cfgvalue(section_id),
+      )
+    ) {
+      return settingsRuleUseRefusal(section_id) || true;
     }
     return true;
   };
@@ -9702,6 +9717,20 @@ function showModalSaveRefusal(modalMap, error) {
   modalMap.root.appendChild(modalMap.forkopSaveRefusal);
 }
 
+// An invalid field shows why in its tooltip. That a rule is selected in
+// Settings (the Enable checkbox, the action) is not about the field itself,
+// so the modal says it too (UC-199).
+function rejectInvalidModalOption(modalMap, { option, section_id }) {
+  const error = invalidOptionError(option, section_id);
+  const inUse = settingsRuleUseRefusal(section_id);
+
+  if (inUse && option.getValidationError(section_id) === inUse) {
+    showModalSaveRefusal(modalMap, error);
+  }
+
+  return Promise.reject(error);
+}
+
 function refuseInvalidModalSave(modalMap) {
   const parse = modalMap.parse;
 
@@ -9712,7 +9741,7 @@ function refuseInvalidModalSave(modalMap) {
     const { invalid, checks } = inspectModalBeforeSave(this);
 
     if (invalid) {
-      return rejectInvalidOption(invalid.option, invalid.section_id);
+      return rejectInvalidModalOption(this, invalid);
     }
 
     const checkedState = modalFormState(this);
@@ -9759,10 +9788,7 @@ function refuseInvalidModalSave(modalMap) {
       const recheck = inspectModalBeforeSave(this);
 
       if (recheck.invalid) {
-        return rejectInvalidOption(
-          recheck.invalid.option,
-          recheck.invalid.section_id,
-        );
+        return rejectInvalidModalOption(this, recheck.invalid);
       }
 
       return parse.apply(this, args);
@@ -9822,14 +9848,40 @@ function restoreStagedUciState(snapshot) {
   });
 }
 
+// validator.uc download_section_action_available(): the actions Settings
+// route DNS and downloads through. A DPI provider counts as installed until
+// its availability is known.
+function settingsSectionAction(action) {
+  const value = backendOptionText(action);
+
+  if (CONNECTION_RULE_ACTIONS.includes(value)) {
+    return true;
+  }
+
+  return (
+    ["zapret", "zapret2", "byedpi"].includes(value) &&
+    (!actionProvidersAvailabilityState.loaded ||
+      isActionProviderInstalledForUi(value))
+  );
+}
+
+// Whether Settings can use a rule with this enabled flag and action.
+function settingsSectionUsable(enabled, action) {
+  return (
+    ruleSectionFlag({ enabled }, "enabled", true) &&
+    settingsSectionAction(action)
+  );
+}
+
 // Settings, a page of their own since the rules moved to the Rules page,
-// route DNS and proxied downloads through a rule. Without that rule, or with
-// it disabled, the backend refuses the configuration at the next reload and
-// start (config/validator.uc validate_dns_settings, validate_runtime_config),
-// so the rule is not removed or disabled here until Settings use another
-// section (UC-008, UC-199). As in validator.uc, a setting that is off uses
-// no section, and components are downloaded through the lists section when
-// none is selected for them.
+// route DNS and proxied downloads through a rule. Without that rule, with it
+// disabled or with an action that carries no DNS or downloads, the backend
+// refuses the configuration at the next reload and start
+// (config/validator.uc validate_dns_settings, validate_runtime_config), so
+// the rule is not removed, disabled or switched to such an action here until
+// Settings use another section (UC-008, UC-199). As in validator.uc, a
+// setting that is off uses no section, and components are downloaded
+// through the lists section when none is selected for them.
 function settingsRuleUseRefusal(section_id) {
   const setting = (key) =>
     backendOptionText(uci.get(UCI_PACKAGE, "settings", key));

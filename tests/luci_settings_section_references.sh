@@ -11,10 +11,11 @@ set -euo pipefail
 # is checked as the save leaves it: provider changes on the same page, the
 # rules as the Rules page saved them. The pages are the shipped
 # page/settings.js and page/rules.js: on the Rules page, deleting or
-# disabling (row or rule modal) the rule that Settings use is refused and
-# explained, and a rule removal that a refused page save blocks is undone
-# and reported instead of failing silently or staying staged for the next
-# save (UC-199).
+# disabling (row or rule modal) the rule that Settings use, or switching it
+# in the rule modal to an action that carries no DNS or downloads, is
+# refused and explained, and a rule removal that a refused page save blocks
+# is undone and reported instead of failing silently or staying staged for
+# the next save (UC-199).
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 node - "$ROOT_DIR/tests/helpers/luci_form_harness.js" <<'NODE'
@@ -157,6 +158,8 @@ const references = [
     };
     const inSettings = (title) => new RegExp(`This rule is selected in Settings for: ${title}\\. ` +
       'Choose another section there first\\.');
+    const modalRefusal = (modal) =>
+      modal.map.root.querySelector('.fkp-rule-save-refusal')?.textContent || '';
     // The next save of the page: a rule modal Save sends every staged edit.
     const nextSave = async (env, config) => {
       await (await env.openRule('dpi')).saveButton();
@@ -196,8 +199,51 @@ const references = [
         modal.option('enabled').getUIElement('vpn').setValue('0');
         await assert.rejects(modal.save(), inSettings(title));
         assert.deepEqual(env.uci.data, config, 'a refused modal save changed UCI');
+
+        // LuCI drops the refusal of the modal Save, and the checkbox shows
+        // it only as a tooltip: the modal says why.
+        await modal.saveButton();
+        assert.match(modalRefusal(modal), inSettings(title), 'the refusal must be shown in the modal');
+        assert.deepEqual(env.uci.data, config, 'a refused modal save changed UCI');
+        await nextSave(env, config);
       });
+
+      // An action that cannot carry DNS or downloads (validator.uc
+      // download_section_action_available) makes the rule as unusable for
+      // Settings as removing it. The action is edited only in the rule modal.
+      for (const action of ['block', 'bypass', 'dns'])
+        await check(`${version} rule modal: switching the rule used for ${use} to ${action}`, async () => {
+          const config = referencedConfig(settings);
+          const env = createEnvironment({ version, config });
+          loadedValues(env);
+          const modal = await env.openRule('vpn');
+          modal.option('action').getUIElement('vpn').setValue(action);
+          await assert.rejects(modal.save(), inSettings(title));
+          assert.deepEqual(env.uci.data, config, 'a refused modal save changed UCI');
+
+          await modal.saveButton();
+          assert.match(modalRefusal(modal), inSettings(title), 'the refusal must be shown in the modal');
+          assert.deepEqual(env.uci.data, config, 'a refused modal save changed UCI');
+          await (await env.openRules()).save();
+          assert.deepEqual(env.uci.data, config, 'the Rules page saved a refused action');
+          await nextSave(env, config);
+        });
     }
+
+    // Another action that carries DNS and downloads keeps the rule usable.
+    await check(`${version} rule modal: the rule used for DNS switched to another usable action`, async () => {
+      const config = referencedConfig(usedFor.dns[0]);
+      config.vpn.mixed_proxy_enabled = '0';
+      config.vpn.community_lists = ['youtube'];
+      const env = createEnvironment({ version, config, fs: { exec: (_command, args) => Promise.resolve({ code: 0,
+        stdout: args && args[0] === 'validate_byedpi_strategy_json' ? '{"valid":true}' : '{}', stderr: '' }) } });
+      const modal = await env.openRule('vpn');
+      modal.option('action').getUIElement('vpn').setValue('byedpi');
+      modal.option('byedpi_cmd_opts').getUIElement('vpn').setValue('-o 1 -d 2');
+      await modal.save();
+      assert.equal(env.uci.data.vpn.action, 'byedpi');
+      assert.equal(modalRefusal(modal), '', 'a save that passes must not show a refusal');
+    });
 
     // Every setting that uses the rule is named.
     await check(`${version} Rules page: a rule used for DNS and downloads`, async () => {
@@ -227,6 +273,12 @@ const references = [
       await (await removed.openRules()).removeRule('vpn');
       assert.equal(removed.uci.data.vpn, undefined, 'the rule was not removed');
       assert.deepEqual(notifications, []);
+
+      const switched = createEnvironment({ version, config: settingsConfig(settings) });
+      const modal = await switched.openRule('vpn');
+      modal.option('action').getUIElement('vpn').setValue('block');
+      await modal.save();
+      assert.equal(switched.uci.data.vpn.action, 'block');
     });
 
     // A Settings section that is already unavailable is fixed in Settings: it
@@ -244,6 +296,29 @@ const references = [
         assert.equal(env.uci.data.dpi, undefined, 'an unrelated removal was refused');
         assert.deepEqual(notifications, []);
       }
+
+      // Neither does a rule that Settings could not use before this save: a
+      // disabled one switched to another action, one whose action already
+      // carries no DNS switched again or disabled.
+      const config = settingsConfig({ dns_detour_enabled: '1', dns_detour_section: 'off',
+        download_lists_via_proxy: '1', download_lists_via_proxy_section: 'blk' });
+      config.blk = section('blk', { action: 'block', domain: 'blocked.example' });
+      for (const [name, edit, saved] of [
+        ['off', (modal) => modal.option('action').getUIElement('off').setValue('block'), { action: 'block' }],
+        ['blk', (modal) => modal.option('action').getUIElement('blk').setValue('bypass'), { action: 'bypass' }],
+        ['blk', (modal) => modal.option('enabled').getUIElement('blk').setValue('0'), { enabled: '0' }],
+      ]) {
+        const env = createEnvironment({ version, config });
+        const modal = await env.openRule(name);
+        edit(modal);
+        await modal.save();
+        for (const [key, value] of Object.entries(saved)) assert.equal(env.uci.data[name][key], value);
+      }
+      const env = createEnvironment({ version, config });
+      const rules = await env.openRules();
+      rules.setEnabled('blk', '0');
+      await rules.save();
+      assert.equal(env.uci.data.blk.enabled, '0');
     });
 
     // Deleting a rule saves the whole page silently in LuCI. When another

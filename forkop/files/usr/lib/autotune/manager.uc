@@ -617,13 +617,15 @@ function apply_group(name, aggregate, full, dns_resolver, trigger) {
     else if (type(plan.owner) != "object" || plan.owner.section != name) record.reason = "owner_changed";
     else if (plan.selected != aggregate.candidate) record.reason = "plan_candidate_differs";
     else if (fs.writefile(plan_file, sprintf("%J\n", plan)) == null) record.reason = "plan_write_failed";
-    else {
-        // A crash from here on leaves an apply of unknown outcome; the next
-        // run counts it and cools the candidate down (recover_crashed_run).
-        with_state((state) => {
+    // A crash from here on leaves an apply of unknown outcome; the next run
+    // counts it and cools the candidate down (recover_crashed_run). Without
+    // that mark on flash no apply starts (UC-074).
+    else if (!with_state((state) => {
             if (type(state.worker) == "object")
                 state.worker = { ...state.worker, phase: "applying", group: name, candidate: aggregate.candidate, phase_at: now() };
-        });
+        }))
+        record.reason = "state_write_failed";
+    else {
         let result = run_tool("apply", [ "apply", plan_file, dns_resolver ]);
         let o = autoapply.outcome(result);
         record.status = o.status;
@@ -652,9 +654,10 @@ function remove_stale_apply_dirs() {
 // known (autotune/apply.uc itself keeps the transaction recoverable).
 // A manual apply (kind "apply") is marked the same way; its crash cools the
 // candidate down but is not counted against the autonomous daily limit.
+// ok: the mark is on flash; without it the caller does nothing (UC-074).
 function begin_run(trigger, scope, started, policy, extra) {
     let crashed = null, previous = null;
-    with_state((state) => {
+    let ok = with_state((state) => {
         previous = state.worker;
         if (type(state.worker) == "object" && state.worker.state == "running") {
             crashed = { ...state.worker, state: "crashed", detected_at: now() };
@@ -674,8 +677,8 @@ function begin_run(trigger, scope, started, policy, extra) {
         state.worker = { state: "running", pid, ticks: identity.start_ticks(pid), trigger, scope, started_at: started,
             phase: "measuring", ...(extra || {}) };
     });
-    if (crashed != null) history("autotune_run", "failure");
-    return { crashed, previous };
+    if (ok && crashed != null) history("autotune_run", "failure");
+    return { ok, crashed, previous };
 }
 
 function run_locked(scope, trigger) {
@@ -683,7 +686,9 @@ function run_locked(scope, trigger) {
     let sections = config_sections();
     if (sections == null) return { status: "failed", reason: "config_unavailable" };
     let read = policy_module.read(sections), policy = read.policy;
-    let crashed = begin_run(trigger, scope, started, policy).crashed;
+    let begun = begin_run(trigger, scope, started, policy);
+    if (!begun.ok) return { status: "failed", reason: "state_write_failed" };
+    let crashed = begun.crashed;
     remove_stale_apply_dirs();
     let local = state_module.read();
     // A state recovered from a corrupt file in this very run.
@@ -891,6 +896,7 @@ function manual_apply_locked(name, job) {
 
     let begun = begin_run("manual", name, started, policy,
         { kind: "apply", job: job || null, phase: "checking", group: name, candidate, phase_at: started });
+    if (!begun.ok) return refuse("state_write_failed");
     let finish = (output) => {
         with_state((s) => {
             // The last run stays what the status shows; the apply is in the

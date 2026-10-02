@@ -1030,7 +1030,11 @@ function rollback_unreadable() {
             return { status: "failed", reason: "rollback_" + as_string(restored.reason || restored.status), rollback: result.rollback };
     }
     result.finished_at = now();
-    if (!fs.rename(STATE_FILE, STATE_FILE + ".corrupt") || !state_write(result))
+    // A copy is set aside: the unreadable record stays the record until the
+    // record of this rollback is on flash, as the autotune state (UC-074).
+    let unreadable = fs.readfile(STATE_FILE);
+    if (unreadable != null) fs.writefile(STATE_FILE + ".corrupt", unreadable);
+    if (!state_write(result))
         return { status: "failed", reason: "state_write_failed", rollback: result.rollback };
     return result;
 }

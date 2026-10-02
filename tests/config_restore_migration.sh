@@ -57,6 +57,13 @@ case "${3:-}" in
     echo "$4" >> "$STATE/events"
     case "$4" in
       dpi-transition-guard-state) echo absent ;;
+      # A UCI commit (LuCI, a URLTest override) that lands after the reload
+      # was checked, while the restore releases its guard: nothing proved it.
+      remove-dpi-transition-guard)
+        if [ -e "$STATE/edit-on-release" ]; then
+          rm -f "$STATE/edit-on-release"
+          printf "\nconfig section 'unverified'\n\toption marker 'UNVERIFIED-EDIT'\n" >> "$FORKOP_CONFIG_FILE"
+        fi ;;
     esac
     exit 0 ;;
   */config/validator.uc) echo validate >> "$STATE/events"; exit 0 ;;
@@ -321,7 +328,23 @@ restore newer
 cmp -s "$FORKOP_CONFIG_FILE" "$WORK/newer.uci" || fail "a newer snapshot was changed"
 ok "newer snapshot -> restored as it is"
 
-# 7. The list says which snapshots a restore migrates, from which version to
+# 7. Last-known-working holds the migrated copy that the reload proved, not
+# an edit committed after the check, while the guard is released.
+live_config
+: > "$STATE/edit-on-release"
+restore older
+[ ! -e "$STATE/edit-on-release" ] || fail "edit during guard release: the guard was not released"
+[ "$(json status)" = success ] || fail "edit during guard release: status"
+grep -q 'UNVERIFIED-EDIT' "$FORKOP_CONFIG_FILE" || fail "edit during guard release: the edit was not left in place"
+working="$(lkg)"
+node -e '
+  const s = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+  if (s.content.includes("UNVERIFIED-EDIT") || !s.content.includes("option marker \x27older\x27") ||
+    !s.content.includes("mirror.infotechtg.ru") || s.content.includes("mirror.51343.ru")) process.exit(1);
+' "$FORKOP_SNAPSHOT_DIR/$working.json" || fail "edit during guard release: last-known-working holds an unverified edit"
+ok "edit during the guard release -> last-known-working holds the migrated copy the reload proved"
+
+# 8. The list says which snapshots a restore migrates, from which version to
 # which; new snapshots record their schema; nothing secret is listed.
 live_config
 PATH="$WORK/bin:$PATH" "$REAL_UCODE" -L "$LIB" "$SCRIPT" list > "$WORK/list.json"

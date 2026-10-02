@@ -291,8 +291,11 @@ function trim_retention(keep, automatic) {
 // reason only one of that reason. A new snapshot records the release that
 // took it and the migration state of its configuration (schema, D-16); one
 // that an older release wrote has no schema, its configuration tells.
-function create(kind, reason, dedupe, keep) {
-    let content = read_config();
+// content (optional): the configuration to take instead of the file's, one
+// a transaction proved (a migrated restore); the file may hold an edit
+// committed since.
+function create(kind, reason, dedupe, keep, content) {
+    if (content == null) content = read_config();
     if (content == null) return { status: "failed", reason: "config_unavailable" };
     let hash = sha(content);
     if (hash == "") return { status: "failed", reason: "hash_unavailable" };
@@ -1030,10 +1033,12 @@ function do_restore(id, expected) {
     let result = guarded_replace(before, content, pre, () => {
         // Last-known-working names the configuration the reload proved. A
         // migrated copy is not the source snapshot, which stays as it was:
-        // a snapshot of the copy is taken (or found) for it.
+        // a snapshot of the copy is taken (or found) for it, of the copy
+        // itself: an edit committed since the check (while the guard was
+        // released) is in the file, and no reload proved it.
         let working = id;
         if (migration != null)
-            working = create("automatic", "last-known-working", true, [ id, pre.snapshot.id ]).snapshot?.id;
+            working = create("automatic", "last-known-working", true, [ id, pre.snapshot.id ], content).snapshot?.id;
         if (working == null || !atomic(LKG, working + "\n"))
             return { status: "needs_attention", reason: "lkg_update_failed", guard: "inactive" };
         return { status: "success", snapshot: metadata(target), changes: diff(before, content) };

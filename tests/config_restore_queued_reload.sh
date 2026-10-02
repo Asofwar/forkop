@@ -236,7 +236,9 @@ expect needs_attention rollback_reload_queued "apply: target and rollback reload
 { [ "$(cat "$STATE/guard")" = valid ] && [ "$(lkg)" = "$base_lkg" ] && [ "$(marker)" = "marker 'bad'" ]; } || fail "apply double queue: $(cat "$WORK/result.json")"
 ! events | grep -q '^runtime-reload:' || fail "apply double queue: a runtime reload ran"
 [ "$(events | grep -c '^init.d-reload:autotune$')" = 2 ] || fail "apply did not pass its reason to init.d: $(events)"
-events | grep -q '^health:autotune_apply:failure$' || fail "apply double queue not recorded as a failure: $(events)"
+# The transaction records no event of its own: the manager records the apply
+# once, with the outcome apply.uc reports (needs_attention: failure; UC-060).
+! events | grep -q '^health:autotune_apply' || fail "the apply transaction recorded an event of its own: $(events)"
 release_lock; rm -f "$FORKOP_PENDING_RELOAD_FILE"
 : > "$STATE/take-lock"; : > "$STATE/release-after-queue"
 run apply "$WORK/candidate" "$base_hash"

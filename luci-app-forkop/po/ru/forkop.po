@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-02 12:54+0000\n"
-"PO-Revision-Date: 2026-10-02 12:54+0000\n"
+"POT-Creation-Date: 2026-10-02 13:03+0000\n"
+"PO-Revision-Date: 2026-10-02 13:03+0000\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -488,6 +488,9 @@ msgstr "Политика автоподбора"
 msgid "Autotune recommendation confirmed"
 msgstr "Рекомендация автоподбора подтверждена"
 
+msgid "Autotune rollback"
+msgstr "Откат автоподбора"
+
 msgid "Autotune run"
 msgstr "Запуск автоподбора"
 
@@ -506,11 +509,23 @@ msgstr "Автоподбор: автоматическое применение"
 msgid "Autotune: automatic apply of %s"
 msgstr "Автоподбор: автоматическое применение %s"
 
+msgid "Autotune: automatic rollback"
+msgstr "Автоподбор: автоматический откат"
+
+msgid "Autotune: automatic rollback of %s"
+msgstr "Автоподбор: автоматический откат %s"
+
 msgid "Autotune: manual apply"
 msgstr "Автоподбор: ручное применение"
 
 msgid "Autotune: manual apply of %s"
 msgstr "Автоподбор: ручное применение %s"
+
+msgid "Autotune: manual rollback"
+msgstr "Автоподбор: ручной откат"
+
+msgid "Autotune: manual rollback of %s"
+msgstr "Автоподбор: ручной откат %s"
 
 msgid "Available to administrators only."
 msgstr "Доступно только администратору."

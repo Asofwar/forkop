@@ -19,8 +19,9 @@ function formatTime(timestamp: number) {
   return new Date(timestamp * 1000).toLocaleString();
 }
 
-// A plain reload is not a recovery: only restores, recovery runs and events
-// that ended in a rollback ("recovered") count.
+// A plain reload is not a recovery: only restores (an autotune rollback
+// restores a snapshot too), recovery runs and events that ended in a
+// rollback ("recovered") count.
 export function lastRecoveryEvent(health: Forkop.HealthStatus) {
   const events = [
     ...health.recent_activity,
@@ -28,6 +29,7 @@ export function lastRecoveryEvent(health: Forkop.HealthStatus) {
   ].filter(
     (event) =>
       event.kind === 'restore' ||
+      event.kind === 'autotune_rollback' ||
       event.kind === 'recovery' ||
       event.status === 'recovered',
   );
@@ -174,6 +176,7 @@ const CATEGORY: Record<string, Exclude<HistoryFilter, 'all'>> = {
   start: 'service',
   recovery: 'service',
   autotune_apply: 'autotune',
+  autotune_rollback: 'autotune',
   autotune_mode: 'autotune',
   autotune_recommendation: 'autotune',
   autotune_run: 'autotune',
@@ -199,9 +202,12 @@ export interface HistoryItem {
   relative: string;
 }
 
-// An autotune apply names its strategy and whether a person or the
-// schedule started it; other events are named by their kind.
+// An autotune apply or rollback names its strategy and whether a person or
+// the schedule (for a rollback: a failed verification) started it; other
+// events are named by their kind.
 export function eventTitle(event: Forkop.HistoryEvent) {
+  if (event.kind === 'autotune_rollback' && event.trigger)
+    return rollbackTitle(event.trigger === 'manual', event.candidate ?? '');
   if (event.kind !== 'autotune_apply' || !event.trigger)
     return eventKindLabel(event.kind);
   const candidate = event.candidate ?? '';
@@ -220,6 +226,18 @@ export function eventTitle(event: Forkop.HistoryEvent) {
     manual
       ? _('Autotune: manual apply of %s')
       : _('Autotune: automatic apply of %s')
+  ).replace('%s', candidate);
+}
+
+function rollbackTitle(manual: boolean, candidate: string) {
+  if (!candidate)
+    return manual
+      ? _('Autotune: manual rollback')
+      : _('Autotune: automatic rollback');
+  return (
+    manual
+      ? _('Autotune: manual rollback of %s')
+      : _('Autotune: automatic rollback of %s')
   ).replace('%s', candidate);
 }
 

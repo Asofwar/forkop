@@ -775,6 +775,18 @@ function stale_reason(p, resolver) {
     return null;
 }
 
+// The history event of a rollback that started its restore: an autotune
+// rollback, never a restore, with who started it (the operator, or the apply
+// whose candidate failed its verification) and its outcome once known: a
+// success only when the old configuration and strategy are proven back
+// (UC-060, design H.6). The restore itself records nothing ("autotune").
+function rollback_event(restored, phase, trigger, candidate) {
+    if (!restored.started) return;
+    let status = phase == "rolled_back" ? "success" : restored.status == "restored_not_started" ? "not_started" : "failure";
+    success([ "ucode", "-L", LIB_DIR, LIB_DIR + "/diagnostics/health.uc", "record", "autotune_rollback", status,
+        trigger, as_string(candidate) ]);
+}
+
 // Restore the pre-apply snapshot through the standard restore transaction
 // and prove the old configuration and runtime are back.
 // A rollback replaces only the candidate this apply wrote: the restore is
@@ -787,7 +799,8 @@ function rollback_to(audit, p, why) {
     audit.phase = "rolling_back";
     state_write(audit);
     let expected = valid_hash(audit.candidate_fingerprint) ? audit.candidate_fingerprint : as_string(audit.candidate_hash);
-    let restored = snapshots([ "restore", audit.pre_snapshot, expected ]);
+    let trigger = why == "operator_rollback" ? "manual" : "automatic";
+    let restored = snapshots([ "restore", audit.pre_snapshot, expected, "autotune" ]);
     // A lifecycle action that owns the reload lock, or a running list update
     // (which also fails verification's no_service_action), refuses the
     // restore unchanged. An automatic rollback waits for it, bounded, instead of
@@ -795,7 +808,7 @@ function rollback_to(audit, p, why) {
     for (let waited = 0; why != "operator_rollback" && restored.status == "busy" &&
         restored.reason == "service_action_in_progress" && waited < ROLLBACK_WAIT_SECONDS && !interrupted; waited++) {
         system("sleep 1");
-        if (service_action() != "service_action_in_progress") restored = snapshots([ "restore", audit.pre_snapshot, expected ]);
+        if (service_action() != "service_action_in_progress") restored = snapshots([ "restore", audit.pre_snapshot, expected, "autotune" ]);
     }
     audit.rollback = { status: restored.status, reason: restored.reason || null, guard: restored.guard || null };
     let edited = restored.reason == "config_changed_during_transaction";
@@ -806,6 +819,9 @@ function rollback_to(audit, p, why) {
         audit.phase = recorded.phase; audit.status = recorded.status; audit.reason = recorded.reason;
         audit.last_attempt = { status: "failed", reason: "rollback_" + as_string(restored.reason || restored.status), finished_at: now() };
         state_write(audit);
+        // A restore that ran and put the candidate back is still a failed
+        // rollback in the history.
+        rollback_event(restored, "failed", trigger, audit.selected);
         return { status: "failed", reason: "rollback_not_started:" + as_string(restored.reason || restored.status), phase: audit.phase };
     }
     // Not rolled back. After an edit made while the candidate verified, the
@@ -818,7 +834,9 @@ function rollback_to(audit, p, why) {
         audit.reason = why + (!edited ? ":rollback_" + as_string(restored.status) :
             restored.started ? ":config_changed_during_rollback" : ":config_changed_during_transaction");
         audit.finished_at = now();
-        state_write(audit); return audit;
+        state_write(audit);
+        rollback_event(restored, audit.phase, trigger, audit.selected);
+        return audit;
     }
     let text = fs.readfile(CONFIG_FILE);
     let lkg = trim(as_string(fs.readfile(SNAPSHOT_DIR + "/last-known-working")));
@@ -836,6 +854,7 @@ function rollback_to(audit, p, why) {
     audit.reason = !ok && interrupted ? why + ":proof_interrupted" : why;
     audit.finished_at = now();
     state_write(audit);
+    rollback_event(restored, audit.phase, trigger, audit.selected);
     return audit;
 }
 
@@ -1000,8 +1019,10 @@ function rollback_unreadable() {
     let result = { phase: "rolled_back", status: "rolled_back", reason: "apply_state_unreadable", mutation: null,
         rollback: { status: "not_needed", reason: null, guard: null, lkg: id }, started_at: now(), finished_at: null };
     if (fingerprint(fs.readfile(CONFIG_FILE)) != fingerprint(item.content)) {
-        let restored = snapshots([ "restore", id ]);
+        let restored = snapshots([ "restore", id, "", "autotune" ]);
         result.rollback = { status: restored.status, reason: restored.reason || null, guard: restored.guard || null, lkg: id };
+        // The operator's; the record names no candidate.
+        rollback_event(restored, restored.status == "success" ? "rolled_back" : "failed", "manual", null);
         if (restored.status != "success")
             return { status: "failed", reason: "rollback_" + as_string(restored.reason || restored.status), rollback: result.rollback };
     }

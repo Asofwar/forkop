@@ -5814,6 +5814,8 @@ function eventKindLabel(kind) {
       return _("Recovery");
     case "autotune_apply":
       return _("Autotune apply");
+    case "autotune_rollback":
+      return _("Autotune rollback");
     case "autotune_mode":
       return _("Autotune mode changed");
     case "autotune_recommendation":
@@ -17730,7 +17732,7 @@ function lastRecoveryEvent(health2) {
     ...health2.recent_activity,
     ...health2.recovery.last_event ? [health2.recovery.last_event] : []
   ].filter(
-    (event) => event.kind === "restore" || event.kind === "recovery" || event.status === "recovered"
+    (event) => event.kind === "restore" || event.kind === "autotune_rollback" || event.kind === "recovery" || event.status === "recovered"
   );
   return events.sort((a, b) => b.timestamp - a.timestamp)[0] ?? null;
 }
@@ -17841,6 +17843,7 @@ var CATEGORY = {
   start: "service",
   recovery: "service",
   autotune_apply: "autotune",
+  autotune_rollback: "autotune",
   autotune_mode: "autotune",
   autotune_recommendation: "autotune",
   autotune_run: "autotune"
@@ -17858,6 +17861,8 @@ function historyFilterLabel(filter2) {
   }
 }
 function eventTitle(event) {
+  if (event.kind === "autotune_rollback" && event.trigger)
+    return rollbackTitle(event.trigger === "manual", event.candidate ?? "");
   if (event.kind !== "autotune_apply" || !event.trigger)
     return eventKindLabel(event.kind);
   const candidate = event.candidate ?? "";
@@ -17867,6 +17872,11 @@ function eventTitle(event) {
   if (event.status === "success")
     return (manual ? _("Autotune: %s applied manually") : _("Autotune: %s applied automatically")).replace("%s", candidate);
   return (manual ? _("Autotune: manual apply of %s") : _("Autotune: automatic apply of %s")).replace("%s", candidate);
+}
+function rollbackTitle(manual, candidate) {
+  if (!candidate)
+    return manual ? _("Autotune: manual rollback") : _("Autotune: automatic rollback");
+  return (manual ? _("Autotune: manual rollback of %s") : _("Autotune: automatic rollback of %s")).replace("%s", candidate);
 }
 function historyItems(events, filter2, nowMs = Date.now()) {
   return events.filter((event) => filter2 === "all" || CATEGORY[event.kind] === filter2).slice().sort((a, b) => b.timestamp - a.timestamp).map((event) => ({

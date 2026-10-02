@@ -64,6 +64,24 @@ JSON
 ucode "$HEALTH" fixture "$TEST_DIR/fixture.json" | grep -q '"kind": *"autotune_apply"' ||
   fail "autotune apply must count as the last reload"
 
+# An autotune rollback is an event of its own kind, never a restore, with who
+# started it and the candidate it rolled back (UC-060, design H.6); its
+# restore reloads the runtime, so it counts as the last reload too.
+ucode "$HEALTH" record autotune_rollback success automatic multisplit || fail "autotune rollback event refused"
+ucode "$HEALTH" record autotune_rollback failure manual 'bad name' || fail "autotune rollback event refused"
+ucode "$HEALTH" history > "$TEST_DIR/rollback.json"
+node - "$TEST_DIR/rollback.json" <<'JS'
+const assert = require('node:assert/strict');
+const events = JSON.parse(require('node:fs').readFileSync(process.argv[2])).events;
+assert.deepEqual(events.slice(-2).map(({ kind, status, trigger, candidate }) => ({ kind, status, trigger, candidate })), [
+  { kind: 'autotune_rollback', status: 'success', trigger: 'automatic', candidate: 'multisplit' },
+  { kind: 'autotune_rollback', status: 'failure', trigger: 'manual', candidate: undefined },
+]);
+JS
+sed 's/"autotune_apply"/"autotune_rollback"/' "$TEST_DIR/fixture.json" > "$TEST_DIR/rollback-fixture.json"
+ucode "$HEALTH" fixture "$TEST_DIR/rollback-fixture.json" | grep -q '"kind": *"autotune_rollback"' ||
+  fail "autotune rollback must count as the last reload"
+
 # Snapshot list marks the last-known-working snapshot.
 SNAP="$TEST_DIR/snapshots"
 mkdir -p "$SNAP"

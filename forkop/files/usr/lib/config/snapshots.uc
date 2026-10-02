@@ -1175,6 +1175,10 @@ else if (mode == "delete") {
     }
 }
 else if (mode == "restore") {
+    // "autotune": the rollback of an autotune apply, which autotune/apply.uc
+    // records itself as autotune_rollback once it has proven the old
+    // strategy again, never as a restore (UC-060).
+    let rollback = value(ARGV[3]) == "autotune";
     answer = do_restore(value(ARGV[1]), value(ARGV[2]));
     // Health records a restore only when its transaction started, as for an
     // apply: a refusal before it (busy, staged uci changes, a kept runtime
@@ -1183,17 +1187,16 @@ else if (mode == "restore") {
     // behind did change the runtime (guarded_replace).
     // A restore that an explicit stop kept from starting the runtime is no
     // success: nothing verified it.
-    if (answer.started)
+    if (answer.started && !rollback)
         success([ "ucode", "-L", LIB_DIR, LIB_DIR + "/diagnostics/health.uc", "record", "restore",
             answer.status == "success" ? "success" : answer.status == "recovered" ? "recovered" :
             answer.status == "restored_not_started" ? "not_started" : "failure" ]);
 }
 else if (mode == "apply") {
+    // No event here: this is the transaction of an autotune apply, whose
+    // outcome is known only after its production verification. The manager
+    // records the apply once, with that outcome (UC-060).
     answer = do_apply(ARGV[1], ARGV[2], ARGV[3]);
-    // Health records a configuration transaction only when one was started.
-    if (answer.started)
-        success([ "ucode", "-L", LIB_DIR, LIB_DIR + "/diagnostics/health.uc", "record", "autotune_apply",
-            answer.status == "success" ? "success" : answer.status == "recovered" ? "recovered" : "failure" ]);
 }
 else if (mode == "confirm-working") {
     // A start or reload of the lifecycle; "autotune": the apply that has

@@ -43,7 +43,10 @@ case "${3:-}" in
       remove-dpi-transition-guard) rm -f "$NFT_STATE/tables/ForkopConfigRestoreDpiGuard"; exit 0 ;;
     esac; exit 0 ;;
   */config/validator.uc) [ -z "${VALIDATE_SLEEP:-}" ] || sleep "$VALIDATE_SLEEP"; [ -z "${VALIDATE_FAIL:-}" ]; exit ;;
-  */diagnostics/health.uc) echo "health $4 $5 $6" >> "$STUB_LOG/health.log"; exit 0 ;;
+  # Logged, and kept as health.uc keeps its journal (it drops an event kind
+  # it does not know).
+  */diagnostics/health.uc) echo "health $4 $5 $6 $7 $8" >> "$STUB_LOG/health.log"
+    FORKOP_HISTORY_FILE="$STATE/health/history.jsonl" FORKOP_RUNTIME_STATE_DIR="$STATE/health" exec "$REAL_UCODE" "$@" ;;
   */config/snapshots.uc)
     [ "${4:-}" != confirm-working ] || [ -z "${CONFIRM_FAIL:-}" ] || { echo '{"status":"failed","reason":"stub"}'; exit 1; }
     # EDIT_BEFORE_RESTORE: an edit (LuCI Save & Apply, another tab) lands right before a restore reads the file.
@@ -559,6 +562,43 @@ for plan in "0 1 0" "0 q 0"; do
 done
 ok "13b rollback restore failed or queued, candidate put back -> needs_attention, last-known-working stays pre-apply"
 
+# 13c. The history (UC-060, design H.6). The transaction records nothing of
+#      its own: the manager records the apply once apply.uc has its verified
+#      outcome (autotune_manual_apply.sh, autotune_autoapply.sh), so each
+#      apply is one autotune_apply event and none claims success before the
+#      verification. A rollback, automatic after a failed verification or the
+#      operator's, is one autotune_rollback event with its trigger and
+#      candidate, recorded once the old strategy is proven again (a restore
+#      that fails or whose proof fails is no success), never a restore; one
+#      refused before it started is none.
+journal() {
+  node -e 'const fs=require("fs");const f=process.argv[1];if(!fs.existsSync(f))process.exit(0);
+    for(const l of fs.readFileSync(f,"utf8").split("\n").filter(Boolean)){const e=JSON.parse(l);
+    console.log([e.kind,e.status,e.trigger||"",e.candidate||""].join(":"))}' "$STATE/health/history.jsonl"
+}
+reset_apply; plan_ready; rm -rf "$STATE/health"; at apply "$WORK/plan.json"
+json 'a.equal(r.status, "applied");' "$WORK/out.json"
+[ -z "$(journal)" ] || fail "the transaction recorded events of its own: $(journal)"
+at rollback
+json 'a.equal(r.status, "rolled_back");' "$WORK/out.json"
+[ "$(journal)" = "autotune_rollback:success:manual:multisplit" ] || fail "operator rollback: $(journal)"
+reset_apply; plan_ready; rm -rf "$STATE/health"; export PROD_PLAN=reset; at apply "$WORK/plan.json"
+json 'a.equal(r.status, "rolled_back");' "$WORK/out.json"
+[ "$(journal)" = "autotune_rollback:success:automatic:multisplit" ] || fail "automatic rollback: $(journal)"
+for case in "0 1 1:needs_attention:failure" "0 1 0:needs_attention:failure"; do
+  reset_apply; plan_ready; rm -rf "$STATE/health"; export PROD_PLAN=reset
+  echo "${case%%:*}" > "$STATE/reload.plan"; at apply "$WORK/plan.json"
+  rest="${case#*:}"
+  json "a.equal(r.status, '${rest%%:*}');" "$WORK/out.json"
+  [ "$(journal)" = "autotune_rollback:${rest#*:}:automatic:multisplit" ] || fail "${case%%:*}: $(journal)"
+done
+reset_apply; plan_ready; rm -rf "$STATE/health"; rm -f "$STATE/lock-taken"
+WORK_RELOAD="$WORK/reload" FORKOP_RELOAD_COMMAND="$WORK/reload-then-lock" FORKOP_AUTOTUNE_ROLLBACK_WAIT_SECONDS=1 at apply "$WORK/plan.json"
+kill "$(holder)" 2>/dev/null || true
+json 'a.equal(r.reason, "verification_failed:rollback_busy");' "$WORK/out.json"
+[ -z "$(journal)" ] || fail "a rollback refused before it started was recorded: $(journal)"
+ok "13c no event from the transaction; a rollback is one autotune_rollback with its outcome, trigger and candidate"
+
 # 13c. While the rollback waits for a lifecycle action, that action (a reload
 #      of the unchanged candidate) ends and confirms the working configuration
 #      (service/lifecycle.uc finish_reload_status): the record is still being
@@ -1038,7 +1078,7 @@ grep -q "option dns_rewrite_ttl '31'" "$FORKOP_CONFIG_FILE" || fail "the automat
 saved="$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).rollback.saved_snapshot)' "$WORK/out.json")"
 node -e 'const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));if(s.reason!=="concurrent-change"||!s.content.includes("dns_rewrite_ttl '"'"'31'"'"'"))process.exit(1)' "$FORKOP_SNAPSHOT_DIR/$saved.json" ||
   fail "the edit is not saved as a snapshot"
-! grep -q 'restore success' "$STUB_LOG/health.log" || fail "a restore was recorded as a success"
+! grep -q 'record restore\|record autotune_rollback' "$STUB_LOG/health.log" || fail "a rollback that never started was recorded"
 # The edit was made on top of the candidate, so the rule still runs the
 # strategy that has just failed its production check: the next start or
 # reload does not make that configuration last-known-working, and the status
@@ -1172,7 +1212,9 @@ json 'a.equal(r.status, "failed"); a.equal(r.reason, "reload_queued_recovered");
 for plan in "q q" "m m" "1 q" "t t"; do
   reset_apply; plan_ready; : > "$STUB_LOG/health.log"; echo "$plan" > "$STATE/reload.plan"; at apply "$WORK/plan.json"
   json 'a.equal(r.status, "needs_attention"); a.equal(r.reload.reason, "rollback_reload_queued"); a.equal(r.applied, false);' "$WORK/out.json"
-  grep -q 'autotune_apply failure' "$STUB_LOG/health.log" || fail "$plan: queued reload not recorded as a failure"
+  # The manager records the apply with its outcome; the transaction never
+  # records one of its own (UC-060).
+  ! grep -q 'record autotune_apply' "$STUB_LOG/health.log" 2>/dev/null || fail "$plan: the transaction recorded the apply"
   [ -e "$NFT_STATE/tables/ForkopConfigRestoreDpiGuard" ] || fail "$plan: guard released after an unconfirmed reload"
   [ "$(lkg)" = "$PRE_LKG" ] || fail "$plan: last-known-working moved by a queued reload"
   ! grep -q 'autotune_apply success' "$STUB_LOG/health.log" 2>/dev/null || fail "$plan: queued reload recorded as success"
@@ -1269,7 +1311,7 @@ sed -i "s/option dns_rewrite_ttl '60'/option dns_rewrite_ttl '15'/" "$FORKOP_CON
 wait "$runner" || true; unset GUARD_SLEEP
 json 'a.equal(r.status, "stale"); a.equal(r.reason, "config_changed");' "$WORK/out.json"
 { [ "$(chash)" = "$edited" ] && [ "$(reloads)" = 0 ] && [ ! -e "$NFT_STATE/tables/ForkopConfigRestoreDpiGuard" ]; } || fail "concurrent edit overwritten"
-! grep -q 'health restore' "$STUB_LOG/health.log" 2>/dev/null || fail "health recorded a transaction that never wrote"
+! grep -q 'record restore\|record autotune_rollback' "$STUB_LOG/health.log" 2>/dev/null || fail "health recorded a transaction that never wrote"
 ok "edit during guard installation -> stale, edit kept, guard released, no health event"
 
 # Third review -----------------------------------------------------------------

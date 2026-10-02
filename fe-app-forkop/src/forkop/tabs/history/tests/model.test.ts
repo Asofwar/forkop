@@ -96,6 +96,16 @@ describe('recovery state', () => {
     expect(recoveryRows(rolledBack, [])[1].value).toMatch(
       /^Configuration reload: Recovered · /,
     );
+
+    // An autotune rollback restored a snapshot: it is a recovery.
+    const autotuneRollback = health({
+      recent_activity: [
+        { kind: 'autotune_rollback', status: 'success', timestamp: 8 },
+      ],
+    });
+    expect(recoveryRows(autotuneRollback, [])[1].value).toMatch(
+      /^Autotune rollback: Succeeded · /,
+    );
   });
 
   it('maps an active guard and pending package recovery', () => {
@@ -231,6 +241,50 @@ describe('history list', () => {
       'Autotune: automatic apply of fake',
       'Autotune apply',
     ]);
+  });
+
+  // UC-060, design H.6: a rollback is an autotune event of its own, never a
+  // snapshot restore.
+  it('names automatic and manual autotune rollbacks', () => {
+    const items = historyItems(
+      [
+        {
+          kind: 'autotune_rollback',
+          status: 'success',
+          timestamp: 4,
+          trigger: 'automatic',
+          candidate: 'fake',
+        },
+        {
+          kind: 'autotune_rollback',
+          status: 'failure',
+          timestamp: 3,
+          trigger: 'manual',
+          candidate: 'multisplit',
+        },
+        {
+          kind: 'autotune_rollback',
+          status: 'success',
+          timestamp: 2,
+          trigger: 'manual',
+        },
+        { kind: 'autotune_rollback', status: 'success', timestamp: 1 },
+      ],
+      'autotune',
+    );
+    expect(items.map((item) => item.title)).toEqual([
+      'Autotune: automatic rollback of fake',
+      'Autotune: manual rollback of multisplit',
+      'Autotune: manual rollback',
+      'Autotune rollback',
+    ]);
+    expect(items[1].outcome.label).toBe('Failed');
+    expect(
+      historyItems(
+        [{ kind: 'autotune_rollback', status: 'success', timestamp: 1 }],
+        'config',
+      ),
+    ).toHaveLength(0);
   });
 
   it('filters by category', () => {

@@ -15,12 +15,15 @@ const HISTORY_FILE = getenv("FORKOP_HISTORY_FILE") || "/etc/forkop/history.jsonl
 const HISTORY_MAX = 200;
 const HISTORY_MAX_BYTES = 65536;
 const HISTORY_KEEP = 150;
-const EVENT_KINDS = [ "start", "reload", "restore", "recovery", "autotune_apply", "snapshot_create", "snapshot_delete",
-    "autotune_mode", "autotune_recommendation", "autotune_run" ];
+// An autotune apply and its rollback have kinds of their own, never restore
+// (UC-060, design H.6).
+const EVENT_KINDS = [ "start", "reload", "restore", "recovery", "autotune_apply", "autotune_rollback", "snapshot_create",
+    "snapshot_delete", "autotune_mode", "autotune_recommendation", "autotune_run" ];
 // "not_started": a snapshot restore replaced the configuration while an
 // explicit stop held the runtime down; nothing verified it (D-15, UC-056).
 const EVENT_STATUSES = [ "success", "failure", "recovered", "not_started" ];
-// Autotune applies also carry who started them and the catalog candidate id.
+// Autotune applies and rollbacks also carry who started them and the
+// catalog candidate id.
 const EVENT_TRIGGERS = [ "manual", "automatic" ];
 
 function read_object(path) {
@@ -66,7 +69,7 @@ function valid_event(event) {
 // The event as stored and shown: only known fields, extras only when valid.
 function event_view(event) {
     let view = { kind: event.kind, status: event.status, timestamp: event.timestamp };
-    if (event.kind == "autotune_apply") {
+    if (event.kind == "autotune_apply" || event.kind == "autotune_rollback") {
         if (index(EVENT_TRIGGERS, event.trigger) >= 0) view.trigger = event.trigger;
         if (type(event.candidate) == "string" && match(event.candidate, /^[a-z0-9_]{1,32}$/) != null)
             view.candidate = event.candidate;
@@ -188,7 +191,7 @@ function health(ui, guards, package_pending, events) {
     let last = length(events) ? events[length(events) - 1] : null;
     let last_reload = null;
     for (let i = length(events) - 1; i >= 0; i--)
-        if (index([ "reload", "restore", "autotune_apply" ], events[i].kind) >= 0) {
+        if (index([ "reload", "restore", "autotune_apply", "autotune_rollback" ], events[i].kind) >= 0) {
             last_reload = events[i];
             break;
         }

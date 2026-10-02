@@ -105,7 +105,8 @@ export namespace Forkop {
     kind: string;
     status: string;
     timestamp: number;
-    // autotune_apply only: who started it and the catalog candidate id.
+    // autotune_apply and autotune_rollback only: who started it and the
+    // catalog candidate id.
     trigger?: 'manual' | 'automatic';
     candidate?: string;
   }

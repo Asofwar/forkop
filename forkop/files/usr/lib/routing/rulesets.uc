@@ -22,13 +22,18 @@ function read_json_file(path) {
     return data == null ? null : json_decode_text(data);
 }
 
+// On a full tmpfs writefile reports success and the file stays short or
+// empty (stdio writes on close and that error is lost): a regular file
+// must hold all of text (UC-223).
 function write_text_file(path, text) {
+    text = as_string(text);
     let result = fs.writefile(path, text);
     if (result == null)
         return false;
     if (type(result) == "boolean" && !result)
         return false;
-    return true;
+    let stat = fs.stat(path);
+    return stat != null && (stat.type != "file" || stat.size == length(text));
 }
 
 function write_json_file(path, value) {
@@ -443,10 +448,11 @@ function write_lines(path, lines_object) {
         return first == second ? 0 : (first < second ? -1 : 1);
     });
 
-    if (!write_text_file(path, length(lines) > 0 ? join("\n", lines) + "\n" : ""))
-        exit(1);
+    return write_text_file(path, length(lines) > 0 ? join("\n", lines) + "\n" : "");
 }
 
+// False when an output file could not be written whole: an empty one is
+// not a rule set without subnets.
 function extract_ip_cidr_nft_elements(json_path, unscoped_output_path, scoped_output_path, ports_text, port_ranges_text) {
     let ruleset = object_or_empty(read_json_file(json_path));
     let unscoped_lines = {};
@@ -459,8 +465,7 @@ function extract_ip_cidr_nft_elements(json_path, unscoped_output_path, scoped_ou
     for (let rule in array_or_empty(ruleset.rules))
         collect_ip_cidr_nft_outputs(rule, outer_filter, unscoped_lines, scoped_lines);
 
-    write_lines(unscoped_output_path, unscoped_lines);
-    write_lines(scoped_output_path, scoped_lines);
+    return write_lines(unscoped_output_path, unscoped_lines) && write_lines(scoped_output_path, scoped_lines);
 }
 
 function value_has_domain_matchers(value) {
@@ -560,7 +565,7 @@ else if (mode == "import-plain-list")
 else if (mode == "extract-ip-cidr")
     extract_ip_cidr(ARGV[1], ARGV[2]);
 else if (mode == "extract-ip-cidr-nft")
-    extract_ip_cidr_nft_elements(ARGV[1], ARGV[2], ARGV[3], ARGV[4] || "[]", ARGV[5] || "[]");
+    exit(extract_ip_cidr_nft_elements(ARGV[1], ARGV[2], ARGV[3], ARGV[4] || "[]", ARGV[5] || "[]") ? 0 : 1);
 else if (mode == "has-domain-matchers")
     exit(has_domain_matchers(ARGV[1]) ? 0 : 1);
 else if (mode == "has-rules")

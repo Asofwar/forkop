@@ -1388,7 +1388,10 @@ function set_dns_chain(standby, exempt) {
     let tmp = trim(capture([ "mktemp" ]).output);
     if (tmp == "")
         return false;
-    let ok = fs.writefile(tmp, join("\n", lines) + "\n") != null && run_quiet([ "nft", "-f", tmp ]);
+    // On a full tmpfs writefile reports success and leaves the file empty,
+    // and an empty batch passes `nft -f` while it changes nothing (UC-223).
+    let data = join("\n", lines) + "\n";
+    let ok = fs.writefile(tmp, data) != null && fs.readfile(tmp) === data && run_quiet([ "nft", "-f", tmp ]);
     fs.unlink(tmp);
     // Existing DNS flows keep their old NAT binding until they expire.
     if (ok) {

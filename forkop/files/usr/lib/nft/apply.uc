@@ -94,13 +94,18 @@ function write_compact_string_array(values) {
     print("]\n");
 }
 
+// On a full tmpfs writefile reports success and the file stays short or
+// empty (stdio writes on close and that error is lost): a regular file
+// must hold all of text (UC-223).
 function write_text_file(path, text) {
-    let result = fs.writefile(path, as_string(text));
+    text = as_string(text);
+    let result = fs.writefile(path, text);
     if (result == null)
         return false;
     if (type(result) == "boolean" && !result)
         return false;
-    return true;
+    let stat = fs.stat(path);
+    return stat != null && (stat.type != "file" || stat.size == length(text));
 }
 
 function file_executable(path) {
@@ -2291,13 +2296,18 @@ function nft_add_json_ruleset_subnets_for_section(section, json_path, label, tab
     let key = nft_subnet_cache_key(json_path, ports, chunk_size_text);
     let prepared = key != null ? nft_subnet_cache_read(key) : null;
     if (prepared == null) {
-        routing_rulesets.extract_ip_cidr_nft_elements(
+        // An extraction lost on a full tmpfs is not a rule set without
+        // subnets (UC-223).
+        if (!routing_rulesets.extract_ip_cidr_nft_elements(
             json_path,
             unscoped_path,
             scoped_path,
             sprintf("%J", rule_port_values(ports)),
             sprintf("%J", rule_port_ranges(ports))
-        );
+        )) {
+            run_args([ "logger", "-t", "forkop", "[error] Could not extract the subnets of " + as_string(label) + " for nftables" ]);
+            return false;
+        }
         prepared = {
             unscoped: file_nonempty(unscoped_path) ? nft_prepare_family_chunks(nft_trimmed_lines(unscoped_path), "ips", "", chunk_size_text) : null,
             scoped: file_nonempty(scoped_path) ? nft_prepare_family_chunks(nft_trimmed_lines(scoped_path), "ip-ports", "", chunk_size_text) : null

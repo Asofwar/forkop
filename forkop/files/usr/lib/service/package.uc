@@ -128,6 +128,26 @@ function clear_component_update_check_cache() {
     unlink_if_exists(COMPONENT_UPDATE_CHECK_STATE_FILE);
 }
 
+// rt_tables names the tables of other packages too. It is written to a copy
+// next to it, read back and renamed over it, never truncated and rewritten
+// in place, where a crash or a full overlay lost every entry (UC-076). The
+// mode stays; a symlink stays one and the file it points to is replaced.
+function replace_rt_tables(data) {
+    let file = fs.realpath(RT_TABLES_PATH) || RT_TABLES_PATH;
+    let stat = fs.stat(file);
+    let tmp = fs.dirname(file) + "/." + fs.basename(file) + ".forkop-" + as_string(fs.readlink("/proc/self"));
+    fs.unlink(tmp);
+    let out = fs.open(tmp, "w", 0644);
+    let written = out != null && out.write(data) != null;
+    if (out != null)
+        out.close();
+    if (!written || fs.readfile(tmp) !== data || (stat != null && !fs.chmod(tmp, stat.mode)) || !fs.rename(tmp, file)) {
+        fs.unlink(tmp);
+        return false;
+    }
+    return true;
+}
+
 function remove_rt_tables_entry() {
     let data = fs.readfile(RT_TABLES_PATH);
     if (data == null)
@@ -143,7 +163,7 @@ function remove_rt_tables_entry() {
         push(lines, line);
     }
 
-    return !changed || fs.writefile(RT_TABLES_PATH, join("\n", lines)) != null;
+    return !changed || replace_rt_tables(join("\n", lines));
 }
 
 function ascii_lower(value) {

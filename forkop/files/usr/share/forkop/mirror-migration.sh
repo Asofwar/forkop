@@ -45,6 +45,27 @@ TRANSACTION_ACTIVE=0
 TRANSACTION_COUNT=0
 : > "$TRANSACTION_MANIFEST"
 
+# The content of source becomes destination: a copy next to it, renamed
+# over it. Feeds and keys are never truncated and rewritten in place, where
+# a crash or a full overlay left them cut short and package management
+# broken (UC-076). An existing destination keeps its mode.
+replace_file() {
+    source="$1"
+    destination="$2"
+    staged="$destination.forkop-new.$$"
+    rm -f "$staged"
+    if [ -e "$destination" ]; then
+        cp -p "$destination" "$staged" && cat "$source" > "$staged"
+    else
+        cp "$source" "$staged" && chmod 0644 "$staged"
+    fi && cmp -s "$source" "$staged" && mv -f "$staged" "$destination" && return 0
+    rm -f "$staged"
+    return 1
+}
+
+# Files the rollback could not restore (UC-076).
+ROLLBACK_FAILED=""
+
 rollback_transaction() {
     [ "$TRANSACTION_ACTIVE" -eq 1 ] || return 0
 
@@ -52,8 +73,9 @@ rollback_transaction() {
         [ -n "$destination" ] || continue
         if [ "$original_state" = "absent" ]; then
             rm -f "$destination" 2>/dev/null || true
-        elif [ -f "$backup" ]; then
-            cp "$backup" "$destination" 2>/dev/null || true
+            [ ! -e "$destination" ] || ROLLBACK_FAILED="$ROLLBACK_FAILED $destination"
+        elif [ ! -f "$backup" ] || ! replace_file "$backup" "$destination" 2>/dev/null; then
+            ROLLBACK_FAILED="$ROLLBACK_FAILED $destination"
         fi
     done < "$TRANSACTION_MANIFEST"
     TRANSACTION_ACTIVE=0
@@ -63,7 +85,11 @@ cleanup() {
     status=$?
     if [ "$status" -ne 0 ]; then
         rollback_transaction
-        echo "Forkop mirror migration failed; package feeds and keys were restored" >&2
+        if [ -n "$ROLLBACK_FAILED" ]; then
+            echo "Forkop mirror migration failed and could not restore:$ROLLBACK_FAILED" >&2
+        else
+            echo "Forkop mirror migration failed; package feeds and keys were restored" >&2
+        fi
     fi
     rm -rf "$TRANSACTION_DIR"
     exit "$status"
@@ -112,8 +138,8 @@ rewrite_repository_file() {
 
     backup_transaction_file "$repository_file"
     persistent_backup="${repository_file}.pre-forkop-mirror"
-    [ -e "$persistent_backup" ] || cp "$repository_file" "$persistent_backup"
-    cp "$temporary" "$repository_file"
+    [ -e "$persistent_backup" ] || replace_file "$repository_file" "$persistent_backup"
+    replace_file "$temporary" "$repository_file"
     rm -f "$temporary"
 }
 
@@ -190,8 +216,7 @@ if [ "$PACKAGE_MANAGER" = "apk" ]; then
     }
     if ! cmp -s "$key_tmp" "$key_file"; then
         backup_transaction_file "$key_file"
-        cp "$key_tmp" "$key_file"
-        chmod 0644 "$key_file"
+        replace_file "$key_tmp" "$key_file"
     fi
 
     forkop_repository="$repositories_dir/forkop.list"
@@ -199,7 +224,7 @@ if [ "$PACKAGE_MANAGER" = "apk" ]; then
     printf '%s\n' "$MIRROR_BASE_URL/forkop/mirror/current/packages.adb" > "$forkop_repository_tmp"
     if ! cmp -s "$forkop_repository_tmp" "$forkop_repository"; then
         backup_transaction_file "$forkop_repository"
-        cp "$forkop_repository_tmp" "$forkop_repository"
+        replace_file "$forkop_repository_tmp" "$forkop_repository"
     fi
 else
     rewrite_repository_file "$opkg_distfeeds"

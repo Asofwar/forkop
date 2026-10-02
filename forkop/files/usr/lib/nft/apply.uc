@@ -1428,8 +1428,25 @@ function ensure_rt_table_entry(path, table_id, table_name) {
     data = data == null ? "" : as_string(data);
     if (data != "" && substr(data, length(data) - 1, 1) != "\n")
         data += "\n";
+    data += as_string(table_id) + " " + as_string(table_name) + "\n";
 
-    return write_text_file(path, data + as_string(table_id) + " " + as_string(table_name) + "\n");
+    // rt_tables names the tables of other packages too: written to a copy
+    // next to it, read back and renamed over it, never truncated and
+    // rewritten in place, where a crash or a full overlay lost every entry
+    // (UC-076). The mode stays; a symlink stays one.
+    let file = fs.realpath(path) || as_string(path);
+    let stat = fs.stat(file);
+    let tmp = fs.dirname(file) + "/." + fs.basename(file) + ".forkop-" + as_string(fs.readlink("/proc/self"));
+    fs.unlink(tmp);
+    let out = fs.open(tmp, "w", 0644);
+    let written = out != null && out.write(data) != null;
+    if (out != null)
+        out.close();
+    if (!written || fs.readfile(tmp) !== data || (stat != null && !fs.chmod(tmp, stat.mode)) || !fs.rename(tmp, file)) {
+        fs.unlink(tmp);
+        return false;
+    }
+    return true;
 }
 
 function tproxy_route4_present(table) {

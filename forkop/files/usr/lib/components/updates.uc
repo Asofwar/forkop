@@ -831,9 +831,10 @@ function restore_persistent_list_cache() {
         let persistent = persistent_list_cache_validation();
         // A normal successful update leaves a runtime copy of the same
         // generation.  It is not RAM-only; reserve that diagnostic for a
-        // missing or older persistent LKG.
+        // missing or older persistent LKG. The content decides: unchanged
+        // lists keep the persistent generation they match (UC-072).
         if (runtime_timestamp != "" && runtime_signature == current_list_update_signature() && runtime.valid &&
-            (!persistent.valid || as_string(persistent.manifest.generation) != as_string(runtime.manifest.generation)))
+            (!persistent.valid || !list_generation_manifest_content_equal(persistent.manifest, runtime.manifest)))
             list_cache_log_once(
                 "ram-" + runtime_timestamp + "-" + runtime_signature,
                 "Using the newer RAM-only list generation from this boot; the older persistent cache was not restored",
@@ -1026,6 +1027,25 @@ function commit_runtime_list_generation(signature) {
     return true;
 }
 
+// The success time of a persistent generation whose lists did not change: a
+// small file next to it, replaced by rename, without sync. A lost update
+// only makes the next list update due earlier after a reboot.
+function persist_list_cache_timestamp(timestamp) {
+    let path = PERSISTENT_LIST_CACHE_DIR + "/last-success.timestamp";
+    let value = as_string(timestamp) + "\n";
+    if (fs.readfile(path) === value)
+        return true;
+    let temporary = path + ".tmp";
+    // fs.writefile reports a small file on a full flash as written: read
+    // it back before it replaces the old time.
+    if (fs.writefile(temporary, value) == null || fs.readfile(temporary) !== value ||
+        !fs.chmod(temporary, 0600) || !fs.rename(temporary, path)) {
+        remove_file(temporary);
+        log_message("Persistent list cache is unchanged, but its success time could not be saved", "warn");
+    }
+    return true;
+}
+
 function persist_list_cache(timestamp) {
     let signature = current_list_update_signature();
     recover_list_generation_transaction(RUNTIME_LIST_GENERATION_DIR, signature);
@@ -1033,6 +1053,14 @@ function persist_list_cache(timestamp) {
     let runtime = list_generation_validation(RUNTIME_LIST_GENERATION_DIR, signature);
     if (!runtime.valid)
         return false;
+
+    // Lists that did not change are not copied to flash again (UC-072): a
+    // list update with the default interval of a day rewrote up to 8 MiB
+    // daily, a shorter interval many times a day. Only a valid persistent
+    // generation with exactly this content counts; a damaged one is replaced.
+    let persistent = list_generation_validation(PERSISTENT_LIST_CACHE_DIR, signature);
+    if (persistent.valid && list_generation_manifest_content_equal(persistent.manifest, runtime.manifest))
+        return persist_list_cache_timestamp(timestamp);
 
     let stage = PERSISTENT_LIST_CACHE_DIR + ".stage";
     let previous = PERSISTENT_LIST_CACHE_DIR + ".previous";

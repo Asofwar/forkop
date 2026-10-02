@@ -341,4 +341,33 @@ config f3; run create automatic
 rm -f "$FORKOP_AUTOTUNE_APPLY_STATE"
 ok "the before-autotune snapshot of a decided record, or of one without a mutation, rotates like the others"
 
+# 6. Save & Apply's snapshot of the configuration before its change (create
+#    before-apply) is the restore point of that change, and the page lists
+#    the change from it once the reload has run. The reload that applies the
+#    change takes its own snapshot right after: that one does not push it
+#    out, also next to 8 manual snapshots, whether it was taken anew or is an
+#    older snapshot of the same configuration. After that reload snapshot it
+#    rotates like any other, and the store returns to its size.
+[ "$(store)" = "10 8" ] || fail "fixture: store $(store) before the Save & Apply cases"
+config g1; run create before-apply
+[ "$(field status)" = created ] && [ "$(field snapshot.reason)" = before-apply ] || fail "Save & Apply snapshot: $(answer)"
+pre="$(field snapshot.id)"
+config g2; run create automatic
+[ "$(field status)" = created ] || fail "the reload's snapshot: $(answer)"
+exists "$pre" || fail "the reload's snapshot pushed out the Save & Apply snapshot of the change it applies: store $(store)"
+config g3; run create automatic
+[ "$(field status)" = created ] && ! exists "$pre" || fail "the Save & Apply snapshot is still kept after its reload: store $(store)"
+[ "$(store)" = "10 8" ] || fail "the store did not return to its size: $(store)"
+config h1; run create automatic; old="$(field snapshot.id)"
+run create before-apply
+[ "$(field status)" = existing ] && [ "$(field snapshot.id)" = "$old" ] || fail "Save & Apply on a configuration already stored: $(answer)"
+config h2; run create automatic
+[ "$(field status)" = created ] || fail "the reload's snapshot: $(answer)"
+exists "$old" || fail "the reload's snapshot pushed out the stored snapshot that Save & Apply refers to: store $(store)"
+config h3; run create automatic
+[ "$(field status)" = created ] && ! exists "$old" && [ "$(store)" = "10 8" ] ||
+  fail "the snapshot Save & Apply referred to is still kept after its reload: store $(store)"
+[ "$(manual_ids)" = "$manual_before" ] || fail "rotation removed a manual snapshot"
+ok "Save & Apply's snapshot survives the reload snapshot of its change next to 8 manual snapshots, then rotates"
+
 printf 'config_snapshot_retention: PASS\n'

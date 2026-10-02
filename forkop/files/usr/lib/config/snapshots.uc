@@ -10,6 +10,10 @@ const ROOT = getenv("FORKOP_SNAPSHOT_DIR") || "/etc/forkop/config-snapshots";
 const HASH_DIR = getenv("FORKOP_SNAPSHOT_HASH_DIR") || "/var/run/forkop/snapshot-hash";
 const LOCK = getenv("FORKOP_SNAPSHOT_LOCK_DIR") || "/var/run/forkop/config-snapshot.lock";
 const LKG = ROOT + "/last-known-working";
+// The snapshot that Save & Apply took (or found) before LuCI applied its
+// change, kept until the reload of that change has taken its own snapshot
+// (trim_retention).
+const APPLY_SNAPSHOT = ROOT + "/apply-snapshot";
 const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
 const BIN = getenv("FORKOP_BIN") || "/usr/bin/forkop";
 const RELOAD = getenv("FORKOP_RELOAD_COMMAND") || "/etc/init.d/forkop";
@@ -277,8 +281,13 @@ function autotune_rollback_snapshot() {
 // that the recorded autotune apply may still roll back to (an automatic
 // snapshot taken during its verification, or after it applied, would
 // otherwise push it out next to many manual ones), nor one that the running
-// operation still needs (keep). The store holds RETENTION snapshots, or
-// manual + RESERVED while more manual ones are left from before the limit.
+// operation still needs (keep), nor the one that Save & Apply took before
+// LuCI applied its change, until the reload of that change has taken its own
+// snapshot: the reload's snapshot comes right after the commit and would
+// otherwise take the restore point of the change it applies, and the list
+// of the change that the page shows once the reload has run (configform.js).
+// The store holds RETENTION snapshots, or manual + RESERVED while more
+// manual ones are left from before the limit.
 // automatic: a safety snapshot is never refused for room. When nothing but
 // manual, protected and kept snapshots is left, it is taken beyond that
 // size; the next automatic snapshot replaces it, and once the protected ones
@@ -287,11 +296,13 @@ function trim_retention(keep, automatic) {
     let all = list_snapshots();
     let working = trim(value(fs.readfile(LKG)));
     let rollback = autotune_rollback_snapshot();
+    let applying = trim(value(fs.readfile(APPLY_SNAPSHOT)));
     let limit = max(RETENTION, manual_count(all) + RESERVED);
     while (length(all) >= limit) {
         let candidate = null;
         for (let item in all)
-            if (item.kind != "manual" && item.id != working && item.id != rollback && index(keep || [], item.id) < 0) { candidate = item; break; }
+            if (item.kind != "manual" && item.id != working && item.id != rollback && item.id != applying &&
+                index(keep || [], item.id) < 0) { candidate = item; break; }
         if (candidate == null || !fs.unlink(snapshot_path(candidate.id))) return automatic;
         all = list_snapshots();
     }
@@ -1158,11 +1169,17 @@ if (mode == "create") {
     // reload applies (the reason keeps its old name for the snapshots
     // already stored). before-apply: Save & Apply's snapshot of the
     // configuration before LuCI applies the change (UC-064, UC-067).
+    // The reload's snapshot ends the keep of the Save & Apply snapshot
+    // (trim_retention), taken or not.
     let kind = value(ARGV[1] || "manual");
     if (index([ "manual", "automatic" ], kind) >= 0)
         answer = create(kind, kind == "manual" ? "manual" : "before-reload", kind == "automatic");
-    else if (kind == "before-apply")
+    else if (kind == "before-apply") {
         answer = create("automatic", "before-apply", true);
+        let id = answer.snapshot?.id;
+        if (id != null && trim(value(fs.readfile(APPLY_SNAPSHOT))) != id) atomic(APPLY_SNAPSHOT, id + "\n");
+    }
+    if (kind == "automatic" && fs.stat(APPLY_SNAPSHOT) != null) fs.unlink(APPLY_SNAPSHOT);
     // Automatic snapshots are routine; only a manual one is a history event.
     if (kind == "manual" && answer.status == "created")
         success([ "ucode", "-L", LIB_DIR, LIB_DIR + "/diagnostics/health.uc", "record", "snapshot_create", "success" ]);

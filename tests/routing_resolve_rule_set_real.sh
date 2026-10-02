@@ -114,6 +114,22 @@ expect list_hit_above "{ \"host\": \"example.org\", \"rule_set\": $sets, \"rules
 expect list_miss_all "{ \"host\": \"nothing.test\", \"rule_set\": $sets, \"rules\": [ $other, $yt ] }" \
     '{ "status": "decided", "reason": null, "rule": null, "section": null, "kind": "direct" }'
 
+# A list sing-box cannot answer for with the value alone (port, network,
+# source, invert, logical rules) is undecidable, as source and as binary
+# (decompiled by the real binary); a plain one is decided (UC-218).
+for name in port_first logical mixed keyword; do
+    "$SING_BOX" rule-set compile "$WORK/$name.json" -o "$WORK/$name.srs"
+    for format in source binary; do
+        file="$WORK/$name.json"
+        [ "$format" = binary ] && file="$WORK/$name.srs"
+        shaped="[ { \"type\": \"local\", \"tag\": \"shaped\", \"format\": \"$format\", \"path\": \"$file\" } ]"
+        rule='{ "action": "route", "inbound": [ "tproxy-in" ], "rule_set": [ "shaped" ], "outbound": "youtube-out" }'
+        want='{ "status": "undecidable", "reason": "undecidable_matcher", "rule": 0, "section": null, "kind": null }'
+        [ "$name" = keyword ] && want="$zapret"
+        expect "shape_${name}_$format" "{ \"host\": \"www.youtube.com\", \"rule_set\": $shaped, \"rules\": [ $rule ] }" "$want"
+    done
+done
+
 # A quote in a list path reaches sing-box as part of one argument (UC-219).
 mkdir "$WORK/hostile"
 hostile_path="$WORK/hostile/a';touch\${IFS}PWNED;'.srs"

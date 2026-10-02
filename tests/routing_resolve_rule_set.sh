@@ -94,7 +94,7 @@ expect list_miss_all "{ \"host\": \"nothing.test\", \"rule_set\": $sets, \"rules
 # One rule, several lists: any of them matches; asking stops at the first hit.
 many='{ "action": "route", "inbound": [ "tproxy-in" ], "rule_set": [ "yt", "broken" ], "outbound": "youtube-out" }'
 expect list_any "{ \"host\": \"youtube.com\", \"rule_set\": $sets, \"rules\": [ $many ] }" "$zapret"
-[ "$(wc -l <"$WORK/calls")" = 1 ] || fail "list_any: lists after the hit were asked"
+[ "$(grep -c '^rule-set match ' "$WORK/calls")" = 1 ] || fail "list_any: lists after the hit were asked"
 
 # A static matcher hit needs no list at all.
 mixed='{ "action": "route", "inbound": [ "tproxy-in" ], "domain_suffix": [ "youtube.com" ], "rule_set": [ "broken" ], "outbound": "youtube-out" }'
@@ -133,6 +133,44 @@ export RULESET_STUB_NOISE='WARN[0000] an unexpected message'
 expect noise_with_hit "{ \"host\": \"youtube.com\", \"rule_set\": $sets, \"rules\": [ $yt ] }" "$undecided"
 expect noise_without_hit "{ \"host\": \"nothing.test\", \"rule_set\": $sets, \"rules\": [ $yt ] }" "$undecided"
 unset RULESET_STUB_NOISE
+
+# "rule-set match" asks with the value alone: the domain, or the address
+# with port 0, no network and no source; and it carries the "address
+# matched" state from one rule of the list to the next. A list rule with any
+# other item (port, network, source, ...), invert or a logical rule is
+# therefore answered wrongly, and such a list is undecidable (UC-218). A
+# source list is read as it is, a binary one through "rule-set decompile".
+shape() { # name json -> a source list <name>.json and a binary <name>.srs
+    printf '%s\n' "$2" >"$WORK/$1.json"
+    binary_list "$1.srs" "$2"
+}
+shape tcp_only '{ "version": 3, "rules": [ { "domain_suffix": [ "youtube.com" ], "network": "tcp" } ] }'
+shape port_443 '{ "version": 3, "rules": [ { "domain_suffix": [ "youtube.com" ], "port": [ 443 ] } ] }'
+shape not_443 '{ "version": 3, "rules": [ { "port": [ 443 ], "invert": true } ] }'
+shape inverted '{ "version": 3, "rules": [ { "domain": [ "example.org" ], "invert": true } ] }'
+shape logical '{ "version": 3, "rules": [ { "type": "logical", "mode": "or", "rules": [ { "domain_suffix": [ "youtube.com" ] } ] } ] }'
+shape source_ip '{ "version": 3, "rules": [ { "domain_suffix": [ "youtube.com" ], "source_ip_cidr": [ "192.168.1.0/24" ] } ] }'
+shape port_then_address '{ "version": 3, "rules": [ { "domain_suffix": [ "youtube.com" ], "port": [ 80 ] }, { "ip_cidr": [ "198.51.100.0/24" ] } ] }'
+shape plain '{ "version": 2, "rules": [ { "type": "default", "domain_suffix": [ "youtube.com" ], "invert": false }, { "domain_keyword": [ "tube" ], "domain_regex": [ "^x$" ], "ip_cidr": [ "198.51.100.0/24" ], "domain": [ "a.test" ] } ] }'
+for name in tcp_only port_443 not_443 inverted logical source_ip port_then_address plain; do
+    for format in source binary; do
+        file="$WORK/$name.json"
+        [ "$format" = binary ] && file="$WORK/$name.srs"
+        shaped="[ { \"type\": \"local\", \"tag\": \"shaped\", \"format\": \"$format\", \"path\": \"$file\" } ]"
+        list_rule='{ "action": "route", "inbound": [ "tproxy-in" ], "rule_set": [ "shaped" ], "outbound": "main-out" }'
+        want="$undecided"
+        [ "$name" = plain ] && want='{ "status": "decided", "reason": null, "rule": 0, "section": "main", "kind": "rule" }'
+        expect "shape_${name}_$format" "{ \"host\": \"youtube.com\", \"rule_set\": $shaped, \"rules\": [ $list_rule, $yt ] }" "$want"
+        if [ "$name" != plain ] && grep -q '^rule-set match ' "$WORK/calls"; then
+            fail "shape_${name}_$format: a list sing-box cannot answer for was asked"
+        fi
+    done
+done
+# A binary list is decompiled with an explicit output that is not next to
+# the list (without -o sing-box writes <list>.json beside it).
+grep -q "^rule-set decompile $WORK/plain.srs " "$WORK/calls" || fail "the binary list was not decompiled"
+if grep '^rule-set decompile ' "$WORK/calls" | grep -qv -- ' -o '; then fail "decompile without -o"; fi
+if grep '^rule-set decompile ' "$WORK/calls" | grep -q -- " -o $WORK/"; then fail "decompile wrote into the list directory"; fi
 
 # A list path reaches sing-box as one argument, whatever it holds (UC-219):
 # quotes, blanks, $(...), backticks and ";" never run anything. The

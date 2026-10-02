@@ -10,7 +10,8 @@
 // not downloaded), regexes, logical rules, source-scoped rules without a
 // source, unknown fields, a resolve action above the owner of a FakeIP
 // connection — the result says so with a reason instead of guessing.
-// The only command it runs is "sing-box rule-set match" on a local list file.
+// The only commands it runs are "sing-box rule-set match" and "rule-set
+// decompile" on a local list file, bounded in time.
 let fs = require("fs");
 let common = require("core.common");
 let constants = require("core.constants");
@@ -252,18 +253,53 @@ function run_singbox(args) {
     return status == 0 ? output : null;
 }
 
-// Answers already known in this process, by list file (path, format,
-// inode, size, mtime, ctime) and value: each is asked once, however many
-// rules name the list and however many targets are resolved.
-let ruleset_answers = {};
+// "rule-set match" asks with the value alone (the domain, or the address
+// with port 0: no network, port or source) and carries the "address
+// matched" state from one rule of the list to the next. Its answer holds
+// only for a list whose rules are plain destination-address matchers; a
+// list with any other item, invert or a logical rule is undecidable
+// (UC-218).
+const PLAIN_LIST_KEYS = [ "domain", "domain_suffix", "domain_keyword", "domain_regex", "ip_cidr" ];
+function plain_list(value) {
+    if (type(value) != "object" || type(value.rules) != "array") return false;
+    for (let rule in value.rules) {
+        if (type(rule) != "object") return false;
+        for (let key, v in rule) {
+            if (key == "type" ? v == "default" : key == "invert" ? v === false : index(PLAIN_LIST_KEYS, key) >= 0) continue;
+            return false;
+        }
+    }
+    return true;
+}
+
+// Answers and list shapes already known in this process, by list file
+// (path, format, inode, size, mtime, ctime) and value: each is asked once,
+// however many rules name the list and however many targets are resolved.
+let ruleset_answers = {}, ruleset_shapes = {};
+
+// Whether a list file is plain: a source list is read here, a binary one is
+// decompiled by sing-box to its standard output (never next to the list).
+function list_is_plain(entry, file) {
+    if (ruleset_shapes[file] == null) {
+        let text = entry.format == "source" ? fs.readfile(entry.path)
+            : run_singbox([ RULESET_MATCH_BIN, "rule-set", "decompile", entry.path, "-o", "/proc/self/fd/1" ]);
+        let value = null;
+        try { value = text == null ? null : json(text); } catch (e) { value = null; }
+        ruleset_shapes[file] = plain_list(value);
+    }
+    return ruleset_shapes[file];
+}
 
 // Whether a list holds the value, asked of sing-box itself: "match", "no",
-// or "unknown" when it cannot be asked (no local file, a failing, hung or
-// over-budget command, output that is not an answer).
+// or "unknown" when it cannot be asked (no local file, a list that is not
+// plain, a failing, hung or over-budget command, output that is not an
+// answer).
 function rule_set_holds(entry, value) {
     let st = entry == null ? null : fs.stat(entry.path);
     if (st == null) return "unknown";
-    let key = join("\n", [ entry.format, entry.path, join(":", [ st.inode, st.size, st.mtime, st.ctime ]), value ]);
+    let file = join("\n", [ entry.format, entry.path, join(":", [ st.inode, st.size, st.mtime, st.ctime ]) ]);
+    if (!list_is_plain(entry, file)) return "unknown";
+    let key = file + "\n" + value;
     if (ruleset_answers[key] == null) {
         let output = run_singbox([ RULESET_MATCH_BIN, "rule-set", "match", "-f", entry.format, entry.path, value ]);
         ruleset_answers[key] = output == null ? "unknown" : rule_set_answer(output);

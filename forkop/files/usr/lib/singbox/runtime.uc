@@ -428,17 +428,19 @@ function sing_box_compressed_marker_set() {
 // copies that a crash left between their write and their rename (named by
 // the pid of a writer that is gone) are removed (UC-159).
 function install_managed_service_script() {
-    let text = managed_service_text();
-    let current = fs.stat("/etc/init.d/sing-box");
-    if (current != null && current.type == "file" && (current.mode & 0111) == 0111 &&
-        fs.readfile("/etc/init.d/sing-box") === text)
-        return true;
-
+    // Also when the script is current: another writer may have installed it
+    // since the crash.
     for (let path in fs.glob("/etc/init.d/sing-box.forkop.*") || []) {
         let writer = match(path, /\/sing-box\.forkop\.([0-9]+)$/);
         if (writer != null && fs.stat("/proc/" + writer[1]) == null)
             remove_file(path);
     }
+
+    let text = managed_service_text();
+    let current = fs.stat("/etc/init.d/sing-box");
+    if (current != null && current.type == "file" && (current.mode & 0111) == 0111 &&
+        fs.readfile("/etc/init.d/sing-box") === text)
+        return true;
 
     let tmp = "/etc/init.d/sing-box.forkop." + owner_pid();
     if (!write_file(tmp, text) || fs.readfile(tmp) !== text ||

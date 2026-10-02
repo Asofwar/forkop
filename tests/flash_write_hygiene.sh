@@ -13,7 +13,12 @@ set -euo pipefail
 # user's; now the refresh fails and writes nothing. A copy of the init
 # script that a crash left between its write and its rename, and the
 # partial copy a failed write leaves of the persistent subscription cache or
-# of a generated section cache, are removed.
+# of a generated section cache, are removed. A full /tmp or overlay, which
+# takes the write of a small file and keeps none of it, fails the write
+# instead of replacing the crontab or a cache with an empty file.
+#
+# The init script checks and the full /tmp and full overlay checks need user
+# and mount namespaces (unshare -rm) and are skipped without them.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB="$ROOT_DIR/forkop/files/usr/lib"
@@ -72,6 +77,14 @@ printf '#!/bin/sh\n# an older managed script\n' >/etc/init.d/sing-box
 configure
 printf '%s\n' "$dead" >"$WORK/initd.dead"
 printf '%s\n' "$$" >"$WORK/initd.live"
+# A copy a crash left while the script itself is current (another writer
+# installed it since) goes too.
+sh -c 'exit 0' &
+dead=$!
+wait "$dead" || true
+printf 'stale\n' >"/etc/init.d/sing-box.forkop.$dead"
+configure
+printf '%s\n' "$dead" >"$WORK/initd.dead2"
 SH
   unshare -rm sh "$WORK/initd-check.sh" >"$WORK/initd.out" 2>&1 || fail "configure-service failed: $(cat "$WORK/initd.out")"
   grep -q 'Forkop managed sing-box service' "$WORK/initd/sing-box" || fail "the managed init script was not installed"
@@ -80,6 +93,8 @@ SH
     fail "a second start rewrote the unchanged init script: $(cat "$WORK/initd.first") -> $(cat "$WORK/initd.second")"
   grep -q 'an older managed script' "$WORK/initd/sing-box" && fail "a start kept an init script that differs from the managed one"
   [ ! -e "$WORK/initd/sing-box.forkop.$(cat "$WORK/initd.dead")" ] || fail "a copy of a writer that is gone was left in /etc/init.d"
+  [ ! -e "$WORK/initd/sing-box.forkop.$(cat "$WORK/initd.dead2")" ] ||
+    fail "a copy of a writer that is gone was left in /etc/init.d next to a current script"
   [ -e "$WORK/initd/sing-box.forkop.$(cat "$WORK/initd.live")" ] || fail "a copy of a writer still at work was removed"
   ok "the managed init script is written only when it changes, stale copies are removed"
 fi

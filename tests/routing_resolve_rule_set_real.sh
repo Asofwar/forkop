@@ -114,4 +114,12 @@ expect list_hit_above "{ \"host\": \"example.org\", \"rule_set\": $sets, \"rules
 expect list_miss_all "{ \"host\": \"nothing.test\", \"rule_set\": $sets, \"rules\": [ $other, $yt ] }" \
     '{ "status": "decided", "reason": null, "rule": null, "section": null, "kind": "direct" }'
 
+# A quote in a list path reaches sing-box as part of one argument (UC-219).
+mkdir "$WORK/hostile"
+hostile_path="$WORK/hostile/a';touch\${IFS}PWNED;'.srs"
+cp "$WORK/youtube.srs" "$hostile_path"
+hostile="[ { \"type\": \"local\", \"tag\": \"yt\", \"format\": \"binary\", \"path\": \"$hostile_path\" } ]"
+(cd "$WORK/hostile" && expect hostile_path "{ \"host\": \"www.youtube.com\", \"rule_set\": $hostile, \"rules\": [ $yt ] }" "$zapret")
+[ ! -e "$WORK/hostile/PWNED" ] || fail "hostile_path: a command in the list path was run"
+
 echo "routing_resolve_rule_set_real: ok ($compared answers compared with $SING_BOX)"

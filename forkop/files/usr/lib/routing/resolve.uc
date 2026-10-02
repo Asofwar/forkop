@@ -12,6 +12,7 @@
 // connection — the result says so with a reason instead of guessing.
 // The only command it runs is "sing-box rule-set match" on a local list file.
 let fs = require("fs");
+let common = require("core.common");
 let constants = require("core.constants");
 let dpi_strategy = require("core.dpi_strategy");
 
@@ -188,8 +189,6 @@ function filter_keys(r, drop) {
     return copy;
 }
 
-function shell_quote(v) { return "'" + replace(as_string(v), /'/g, "'\''") + "'"; }
-
 // The local list files of the generated config: { tag: { format, path } }.
 function local_rule_sets(config) {
     let result = {};
@@ -222,7 +221,7 @@ function rule_set_answer(output) {
 // output that is not an answer).
 function rule_set_holds(entry, value) {
     if (entry == null || fs.stat(entry.path) == null) return "unknown";
-    let pipe = fs.popen(join(" ", map([ RULESET_MATCH_BIN, "rule-set", "match", "-f", entry.format, entry.path, value ], shell_quote)) +
+    let pipe = fs.popen(common.shell_command([ RULESET_MATCH_BIN, "rule-set", "match", "-f", entry.format, entry.path, value ]) +
         " 2>&1", "r");
     if (pipe == null) return "unknown";
     let output = as_string(pipe.read("all"));

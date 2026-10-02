@@ -164,6 +164,18 @@ function int_option(section, key, fallback) {
     return int(value, 10);
 }
 
+// One shell word holding exactly the value: single quotes, each embedded
+// quote closed, escaped and reopened. In a ucode string literal "'\''" is
+// just three quotes, so the backslash itself must be written twice (UC-219).
+function shell_quote(value) {
+    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
+}
+
+// A command line that runs args[0] with exactly these arguments.
+function shell_command(args) {
+    return join(" ", map(args, shell_quote));
+}
+
 return {
     as_string,
     read_json_file,
@@ -183,5 +195,7 @@ return {
     bool_option,
     int_option,
     clash_api_secret,
-    random_hex_secret
+    random_hex_secret,
+    shell_quote,
+    shell_command
 };

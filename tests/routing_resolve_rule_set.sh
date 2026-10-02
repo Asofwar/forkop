@@ -134,4 +134,19 @@ expect noise_with_hit "{ \"host\": \"youtube.com\", \"rule_set\": $sets, \"rules
 expect noise_without_hit "{ \"host\": \"nothing.test\", \"rule_set\": $sets, \"rules\": [ $yt ] }" "$undecided"
 unset RULESET_STUB_NOISE
 
+# A list path reaches sing-box as one argument, whatever it holds (UC-219):
+# quotes, blanks, $(...), backticks and ";" never run anything. The
+# validator accepts such a local rule_set path and the generator copies it.
+mkdir "$WORK/hostile"
+# shellcheck disable=SC2016 # the names are meant to hold unexpanded $(...)
+for name in "a';touch\${IFS}PWNED;'.srs" 'b $(touch PWNED) `touch PWNED` ; touch PWNED.srs' "c'\\''; touch PWNED; '.srs"; do
+    binary_list "hostile/$name" '{ "version": 3, "rules": [ { "domain_suffix": [ "youtube.com" ] } ] }'
+    path="$WORK/hostile/$name"
+    hostile="[ { \"type\": \"local\", \"tag\": \"yt\", \"format\": \"binary\", \"path\": \"${path//\\/\\\\}\" } ]"
+    got="$(cd "$WORK/hostile" && resolve hostile "{ \"host\": \"youtube.com\", \"rule_set\": $hostile, \"rules\": [ $yt ] }")"
+    if [ -e "$WORK/hostile/PWNED" ] || [ -e "$WORK/PWNED" ]; then fail "hostile path $name: a command in the path was run"; fi
+    [ "$got" = "$zapret" ] || fail "hostile path $name: got $got, want $zapret"
+    grep -qxF "rule-set match -f binary $path youtube.com" "$WORK/calls" || fail "hostile path $name: sing-box was not asked about the file"
+done
+
 echo "routing_resolve_rule_set: ok"

@@ -140,13 +140,16 @@ function killswitch_dns_apply(blocking) {
     let content = blocking ? as_string(fs.readfile(KILLSWITCH_DNS_BLOCKED_FILE)) : "";
     let changed = false;
     if (!present || as_string(fs.readfile(KILLSWITCH_DNS_SERVERS_FILE)) != content) {
-        // Unique per writer (UC-210).
+        // Unique per writer (UC-210). On flash and read at boot, before
+        // Forkop runs: flushed before and after the rename, so a power cut
+        // never leaves an empty file in place of the block list (UC-212).
         let tmp = KILLSWITCH_DNS_SERVERS_FILE + ".tmp." + as_string(fs.readlink("/proc/self"));
-        if (fs.writefile(tmp, content) == null || !fs.rename(tmp, KILLSWITCH_DNS_SERVERS_FILE)) {
+        if (fs.writefile(tmp, content) == null || !run("sync") || !fs.rename(tmp, KILLSWITCH_DNS_SERVERS_FILE)) {
             fs.unlink(tmp);
             log("Could not write the kill-switch dnsmasq servers file", "error");
             return false;
         }
+        run("sync");
         changed = true;
     }
     if (current != KILLSWITCH_DNS_SERVERS_FILE) {

@@ -64,6 +64,11 @@ const DNSMASQ_INIT = getenv("DNSMASQ_INIT") || "/etc/init.d/dnsmasq";
 // The package file this process runs from.
 const OWNER_FILE = sourcepath() || LIB_DIR + "/killswitch/runtime.uc";
 const STATE_FILE = STATE_DIR + "/state.json";
+// The time and reason of the last sync and the time of the last error
+// change on every sync; they live in RAM so that state.json on flash
+// changes only with the protection (UC-212).
+const STATE_TIMES_FILE = RUNTIME_STATE_DIR + "/killswitch-state.json";
+const STATE_TIMES = [ "updated_at", "reason", "last_error_at" ];
 const LOCK_DIR = RUNTIME_STATE_DIR + "/killswitch.lock";
 const NFT_UC = LIB_DIR + "/nft/apply.uc";
 const DNS_UC = LIB_DIR + "/dns/apply.uc";
@@ -151,6 +156,22 @@ function self_pid() {
     return cached_self_pid;
 }
 
+// What the kill-switch keeps on flash (the saved policy, the block list,
+// state.json) is flushed before the rename makes it the file and again
+// after it, so a power cut leaves the old or the new file, never an empty
+// one (UC-212). Callers write only what changed.
+function write_durable(path, content) {
+    if (!ensure_dir(dirname(path)))
+        return false;
+    let tmp = path + ".tmp." + self_pid();
+    if (fs.writefile(tmp, as_string(content)) == null || !run_quiet([ "sync" ]) || !fs.rename(tmp, path)) {
+        fs.unlink(tmp);
+        return false;
+    }
+    run_quiet([ "sync" ]);
+    return true;
+}
+
 function write_atomic(path, content) {
     if (!ensure_dir(dirname(path)))
         return false;
@@ -224,12 +245,37 @@ function release_reload_lock(apply_pending) {
 // ------------------------------------------------------------------ state
 
 function read_state() {
-    return object_or_empty(common.read_json_file(STATE_FILE));
+    let state = object_or_empty(common.read_json_file(STATE_FILE));
+    let times = object_or_empty(common.read_json_file(STATE_TIMES_FILE));
+    for (let key in STATE_TIMES)
+        if (times[key] != null)
+            state[key] = times[key];
+    return state;
+}
+
+// Key order does not matter; the times are not compared.
+function state_content(value, top) {
+    if (type(value) == "array")
+        return "[" + join(",", map(value, (item) => state_content(item, false))) + "]";
+    if (type(value) != "object")
+        return sprintf("%J", value);
+    let parts = [];
+    for (let key in sort(keys(value)))
+        if (!top || index(STATE_TIMES, key) < 0)
+            push(parts, sprintf("%J", key) + ":" + state_content(value[key], false));
+    return "{" + join(",", parts) + "}";
 }
 
 function write_state(state) {
     state.format = STATE_FORMAT;
-    return write_atomic(STATE_FILE, sprintf("%.2J", state) + "\n");
+    let times = {};
+    for (let key in STATE_TIMES)
+        times[key] = state[key];
+    write_atomic(STATE_TIMES_FILE, sprintf("%J", times) + "\n");
+    let saved = common.read_json_file(STATE_FILE);
+    if (type(saved) == "object" && state_content(saved, true) == state_content(state, true))
+        return true;
+    return write_durable(STATE_FILE, sprintf("%.2J", state) + "\n");
 }
 
 function record_error(message) {
@@ -293,7 +339,7 @@ function apply_nft_policy() {
 
     let content = fs.readfile(tmp);
     fs.unlink(tmp);
-    if (content == null || (fs.readfile(NFT_POLICY) != content && !write_atomic(NFT_POLICY, content)))
+    if (content == null || (fs.readfile(NFT_POLICY) != content && !write_durable(NFT_POLICY, content)))
         return { ok: false, error: "could not save " + NFT_POLICY + "; the live policy is active until the next firewall reload" };
     remove_legacy_include();
 
@@ -985,7 +1031,7 @@ function sync_dns(settings, protected_names) {
     prune_ruleset_cache();
 
     if (as_string(fs.readfile(DNS_BLOCKED_FILE)) != rendered.content &&
-        !write_atomic(DNS_BLOCKED_FILE, rendered.content))
+        !write_durable(DNS_BLOCKED_FILE, rendered.content))
         return { ok: false, error: "could not write " + DNS_BLOCKED_FILE };
     if (!dns_refresh())
         return { ok: false, error: "dnsmasq could not be refreshed" };
@@ -1147,7 +1193,7 @@ function postinst() {
     return with_lock(function() {
         let legacy = fs.readfile(LEGACY_NFT_INCLUDE);
         if (legacy != null) {
-            if (!policy_saved() && length(legacy) > 0 && !write_atomic(NFT_POLICY, legacy)) {
+            if (!policy_saved() && length(legacy) > 0 && !write_durable(NFT_POLICY, legacy)) {
                 record_error("could not adopt " + LEGACY_NFT_INCLUDE);
                 return 1;
             }

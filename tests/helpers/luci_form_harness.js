@@ -8,7 +8,9 @@
 // replaces luci-base with a small model of the parts a page or modal save
 // goes through: baseclass, form.Map/JSONMap/NamedSection and the
 // AbstractValue family, the grid's modal Save/Dismiss, uci.js with its staged
-// edits and just enough DOM for the stacked item settings modal. The form code
+// edits, the view's footer with Save & Apply as luci.js binds it (to the
+// view, which saves the page's maps and then calls ui.changes.apply) and
+// just enough DOM for the stacked item settings modal. The form code
 // follows luci-base form.js of OpenWrt 24.10 and 25.12 (AbstractValue.parse,
 // FlagValue.parse, Map.isDependencySatisfied, isEqual,
 // AbstractSection.checkDepends, AbstractSection.formvalue,
@@ -446,8 +448,15 @@ function E(tag, attrs, children) {
   return node;
 }
 
+// LuCI's page skeleton: the view renders into #view inside #maincontent
+// (view.__init__, luci.js), where view.handleSave() finds the page's maps.
+// Events dispatched on the document (ui.changes: "uci-applied") reach its
+// listeners.
 function createDocument() {
-  const body = new FakeNode("body");
+  const body = new FakeNode("body", {}, [
+    new FakeNode("div", { id: "maincontent" }, [new FakeNode("div", { id: "view" })]),
+  ]);
+  const listeners = new Map();
   const document = {
     body,
     documentElement: body,
@@ -455,9 +464,30 @@ function createDocument() {
     modal: null,
     createElement: (tag) => new FakeNode(tag),
     createTextNode: (text) => `${text}`,
-    getElementById: () => null,
-    addEventListener() {},
-    removeEventListener() {},
+    getElementById(id) {
+      const walk = (node) => {
+        for (const child of node.childNodes) {
+          if (!(child instanceof FakeNode)) continue;
+          if (child.attrs.id === id) return child;
+          const found = walk(child);
+          if (found) return found;
+        }
+        return null;
+      };
+      return walk(body);
+    },
+    addEventListener(type, listener) {
+      if (!listeners.has(type)) listeners.set(type, []);
+      listeners.get(type).push(listener);
+    },
+    removeEventListener(type, listener) {
+      const list = listeners.get(type) || [];
+      if (list.includes(listener)) list.splice(list.indexOf(listener), 1);
+    },
+    dispatchEvent(event) {
+      (listeners.get(event.type) || []).slice().forEach((listener) => listener(event));
+      return true;
+    },
     querySelectorAll: (selector) => body.querySelectorAll(selector),
     querySelector(selector) {
       if (selector === "#modal_overlay > .modal.cbi-modal") return document.modal;
@@ -539,8 +569,10 @@ function createForm({ version, baseclass, uci, jsonMaps }) {
     },
     render() {
       return this.load().then(() => {
-        // Map.renderContents() creates the root before the sections render.
+        // Map.renderContents() creates the root before the sections render
+        // and binds the map to it (dom.bindClassInstance).
         this.root ??= E("div", { class: "cbi-map" });
+        this.root.classInstance = this;
         this.children.forEach((section) => section.renderWidgets());
         this.rendered = true;
         this.checkDepends();
@@ -982,6 +1014,30 @@ function loadModule(file, modules, globals) {
   return typeof exported === "function" ? new exported() : exported;
 }
 
+// The Forkop CLI as fs.exec answers it (createEnvironment({ fs })):
+// answers[command] is the JSON the command prints, a function of its
+// arguments that returns it, { code, data } for a non-zero exit, or
+// { code, stdout } for raw output; other commands print {}. log gets
+// "exec <arguments>" for every call.
+function cliAnswers(answers, log = []) {
+  return {
+    exec(_command, args) {
+      log.push(`exec ${args.join(" ")}`);
+      let answer = answers[args[0]];
+      if (typeof answer === "function") answer = answer(args);
+      if (answer === undefined) return Promise.resolve({ code: 0, stdout: "{}", stderr: "" });
+      if (typeof answer?.stdout === "string") return Promise.resolve({ code: answer.code ?? 0, stdout: answer.stdout, stderr: "" });
+      const { code = 0, data = answer } = answer?.data !== undefined ? answer : { data: answer };
+      return Promise.resolve({ code, stdout: JSON.stringify(data), stderr: "" });
+    },
+  };
+}
+
+// Lets pending promise chains (fs.exec answers and what follows them) run.
+async function settle() {
+  for (let i = 0; i < 50; i++) await new Promise((resolve) => setImmediate(resolve));
+}
+
 // Loads the real section.js for one UCI state. `version` is "24.10" or "25.12".
 // `providers` is what the DPI provider availability probe reports (all
 // installed by default); `fs` overrides methods of the LuCI fs stub.
@@ -990,11 +1046,17 @@ function createEnvironment({
   config = {},
   providers = { zapretInstalled: true, zapret2Installed: true, byedpiInstalled: true },
   fs: fsOverrides = {},
+  // The tab's sessionStorage; pass the previous environment's to model the
+  // page load that follows a LuCI apply.
+  sessionStorage = new Map(),
 } = {}) {
   const baseclass = createBaseclass();
   const uci = createStagedUciStore("forkop", config);
   const document = createDocument();
   const listeners = new Map();
+  // window.setTimeout callbacks wait here until runTimers() runs them.
+  const timers = [];
+  const notifications = [];
   const window = {
     document,
     location: { hostname: "192.168.1.1", protocol: "http:", pathname: "/" },
@@ -1011,12 +1073,20 @@ function createEnvironment({
       (listeners.get(event.type) || []).slice().forEach((listener) => listener(event));
       return true;
     },
-    setTimeout: () => 0,
+    setTimeout(callback) {
+      timers.push(callback);
+      return timers.length;
+    },
     clearTimeout() {},
     setInterval: () => 0,
     clearInterval() {},
     matchMedia: () => ({ matches: false, addEventListener() {} }),
     localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+    sessionStorage: {
+      getItem: (key) => (sessionStorage.has(key) ? sessionStorage.get(key) : null),
+      setItem: (key, value) => sessionStorage.set(key, `${value}`),
+      removeItem: (key) => sessionStorage.delete(key),
+    },
   };
   const uiAbstract = baseclass.Class.extend({
     __init__(value, choices, options) {
@@ -1037,8 +1107,23 @@ function createEnvironment({
     Checkbox: uiAbstract.extend({}),
     showModal() {},
     hideModal() {},
-    addNotification() {},
+    // Recorded in notifications: { type, node, text }.
+    addNotification(_title, children, ...classes) {
+      const text = [].concat(children ?? []).map((node) => (typeof node === "string" ? node : node.textContent)).join("");
+      notifications.push({ type: classes.join(" "), node: children, text });
+    },
     tabs: { updateTabs() {} },
+    // ui.changes (ui.js): apply() posts admin/uci/apply_rollback (checked) or
+    // apply_unchecked and returns at once. Once rpcd confirms the apply,
+    // confirm() dispatches "uci-applied" on the document and reloads the
+    // page L.env.apply_display seconds later: confirmApply() below plays
+    // that. applies records the `checked` argument of each apply().
+    changes: {
+      applies: [],
+      apply(checked) {
+        this.applies.push(checked);
+      },
+    },
   };
   const jsonMaps = [];
   const form = createForm({ version, baseclass, uci, jsonMaps });
@@ -1110,7 +1195,71 @@ function createEnvironment({
   // A page of the Forkop menu (page/*.js) as LuCI renders it: the view's
   // render() builds its form with configform.createMap() and renders it.
   const configform = loadModule("configform.js", { baseclass, form, uci, ui, main }, globals);
-  const view = { extend: (properties) => baseclass.Class.extend(properties) };
+
+  // luci.js view of OpenWrt 24.10 and 25.12. The footer's Save & Apply is
+  // bound to the view (ui.createHandlerFn(this, 'handleSaveApply')), never
+  // to a form.Map, which has no handleSaveApply: handleSave() saves every
+  // map of the page (dom.callClassMethod(map, 'save') for each .cbi-map in
+  // #maincontent), then ui.changes.apply(mode == '0') starts the apply.
+  const findClassInstance = (node) => {
+    let inst = null;
+    do {
+      inst = node.classInstance ?? null;
+      node = node.parentNode;
+    } while (!inst && node != null);
+    return inst;
+  };
+  const callClassMethod = (node, method, ...args) => {
+    const inst = findClassInstance(node);
+    return typeof inst?.[method] === "function" ? inst[method].call(inst, ...args) : null;
+  };
+  const pageMaps = () => document.getElementById("maincontent").querySelectorAll(".cbi-map");
+  const view = baseclass.Class.extend({
+    load() {},
+    render() {},
+    handleSave(_ev) {
+      const tasks = [];
+      pageMaps().forEach((map) => tasks.push(callClassMethod(map, "save")));
+      return Promise.all(tasks);
+    },
+    handleSaveApply(ev, mode) {
+      return this.handleSave(ev).then(() => {
+        ui.changes.apply(mode == "0");
+      });
+    },
+    handleReset(_ev) {
+      const tasks = [];
+      pageMaps().forEach((map) => tasks.push(callClassMethod(map, "reset")));
+      return Promise.all(tasks);
+    },
+    // Save & Apply (a ComboButton: mode "0" Save & Apply, "1" Apply
+    // unchecked), Save and Reset; disabled when every map is read-only. The
+    // handler is resolved when the footer is built, as ui.createHandlerFn
+    // does; here it returns the handler's promise so a test can wait for it.
+    addFooter() {
+      let readonly = true;
+      document.getElementById("view").querySelectorAll(".cbi-map").forEach((map) => {
+        const m = findClassInstance(map);
+        if (m && !m.readonly) readonly = false;
+      });
+      const handler = (name) => {
+        const fn = this[name];
+        return typeof fn === "function" ? (ev, ...args) => Promise.resolve(fn.call(this, ev, ...args)) : null;
+      };
+      const button = (name, label) =>
+        this[name] ? E("button", { class: "cbi-button", click: handler(name), disabled: readonly || null }, [label]) : "";
+      return E("div", { class: "cbi-page-actions" }, [
+        button("handleSaveApply", "Save & Apply"),
+        button("handleSave", "Save"),
+        button("handleReset", "Reset"),
+      ]);
+    },
+  });
+
+  // A page of the Forkop menu (page/*.js). The view is rendered here at
+  // once (view.__init__ runs load() first, which only starts the shell
+  // services), so a test reaches its form without waiting; mount() puts the
+  // rendered content and the footer into #view, as view.__init__ does.
   function renderPage(file, modules) {
     let map = null;
     const pageConfigform = Object.create(configform, {
@@ -1118,7 +1267,21 @@ function createEnvironment({
     });
     const page = loadModule(file, { view, form, configform: pageConfigform, ...modules }, globals);
     const rendered = page.render();
-    return { map, rendered };
+    const mount = () =>
+      Promise.resolve(rendered).then((nodes) => {
+        const vp = document.getElementById("view");
+        vp.childNodes.slice().forEach((node) => vp.removeChild(node));
+        vp.appendChild(nodes);
+        vp.appendChild(page.addFooter());
+      });
+    // The footer's Save & Apply (mode "0") or Apply unchecked ("1").
+    const saveApply = (mode = "0") =>
+      mount().then(() => {
+        const vp = document.getElementById("view");
+        const target = vp.querySelectorAll("button").find((node) => node.textContent === "Save & Apply");
+        return target.attrs.click({ currentTarget: target }, mode);
+      });
+    return { map, rendered, page, mount, saveApply };
   }
 
   // The Rules page of page/rules.js: its map holds only the rules grid, and
@@ -1174,6 +1337,23 @@ function createEnvironment({
     window,
     CustomEvent: globals.CustomEvent,
     ui,
+    // ui.addNotification() calls: { type, node, text }.
+    notifications,
+    // The tab's sessionStorage, for the page load after an apply.
+    sessionStorage,
+    // LuCI confirms the apply that ui.changes.apply() started: it
+    // dispatches "uci-applied" on the document, then reloads the page
+    // (createEnvironment({ sessionStorage }) is that next page).
+    confirmApply() {
+      document.dispatchEvent(new globals.CustomEvent("uci-applied"));
+    },
+    // Runs the window.setTimeout callbacks queued so far, then lets the
+    // promises they start settle.
+    async runTimers() {
+      timers.splice(0).forEach((callback) => callback());
+      await settle();
+    },
+    settle,
     // view/forkop/shell.js sharing this environment's main.js and window.
     shell() {
       shellModule ??= loadModule("shell.js", { baseclass, uci, main }, moduleGlobals);
@@ -1187,7 +1367,10 @@ function createEnvironment({
       return {
         map: pageMap,
         grid,
+        page: rulesPage.page,
         save: () => pageMap.save(),
+        // The footer's Save & Apply ("0") or Apply unchecked ("1").
+        saveApply: (mode) => rulesPage.saveApply(mode),
         setEnabled(section_id, value) {
           const [enabled, row] = pageMap.lookupOption("enabled", section_id);
           enabled.getUIElement(row).setValue(value);
@@ -1221,6 +1404,8 @@ function createEnvironment({
       const map = page.map;
       return {
         map,
+        page: page.page,
+        saveApply: (mode) => page.saveApply(mode),
         option(name) {
           for (const tabSection of map.children) {
             const found = tabSection.children.find((option) => option.option === name);
@@ -1273,4 +1458,4 @@ function createEnvironment({
   };
 }
 
-module.exports = { createEnvironment, isEqual, toArray };
+module.exports = { createEnvironment, cliAnswers, isEqual, toArray };

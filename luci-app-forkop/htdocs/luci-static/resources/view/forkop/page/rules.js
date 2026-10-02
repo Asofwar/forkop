@@ -34,6 +34,10 @@ const EntryPoint = {
 
     return rulesMap.render();
   },
+
+  // LuCI's footer calls the view's Save & Apply: snapshot first
+  // (configform.js).
+  handleSaveApply: configform.handleSaveApply,
 };
 
 return view.extend(EntryPoint);

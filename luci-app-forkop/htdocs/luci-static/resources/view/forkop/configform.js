@@ -5,9 +5,9 @@
 "require ui";
 "require view.forkop.main as main";
 
-// The configuration forms of Forkop X (Rules, Settings): a UCI form whose
-// Save & Apply takes a snapshot first and, once the reload is confirmed,
-// lists what changed since it; and the rules grid setup.
+// The configuration forms of Forkop X (Rules, Settings): a UCI form, the
+// pages' Save & Apply that takes a snapshot first and, once the reload is
+// confirmed, lists what changed since it; and the rules grid setup.
 
 const UCI_PACKAGE = main.FORKOP_UCI_PACKAGE;
 
@@ -114,116 +114,214 @@ function snapshotRefusalText(snapshot) {
   }
 }
 
-function createMap(title, description) {
-  const map = new form.Map(UCI_PACKAGE, title, description);
-  const originalHandleSaveApply = map.handleSaveApply;
-  map.handleSaveApply = async function (ev, mode) {
-    const applyStartedAt = Math.floor(Date.now() / 1000);
-    const snapshot = await main.ForkopShellMethods.snapshotCreate("automatic");
-    if (
-      !snapshot.success ||
-      !["created", "existing"].includes(snapshot.data?.status)
-    ) {
-      ui.addNotification(
-        null,
-        E("p", {}, snapshotRefusalText(snapshot)),
-        "error",
-      );
-      return;
-    }
-    const beforeHealth = await main.ForkopShellMethods.getHealthStatus();
-    const previousReloadAt = beforeHealth.success
-      ? beforeHealth.data?.last_reload?.timestamp || 0
-      : 0;
-    const refreshUiState = function () {
-      main.ForkopShellMethods.getUiState()
-        .then((response) => {
-          if (
-            response?.success &&
-            typeof main.applyUiStateToStore === "function"
-          ) {
-            main.applyUiStateToStore(response.data);
-          }
-        })
-        .catch(() => null);
-    };
+// Save & Apply is the footer button of the page's view: luci.js binds it to
+// view.handleSaveApply, which saves every map of the page (handleSave) and
+// then starts ui.changes.apply(); form.Map has no such method (UC-064,
+// UC-224). The Rules and Settings views take handleSaveApply below in its
+// place: a snapshot of the configuration as it is before the apply comes
+// first. Without it the changes are saved, as Save does, but not applied,
+// and the page says why. The Unsaved Changes dialog in LuCI's header
+// applies without any view, so without this snapshot (a known limitation).
+//
+// LuCI reloads the page once it has confirmed the apply (ui.changes.confirm
+// dispatches "uci-applied", then sets window.location), before the Forkop
+// reload that the commit starts has finished. What the report of that
+// reload needs is kept in sessionStorage when LuCI confirms the apply; the
+// page that loads then reports it (reportPendingApply).
+const PENDING_APPLY_KEY = "forkop-pending-apply";
+// The reload has this long from LuCI's confirmation of the apply; a record
+// older than the second limit (no form page loaded since) is dropped.
+const APPLY_REPORT_WAIT_MS = 90 * 1000;
+const APPLY_RECORD_MAX_AGE_MS = 10 * 60 * 1000;
+const APPLY_POLL_INTERVAL_MS = 2000;
 
-    if (main.store && typeof main.store.set === "function") {
-      const servicesInfoWidget = main.store.get().servicesInfoWidget;
-      main.store.set({
-        servicesInfoWidget: {
-          ...servicesInfoWidget,
-          data: {
-            ...servicesInfoWidget.data,
-            forkopStatus: "reloading",
-          },
+// The snapshot and the last reload before the apply that this page started.
+let pendingApply = null;
+
+function sessionStore() {
+  try {
+    return window.sessionStorage || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function markReloading() {
+  if (main.store && typeof main.store.set === "function") {
+    const servicesInfoWidget = main.store.get().servicesInfoWidget;
+    main.store.set({
+      servicesInfoWidget: {
+        ...servicesInfoWidget,
+        data: {
+          ...servicesInfoWidget.data,
+          forkopStatus: "reloading",
         },
-      });
+      },
+    });
+  }
+}
+
+if (
+  typeof document !== "undefined" &&
+  typeof document.addEventListener === "function"
+) {
+  document.addEventListener("uci-applied", () => {
+    if (!pendingApply) return;
+    const record = { ...pendingApply, confirmedAt: Date.now() };
+    pendingApply = null;
+    try {
+      sessionStore()?.setItem(PENDING_APPLY_KEY, JSON.stringify(record));
+    } catch (e) {
+      // Without the record the next page reports nothing.
     }
+    markReloading();
+  });
+}
 
-    return Promise.resolve(originalHandleSaveApply.call(this, ev, mode))
-      .then(async (result) => {
-        window.setTimeout(refreshUiState, 250);
+async function handleSaveApply(ev, mode) {
+  const snapshot = await main.ForkopShellMethods.snapshotCreate("automatic");
+  if (
+    !snapshot.success ||
+    !["created", "existing"].includes(snapshot.data?.status)
+  ) {
+    await this.handleSave(ev);
+    ui.addNotification(
+      null,
+      E("div", {}, [
+        E("p", {}, [snapshotRefusalText(snapshot)]),
+        E("p", {}, [
+          _(
+            "The changes are saved: Save & Apply applies them once a snapshot can be taken.",
+          ),
+        ]),
+      ]),
+      "error",
+    );
+    return;
+  }
+  // A reload recorded after this one is the reload of this apply; unknown,
+  // the reload cannot be told from an older one.
+  const health = await main.ForkopShellMethods.getHealthStatus();
+  pendingApply = {
+    snapshot: snapshot.data.snapshot.id,
+    reloadAt: health.success
+      ? Number(health.data?.last_reload?.timestamp) || 0
+      : null,
+  };
+  return this.super("handleSaveApply", [ev, mode]);
+}
 
-        const [diff, health] = await Promise.all([
-          main.ForkopShellMethods.snapshotDiff(snapshot.data.snapshot.id),
-          main.ForkopShellMethods.getHealthStatus(),
-        ]);
-        const reload = health.success ? health.data?.last_reload : null;
-        const confirmed =
-          reload &&
-          reload.timestamp >= applyStartedAt &&
-          reload.timestamp > previousReloadAt &&
-          reload.status === "success";
-        const entries =
-          diff.success && Array.isArray(diff.data) ? diff.data : [];
-        // UC-062: a diff longer than the backend lists ends with
-        // { truncated, total } in place of the rest.
-        const changes = entries.filter((entry) => entry.truncated !== true);
-        const marker = entries.find((entry) => entry.truncated === true);
-        const more = marker
-          ? Math.max((Number(marker.total) || 0) - changes.length, 0)
-          : 0;
-        // null: the option is not set on that side (D-2).
-        const diffValue = (value) =>
-          value === null || value === undefined
-            ? _("not set")
-            : Array.isArray(value)
-              ? JSON.stringify(value)
-              : value;
-        const message = confirmed
-          ? [
-              _("Configuration applied successfully"),
-              ...changes.map(
-                (change) =>
-                  `${change.section}.${change.option}: ${diffValue(change.before)} → ${diffValue(change.after)}`,
-              ),
-              ...(more ? [_("and %d more").format(more)] : []),
-            ].join("\n")
-          : _(
-              "Configuration saved. Runtime reload has not been confirmed; check History and recovery.",
-            );
+function takePendingApply() {
+  const store = sessionStore();
+  let record = null;
+  try {
+    record = JSON.parse(store?.getItem(PENDING_APPLY_KEY) || "null");
+    store?.removeItem(PENDING_APPLY_KEY);
+  } catch (e) {
+    return null;
+  }
+  const age = Date.now() - Number(record?.confirmedAt);
+  return record &&
+    typeof record.snapshot === "string" &&
+    age >= 0 &&
+    age < APPLY_RECORD_MAX_AGE_MS
+    ? record
+    : null;
+}
+
+// The Forkop reload of the apply LuCI confirmed before it loaded this page:
+// a reload event newer than the last one before the apply (health record).
+// None comes while Forkop is stopped or not started since boot (D-15).
+function waitForApplyReload(record) {
+  const deadline = record.confirmedAt + APPLY_REPORT_WAIT_MS;
+  const poll = () =>
+    main.ForkopShellMethods.getHealthStatus().then((health) => {
+      const data = health.success ? health.data : null;
+      const reload = data?.last_reload;
+      if (
+        record.reloadAt != null &&
+        reload?.kind === "reload" &&
+        Number(reload.timestamp) > record.reloadAt
+      )
+        return { reload };
+      if (["stopped", "not_started"].includes(data?.service?.forkop))
+        return { stopped: true };
+      if (record.reloadAt == null || Date.now() >= deadline) return {};
+      return new Promise((resolve) =>
+        window.setTimeout(resolve, APPLY_POLL_INTERVAL_MS),
+      ).then(poll);
+    });
+  return poll();
+}
+
+// Confirmed: what changed since the pre-apply snapshot.
+async function applyOutcomeText(record, outcome) {
+  if (outcome.stopped)
+    return _(
+      "Configuration saved. Forkop X is not running: the changes take effect when it is started.",
+    );
+  if (!outcome.reload)
+    return _(
+      "Configuration saved. Runtime reload has not been confirmed; check History and recovery.",
+    );
+  if (outcome.reload.status !== "success")
+    return _(
+      "Configuration saved. Runtime reload failed; check History and recovery.",
+    );
+  const diff = await main.ForkopShellMethods.snapshotDiff(record.snapshot);
+  const entries = diff.success && Array.isArray(diff.data) ? diff.data : [];
+  // UC-062: a diff longer than the backend lists ends with
+  // { truncated, total } in place of the rest.
+  const changes = entries.filter((entry) => entry.truncated !== true);
+  const marker = entries.find((entry) => entry.truncated === true);
+  const more = marker
+    ? Math.max((Number(marker.total) || 0) - changes.length, 0)
+    : 0;
+  // null: the option is not set on that side (D-2).
+  const diffValue = (value) =>
+    value === null || value === undefined
+      ? _("not set")
+      : Array.isArray(value)
+        ? JSON.stringify(value)
+        : value;
+  return [
+    _("Configuration applied successfully"),
+    ...changes.map(
+      (change) =>
+        `${change.section}.${change.option}: ${diffValue(change.before)} → ${diffValue(change.after)}`,
+    ),
+    ...(more ? [_("and %d more").format(more)] : []),
+  ].join("\n");
+}
+
+function reportPendingApply() {
+  const record = takePendingApply();
+  if (!record) return Promise.resolve(null);
+  return waitForApplyReload(record)
+    .then((outcome) =>
+      applyOutcomeText(record, outcome).then((text) => {
+        const confirmed = outcome.reload?.status === "success";
         ui.addNotification(
           null,
-          E("p", { style: "white-space: pre-line" }, message),
+          E("p", { style: "white-space: pre-line" }, [text]),
           confirmed ? "info" : "warning",
         );
+        return outcome;
+      }),
+    )
+    .catch(() => null);
+}
 
-        return result;
-      })
-      .catch((error) => {
-        refreshUiState();
-
-        throw error;
-      });
-  };
-
-  return map;
+function createMap(title, description) {
+  // A page that LuCI loaded after an apply reports that apply.
+  reportPendingApply();
+  return new form.Map(UCI_PACKAGE, title, description);
 }
 
 const EntryPoint = {
   createMap,
   configureGridSection,
+  handleSaveApply,
 };
 
 return baseclass.extend(EntryPoint);

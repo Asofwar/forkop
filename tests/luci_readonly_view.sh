@@ -98,13 +98,18 @@ function stubs(canReadUci, calls, { stale = false } = {}) {
   }
 
   // Rules and Settings: the only pages with configuration forms, both with
-  // the snapshot-first Save & Apply of configform.js.
+  // the snapshot-first Save & Apply of configform.js. LuCI's footer calls the
+  // view's handleSaveApply, so the page views take it (UC-064, UC-224);
+  // luci_save_apply_snapshot.sh drives it.
   const formSource = read('configform.js');
   assert.match(formSource, /new form\.Map\(UCI_PACKAGE/, 'configform must build the form');
-  assert.match(formSource, /map\.handleSaveApply = async function/,
-    'configform must keep the snapshot-first Save & Apply');
-  assert.match(formSource, /snapshotCreate\("automatic"\)[\s\S]*originalHandleSaveApply\.call/,
-    'a snapshot must be taken before applying');
+  const handleSaveApply = function () {};
+  for (const [file, modules] of [['page/rules.js', { section: {} }],
+    ['page/settings.js', { settings: {}, updates: {} }]]) {
+    const view = load(file, { view: { extend: value => value }, form: {}, shell: {},
+      configform: { handleSaveApply }, ...modules });
+    assert.equal(view.handleSaveApply, handleSaveApply, `${file}: Save & Apply must be configform's`);
+  }
   const settingsSource = read('page/settings.js');
   const rulesSource = read('page/rules.js');
   for (const [name, source] of [['settings', settingsSource], ['rules', rulesSource]])

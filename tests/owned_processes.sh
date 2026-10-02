@@ -257,33 +257,53 @@ esac
 
 # --- Part 2: no test signals a stored PID the old way ------------------------
 
-# stale_kills FILE...: the lines that signal a stored PID, the process group
-# of a stored number or the children of a stored PID other than through the
-# helper. A plain `kill "$pid"` that would fail the test if the process were
-# gone is a signal under test sent to a process the test has just seen
-# running, and stays.
+# stale_kills FILE...: the commands (with their continuation lines) that
+# signal a stored PID, the process group of a stored number (with or without
+# `--`), the children of a stored PID or the PIDs xargs reads, other than
+# through the helper. A plain `kill "$pid"`, or one followed by `|| fail` or
+# `|| exit`, fails the test if the process is gone: it is a signal under test
+# sent to a process the test has just seen running, and stays. Any other
+# `||` or a redirected stderr hides that the process was gone.
 stale_kills() {
   awk '
-    /^[[:space:]]*#/ { next }
+    FNR == 1 { joined = "" }
+    # A command with its continuation lines, reported at its first line.
+    {
+      if (joined == "")
+        start = FNR
+      if ($0 ~ /\\$/) {
+        joined = joined substr($0, 1, length($0) - 1) " "
+        next
+      }
+      line = joined $0
+      joined = ""
+    }
+    line ~ /^[[:space:]]*#/ { next }
     {
       why = ""
-      if ($0 ~ /(^|[^a-z_-])kill[^#]*--[[:space:]]+"?-\$/)
+      if (line ~ /(^|[^a-z_-])kill([[:space:]]+(-[A-Za-z][A-Za-z0-9+]*|-[1-9][0-9]*|-[sn][[:space:]]+[A-Za-z0-9+]+))*([[:space:]]+--)?[[:space:]]+"?-"?\$/)
         why = "signals the process group of a stored number"
-      else if ($0 ~ /(^|[^a-z_-])pkill([[:space:]]+-[A-Za-z0-9]+)*[[:space:]]+-P/)
+      else if (line ~ /(^|[^a-z_-])pkill[[:space:]][^#;|&]*(-P|--parent)([[:space:]=]|$)/)
         why = "signals the children of a stored PID"
+      else if (line ~ /(^|[^a-z_-])xargs([[:space:]]+-[^[:space:]]+)*[[:space:]]+kill([[:space:]]|$)/)
+        why = "signals the PIDs it reads"
       else {
-        # Each kill of a stored PID up to the end of its command.
-        rest = $0
-        while (why == "" && match(rest, /(^|[^a-z_-])kill([[:space:]]+(-[A-Z]+|-[1-9][0-9]*|-s[[:space:]]+[A-Z]+))?[[:space:]]+(--[[:space:]]+)?"?\$/)) {
+        # Each kill of a stored PID up to the end of its command, when the
+        # command hides that the process was gone: then the signal went to
+        # whatever held the number.
+        rest = line
+        while (why == "" && match(rest, /(^|[^a-z_-])kill([[:space:]]+(-[A-Za-z][A-Za-z0-9+]*|-[1-9][0-9]*|-[sn][[:space:]]+[A-Za-z0-9+]+))?([[:space:]]+--)?[[:space:]]+"?\$/)) {
           command = substr(rest, RSTART)
           rest = substr(rest, RSTART + RLENGTH)
           sub(/;.*/, "", command)
-          if (command ~ /\|\|[[:space:]]*(true|:)|2>\/dev\/null/)
+          if (command ~ /[2&]>/)
+            why = "signals a stored PID whose process may be gone"
+          else if (match(command, /\|\|[[:space:]]*/) && substr(command, RSTART + RLENGTH) !~ /^(fail|exit)([[:space:]]|$)/)
             why = "signals a stored PID whose process may be gone"
         }
       }
       if (why != "")
-        printf "%s:%d: %s: %s\n", FILENAME, FNR, why, $0
+        printf "%s:%d: %s: %s\n", FILENAME, start, why, line
     }
   ' "$@"
 }
@@ -300,15 +320,31 @@ kill "$(cat "$STATE/holder")" 2>/dev/null || true
   for pid in "${FOREIGN_PIDS[@]}"; do kill -9 "$pid" 2>/dev/null || true; done
 kill -s TERM "$pid" || :
 kill -9 "$runner"; kill -9 "$(cat "$STATE/guard.pid")" 2>/dev/null || true
+  kill -KILL "-$pid" 2>/dev/null || true
+kill -9 -$pgid || :
+kill -KILL -- -"$pid"
+kill "$pid" >/dev/null 2>&1 || echo gone
+kill -s KILL "$pid" &>/dev/null; true
+kill -TERM "$pid" || return 0
+  kill -KILL "$pid" \
+    2>/dev/null || true
+echo "$pid" | xargs kill 2>/dev/null || true
+pkill -KILL --parent "$pid" || true
+pkill --signal KILL -P "$pid"
 -- allowed --
   owned_kill KILL "${actors[@]}" || true
 kill -0 "$pid" 2>/dev/null || fail "gone"
+kill -0 -- "-$pgid" 2>/dev/null || break
 kill -TERM "$runner"; wait "$runner" || true
+kill -TERM "$pid" || fail "the worker is gone"
 pkill -KILL -f "$WORK_DIR" 2>/dev/null || true
 # kill -KILL "$pid" 2>/dev/null || true
+kill -TERM "$runner" \
+  || fail "the runner is gone"
 SH
 found="$(stale_kills "$WORK_DIR/sample.sh" | cut -d: -f2 | tr '\n' ' ')"
-[ "$found" = "1 2 3 4 5 6 7 8 9 10 " ] || fail "the check of the old forms found lines '$found', not 1 to 10"
+[ "$found" = "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 19 20 21 " ] ||
+  fail "the check of the old forms found lines '$found', not 1 to 17 and 19 to 21"
 
 # unloaded_kills FILE...: the calls of owned_kill and owned_kill_children
 # where the helper is not loaded. There the call fails with "not found", the

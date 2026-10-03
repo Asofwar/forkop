@@ -166,6 +166,15 @@ function renderHistory() {
               ),
               E('span', { class: 'fkp-history__what' }, item.title),
               renderStatus(item.outcome),
+              ...(item.details.length
+                ? [
+                    E(
+                      'ul',
+                      { class: 'fkp-history__details' },
+                      item.details.map((line) => E('li', {}, [line])),
+                    ),
+                  ]
+                : []),
             ]),
           ),
         )

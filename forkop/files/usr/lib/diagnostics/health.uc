@@ -28,9 +28,20 @@ const HISTORY_MAX_BYTES = 65536;
 const HISTORY_KEEP = 150;
 // An autotune apply and its rollback have kinds of their own, never restore
 // (UC-060, design H.6). cron_refresh: a start or reload that could not
-// update the scheduled jobs and went on without them.
+// update the scheduled jobs and went on without them. config_migration: a
+// package upgrade migrated the configuration and changed what it does in a
+// way the user should know about; its notices say how
+// (config/migration.uc).
 const EVENT_KINDS = [ "start", "reload", "restore", "recovery", "autotune_apply", "autotune_rollback", "snapshot_create",
-    "snapshot_delete", "autotune_mode", "autotune_recommendation", "autotune_run", "cron_refresh" ];
+    "snapshot_delete", "autotune_mode", "autotune_recommendation", "autotune_run", "cron_refresh",
+    "config_migration" ];
+// The notices of a config_migration event, in the shape the History page
+// reads: a known code, a UCI section name, ids of rule sets or options.
+// Anything else is dropped; an event keeps at most MIGRATION_NOTICES_MAX of
+// them (the journal and the runtime file stay small).
+const MIGRATION_NOTICE_CODES = [ "retired_rule_sets" ];
+const MIGRATION_NOTICES_MAX = 16;
+const MIGRATION_NOTICE_IDS_MAX = 32;
 // "not_started": a snapshot restore replaced the configuration while an
 // explicit stop held the runtime down; nothing verified it (D-15, UC-056).
 const EVENT_STATUSES = [ "success", "failure", "recovered", "not_started" ];
@@ -78,6 +89,25 @@ function valid_event(event) {
         index(EVENT_STATUSES, event.status) >= 0 && type(event.timestamp) == "int";
 }
 
+function notice_ids(values) {
+    let result = [];
+    for (let value in type(values) == "array" ? values : [])
+        if (type(value) == "string" && match(value, /^[a-z0-9_]{1,32}$/) != null &&
+            length(result) < MIGRATION_NOTICE_IDS_MAX)
+            push(result, value);
+    return result;
+}
+
+function notice_view(notice) {
+    if (type(notice) != "object" || index(MIGRATION_NOTICE_CODES, notice.code) < 0 ||
+        type(notice.section) != "string" || match(notice.section, /^[A-Za-z0-9_]{1,64}$/) == null)
+        return null;
+    let values = notice_ids(notice.values);
+    if (length(values) == 0)
+        return null;
+    return { code: notice.code, section: notice.section, values, replacements: notice_ids(notice.replacements) };
+}
+
 // The event as stored and shown: only known fields, extras only when valid.
 function event_view(event) {
     let view = { kind: event.kind, status: event.status, timestamp: event.timestamp };
@@ -85,6 +115,16 @@ function event_view(event) {
         if (index(EVENT_TRIGGERS, event.trigger) >= 0) view.trigger = event.trigger;
         if (type(event.candidate) == "string" && match(event.candidate, /^[a-z0-9_]{1,32}$/) != null)
             view.candidate = event.candidate;
+    }
+    if (event.kind == "config_migration" && type(event.notices) == "array") {
+        let notices = [];
+        for (let notice in event.notices) {
+            let item = notice_view(notice);
+            if (item != null && length(notices) < MIGRATION_NOTICES_MAX)
+                push(notices, item);
+        }
+        if (length(notices) > 0)
+            view.notices = notices;
     }
     return view;
 }
@@ -152,11 +192,19 @@ function event_state() {
     return length(result) > 10 ? slice(result, length(result) - 10) : result;
 }
 
-function record_event(kind, status, trigger, candidate) {
+// details: the extra fields of the kind, as JSON text (config_migration:
+// { "notices": [ ... ] }).
+function record_event(kind, status, trigger, candidate, details) {
     if (index(EVENT_KINDS, kind) < 0 || index(EVENT_STATUSES, status) < 0)
         return 1;
     fs.mkdir(RUNTIME_DIR, 0700);
-    let event = event_view({ kind, status, timestamp: int(clock()[0]), trigger, candidate });
+    let extra = {};
+    try {
+        extra = details != null && details != "" ? json(details) : {};
+    }
+    catch (e) {}
+    let event = event_view({ kind, status, timestamp: int(clock()[0]), trigger, candidate,
+        notices: type(extra) == "object" ? extra.notices : null });
     // Both journals are read, changed and replaced: one writer at a time.
     // Without the lock (an unwritable runtime directory) as before. A lock
     // held longer than HISTORY_LOCK_WAIT_MS: the event is recorded without
@@ -286,7 +334,8 @@ function reload_running() {
 
 let mode = ARGV[0] || "";
 if (mode == "record")
-    exit(record_event(as_string(ARGV[1]), as_string(ARGV[2]), as_string(ARGV[3]), as_string(ARGV[4])));
+    exit(record_event(as_string(ARGV[1]), as_string(ARGV[2]), as_string(ARGV[3]), as_string(ARGV[4]),
+        as_string(ARGV[5])));
 if (mode == "history") {
     let events = history_events();
     print(sprintf("%J\n", events == null ?

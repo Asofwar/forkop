@@ -20,6 +20,7 @@ let list_option = common.list_option;
 let bool_option = common.bool_option;
 let object_or_empty = common.object_or_empty;
 
+const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
 const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || "forkop";
 const TMP_SUBSCRIPTION_FOLDER = getenv("TMP_SUBSCRIPTION_FOLDER") || "/tmp/sing-box/subscriptions";
 const FORKOP_RUNTIME_STATE_DIR = getenv("FORKOP_RUNTIME_STATE_DIR") || "/var/run/forkop";
@@ -66,6 +67,12 @@ const RETIRED_SECONDARY_RULESET_IDS = {
     gcore: true, glesys: true, gthost: true, hetzner: true, meganz: true,
     melbicom: true, oracle: true, ovh: true, scalaxy: true, scaleway: true,
     vercel: true, zerocdn: true
+};
+// The retired ids whose service has a built-in (community) rule set of the
+// same id. It is not the same list: a community list may also match
+// domains and other addresses, so it is only offered (D-13 (b)).
+const RETIRED_SECONDARY_RULESET_COMMUNITY = {
+    cloudflare: true, digitalocean: true, hetzner: true, ovh: true
 };
 
 function shell_quote(value) {
@@ -201,6 +208,10 @@ function migration_context(model) {
         removed_caches: [],
         added_lists: {},
         created_anonymous: {},
+        // What a migration changed that the user should know about: the
+        // package reports it and records a config_migration history event
+        // (diagnostics/health.uc keeps the shape it knows).
+        notices: [],
         changed: false
     };
 }
@@ -1344,9 +1355,16 @@ function migrate_flintnet_urltest_default(ctx) {
 
 // b4geoip-forkop removed these SRS assets in its 2026-09-02 release. Keeping
 // their URLs in a rule causes every list update to fail with a remote 404.
+// D-13 (b), UC-093: the rule loses their IP matches, so it is not done
+// silently. The rule keeps the removed ids in list retired_rule_sets, which
+// only the rule editor reads: it names them and offers the built-in rule
+// sets of the same services, which the user may add or dismiss. Nothing is
+// added here, and a config_migration notice names the rule, the ids and
+// the possible replacement.
 function migrate_retired_secondary_rulesets(ctx) {
     for (let section in ctx.model.sections) {
         let retained = [];
+        let removed = [];
         let changed = false;
         for (let reference in list_option(section, "rule_set_with_subnets")) {
             reference = as_string(reference);
@@ -1362,6 +1380,8 @@ function migrate_retired_secondary_rulesets(ctx) {
             id = replace(id, /\.srs$/, "");
             if (prefix != "" && match(reference, /\.srs$/) != null && RETIRED_SECONDARY_RULESET_IDS[id]) {
                 changed = true;
+                if (index(removed, id) < 0)
+                    push(removed, id);
                 continue;
             }
             push(retained, reference);
@@ -1373,6 +1393,19 @@ function migrate_retired_secondary_rulesets(ctx) {
             set_list_option(ctx, section, "rule_set_with_subnets", retained);
         else
             delete_option(ctx, section, "rule_set_with_subnets");
+
+        let marker = [ ...list_option(section, "retired_rule_sets") ];
+        for (let id in removed)
+            if (index(marker, id) < 0)
+                push(marker, id);
+        set_list_option(ctx, section, "retired_rule_sets", marker);
+        let selected = list_option(section, "community_lists");
+        push(ctx.notices, {
+            code: "retired_rule_sets",
+            section: section_name(section),
+            values: removed,
+            replacements: filter(removed, (id) => RETIRED_SECONDARY_RULESET_COMMUNITY[id] && index(selected, id) < 0)
+        });
     }
 }
 
@@ -1684,7 +1717,7 @@ function migrate_sections(sections, active_secret) {
         for (let section in model[type_name])
             if (index(result, section) < 0)
                 push(result, section);
-    return { sections: result, created_anonymous: ctx.created_anonymous, changed: ctx.changed };
+    return { sections: result, created_anonymous: ctx.created_anonymous, changed: ctx.changed, notices: ctx.notices };
 }
 
 // Runtime UCI adapter and external command dispatcher.
@@ -1858,6 +1891,28 @@ function migrate_model(model, source) {
         : migrate_forkop_model(model);
 }
 
+// The line the package prints for a notice of a migration that it ran.
+function notice_text(notice) {
+    if (notice.code == "retired_rule_sets")
+        return "rule '" + notice.section + "': removed the retired b4geoip rule sets " + join(", ", notice.values) +
+            " (no longer published); " + (length(notice.replacements) > 0
+                ? "the built-in rule sets " + join(", ", notice.replacements) + " cover the same services and can be added in the rule editor"
+                : "no built-in rule set replaces them");
+    return notice.code;
+}
+
+// What a committed migration changed that the user should know about: on
+// the package's output and as a config_migration history event, which the
+// History page shows (diagnostics/health.uc).
+function report_notices(notices) {
+    if (length(notices) == 0)
+        return;
+    for (let notice in notices)
+        warn("Forkop: configuration migration: " + notice_text(notice) + "\n");
+    run(join(" ", map([ "ucode", "-L", LIB_DIR, LIB_DIR + "/diagnostics/health.uc", "record", "config_migration", "success",
+        "", "", sprintf("%J", { notices }) ], shell_quote)) + " >/dev/null 2>&1");
+}
+
 function migrate_runtime(source) {
     ensure_runtime_cache_format();
     remove_legacy_server_country_cache();
@@ -1875,6 +1930,7 @@ function migrate_runtime(source) {
     // The configuration that is still in place uses them.
     for (let path in ctx.removed_caches)
         remove_cache_path(path);
+    report_notices(ctx.notices);
     return true;
 }
 
@@ -1902,7 +1958,8 @@ function migrate_fixture(path, source) {
         changed: ctx.changed,
         config: export_model(ctx.model),
         operations: ctx.operations,
-        removed_caches: ctx.removed_caches
+        removed_caches: ctx.removed_caches,
+        notices: ctx.notices
     });
 }
 

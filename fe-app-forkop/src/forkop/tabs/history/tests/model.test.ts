@@ -215,6 +215,45 @@ describe('history list', () => {
     });
   });
 
+  it('names what a configuration migration changed (D-13)', () => {
+    const [item] = historyItems(
+      [
+        {
+          kind: 'config_migration',
+          status: 'success',
+          timestamp: 5,
+          notices: [
+            {
+              code: 'retired_rule_sets',
+              section: 'games',
+              values: ['cloudflare', 'amazon'],
+              replacements: ['cloudflare'],
+            },
+            {
+              code: 'retired_rule_sets',
+              section: 'cdn',
+              values: ['fastly'],
+              replacements: [],
+            },
+          ],
+        },
+      ],
+      'config',
+    );
+    expect(item.title).toBe('Configuration migrated by the update');
+    expect(item.details).toHaveLength(2);
+    expect(item.details[0]).toContain('“games”');
+    expect(item.details[0]).toContain('cloudflare, amazon');
+    expect(item.details[0]).toContain(
+      'Built-in rule sets of the same services: cloudflare. They were not added',
+    );
+    expect(item.details[1]).toContain('fastly');
+    expect(item.details[1]).toContain('No built-in rule set replaces them.');
+    expect(historyItems(events, 'all').every((i) => !i.details.length)).toBe(
+      true,
+    );
+  });
+
   it('names manual and automatic autotune applies', () => {
     const titles = historyItems(
       [

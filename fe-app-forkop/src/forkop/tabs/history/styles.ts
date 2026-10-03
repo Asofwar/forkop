@@ -48,6 +48,13 @@ export const styles = `
 .fkp-history__snapshot:first-child { border-top: 0; }
 .fkp-history__time { color: var(--fkp-tone-neutral); min-width: 0; }
 .fkp-history__what { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }
+.fkp-history__details {
+    flex: 1 1 100%;
+    margin: 0;
+    padding-left: var(--fkp-space-3);
+    color: var(--fkp-tone-neutral);
+    overflow-wrap: anywhere;
+}
 .fkp-history__lkg {
     padding: 0 var(--fkp-space-2);
     border: 1px solid var(--fkp-tone-success);

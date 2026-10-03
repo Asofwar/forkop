@@ -104,6 +104,18 @@ export namespace Forkop {
     migration?: SnapshotMigration;
   }
 
+  // What a package upgrade's configuration migration changed that the user
+  // should know about (config/migration.uc, diagnostics/health.uc).
+  // retired_rule_sets: the rule `section` lost the retired b4geoip rule sets
+  // `values`; `replacements` have a built-in rule set of the same service
+  // that the rule does not use yet (D-13 (b), never added automatically).
+  export interface MigrationNotice {
+    code: string;
+    section: string;
+    values: string[];
+    replacements: string[];
+  }
+
   export interface HistoryEvent {
     kind: string;
     status: string;
@@ -112,6 +124,8 @@ export namespace Forkop {
     // catalog candidate id.
     trigger?: 'manual' | 'automatic';
     candidate?: string;
+    // config_migration only.
+    notices?: MigrationNotice[];
   }
 
   export interface HistoryResult {

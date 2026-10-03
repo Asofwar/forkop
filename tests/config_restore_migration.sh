@@ -182,7 +182,9 @@ restore older
 has_line "	option marker 'older'" || fail "older snapshot: the snapshot configuration was not restored"
 has_line "	option mirror_base_url 'https://mirror.infotechtg.ru'" || fail "the retired mirror came back"
 ! grep -q 'mirror\.51343\.ru' "$FORKOP_CONFIG_FILE" || fail "a URL of the retired mirror came back"
-! grep -q 'hetzner' "$FORKOP_CONFIG_FILE" || fail "a retired rule set came back"
+! grep -q 'hetzner\.srs' "$FORKOP_CONFIG_FILE" || fail "a retired rule set came back"
+# D-13 (b): the rule keeps the id for the rule editor's notice.
+has_line "	list retired_rule_sets 'hetzner'" || fail "the rule lost the notice of its retired rule set"
 has_line "	list rule_set_with_subnets 'https://mirror.infotechtg.ru/forkop/lists/b4geoip-forkop/srs/google.srs'" ||
   fail "a current rule set was not moved to the mirror"
 has_line "	list remote_domain_lists 'https://mirror.infotechtg.ru/forkop/lists/russia_inside.lst'" ||

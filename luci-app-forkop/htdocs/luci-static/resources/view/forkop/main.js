@@ -5828,6 +5828,8 @@ function eventKindLabel(kind) {
       return _("Snapshot deleted");
     case "cron_refresh":
       return _("Scheduled jobs update");
+    case "config_migration":
+      return _("Configuration migrated by the update");
     default:
       return _("Other event");
   }
@@ -17916,6 +17918,7 @@ var CATEGORY = {
   start: "service",
   recovery: "service",
   cron_refresh: "service",
+  config_migration: "config",
   autotune_apply: "autotune",
   autotune_rollback: "autotune",
   autotune_mode: "autotune",
@@ -17932,6 +17935,23 @@ function historyFilterLabel(filter2) {
       return _("Autotune");
     default:
       return _("All");
+  }
+}
+function migrationNoticeText(notice) {
+  switch (notice.code) {
+    case "retired_rule_sets": {
+      const removed = _(
+        "Rule \u201C%s\u201D: the retired rule sets %s were removed from Built-in rule sets #2, their source no longer publishes them."
+      ).replace("%s", notice.section).replace("%s", notice.values.join(", "));
+      return notice.replacements.length ? `${removed} ${_(
+        "Built-in rule sets of the same services: %s. They were not added; the rule editor offers them."
+      ).replace("%s", notice.replacements.join(", "))}` : `${removed} ${_("No built-in rule set replaces them.")}`;
+    }
+    default:
+      return _("Rule \u201C%s\u201D: changed by the update.").replace(
+        "%s",
+        notice.section
+      );
   }
 }
 function eventTitle(event) {
@@ -17957,7 +17977,8 @@ function historyItems(events, filter2, nowMs = Date.now()) {
     title: eventTitle(event),
     outcome: eventOutcomeView(toEventOutcome(event.status)),
     time: formatTime(event.timestamp),
-    relative: formatRelativeTime(event.timestamp, nowMs)
+    relative: formatRelativeTime(event.timestamp, nowMs),
+    details: (event.notices ?? []).map(migrationNoticeText)
   }));
 }
 function snapshotReasonLabel(reason) {
@@ -18408,7 +18429,14 @@ function renderHistory() {
             item.relative
           ),
           E("span", { class: "fkp-history__what" }, item.title),
-          renderStatus(item.outcome)
+          renderStatus(item.outcome),
+          ...item.details.length ? [
+            E(
+              "ul",
+              { class: "fkp-history__details" },
+              item.details.map((line) => E("li", {}, [line]))
+            )
+          ] : []
         ])
       )
     ) : renderEmptyState(
@@ -18705,6 +18733,13 @@ var styles7 = `
 .fkp-history__snapshot:first-child { border-top: 0; }
 .fkp-history__time { color: var(--fkp-tone-neutral); min-width: 0; }
 .fkp-history__what { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }
+.fkp-history__details {
+    flex: 1 1 100%;
+    margin: 0;
+    padding-left: var(--fkp-space-3);
+    color: var(--fkp-tone-neutral);
+    overflow-wrap: anywhere;
+}
 .fkp-history__lkg {
     padding: 0 var(--fkp-space-2);
     border: 1px solid var(--fkp-tone-success);

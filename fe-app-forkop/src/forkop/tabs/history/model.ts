@@ -176,6 +176,7 @@ const CATEGORY: Record<string, Exclude<HistoryFilter, 'all'>> = {
   start: 'service',
   recovery: 'service',
   cron_refresh: 'service',
+  config_migration: 'config',
   autotune_apply: 'autotune',
   autotune_rollback: 'autotune',
   autotune_mode: 'autotune',
@@ -201,6 +202,32 @@ export interface HistoryItem {
   outcome: { label: string; tone: StatusTone };
   time: string;
   relative: string;
+  // What the event changed, one line each (config_migration notices).
+  details: string[];
+}
+
+// A notice of a configuration migration, in words. A rule is named by its
+// UCI section name: the journal does not keep labels.
+export function migrationNoticeText(notice: Forkop.MigrationNotice) {
+  switch (notice.code) {
+    case 'retired_rule_sets': {
+      const removed = _(
+        'Rule “%s”: the retired rule sets %s were removed from Built-in rule sets #2, their source no longer publishes them.',
+      )
+        .replace('%s', notice.section)
+        .replace('%s', notice.values.join(', '));
+      return notice.replacements.length
+        ? `${removed} ${_(
+            'Built-in rule sets of the same services: %s. They were not added; the rule editor offers them.',
+          ).replace('%s', notice.replacements.join(', '))}`
+        : `${removed} ${_('No built-in rule set replaces them.')}`;
+    }
+    default:
+      return _('Rule “%s”: changed by the update.').replace(
+        '%s',
+        notice.section,
+      );
+  }
 }
 
 // An autotune apply or rollback names its strategy and whether a person or
@@ -260,6 +287,7 @@ export function historyItems(
       outcome: eventOutcomeView(toEventOutcome(event.status)),
       time: formatTime(event.timestamp),
       relative: formatRelativeTime(event.timestamp, nowMs),
+      details: (event.notices ?? []).map(migrationNoticeText),
     }));
 }
 

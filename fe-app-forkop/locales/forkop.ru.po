@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-03 11:02+0000\n"
-"PO-Revision-Date: 2026-10-03 11:02+0000\n"
+"POT-Creation-Date: 2026-10-03 14:31+0000\n"
+"PO-Revision-Date: 2026-10-03 14:31+0000\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -215,6 +215,12 @@ msgstr "Активна: осталась после неудавшегося и�
 msgid "Active: restore not finished"
 msgstr "Активна: восстановление не завершено"
 
+msgid "Add"
+msgstr "Добавить"
+
+msgid "Add %s to Built-in rule sets of this rule? When you save the rule, it also matches these lists."
+msgstr "Добавить %s во встроенные наборы правил этого правила? После сохранения правило будет совпадать и с этими списками."
+
 msgid "Add a rule"
 msgstr "Добавить правило"
 
@@ -253,6 +259,9 @@ msgstr "Добавьте URL или локальные пути к списка�
 
 msgid "Add URLs or local paths to .srs / .json lists. Subnets are ignored by default."
 msgstr "Добавьте URL или локальные пути к спискам .srs / .json. Подсети по умолчанию игнорируются."
+
+msgid "Add…"
+msgstr "Добавить…"
 
 msgid "Additional marking rules found"
 msgstr "Найдены дополнительные правила маркировки"
@@ -590,6 +599,12 @@ msgstr "Встроенные наборы правил"
 msgid "Built-in rule sets #2 are not supported for DNS rules. Remove them on the What tab or choose another action."
 msgstr "Встроенные наборы правил #2 не поддерживаются для DNS-правил. Удалите их на вкладке «Что» или выберите другое действие."
 
+msgid "Built-in rule sets of the same services: %s. They match more than the removed sets (domains and other addresses of these services), so they were not added."
+msgstr "Встроенные наборы правил тех же сервисов: %s. Они совпадают с большим, чем удалённые наборы (домены и другие адреса этих сервисов), поэтому не были добавлены."
+
+msgid "Built-in rule sets of the same services: %s. They were not added; the rule editor offers them."
+msgstr "Встроенные наборы правил тех же сервисов: %s. Они не добавлены; редактор правила предлагает их добавить."
+
 msgid "By flag emoji from name"
 msgstr "По эмодзи флага из названия"
 
@@ -878,6 +893,9 @@ msgstr "Конфигурация"
 msgid "Configuration applied successfully"
 msgstr "Конфигурация успешно применена"
 
+msgid "Configuration migrated by the update"
+msgstr "Конфигурация перенесена обновлением"
+
 msgid "Configuration reload"
 msgstr "Перезагрузка конфигурации"
 
@@ -1153,6 +1171,9 @@ msgstr "Выключен"
 
 msgid "Disabling interception is incompatible with action=zapret2 because Forkop sends matched traffic through NFQUEUE."
 msgstr "Отключение перехвата несовместимо с action=zapret2, потому что Forkop отправляет совпавший трафик через NFQUEUE."
+
+msgid "Dismiss notice"
+msgstr "Скрыть уведомление"
 
 msgid "Display name"
 msgstr "Отображаемое имя"
@@ -2450,6 +2471,9 @@ msgstr "Нет активных соединений"
 msgid "No autotune events yet"
 msgstr "Событий автоподбора пока нет"
 
+msgid "No built-in rule set replaces them."
+msgstr "Встроенного набора правил на замену нет."
+
 msgid "No bypass (direct)"
 msgstr "Без обхода (direct)"
 
@@ -3128,6 +3152,9 @@ msgstr "Результат"
 msgid "Resume updates"
 msgstr "Продолжить обновление"
 
+msgid "Retired rule sets"
+msgstr "Выведенные наборы правил"
+
 msgid "Retry"
 msgstr "Повторить"
 
@@ -3199,6 +3226,12 @@ msgstr "правило"
 
 msgid "Rule"
 msgstr "Правило"
+
+msgid "Rule “%s”: changed by the update."
+msgstr "Правило «%s»: изменено обновлением."
+
+msgid "Rule “%s”: the retired rule sets %s were removed from Built-in rule sets #2, their source no longer publishes them."
+msgstr "Правило «%s»: из встроенных наборов правил #2 удалены выведенные наборы %s — источник их больше не публикует."
 
 msgid "Rule not calculated"
 msgstr "Правило не рассчитано"
@@ -3728,6 +3761,9 @@ msgstr "Состояние автоподбора восстановлено п�
 msgid "The best strategy is not stable for every target of the rule."
 msgstr "Лучшая стратегия стабильна не для всех целей правила."
 
+msgid "The built-in rule sets are added. Save the rule to keep the change."
+msgstr "Встроенные наборы правил добавлены. Сохраните правило, чтобы сохранить изменение."
+
 msgid "The cascade setting is cleared. Save the rule to keep the change."
 msgstr "Настройка каскада очищена. Сохраните правило, чтобы сохранить изменение."
 
@@ -3904,6 +3940,9 @@ msgstr "Новая стратегия не применена: служба бы
 
 msgid "The NFQUEUE number is assigned by Forkop for each rule and must not be overridden here."
 msgstr "Номер NFQUEUE назначается Forkop для каждого правила и не должен переопределяться здесь."
+
+msgid "The notice is dismissed; nothing else in the rule changes. Save the rule to keep the change."
+msgstr "Уведомление скрыто, больше в правиле ничего не меняется. Сохраните правило, чтобы сохранить изменение."
 
 msgid "The package is removed from the router."
 msgstr "Пакет будет удалён с роутера."
@@ -4102,6 +4141,12 @@ msgstr "транзитного правила «%s» больше нет"
 
 msgid "The unsupported settings are removed. Save the rule to keep the change."
 msgstr "Неподдерживаемые настройки удалены. Сохраните правило, чтобы сохранить изменение."
+
+msgid "The update removed retired rule sets from Built-in rule sets #2 of this rule: %s. An administrator can review the notice."
+msgstr "Обновление удалило из встроенных наборов правил #2 этого правила выведенные наборы: %s. Администратор может просмотреть уведомление."
+
+msgid "The update removed the rule sets %s from Built-in rule sets #2 of this rule: their source no longer publishes them. The rule no longer matches their IP addresses."
+msgstr "Обновление удалило из встроенных наборов правил #2 этого правила наборы %s: источник их больше не публикует. Правило больше не совпадает с их IP-адресами."
 
 msgid "The value is outside the allowed range."
 msgstr "Значение вне допустимого диапазона."

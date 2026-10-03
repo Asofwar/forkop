@@ -294,6 +294,8 @@ export function eventKindLabel(kind: string): string {
       return _('Snapshot deleted');
     case 'cron_refresh':
       return _('Scheduled jobs update');
+    case 'config_migration':
+      return _('Configuration migrated by the update');
     default:
       return _('Other event');
   }

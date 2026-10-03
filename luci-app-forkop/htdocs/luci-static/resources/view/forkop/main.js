@@ -16223,6 +16223,29 @@ function shouldExposeCheckResults({
   return mounted3 && cacheResolved;
 }
 
+// src/forkop/tabs/updates/fullUninstallStatus.ts
+function describeFailedRemoval(status2) {
+  const left = typeof status2.left === "string" ? status2.left : "";
+  if (status2.phase === "preflight") {
+    return _(
+      "Original repositories could not be restored. Removal was cancelled before deleting packages."
+    );
+  }
+  if (status2.phase === "stop" && left) {
+    return _(
+      "Forkop X is still active after its stop, so nothing was removed. Still in place: %s. Stop Forkop X or restart the router, then try again."
+    ).replace("%s", () => left);
+  }
+  if (left) {
+    return _(
+      "Forkop X was removed, but this is still in place: %s. See the removal log in /tmp/forkop-uninstall.*/output.log."
+    ).replace("%s", () => left);
+  }
+  return _(
+    "Removal did not finish. See the removal log in /tmp/forkop-uninstall.*/output.log."
+  );
+}
+
 // src/forkop/tabs/updates/fullUninstall.ts
 var removing = false;
 function confirmRemoval() {
@@ -16280,13 +16303,7 @@ function confirmRemoval() {
               return;
             }
             if (status2.state === "failed") {
-              throw new Error(
-                status2.phase === "preflight" ? _(
-                  "Original repositories could not be restored. Removal was cancelled before deleting packages."
-                ) : _(
-                  "Removal did not finish. See the removal log in /tmp/forkop-uninstall.*/output.log."
-                )
-              );
+              throw new Error(describeFailedRemoval(status2));
             }
           }
           throw new Error(

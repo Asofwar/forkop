@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-02 22:49+0000\n"
-"PO-Revision-Date: 2026-10-02 22:49+0000\n"
+"POT-Creation-Date: 2026-10-03 09:16+0000\n"
+"PO-Revision-Date: 2026-10-03 09:16+0000\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -1655,6 +1655,9 @@ msgstr "Forkop X занят другой операцией: изменение 
 msgid "Forkop X is running"
 msgstr "Forkop X работает"
 
+msgid "Forkop X is still active after its stop, so nothing was removed. Still in place: %s. Stop Forkop X or restart the router, then try again."
+msgstr "Forkop X остался активен после остановки, поэтому ничего не удалено. Осталось: %s. Остановите Forkop X или перезагрузите роутер и повторите удаление."
+
 msgid "Forkop X is stopped; start it first"
 msgstr "Forkop X остановлен; сначала запустите его"
 
@@ -1705,6 +1708,9 @@ msgstr "Forkop X не запускали после загрузки роуте�
 
 msgid "Forkop X was not stopped by the user: its start failed or it stopped unexpectedly."
 msgstr "Forkop X не останавливали вручную: его запуск не удался или он неожиданно остановился."
+
+msgid "Forkop X was removed, but this is still in place: %s. See the removal log in /tmp/forkop-uninstall.*/output.log."
+msgstr "Forkop X удалён, но осталось: %s. Подробности в журнале /tmp/forkop-uninstall.*/output.log."
 
 msgid "Forkop X will change the strategy of existing DPI rules by itself, only after several confirmations in a row, with a production check and automatic rollback."
 msgstr "Forkop X будет сам менять стратегию существующих DPI-правил — только после нескольких подтверждений подряд, с проверкой в рабочем режиме и автоматическим откатом."

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-02 22:49+0000\n"
-"PO-Revision-Date: 2026-10-02 22:49+0000\n"
+"POT-Creation-Date: 2026-10-03 09:16+0000\n"
+"PO-Revision-Date: 2026-10-03 09:16+0000\n"
 "Last-Translator: Asofwar <7397608+Asofwar@users.noreply.github.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -913,7 +913,7 @@ msgstr ""
 #: src/forkop/ui/confirmAction.ts:30
 #: src/forkop/tabs/autotune/initController.ts:442
 #: src/forkop/tabs/dashboard/initController.ts:1432
-#: src/forkop/tabs/updates/fullUninstall.ts:11
+#: src/forkop/tabs/updates/fullUninstall.ts:15
 #: src/forkop/tabs/updates/releaseSelector.ts:62
 #: src/forkop/tabs/updates/releaseSelector.ts:123
 msgid "Cancel"
@@ -1400,7 +1400,7 @@ msgstr ""
 msgid "Could not compare FakeIP and control public IPs"
 msgstr ""
 
-#: src/forkop/tabs/updates/fullUninstall.ts:78
+#: src/forkop/tabs/updates/fullUninstall.ts:74
 msgid "Could not confirm completion. Check the removal log before retrying."
 msgstr ""
 
@@ -1452,7 +1452,7 @@ msgstr ""
 msgid "Could not save a pre-apply configuration snapshot. Changes were not applied."
 msgstr ""
 
-#: src/forkop/tabs/updates/fullUninstall.ts:38
+#: src/forkop/tabs/updates/fullUninstall.ts:42
 msgid "Could not start removal. Another component action may be running."
 msgstr ""
 
@@ -2371,7 +2371,7 @@ msgstr ""
 msgid "Forkop X 1.0.31 and older have no VPN kill-switch. If it is enabled, the installation removes its protection, and protected traffic is no longer blocked while Forkop is stopped."
 msgstr ""
 
-#: src/forkop/tabs/updates/fullUninstall.ts:57
+#: src/forkop/tabs/updates/fullUninstall.ts:61
 msgid "Forkop X and sing-box have been removed. Original repositories have been restored."
 msgstr ""
 
@@ -2389,6 +2389,10 @@ msgstr ""
 
 #: src/forkop/tabs/dashboard/overview.ts:261
 msgid "Forkop X is running"
+msgstr ""
+
+#: src/forkop/tabs/updates/fullUninstallStatus.ts:20
+msgid "Forkop X is still active after its stop, so nothing was removed. Still in place: %s. Stop Forkop X or restart the router, then try again."
 msgstr ""
 
 #: src/forkop/tabs/autotune/model.ts:886
@@ -2461,6 +2465,10 @@ msgstr ""
 msgid "Forkop X was not stopped by the user: its start failed or it stopped unexpectedly."
 msgstr ""
 
+#: src/forkop/tabs/updates/fullUninstallStatus.ts:25
+msgid "Forkop X was removed, but this is still in place: %s. See the removal log in /tmp/forkop-uninstall.*/output.log."
+msgstr ""
+
 #: src/forkop/tabs/autotune/initController.ts:191
 msgid "Forkop X will change the strategy of existing DPI rules by itself, only after several confirmations in a row, with a production check and automatic rollback."
 msgstr ""
@@ -2521,8 +2529,8 @@ msgstr ""
 msgid "From the router"
 msgstr ""
 
-#: src/forkop/tabs/updates/fullUninstall.ts:94
-#: src/forkop/tabs/updates/fullUninstall.ts:122
+#: src/forkop/tabs/updates/fullUninstall.ts:90
+#: src/forkop/tabs/updates/fullUninstall.ts:118
 msgid "Full removal"
 msgstr ""
 
@@ -3865,8 +3873,8 @@ msgstr ""
 msgid "Open History and recovery"
 msgstr ""
 
-#: src/forkop/tabs/updates/fullUninstall.ts:60
-#: src/forkop/tabs/updates/fullUninstall.ts:88
+#: src/forkop/tabs/updates/fullUninstall.ts:64
+#: src/forkop/tabs/updates/fullUninstall.ts:84
 msgid "Open LuCI"
 msgstr ""
 
@@ -3905,7 +3913,7 @@ msgstr ""
 msgid "Optional values must be attached with '=' here; a separate token would be ignored by nfqws2."
 msgstr ""
 
-#: src/forkop/tabs/updates/fullUninstall.ts:68
+#: src/forkop/tabs/updates/fullUninstallStatus.ts:13
 msgid "Original repositories could not be restored. Removal was cancelled before deleting packages."
 msgstr ""
 
@@ -4251,7 +4259,7 @@ msgstr ""
 msgid "Regular expression must not contain spaces or commas"
 msgstr ""
 
-#: src/forkop/tabs/updates/fullUninstall.ts:71
+#: src/forkop/tabs/updates/fullUninstallStatus.ts:29
 msgid "Removal did not finish. See the removal log in /tmp/forkop-uninstall.*/output.log."
 msgstr ""
 
@@ -4277,19 +4285,19 @@ msgstr ""
 msgid "Remove %s?"
 msgstr ""
 
-#: src/forkop/tabs/updates/fullUninstall.ts:128
+#: src/forkop/tabs/updates/fullUninstall.ts:124
 msgid "Remove Forkop X and sing-box with their settings and restore the original device repositories."
 msgstr ""
 
-#: src/forkop/tabs/updates/fullUninstall.ts:133
+#: src/forkop/tabs/updates/fullUninstall.ts:129
 msgid "Remove Forkop X completely"
 msgstr ""
 
-#: src/forkop/tabs/updates/fullUninstall.ts:99
+#: src/forkop/tabs/updates/fullUninstall.ts:95
 msgid "Remove Forkop X, sing-box, their settings and cache, and restore the original device repositories?"
 msgstr ""
 
-#: src/forkop/tabs/updates/fullUninstall.ts:15
+#: src/forkop/tabs/updates/fullUninstall.ts:19
 msgid "Remove permanently"
 msgstr ""
 
@@ -4322,7 +4330,7 @@ msgstr ""
 msgid "Remove…"
 msgstr ""
 
-#: src/forkop/tabs/updates/fullUninstall.ts:21
+#: src/forkop/tabs/updates/fullUninstall.ts:25
 msgid "Removing Forkop X…"
 msgstr ""
 
@@ -5923,7 +5931,7 @@ msgstr ""
 msgid "This option requires a value."
 msgstr ""
 
-#: src/forkop/tabs/updates/fullUninstall.ts:106
+#: src/forkop/tabs/updates/fullUninstall.ts:102
 msgid "This permanently deletes saved sections and subscriptions. Other components remain installed."
 msgstr ""
 

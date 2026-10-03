@@ -16,13 +16,16 @@ set -euo pipefail
 # links of the package's services stayed behind.
 #
 # Now, right after Forkop's stop, the removal checks what is left of its
-# runtime: ForkopTable, an IPv4 or IPv6 rule at priority 105 that looks up
-# Forkop's table (by name or, once rt_tables lost the name, by number) and
-# Forkop's lines in the crontab. Anything left refuses the removal before
-# anything is disabled, stopped or removed, and says what is left (also in the
-# status the UI reads). At the end it checks again, with the TorrServer
-# Direct table, the kill-switch table and the kill-switch loader of fw4, and
-# fails instead of reporting success when any of it is still there.
+# interception: ForkopTable and an IPv4 or IPv6 rule at priority 105 that
+# looks up Forkop's table (by name or, once rt_tables lost the name, by
+# number). Anything left refuses the removal before anything is disabled,
+# stopped or removed, and says what is left (also in the status the UI
+# reads). At the end it checks again, with Forkop's lines in the crontab,
+# the TorrServer Direct table, the kill-switch table and the kill-switch
+# loader of fw4, and fails instead of reporting success when any of it is
+# still there. Lines left in the crontab do not hold the removal up: they
+# divert no traffic, and the stop leaves them only when it cannot rewrite
+# the crontab (a full overlay), which no retry and no restart would change.
 #
 # full-uninstall.sh runs against a fixture root with an init.d, nft, ip and a
 # package manager that record what they are asked to do.
@@ -187,10 +190,10 @@ fixture runtime_left
 printf 'table rule4 rule6 cron\n' >"$ROOT/stop-leaves"
 run_removal
 refused_at_stop
-says_left 'nft table inet ForkopTable' 'IPv4 rule 105' 'IPv6 rule 105' 'scheduled jobs in /etc/crontabs/root'
+says_left 'nft table inet ForkopTable' 'IPv4 rule 105' 'IPv6 rule 105'
 
 # 2. Any one of them is enough: the IPv6 rule once rt_tables lost the name
-#    (it shows "lookup 105"), the table, the scheduled jobs.
+#    (it shows "lookup 105"), the table.
 CASE="IPv6 rule by number"
 fixture rule_by_number
 printf 'rule6\n' >"$ROOT/stop-leaves"
@@ -207,12 +210,17 @@ printf 'table\n' >"$ROOT/stop-leaves"
 run_removal
 refused_at_stop
 says_left 'nft table inet ForkopTable'
+
+# 2b. Only Forkop's lines in the crontab stayed: the removal goes on, and
+#     does not report success while they are there.
 CASE="scheduled jobs only"
 fixture cron_only
 printf 'cron\n' >"$ROOT/stop-leaves"
 run_removal
-refused_at_stop
-says_left 'scheduled jobs in /etc/crontabs/root'
+printf '%s\n' "$status" | grep -q '"state":"failed","phase":"files"' ||
+  fail "$CASE: the removal did not go on to the end, or reported success: $status"
+[ ! -e "$ROOT/packages/forkop" ] || fail "$CASE: the forkop package was not removed"
+says_left '# forkop- in /etc/crontabs/root'
 
 # 3. A stop that failed (refused: exit 2) says what it left too.
 CASE="refused stop"

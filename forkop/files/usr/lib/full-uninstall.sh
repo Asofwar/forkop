@@ -59,11 +59,11 @@ installed() {
 # LEFT: what of Forkop is still in place (UC-028), comma-separated: its nft
 # table and its fwmark rule at priority 105 (by the table's name, or by
 # number once rt_tables lost it), which divert traffic to a listener the
-# packages take away, and its lines in the crontab, which would call a
-# removed /usr/bin/forkop. With "all" also what the removal itself takes
-# away: the TorrServer Direct table, the kill-switch table and its fw4
-# loader, and the fail-closed DPI guards. The status the UI reads names it
-# when the removal fails over it.
+# packages take away. With "all" also its lines in the crontab, which would
+# call a removed /usr/bin/forkop, and what the removal itself takes away:
+# the TorrServer Direct table, the kill-switch table and its fw4 loader,
+# and the fail-closed DPI guards. The status the UI reads names it when the
+# removal fails over it.
 LEFT=
 DPI_GUARD_TABLES="ForkopTableDpiGuard ForkopConfigRestoreDpiGuard"
 find_left_behind() {
@@ -77,11 +77,11 @@ find_left_behind() {
             LEFT="$LEFT, IPv$family rule 105"
         fi
     done
-    if grep -Eqs '# forkop-(list-update|subscription-update|component-update-check|autotune)' \
-        "$ROOT/etc/crontabs/root"; then
-        LEFT="$LEFT, scheduled jobs in /etc/crontabs/root"
-    fi
     if [ "${1:-}" = all ]; then
+        if grep -Eqs '# forkop-(list-update|subscription-update|component-update-check|autotune)' \
+            "$ROOT/etc/crontabs/root"; then
+            LEFT="$LEFT, lines marked # forkop- in /etc/crontabs/root"
+        fi
         for table in ForkopTorrServerDirect ForkopKillswitch $DPI_GUARD_TABLES; do
             if nft -t list table inet "$table" >/dev/null 2>&1; then
                 LEFT="$LEFT, nft table inet $table"
@@ -135,7 +135,10 @@ run() {
     # it unless a hook passes it on, and a stop that could not delete the
     # table or the rule goes on. What decides is what is left. The packages
     # would take away the sing-box that serves it and the code that can take
-    # it down, so nothing is disabled, stopped or removed (UC-028).
+    # it down, so nothing is disabled, stopped or removed (UC-028). Lines
+    # the stop left in the crontab (it could not rewrite it: a full overlay,
+    # which no retry or restart changes) divert no traffic: the final check
+    # names them.
     find_left_behind
     if [ -n "$LEFT" ]; then
         echo "Forkop is still active after its stop: $LEFT. Nothing was removed; stop Forkop or restart the router, then run the removal again." >&2

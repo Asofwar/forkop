@@ -26,6 +26,7 @@ function as_string(value) { return value == null ? "" : "" + value; }
 function normalize_component_name(value) { return value; }
 function acquire_component_lock() { return true; }
 function init_tmp_dir() { return true; }
+function component_action_in_catalog(component, action) { return true; }
 function is_apk() { return false; }
 function file_exists(path) { return marker; }
 function capture_forkop_running_state() {}

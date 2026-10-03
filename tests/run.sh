@@ -42,8 +42,15 @@
 # least 2; a value set in the environment is kept). A test run alone runs all
 # its groups at once.
 #
-# Exit status: 0 when no test failed, 1 when a test failed, 2 on a usage
-# error, 130 when interrupted.
+# A test keeps its files in its own temporary directory. The run also fails
+# when it changed the host where a test that misses an override of a Forkop
+# default path, or writes under an empty variable, writes instead: an entry
+# at /, Forkop's paths under /etc, /usr, /run and /tmp, the default UCI
+# savedir (HOST_PATHS). FORKOP_TEST_HOST_ROOT moves that check to another
+# root (the runner's self-test).
+#
+# Exit status: 0 when no test failed and the host is unchanged, 1 when a
+# test failed or the host changed, 2 on a usage error, 130 when interrupted.
 
 set -uo pipefail
 
@@ -369,6 +376,31 @@ fi
 
 LOG_DIR="$(mktemp -d "${TMPDIR:-/tmp}/forkop-tests.XXXXXX")" || die "cannot create a log directory" 1
 
+# The host paths a test must not change (see the header). A directory at /
+# counts by name: what changes in it is the system's.
+HOST_ROOT=${FORKOP_TEST_HOST_ROOT:-}
+HOST_PATHS=(etc/forkop etc/forkop-backups etc/config etc/sing-box etc/crontabs
+  etc/opkg etc/apk etc/rc.d etc/uci-defaults etc/hotplug.d
+  etc/init.d/forkop etc/init.d/forkop-killswitch etc/init.d/forkop-torrserver-direct
+  etc/init.d/sing-box usr/bin/forkop usr/lib/forkop usr/share/forkop
+  usr/libexec/forkop-ro run/forkop var/run/forkop tmp/.uci)
+
+host_state() {
+  local path
+  local -a paths=()
+  for path in "${HOST_PATHS[@]}"; do
+    [[ -e $HOST_ROOT/$path || -L $HOST_ROOT/$path ]] && paths+=("$HOST_ROOT/$path")
+  done
+  {
+    find "${HOST_ROOT:-/}" -mindepth 1 -maxdepth 1 -type d -printf '%p %y\n'
+    find "${HOST_ROOT:-/}" -mindepth 1 -maxdepth 1 ! -type d -printf '%p %y %s %T@\n'
+    ((${#paths[@]})) && find "${paths[@]}" -printf '%p %y %s %T@\n'
+    find "$HOST_ROOT/tmp" -mindepth 1 -maxdepth 1 -name 'forkop*' ! -name 'forkop-tests.*' \
+      -printf '%p %y %s %T@\n'
+  } 2>/dev/null | LC_ALL=C sort
+}
+host_before="$(host_state)"
+
 now_us() {
   printf '%s\n' "${EPOCHREALTIME//[!0-9]/}"
 }
@@ -543,6 +575,7 @@ if ((rerun)) && ((${#failed[@]})); then
   failed=("${still[@]}")
 fi
 wall_ms=$((($(now_us) - wall_start) / 1000))
+host_changes="$(diff <(printf '%s\n' "$host_before") <(host_state) | grep '^[<>]')"
 
 # ---------------------------------------------------------------------------
 # Summary
@@ -596,4 +629,11 @@ printf '\nPASS %d  FLAKY %d  FAIL %d  of %d tests | wall %ss | test time %ss | C
 printf 'Logs: %s\n' "$LOG_DIR"
 ((${#flaky[@]})) && printf '!!! %d FLAKY test(s) above: they pass alone but failed in parallel\n' "${#flaky[@]}"
 
-((${#failed[@]} == 0))
+# "<" is the host before the run, ">" after it.
+if [[ -n $host_changes ]]; then
+  printf '\nHOST CHANGED: the host paths below changed while the tests ran; a test\n'
+  printf 'wrote outside its temporary directory (or another process wrote there):\n'
+  printf '%s\n' "$host_changes" | sed 's/^/  /'
+fi
+
+((${#failed[@]} == 0)) && [[ -z $host_changes ]]

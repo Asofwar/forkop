@@ -88,6 +88,9 @@ run_removal() {
 
 # The one-shot scripts of the removal in /etc/uci-defaults.
 boot_scripts() { find "$ROOT/etc/uci-defaults" -type f ! -name 90_someone_elses; }
+# A command for wait_until, which then looks again on every try: a
+# $(boot_scripts) in its arguments is expanded once, before the wait.
+no_boot_scripts() { [ -z "$(boot_scripts)" ]; }
 
 # boot: what OpenWrt's boot does with /etc/uci-defaults (uci_apply_defaults
 # in /lib/functions/system.sh): each script is sourced in a subshell from
@@ -123,7 +126,7 @@ run_removal complete
 [ -n "$(boot_scripts)" ] || fail "the removal left nothing that removes its status at the next boot"
 : >"$WORK/expire"
 wait_until 20 test ! -e "$STATUS_FILE" || fail "the status job did not remove the status"
-wait_until 20 test -z "$(boot_scripts)" || fail "the status job left the boot script: $(boot_scripts)"
+wait_until 20 no_boot_scripts || fail "the status job left the boot script: $(boot_scripts)"
 [ -e "$ROOT/etc/uci-defaults/90_someone_elses" ] || fail "a script of someone else was removed"
 
 printf 'full_uninstall_status_cleanup: ok\n'

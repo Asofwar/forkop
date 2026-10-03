@@ -37,6 +37,9 @@ let last_logged_output = "";
 let forkop_stopped_for_sing_box_change = false;
 let forkop_stopped_for_upgrade = false;
 let managed_upgrade_marker_written = false;
+// Forkop's own stop for the restart after the change was refused
+// (forkop_restart_and_wait).
+let forkop_restart_refused = false;
 
 function as_string(value) {
     return value == null ? "" : "" + value;
@@ -71,6 +74,10 @@ function command_success(command) {
 
 function command_success_from_args(args) {
     return command_success(command_from_args(args));
+}
+
+function command_status_from_args(args) {
+    return command_status("(" + command_from_args(args) + ") >/dev/null 2>&1");
 }
 
 function command_output(command) {
@@ -410,14 +417,25 @@ function forkop_stop_for_component_change_args() {
 // and the start each take procd's lock, and a user's stop that waited for
 // it behind Forkop's own stop runs before the start, also after the request
 // was read here: the start compares with Forkop's own stop request and
-// leaves Forkop down after any later stop.
+// leaves Forkop down after any later stop. 0 when Forkop runs again, 2 when
+// its own stop was refused: another sing-box makes the ownership of the
+// runtime ambiguous, and service/lifecycle.uc changed nothing (UC-215).
+// That is no failed start, and a second restart is refused alike.
 function forkop_restart_and_wait() {
-    if (!command_success_from_args(forkop_stop_for_component_change_args()))
-        return false;
+    let status = command_status_from_args(forkop_stop_for_component_change_args());
+    if (status != 0)
+        return status == 2 ? 2 : 1;
     let after_stop = own_stop_request();
     if (after_stop == null)
-        return false;
-    return forkop_start_and_wait("start", after_stop);
+        return 1;
+    return forkop_start_and_wait("start", after_stop) ? 0 : 1;
+}
+
+const FORKOP_RESTART_REFUSED = "Forkop was not restarted: another sing-box process makes the ownership of its runtime ambiguous; the change applies at its next start";
+
+// How a change ends that did not bring Forkop back.
+function forkop_not_restarted_text() {
+    return forkop_restart_refused ? FORKOP_RESTART_REFUSED : "Forkop did not start again";
 }
 
 // Nor does its restart fallback: a start that the user's stop overtook
@@ -432,7 +450,7 @@ function restart_forkop_after_failed_sing_box_change() {
     updates_log("Restarting Forkop after failed sing-box component change");
     if (forkop_start_and_wait("start") || forkop_stopped_by_user())
         return;
-    if (!forkop_restart_and_wait() && !forkop_stopped_by_user())
+    if (forkop_restart_and_wait() != 0 && !forkop_stopped_by_user())
         updates_log("Forkop did not start again after the failed sing-box component change", "error");
 }
 
@@ -1080,12 +1098,18 @@ function restart_forkop_after_successful_change() {
         return true;
     }
     updates_log("Restarting Forkop after successful component change");
-    if (forkop_restart_and_wait())
+    let status = forkop_restart_and_wait();
+    if (status == 0)
         return true;
     if (forkop_stopped_by_user()) {
         updates_log("Forkop was stopped by the user during its restart after the component change");
         prepare_sing_box_service_disabled();
         return true;
+    }
+    if (status == 2) {
+        forkop_restart_refused = true;
+        updates_log(FORKOP_RESTART_REFUSED, "warn");
+        return false;
     }
     updates_log("Forkop did not start again after the component change", "error");
     return false;
@@ -1356,7 +1380,7 @@ function install_zapret_like(component, action, runtime_module, resolve_fn, labe
     if (current_version == "")
         current_version = "unknown";
     if (!restarted)
-        action_fail(component, action, label + " package has been installed, but Forkop did not start again", current_version, pkg.version, "", release.release_url || "");
+        action_fail(component, action, label + " package has been installed, but " + forkop_not_restarted_text(), current_version, pkg.version, "", release.release_url || "");
     action_success(component, action, label + " package has been installed", current_version, pkg.version, 1, "latest", release.release_url || "");
 }
 
@@ -1403,7 +1427,7 @@ function install_byedpi(action) {
     if (current_version == "")
         current_version = "unknown";
     if (!restarted)
-        action_fail("byedpi", action, "ByeDPI package has been installed, but Forkop did not start again", current_version, pkg.version);
+        action_fail("byedpi", action, "ByeDPI package has been installed, but " + forkop_not_restarted_text(), current_version, pkg.version);
     action_success("byedpi", action, "ByeDPI package has been installed", current_version, pkg.version, 1, "latest", release.release_url || "");
 }
 
@@ -1475,7 +1499,7 @@ function remove_optional_component(component, package_name, label, runtime_modul
     if (provider_installed(runtime_module))
         action_fail(component, "remove", label + " package was removed, but provider files are still present", current_version);
     if (!restart_forkop_after_successful_change())
-        action_fail(component, "remove", label + " package has been removed, but Forkop did not start again", current_version);
+        action_fail(component, "remove", label + " package has been removed, but " + forkop_not_restarted_text(), current_version);
     action_success(component, "remove", label + " package has been removed", current_version, "", 1);
 }
 
@@ -2777,7 +2801,8 @@ function install_forkop(requested_version) {
     if (new_version == "")
         new_version = latest_version;
     if (!restarted)
-        action_fail("forkop", "install", "Forkop has been installed, but did not start again", new_version, latest_version, "", release.release_url);
+        action_fail("forkop", "install", forkop_restart_refused ? "Forkop has been installed, but " + FORKOP_RESTART_REFUSED :
+            "Forkop has been installed, but did not start again", new_version, latest_version, "", release.release_url);
     updates_log("Forkop updated to " + new_version);
     action_success("forkop", "install", "Forkop has been installed", new_version, latest_version, 1, "latest", release.release_url);
 }
@@ -2874,9 +2899,10 @@ function set_direct_proxy(action) {
         !uci_core.commit(CONFIG_NAME))
         action_fail("direct_proxy", action, "Failed to save Direct Proxy settings", current_enabled, target_enabled);
 
+    let restart_status = 0;
     if (!forkop_active_for_setting_change())
         updates_log("Forkop is not running; the Direct Proxy setting applies at its next start");
-    else if (!forkop_restart_and_wait()) {
+    else if ((restart_status = forkop_restart_and_wait()) != 0) {
         // The user's stop overtook the restart: it wins, and the setting
         // applies at the next start. The restart with the previous settings
         // would start Forkop again (D-15, UC-235).
@@ -2889,7 +2915,11 @@ function set_direct_proxy(action) {
             else
                 uci_core.delete(port_path);
             uci_core.commit(CONFIG_NAME);
-            if (!forkop_stopped_by_user() && !forkop_restart_and_wait() && !forkop_stopped_by_user())
+            // A refused stop changed nothing: Forkop runs on with the
+            // previous settings, and their restart would be refused alike.
+            if (restart_status == 2)
+                action_fail("direct_proxy", action, "Failed to apply Direct Proxy settings: " + FORKOP_RESTART_REFUSED, current_enabled, target_enabled);
+            if (!forkop_stopped_by_user() && forkop_restart_and_wait() != 0 && !forkop_stopped_by_user())
                 updates_log("Forkop did not start again with the previous Direct Proxy settings", "error");
             action_fail("direct_proxy", action, "Failed to apply Direct Proxy settings", current_enabled, target_enabled);
         }

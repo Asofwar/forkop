@@ -118,7 +118,10 @@ printf '#!/bin/sh\nexit 1\n' >"$WORK_DIR/bin/nft"
 
 # `forkop` behind initd.uc. start exits with start.status and brings the
 # runtime up; with start.user-stop the user's Stop comes in while it runs.
-# stop takes the runtime down and exits with stop.status.
+# stop takes the runtime down and exits with stop.status. With stray, a
+# sing-box that runs Forkop's configuration outside procd makes the
+# ownership of the runtime ambiguous: service/lifecycle.uc refuses
+# Forkop's own stop (exit 2, nothing changed), and the start fails.
 cat >"$WORK_DIR/bin/forkop" <<'SH'
 #!/bin/sh
 case "$1" in
@@ -129,12 +132,16 @@ case "$1" in
       env -u FORKOP_STOP_SOURCE "$FORKOP_SERVICE_INIT" stop >/dev/null 2>&1
       exit 0
     fi
+    [ ! -e "$TEST_WORK/stray" ] || exit 1
     status="$(cat "$TEST_WORK/start.status" 2>/dev/null || echo 0)"
     [ "$status" != 0 ] || : >"$TEST_WORK/runtime.up"
     exit "$status"
     ;;
   stop)
-    rm -f "$TEST_WORK/runtime.up"
+    if [ -e "$TEST_WORK/stray" ] && [ "${FORKOP_STOP_SOURCE:-}" = component ]; then
+      exit 2
+    fi
+    rm -f "$TEST_WORK/stray" "$TEST_WORK/runtime.up"
     exit "$(cat "$TEST_WORK/stop.status" 2>/dev/null || echo 0)"
     ;;
   get_status)
@@ -291,6 +298,7 @@ reset_case() {
   kill_retry_workers
   rm -f "$WORK_DIR"/start.status "$WORK_DIR"/stop.status "$WORK_DIR"/start.user-stop "$WORK_DIR"/starts \
     "$WORK_DIR"/user-stop.queued "$WORK_DIR"/user-stop.after "$WORK_DIR"/user-stop.waiting "$WORK_DIR"/user-stop.done \
+    "$WORK_DIR"/stray \
     "$WORK_DIR"/uci.committed "$WORK_DIR"/out "$FORKOP_RUNTIME_STATE_DIR"/stop.requested \
     "$FORKOP_RUNTIME_STATE_DIR"/start.retry "$FORKOP_RUNTIME_STATE_DIR"/start-result.*
   : >"$WORK_DIR/syslog"
@@ -406,5 +414,43 @@ reset_case
 case="restart, the user's stop between its stop and its start"
 probe restart || fail "$case: the probe failed"
 expect_user_stop_holds "$case"
+
+# A refused restart stop changed nothing: Forkop runs on as it was, with no
+# stop request, and no start was tried. That is no failed start.
+expect_refused_restart() {
+  [ -e "$WORK_DIR/runtime.up" ] || fail "$1: Forkop does not run after its own stop was refused"
+  [ ! -e "$FORKOP_RUNTIME_STATE_DIR/stop.requested" ] || fail "$1: the refused stop left a stop request"
+  [ -e "$FORKOP_RUNTIME_STATE_DIR/start.explicit" ] || fail "$1: the refused stop ended the explicit start"
+  [ ! -s "$WORK_DIR/starts" ] || fail "$1: a start followed the refused stop"
+  [ "$(grep -c '^stop ' "$WORK_DIR/init.log")" -eq 1 ] || fail "$1: Forkop was stopped again after the refusal"
+  grep -q 'Forkop was not restarted: another sing-box process makes the ownership of its runtime ambiguous' "$WORK_DIR/syslog" ||
+    fail "$1: the refusal is not reported"
+  if grep -q 'did not start again' "$WORK_DIR/syslog"; then
+    fail "$1: the refused restart was reported as a failed start"
+  fi
+}
+
+# 9. Forkop's own stop for the restart is refused: another sing-box makes the
+#    ownership of the runtime ambiguous. The change is not applied, which the
+#    action reports as such.
+reset_case
+: >"$WORK_DIR/stray"
+case="restart, its own stop refused"
+probe restart || fail "$case: the probe failed"
+grep -qx 'restarted=no' "$WORK_DIR/out" || fail "$case: a refused restart was reported as done"
+expect_refused_restart "$case"
+
+# 10. Direct Proxy: the restart's own stop is refused. Forkop runs on with the
+#     previous settings, which are kept; nothing restarts it again.
+reset_case
+: >"$WORK_DIR/stray"
+case="Direct Proxy, the restart's own stop refused"
+probe direct-proxy && fail "$case: the action succeeded"
+grep -q '"success": *false' "$WORK_DIR/out" || fail "$case: the refused restart was reported as success"
+grep -q 'Forkop was not restarted: another sing-box process' "$WORK_DIR/out" ||
+  fail "$case: the action does not report the refusal"
+grep -q '"forkop.settings.direct_proxy_enabled": *"1"' "$WORK_DIR/uci.committed" ||
+  fail "$case: the new Direct Proxy setting was kept: $(cat "$WORK_DIR/uci.committed")"
+expect_refused_restart "$case"
 
 printf 'component_restart_own_stop: PASS\n'

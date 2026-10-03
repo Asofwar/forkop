@@ -120,7 +120,8 @@ component_action(ARGV[0], ARGV[1], ARGV[2]);
 UCODE
 
     # service/initd.uc start-and-wait: the init script's start, then the
-    # runtime is checked.
+    # runtime is checked. deferred-start-pending: the init script keeps a
+    # start deferred for reload.lock ($UPGRADE_STATE/deferred-start).
     cat >"$UPGRADE_LIB/service/initd.uc" <<'UCODE'
 let fs = require("fs");
 let state = getenv("UPGRADE_STATE");
@@ -131,6 +132,8 @@ if (ARGV[0] == "start-and-wait") {
     let status = system([ getenv("FORKOP_SERVICE_INIT"), ARGV[1] ]);
     exit(status == 0 && fs.stat(state + "/running") != null ? 0 : 1);
 }
+if (ARGV[0] == "deferred-start-pending")
+    exit(fs.stat(state + "/deferred-start") != null ? 0 : 1);
 exit(1);
 UCODE
 
@@ -164,7 +167,10 @@ UCODE
     # The init script records every call with the source of a stop. A stop
     # records its request as service/initd.uc does (by=<source>; a stop made
     # while the user's stop is in effect stays the user's; a refused stop
-    # records none), a start removes it. A restart is rc.common's: its stop
+    # records none), a start removes it. The user's start deferred for
+    # reload.lock ($UPGRADE_STATE/deferred-start) is pending until a stop
+    # cancels it or a start serves it; the user's stop that it followed is
+    # no longer in effect. A restart is rc.common's: its stop
     # (the user's unless the caller names a source), then the start, only
     # once that stop succeeded. A start refuses, as service/lifecycle.uc
     # start_inner does, while the upgrade marker is stale, and consumes it.
@@ -187,7 +193,9 @@ case "$1" in
             package|component) source="$FORKOP_STOP_SOURCE" ;;
             *) source=user ;;
         esac
-        [ ! -e "$request" ] || grep -Eq '^by=(package|component)$' "$request" || source=user
+        [ ! -e "$request" ] || grep -Eq '^by=(package|component)$' "$request" ||
+            [ -e "$state/deferred-start" ] || source=user
+        rm -f "$state/deferred-start"
         mkdir -p "$FORKOP_RUNTIME_STATE_DIR"
         printf 'requested\nby=%s\n' "$source" >"$request"
         [ "$status" -ne 0 ] || rm -f "$state/running"
@@ -215,7 +223,7 @@ case "$1" in
             printf 'start skipped: the user stopped Forkop\n' >>"$state/init.log"
             exit 0
         fi
-        rm -f "$request"
+        rm -f "$request" "$state/deferred-start"
         : >"$state/running"
         ;;
 esac
@@ -239,8 +247,8 @@ SH
     # tamper_<package> and tamper_<package>_<version> (the server holds
     # other bytes than the metadata names, for every release or for that
     # one); while the upgrade asks GitHub (before Forkop is stopped for it),
-    # user_stop_on_github has the user stop Forkop and crash_on_github takes
-    # it down without a stop.
+    # user_stop_on_github has the user stop Forkop, crash_on_github takes it
+    # down without a stop and start_on_github has the user start it.
     cat >"$UPGRADE_BIN/curl" <<'SH'
 #!/bin/sh
 state="$UPGRADE_STATE"
@@ -266,6 +274,7 @@ case "$url" in
     https://api.github.com/repos/*/releases/tags/1.0.0)
         [ ! -e "$state/flags/user_stop_on_github" ] || env -u FORKOP_STOP_SOURCE "$FORKOP_SERVICE_INIT" stop
         [ ! -e "$state/flags/crash_on_github" ] || rm -f "$state/running"
+        [ ! -e "$state/flags/start_on_github" ] || env -u FORKOP_STOP_SOURCE "$FORKOP_SERVICE_INIT" start
         [ ! -e "$state/flags/github_down" ] || exit 22
         cat "$state/previous.json" >"$out"
         ;;

@@ -1055,6 +1055,20 @@ function capture_forkop_running_state() {
     forkop_was_running = file_exists(BIN_PATH) && forkop_status_running_with_timeout();
 }
 
+// Forkop that runs when its own stop for an upgrade comes, or whose start
+// the user asked for and that waits for reload.lock (service/initd.uc
+// deferred start), runs again after the upgrade: the stop takes it down or
+// cancels that start, and no prerm hands a start over for it then
+// (service/package.uc remember_upgrade_state). The state noted when the
+// action began misses both (D-15(a), UC-012).
+function capture_forkop_start_before_upgrade() {
+    if (forkop_was_running || !file_exists(BIN_PATH))
+        return;
+    let initd_module = LIB_DIR + "/service/initd.uc";
+    forkop_was_running = forkop_status_running_with_timeout() ||
+        (file_exists(initd_module) && module_success([ initd_module, "deferred-start-pending" ]));
+}
+
 function capture_managed_upgrade_sing_box_marker() {
     let state_module = LIB_DIR + "/service/state.uc";
     if (!file_exists(state_module))
@@ -2763,6 +2777,7 @@ function install_forkop(requested_version) {
     // currently installed package's prerm.
     capture_managed_upgrade_sing_box_marker();
 
+    capture_forkop_start_before_upgrade();
     error = stop_old_sing_box_before_forkop_upgrade();
     if (error != "") {
         discard_staged_forkop_package_set();

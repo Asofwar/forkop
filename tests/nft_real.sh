@@ -109,6 +109,9 @@ chmod 0755 "$WORK_DIR/bin/"*
 export PATH="$WORK_DIR/bin:$PATH"
 export FORKOP_TEST_IP_LOG="$WORK_DIR/ip.log" FORKOP_TEST_LOGGER_LOG="$WORK_DIR/logger.log"
 export FORKOP_RT_TABLES="$WORK_DIR/rt_tables" FORKOP_LIB
+# The subnet cache of nft/apply.uc stays in the test's directory, not in the
+# host's /var/run/forkop.
+export FORKOP_NFT_SUBNET_CACHE_DIR="$WORK_DIR/nft-subnet-cache"
 
 nft_uc() { ucode -L "$FORKOP_LIB" "$NFT_UC" "$@"; }
 check() { node "$CHECK_JS" "$@" || fail "ruleset check '$1' failed (${*:3})"; }

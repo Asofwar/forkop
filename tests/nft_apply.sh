@@ -9,6 +9,9 @@ NFT_LOG="$WORK_DIR/nft.log"
 LOGGER_LOG="$WORK_DIR/logger.log"
 IP_LOG="$WORK_DIR/ip.log"
 SYSCTL_LOG="$WORK_DIR/sysctl.log"
+# The subnet cache of nft/apply.uc stays in the test's directory, not in the
+# host's /var/run/forkop.
+export FORKOP_NFT_SUBNET_CACHE_DIR="$WORK_DIR/nft-subnet-cache"
 
 nft_ucode() {
   ucode -L "$FORKOP_LIB" "$NFT_RUNTIME" "$@"

@@ -65,7 +65,8 @@ endef
 define Package/forkop/postinst
 #!/bin/sh
 [ -n "$${IPKG_INSTROOT}" ] && exit 0
-FORKOP_LIB=/usr/lib/forkop ucode -L /usr/lib/forkop /usr/lib/forkop/config/migration.uc migrate
+FORKOP_LIB=/usr/lib/forkop ucode -L /usr/lib/forkop /usr/lib/forkop/service/package.uc restore-config &&
+	FORKOP_LIB=/usr/lib/forkop ucode -L /usr/lib/forkop /usr/lib/forkop/config/migration.uc migrate
 forkop_migrate_status=$$?
 FORKOP_PACKAGE_POSTINST=1 /usr/share/forkop/mirror-migration.sh ||
 	logger -t forkop "[warn] Package mirror migration failed (status $$?); the package feeds were left unchanged"

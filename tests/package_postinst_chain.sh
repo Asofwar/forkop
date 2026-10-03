@@ -17,6 +17,10 @@
 # migrated: when the migration could not be saved (a read-only overlay) it
 # runs, refuses the start, records it and fails (fail closed).
 #
+# UC-077: a missing or empty /etc/config/forkop came back from the packaged
+# defaults only in package_postinst, after the migrations that fail without
+# it. Now it comes back first.
+#
 # The real service/package.uc, service/initd.uc, config/migration.uc and
 # mirror-migration.sh run behind the real CLI; the init script, the package
 # managers, curl and logger are stubs, UCI is a state file.
@@ -314,6 +318,26 @@ else
     start_failure_recorded || fail "$label: the refused start was not recorded"
   done
 fi
+
+# ---- UC-077: the configuration comes back before the migrations -----------
+
+label="empty configuration"
+configure migrated
+: >"$FORKOP_CONFIG_PATH"
+MIGRATE_NEEDS_CONFIG=1 MIRROR_NEEDS_CONFIG=1 run_case ipk/postinst "$STUB_LIB" 1
+[ "$STATUS" -eq 0 ] || fail "$label: the script exited $STATUS"
+cmp -s "$FORKOP_DEFAULT_CONFIG_PATH" "$FORKOP_CONFIG_PATH" || fail "$label: the packaged defaults were not restored"
+grep -Fxq 'migrate config=present' "$EVENTS" || fail "$label: the migrations ran without the configuration"
+grep -Fxq 'mirror config=present' "$EVENTS" || fail "$label: the mirror migration ran without the configuration"
+started || fail "$label: Forkop was not started again"
+
+label="missing configuration"
+configure migrated
+rm -f "$FORKOP_CONFIG_PATH"
+MIGRATE_NEEDS_CONFIG=1 MIRROR_NEEDS_CONFIG=1 run_case apk/backend-post-upgrade.sh "$STUB_LIB" 1
+[ "$STATUS" -eq 0 ] || fail "$label: the script exited $STATUS"
+cmp -s "$FORKOP_DEFAULT_CONFIG_PATH" "$FORKOP_CONFIG_PATH" || fail "$label: the packaged defaults were not restored"
+grep -Fxq 'migrate config=present' "$EVENTS" || fail "$label: the migrations ran without the configuration"
 
 # ---- one script for every variant -------------------------------------------
 

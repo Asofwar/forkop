@@ -437,6 +437,28 @@ function legacy_vpn_guard_cleanup() {
     return firewall_saved;
 }
 
+// A missing or empty configuration comes back from the packaged defaults.
+// The package scripts restore it before the migrations, which fail without
+// it (build.sh write_backend_postinst, mode restore-config; UC-077), and
+// postinst checks again.
+function restore_missing_config() {
+    let config = fs.readfile(CONFIG_PATH);
+    if (config != null && trim(as_string(config)) != "")
+        return true;
+
+    let defaults = fs.readfile(DEFAULT_CONFIG_PATH);
+    if (defaults == null || trim(as_string(defaults)) == "") {
+        warn("Unable to restore missing Forkop configuration: packaged defaults are unavailable.\n");
+        return false;
+    }
+    if (fs.writefile(CONFIG_PATH, defaults) == null ||
+        !command_success_from_args([ "chmod", "0644", CONFIG_PATH ])) {
+        warn("Unable to restore missing Forkop configuration.\n");
+        return false;
+    }
+    return true;
+}
+
 // Whether the migrations of this release have nothing left to do on the
 // configuration (config/migration.uc migrated). The package scripts run
 // them before postinst; when they could not save their changes (a full or
@@ -457,19 +479,8 @@ function postinst_restore() {
     if (path_exists(KILLSWITCH_UC))
         command_success_from_args([ "ucode", "-L", LIB_DIR, KILLSWITCH_UC, "postinst" ]);
 
-    let config = fs.readfile(CONFIG_PATH);
-    if (config == null || trim(as_string(config)) == "") {
-        let defaults = fs.readfile(DEFAULT_CONFIG_PATH);
-        if (defaults == null || trim(as_string(defaults)) == "") {
-            warn("Unable to restore missing Forkop configuration: packaged defaults are unavailable.\n");
-            return false;
-        }
-        if (fs.writefile(CONFIG_PATH, defaults) == null ||
-            !command_success_from_args([ "chmod", "0644", CONFIG_PATH ])) {
-            warn("Unable to restore missing Forkop configuration.\n");
-            return false;
-        }
-    }
+    if (!restore_missing_config())
+        return false;
 
     if (!uci_core.load(CONFIG_NAME) || !uci_core.exists(CONFIG_NAME + ".settings")) {
         warn("Forkop configuration is invalid or unavailable to UCI.\n");
@@ -566,6 +577,8 @@ if (mode == "prerm")
     exit(prerm_cleanup(ARGV[1], ARGV[2]) ? 0 : 1);
 else if (mode == "postinst")
     exit(postinst_restore() ? 0 : 1);
+else if (mode == "restore-config")
+    exit(env("IPKG_INSTROOT", "") != "" || restore_missing_config() ? 0 : 1);
 else if (mode == "remove-rt-tables-entry")
     exit(remove_rt_tables_entry() ? 0 : 1);
 else if (mode == "luci-postinst")

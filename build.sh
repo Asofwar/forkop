@@ -282,9 +282,11 @@ installed_size_bytes() {
 # The script that runs when the backend package is installed or upgraded:
 # the ipk's postinst and the apk's post-install and post-upgrade. The SDK
 # recipe runs the same text (forkop/Makefile Package/forkop/postinst;
-# tests/package_recipe_parity.sh compares them).
+# tests/package_postinst_chain.sh compares them).
 #
-# The mirror migration of the package feeds is best effort: an
+# The configuration comes first: a missing or empty one is restored from
+# the packaged defaults before the migrations, which fail without it
+# (UC-077). The mirror migration of the package feeds is best effort: an
 # unreachable mirror, or one that does not list this platform yet, must not
 # keep Forkop stopped; the script puts the feeds back itself and runs again
 # on the next package change. package_postinst always runs: it brings back
@@ -295,7 +297,8 @@ write_backend_postinst() {
   cat > "$1" <<'EOF'
 #!/bin/sh
 [ -n "${IPKG_INSTROOT}" ] && exit 0
-FORKOP_LIB=/usr/lib/forkop ucode -L /usr/lib/forkop /usr/lib/forkop/config/migration.uc migrate
+FORKOP_LIB=/usr/lib/forkop ucode -L /usr/lib/forkop /usr/lib/forkop/service/package.uc restore-config &&
+	FORKOP_LIB=/usr/lib/forkop ucode -L /usr/lib/forkop /usr/lib/forkop/config/migration.uc migrate
 forkop_migrate_status=$?
 FORKOP_PACKAGE_POSTINST=1 /usr/share/forkop/mirror-migration.sh ||
 	logger -t forkop "[warn] Package mirror migration failed (status $?); the package feeds were left unchanged"

@@ -361,14 +361,6 @@ function forkop_start_and_wait(action) {
     return false;
 }
 
-function restart_forkop_after_failed_sing_box_change() {
-    if (!forkop_stopped_for_sing_box_change || !forkop_was_running || !file_exists(SERVICE_INIT))
-        return;
-    updates_log("Restarting Forkop after failed sing-box component change");
-    if (!forkop_start_and_wait("start") && !forkop_start_and_wait("restart"))
-        updates_log("Forkop did not start again after the failed sing-box component change", "error");
-}
-
 // The user's stop holds Forkop down until an explicit start (D-15). A stop
 // made while the action ran stays the user's through Forkop's own stops for
 // the change (service/initd.uc stop_request_source); the start that puts
@@ -379,6 +371,22 @@ function forkop_stopped_by_user() {
         return false;
     let by = match(request, /(^|\n)by=([a-z]*)/);
     return by == null || by[2] == "user";
+}
+
+// Nor does its restart fallback: a start that the user's stop overtook
+// failed for the stop, which wins (UC-235).
+function restart_forkop_after_failed_sing_box_change() {
+    if (!forkop_stopped_for_sing_box_change || !forkop_was_running || !file_exists(SERVICE_INIT))
+        return;
+    if (forkop_stopped_by_user()) {
+        updates_log("Forkop was stopped by the user during the sing-box component change; it is not started again");
+        return;
+    }
+    updates_log("Restarting Forkop after failed sing-box component change");
+    if (forkop_start_and_wait("start") || forkop_stopped_by_user())
+        return;
+    if (!forkop_start_and_wait("restart") && !forkop_stopped_by_user())
+        updates_log("Forkop did not start again after the failed sing-box component change", "error");
 }
 
 // Forkop's own stop for an in-app upgrade is followed by a start. When the
@@ -1008,6 +1016,9 @@ function capture_managed_upgrade_sing_box_marker() {
 }
 
 // False when Forkop was running before the change and did not start again.
+// A Forkop that the user stopped while the change ran stays stopped (D-15,
+// UC-235), also when the user's stop overtook the restart: the stop won,
+// the change itself did not fail.
 function restart_forkop_after_successful_change() {
     if (!file_exists(SERVICE_INIT))
         return true;
@@ -1016,9 +1027,19 @@ function restart_forkop_after_successful_change() {
         prepare_sing_box_service_disabled();
         return true;
     }
+    if (forkop_stopped_by_user()) {
+        updates_log("Forkop was stopped by the user during the component change; it is not started again");
+        prepare_sing_box_service_disabled();
+        return true;
+    }
     updates_log("Restarting Forkop after successful component change");
     if (forkop_start_and_wait("restart"))
         return true;
+    if (forkop_stopped_by_user()) {
+        updates_log("Forkop was stopped by the user during its restart after the component change");
+        prepare_sing_box_service_disabled();
+        return true;
+    }
     updates_log("Forkop did not start again after the component change", "error");
     return false;
 }
@@ -1062,7 +1083,10 @@ function wait_forkop_running_after_sing_box_change() {
     // A cold start after a package upgrade can take minutes on slow routers:
     // lists, rule-sets and the runtime config are all rebuilt. Giving up too
     // early reported a failure for a start that was still making progress.
+    // A Forkop that the user stopped is not waited for (UC-235).
     while (waited < 180) {
+        if (forkop_stopped_by_user())
+            return true;
         if (forkop_status_running_with_timeout()) {
             command_success_from_args([ "sleep", "8" ]);
             if (forkop_status_running_with_timeout())
@@ -2790,15 +2814,22 @@ function set_direct_proxy(action) {
     if (!forkop_active_for_setting_change())
         updates_log("Forkop is not running; the Direct Proxy setting applies at its next start");
     else if (!forkop_start_and_wait("restart")) {
-        uci_core.set(enabled_path, current_enabled);
-        if (current_port != "")
-            uci_core.set(port_path, current_port);
-        else
-            uci_core.delete(port_path);
-        uci_core.commit(CONFIG_NAME);
-        if (!forkop_start_and_wait("restart"))
-            updates_log("Forkop did not start again with the previous Direct Proxy settings", "error");
-        action_fail("direct_proxy", action, "Failed to apply Direct Proxy settings", current_enabled, target_enabled);
+        // The user's stop overtook the restart: it wins, and the setting
+        // applies at the next start. The restart with the previous settings
+        // would start Forkop again (D-15, UC-235).
+        if (forkop_stopped_by_user())
+            updates_log("Forkop was stopped by the user during its restart; the Direct Proxy setting applies at its next start");
+        else {
+            uci_core.set(enabled_path, current_enabled);
+            if (current_port != "")
+                uci_core.set(port_path, current_port);
+            else
+                uci_core.delete(port_path);
+            uci_core.commit(CONFIG_NAME);
+            if (!forkop_stopped_by_user() && !forkop_start_and_wait("restart") && !forkop_stopped_by_user())
+                updates_log("Forkop did not start again with the previous Direct Proxy settings", "error");
+            action_fail("direct_proxy", action, "Failed to apply Direct Proxy settings", current_enabled, target_enabled);
+        }
     }
 
     remove_file(SYSTEM_INFO_CACHE_FILE);

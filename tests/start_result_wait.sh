@@ -400,6 +400,10 @@ let status_results = [];
 // is in place (runtime-apply-allowed also refuses after a stop).
 let stop_requested = false;
 let runtime_table = false;
+// The user stopped Forkop while the action ran (stop.requested by=user);
+// component_change_user_stop.sh runs those paths end to end.
+let user_stopped = false;
+function forkop_stopped_by_user() { return user_stopped; }
 let constants = { NFT_TABLE_NAME: "ForkopTable" };
 function as_string(value) { return value == null ? "" : "" + value; }
 function die_check(message) { warn("FAIL: " + message + "\n"); exit(1); }
@@ -471,7 +475,7 @@ function reset(values) {
     calls = []; results = values; outcome = null;
     forkop_was_running = true; forkop_stopped_for_sing_box_change = false;
     initd_source = 'else if (mode == "start-and-wait")'; status_results = [];
-    stop_requested = false; runtime_table = false;
+    stop_requested = false; runtime_table = false; user_stopped = false;
 }
 function run(fn) {
     try { fn(); }

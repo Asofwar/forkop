@@ -68,6 +68,8 @@ export FORKOP_PACKAGE_UPGRADE_STATE="$WORK_DIR/package-was-running"
 # kill-switch policy.
 export FORKOP_CRONTAB_FILE="$WORK_DIR/crontab"
 export KILLSWITCH_NFT_POLICY="$WORK_DIR/killswitch-policy.nft"
+export FORKOP_RC_D_DIR="$WORK_DIR/rc.d"
+export FORKOP_TORRSERVER_DIRECT_INIT="$WORK_DIR/missing-torrserver-direct-init"
 printf 'forkop.settings=settings\nforkop.settings.dont_touch_dhcp=0\n' >"$FORKOP_UCI_STATE_FILE"
 
 # /etc/init.d/forkop: "status" reports a running Forkop. Forkop's own stop

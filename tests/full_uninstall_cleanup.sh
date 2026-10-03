@@ -39,7 +39,10 @@ case "$1" in
  *) exit 1;;
 esac
 SH
-    chmod +x "$ROOT/usr/bin/forkop" "$ROOT/bin/opkg"
+    # Nothing of Forkop's runtime is in place: never the host's nft and ip.
+    printf '#!/bin/sh\nexit 1\n' > "$ROOT/bin/nft"
+    printf '#!/bin/sh\nexit 0\n' > "$ROOT/bin/ip"
+    chmod +x "$ROOT/usr/bin/forkop" "$ROOT/bin/opkg" "$ROOT/bin/nft" "$ROOT/bin/ip"
 }
 
 worker_settled() {

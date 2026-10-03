@@ -132,9 +132,10 @@ prerm remove
 called 'forkop-torrserver-direct stop' || fail "a removal did not stop TorrServer Direct"
 ! grep -Eq '^(forkop|forkop-torrserver-direct) disable$' "$EVENTS" ||
   fail "a removal disabled a service, which a reinstall does not enable again"
-[ "$(links_of forkop)" = 'S99forkop ' ] &&
-  [ "$(links_of forkop-torrserver-direct)" = 'K10forkop-torrserver-direct S99forkop-torrserver-direct ' ] ||
+if [ "$(links_of forkop)" != 'S99forkop ' ] ||
+  [ "$(links_of forkop-torrserver-direct)" != 'K10forkop-torrserver-direct S99forkop-torrserver-direct ' ]; then
   fail "a removal changed the rc.d links: $(links_of forkop)$(links_of forkop-torrserver-direct)"
+fi
 
 # 1b. opkg install --force-reinstall: the installed package's "prerm remove",
 #     then the postinst of the package that goes back on. Forkop stays

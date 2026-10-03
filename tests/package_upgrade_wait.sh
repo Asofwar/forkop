@@ -57,6 +57,8 @@ run_postinst() {
   FORKOP_UCI_STATE_FILE="$WORK_DIR/uci.state" \
   FORKOP_PACKAGE_UPGRADE_STATE="$WORK_DIR/was-running" \
   FORKOP_PROC_DIR="$WORK_DIR/proc" \
+  FORKOP_RC_D_DIR="$WORK_DIR/rc.d" \
+  FORKOP_TORRSERVER_DIRECT_INIT="$WORK_DIR/missing-torrserver-direct-init" \
   FORKOP_UPGRADE_SING_BOX_WAIT_SECONDS="${1:-15}" \
     ucode -L "$FORKOP_LIB" "$PACKAGE_UC" postinst
 }

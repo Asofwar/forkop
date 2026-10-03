@@ -29,14 +29,18 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB="$ROOT_DIR/forkop/files/usr/lib"
 CLI="$ROOT_DIR/forkop/files/usr/bin/forkop"
+# shellcheck source=tests/helpers/owned_processes.sh
+. "$ROOT_DIR/tests/helpers/owned_processes.sh"
 WORK="$(mktemp -d)"
 LIVE_PIDS=()
 cleanup() {
   local pid
-  for pid in "${LIVE_PIDS[@]}"; do
-    kill "$pid" 2>/dev/null || true
-    wait "$pid" 2>/dev/null || true
-  done
+  if [ "${#LIVE_PIDS[@]}" -gt 0 ]; then
+    owned_kill KILL "${LIVE_PIDS[@]}" || true
+    for pid in "${LIVE_PIDS[@]}"; do
+      wait "$pid" 2>/dev/null || true
+    done
+  fi
   [ -n "${KEEP_WORK:-}" ] || rm -rf "${WORK:?}"
 }
 trap cleanup EXIT
@@ -315,7 +319,7 @@ expect service_action_status 1 invalid_input -- ../job-busy
 expect service_action_status 1 not_found -- 1700000000_123
 expect ui_action_ack 1 busy -- service job-busy
 expect ui_action_ack 1 invalid_input -- nothing job-busy
-kill "$LIVE" 2>/dev/null || true
+owned_kill TERM "$LIVE" || true
 printf '{"success":false,"running":false,"kind":"service","action":"restart","message":"Service restart did not reach expected state","reason":"timeout","exit_code":1,"started_at":1,"updated_at":2}\n' \
   >"$FORKOP_UI_SERVICE_ACTION_DIR/job-busy.json"
 expect service_action_status 0 timeout -- job-busy

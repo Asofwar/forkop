@@ -201,6 +201,25 @@ for pm in apk opkg; do
     expect_no_user_stop "$case"
     [ ! -e "$UPGRADE_RECOVERY_DIR" ] || fail "$case: the upgrade left its staging behind"
     [ ! -e "$UPGRADE_MARKER" ] || fail "$case: the upgrade left its managed upgrade marker behind"
+
+    # The package manager ran longer than the upgrade marker's age (a slow
+    # router, the mirror migration's downloads). The old sing-box was proven
+    # gone before the package step: the marker names no transition any more
+    # and must not refuse the start of the new release, which would report
+    # the installed upgrade as failed (UC-217, UC-027).
+    upgrade_harness_reset "$pm"
+    upgrade_harness_flag marker_stale
+    case="$pm slow upgrade"
+    upgrade_harness_run || fail "$case: the upgrade failed: $(upgrade_harness_message)"
+    expect_message "$case" "Forkop has been installed"
+    set_installed 1.1.0-r1 || fail "$case: the new release is not installed"
+    ! grep -q '^start refused' "$UPGRADE_STATE/init.log" ||
+        fail "$case: the stale upgrade marker refused the start of the new release"
+    [ "$(grep -c '^start' "$UPGRADE_STATE/init.log")" -eq 1 ] || fail "$case: the new release was started more than once"
+    upgrade_harness_running || fail "$case: Forkop does not run after the upgrade"
+    expect_no_user_stop "$case"
+    [ ! -e "$UPGRADE_RECOVERY_DIR" ] || fail "$case: the upgrade left its staging behind"
+    [ ! -e "$UPGRADE_MARKER" ] || fail "$case: the upgrade left its managed upgrade marker behind"
 done
 
 # --- the rollback stops a Forkop that was not running before ----------------

@@ -2326,7 +2326,11 @@ function forkop_recovery_files(with_i18n, extension) {
 // package scripts started is Forkop's own stop for the upgrade, not the
 // user's (D-15); a start is awaited (UC-013). A stop by the user since then
 // holds (D-15), also one that overtook that start: the stop won, and the
-// package set is in place (UC-235).
+// package set is in place (UC-235). This action's upgrade marker names no
+// transition any more: the old sing-box was proven gone before the package
+// step, which can outlast the marker's age (a slow router, the downloads of
+// the mirror migration), and a stale marker would refuse this start
+// (UC-217).
 function restore_forkop_opkg_service(was_running) {
     if (!was_running) {
         if (!forkop_status_running_with_timeout())
@@ -2340,6 +2344,7 @@ function restore_forkop_opkg_service(was_running) {
         updates_log("Forkop was stopped by the user; the restored release is not started");
         return true;
     }
+    remove_managed_upgrade_sing_box_marker();
     if (forkop_start_and_wait("start"))
         return true;
     if (forkop_stopped_by_user()) {

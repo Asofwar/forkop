@@ -17,14 +17,16 @@ set -euo pipefail
 # a user's Stop that gets procd's lock just before that start wins as well,
 # and postinst reports it as the user's stop, not as a failed start.
 #
-# Which stop came after prerm's is told by the stop request prerm's stop
-# left, which the hand-off names, not by who the stop in effect is recorded
-# for: a stop made while the user's stop is in effect is recorded as the
-# user's (service/initd.uc stop_request_source). The user's Start deferred
-# for reload.lock after the user's stop is the user's last request: prerm
-# hands it over, its stop cancels it, and postinst starts Forkop in its place
-# (UC-012). A user's stop that is under way when prerm looks (recorded, the
-# runtime not down yet) holds Forkop down: prerm hands over no start.
+# A stop of the user's that lands during prerm's own stop holds Forkop down
+# as well: a `forkop stop` (service/lifecycle.uc, which takes neither procd's
+# lock nor reload.lock) recorded while prerm's stop runs, and a Stop that
+# waited for procd's lock behind it and records before prerm goes on. Every
+# stop recorded on top of the user's is the user's (service/initd.uc
+# stop_request_source), except over a user's stop that the user's Start
+# deferred for reload.lock followed: that start is the user's last request.
+# prerm hands it over, its stop, Forkop's own, cancels it, and postinst
+# starts Forkop in its place (UC-012). A user's stop that is under way when
+# prerm looks (recorded, the runtime not down yet) holds Forkop down.
 #
 # service/package.uc, service/initd.uc and the init script are the real
 # ones; the init script runs behind an rc.common stand-in that holds fd 1000
@@ -133,6 +135,20 @@ case "$1" in
     : >"$TEST_WORK/runtime.up"
     ;;
   stop)
+    # The user's `forkop stop` (service/lifecycle.uc stop) records its stop
+    # while prerm's stop runs: after prerm's own record, or between the
+    # record of service/initd.uc and the one service/lifecycle.uc makes for
+    # prerm's stop, which then is the user's (stop_request_source).
+    if [ "${FORKOP_STOP_SOURCE:-}" = package ] && [ -e "$TEST_WORK/cli-user-stop" ]; then
+      when="$(cat "$TEST_WORK/cli-user-stop")"
+      rm -f "$TEST_WORK/cli-user-stop"
+      printf '%s.000000001.%s\nby=user\n' "$(date +%s)" "$$" >"$FORKOP_RUNTIME_STATE_DIR/stop.requested"
+      rm -f "$FORKOP_RUNTIME_STATE_DIR/start.explicit"
+      if [ "$when" = between ]; then
+        printf '%s.000000002.%s\nby=user\n' "$(date +%s)" "$$" >"$FORKOP_RUNTIME_STATE_DIR/stop.requested"
+      fi
+      : >"$TEST_WORK/cli-user-stop.done"
+    fi
     rm -f "$TEST_WORK/runtime.up"
     ;;
   get_status)
@@ -145,7 +161,8 @@ SH
 # /etc/init.d/forkop as procd runs it: rc.common with fd 1000 open and
 # flocked. With user-stop.before-start the user's Stop gets procd's lock
 # right before the start that postinst requested, after postinst has read
-# the stop request.
+# the stop request. With user-stop.queued the user's Stop waits for procd's
+# lock behind prerm's stop and records its stop before prerm goes on.
 cat >"$WORK_DIR/bin/init" <<'SH'
 #!/bin/sh
 exec bash "$TEST_WORK/rc" "$@"
@@ -162,6 +179,16 @@ if [ "$action" = start ] && [ -e "$TEST_WORK/user-stop.before-start" ]; then
 fi
 exec 1000>"$RC_PROCD_LOCK"
 flock 1000
+queued=""
+if [ "$action" = stop ] && [ "${FORKOP_STOP_SOURCE:-}" = package ] && [ -e "$TEST_WORK/user-stop.queued" ]; then
+  rm -f "$TEST_WORK/user-stop.queued"
+  queued=1
+  (
+    env -u FORKOP_STOP_SOURCE -u FORKOP_START_REQUEST -u FORKOP_START_AFTER_STOP \
+      "$FORKOP_SERVICE_INIT" stop </dev/null >/dev/null 2>&1
+    printf '%s\n' "$?" >"$TEST_WORK/user-stop.done"
+  ) 1000>&- &
+fi
 initscript="$REAL_INITD"
 # shellcheck disable=SC1090
 . "$REAL_INITD"
@@ -176,6 +203,16 @@ case "$action" in
   status) status_service ;;
   *) exit 64 ;;
 esac
+status=$?
+if [ -n "$queued" ]; then
+  flock -u 1000
+  exec 1000>&-
+  for _ in $(seq 1 100); do
+    [ ! -e "$TEST_WORK/user-stop.done" ] || break
+    sleep 0.1
+  done
+fi
+exit "$status"
 SH
 
 # No sing-box of another program runs; DNS, health and the kill-switch stay
@@ -202,6 +239,7 @@ stop_request_by() {
 reset_state() {
   kill_retry_workers
   rm -f "$WORK_DIR"/starts "$WORK_DIR"/user-stop.before-start "$WORK_DIR"/user-stop.done \
+    "$WORK_DIR"/user-stop.queued "$WORK_DIR"/cli-user-stop "$WORK_DIR"/cli-user-stop.done \
     "$WORK_DIR"/out "$FORKOP_RUNTIME_STATE_DIR"/stop.requested "$FORKOP_PACKAGE_UPGRADE_STATE" \
     "$FORKOP_RUNTIME_STATE_DIR"/start.retry "$FORKOP_RUNTIME_STATE_DIR"/start-result.*
   : >"$WORK_DIR/syslog"
@@ -221,12 +259,16 @@ prerm_upgrade() {
       fail "prerm of the upgrade failed"
 }
 
-# Forkop runs, started explicitly; prerm of the upgrade stopped it for the
-# start that postinst makes.
-prerm_stopped() {
+# Forkop runs, started explicitly.
+forkop_runs() {
   reset_state
   : >"$WORK_DIR/runtime.up"
   printf 'explicit\n' >"$FORKOP_RUNTIME_STATE_DIR/start.explicit"
+}
+
+# ... and prerm of the upgrade stopped it for the start that postinst makes.
+prerm_stopped() {
+  forkop_runs
   prerm_upgrade
   [ -e "$FORKOP_PACKAGE_UPGRADE_STATE" ] || fail "prerm did not hand the start of the running Forkop over"
   [ ! -e "$WORK_DIR/runtime.up" ] || fail "prerm's stop left the runtime up"
@@ -308,21 +350,25 @@ expect_user_stop_holds "$case"
 # 5. The user stopped Forkop, then started it while reload.lock was busy: the
 #    start was deferred (service/initd.uc defer_start) and keeps the user's
 #    stop recorded until it runs. The upgrade comes first. prerm hands the
-#    start over and its stop, made while the user's stop is recorded, is
-#    recorded as the user's and cancels the deferred start. The user's last
-#    request is the start: postinst makes it.
-reset_state
-user_stops
-user_stop_line="$(sed -n 1p "$FORKOP_RUNTIME_STATE_DIR/stop.requested")"
-printf 'reason=start_deferred\nupdated_at=1\nstop_request=%s\n' "$user_stop_line" \
-  >"$FORKOP_RUNTIME_STATE_DIR/start.retry"
-printf 'explicit\n' >"$FORKOP_RUNTIME_STATE_DIR/start.explicit"
-"$REAL_UCODE" -L "$LIB" "$LIB/service/initd.uc" deferred-start-pending ||
-  fail "the deferred start after the user's stop is not pending"
+#    start over, and its stop, Forkop's own, cancels the deferred start. The
+#    user's last request is the start: postinst makes it.
+user_start_deferred() {
+  reset_state
+  user_stops
+  local user_stop_line
+  user_stop_line="$(sed -n 1p "$FORKOP_RUNTIME_STATE_DIR/stop.requested")"
+  printf 'reason=start_deferred\nupdated_at=1\nstop_request=%s\n' "$user_stop_line" \
+    >"$FORKOP_RUNTIME_STATE_DIR/start.retry"
+  printf 'explicit\n' >"$FORKOP_RUNTIME_STATE_DIR/start.explicit"
+  "$REAL_UCODE" -L "$LIB" "$LIB/service/initd.uc" deferred-start-pending ||
+    fail "the deferred start after the user's stop is not pending"
+}
+user_start_deferred
 prerm_upgrade
 case="the user's start deferred after the user's stop"
 [ -e "$FORKOP_PACKAGE_UPGRADE_STATE" ] || fail "$case: prerm did not hand the deferred start over"
 [ ! -e "$FORKOP_RUNTIME_STATE_DIR/start.retry" ] || fail "$case: prerm's stop did not cancel the deferred start"
+[ "$(stop_request_by)" = package ] || fail "$case: prerm's stop was not recorded as the package's ($(stop_request_by))"
 postinst || fail "$case: postinst failed"
 [ -e "$WORK_DIR/runtime.up" ] || fail "$case: Forkop was not started after the upgrade"
 [ "$(grep -c '^start$' "$WORK_DIR/starts" 2>/dev/null || true)" = 1 ] || fail "$case: Forkop was not started once"
@@ -343,5 +389,39 @@ prerm_upgrade
 case="the user's stop under way when prerm looks"
 postinst || fail "$case: postinst failed"
 expect_user_stopped "$case"
+
+# 7. The user's `forkop stop` lands while prerm's stop runs: after prerm's
+#    own record, or between the record of service/initd.uc and that of
+#    service/lifecycle.uc, which records prerm's stop as the user's.
+for when in after between; do
+  forkop_runs
+  printf '%s\n' "$when" >"$WORK_DIR/cli-user-stop"
+  prerm_upgrade
+  case="the user's forkop stop during prerm's stop ($when)"
+  [ -e "$WORK_DIR/cli-user-stop.done" ] || fail "$case: the user's stop did not run"
+  postinst || fail "$case: postinst failed"
+  expect_user_stop_holds "$case"
+done
+
+# 8. The user's Stop waits for procd's lock behind prerm's stop and records
+#    its stop before prerm goes on.
+forkop_runs
+: >"$WORK_DIR/user-stop.queued"
+prerm_upgrade
+case="the user's stop queued behind prerm's stop"
+[ -e "$WORK_DIR/user-stop.done" ] || fail "$case: the user's stop did not run"
+[ "$(cat "$WORK_DIR/user-stop.done")" = 0 ] || fail "$case: the user's stop failed"
+postinst || fail "$case: postinst failed"
+expect_user_stop_holds "$case"
+
+# 9. The user's start deferred after the user's stop, and the user's
+#    `forkop stop` while prerm's stop runs: the later stop wins.
+user_start_deferred
+printf 'after\n' >"$WORK_DIR/cli-user-stop"
+prerm_upgrade
+case="the user's forkop stop during prerm's stop after the user's deferred start"
+[ -e "$WORK_DIR/cli-user-stop.done" ] || fail "$case: the user's stop did not run"
+postinst || fail "$case: postinst failed"
+expect_user_stop_holds "$case"
 
 printf 'package_postinst_user_stop: PASS\n'

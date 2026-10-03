@@ -1826,6 +1826,9 @@ function stop_impl(explicit_stop) {
 
 // Who asked for the stop (FORKOP_STOP_SOURCE): Forkop itself for a package
 // or component change, or the user; as service/initd.uc stop_request_source.
+// Forkop's own stop comes through init.d, which has recorded it before and
+// cancelled a start deferred after the user's stop: what it recorded tells
+// that case.
 function stop_request_source() {
     let source = as_string(getenv("FORKOP_STOP_SOURCE"));
     if (source != "package" && source != "component")

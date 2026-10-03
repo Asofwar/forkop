@@ -302,8 +302,13 @@ function deferred_start_stop_request() {
 // Forkop for a start that follows; any other stop is the user's. Only the
 // user's stop is shown as one (service/ui.uc, diagnostics/runtime.uc): an
 // internal stop whose start never came is a failure. A stop made while the
-// user's stop is in effect stays the user's. Reloads are held off alike
-// (D-15, UC-056). service/lifecycle.uc records the same.
+// user's stop is in effect stays the user's: a start that follows it must
+// not undo that stop, also one recorded during Forkop's own stop
+// (service/package.uc postinst). A user's stop that the user's start
+// deferred for reload.lock followed is no longer in effect: that start is
+// the user's last request, and Forkop's own stop, which cancels it, is
+// followed by a start in its place (D-15(a), UC-012). Reloads are held off
+// alike (D-15, UC-056). service/lifecycle.uc records the same.
 function stop_request_source() {
     let source = as_string(getenv("FORKOP_STOP_SOURCE"));
     if (source != "package" && source != "component")
@@ -312,7 +317,11 @@ function stop_request_source() {
     if (previous == null)
         return source;
     let by = match(previous, /(^|\n)by=([a-z]*)/);
-    return by == null || by[2] == "user" ? "user" : source;
+    if (by != null && by[2] != "user")
+        return source;
+    let deferred_after = deferred_start_stop_request();
+    return deferred_after != null && (first_line_value(STOP_REQUESTED_FILE) || "requested") == deferred_after ?
+        source : "user";
 }
 
 // Removed only by an explicit start or restart (start_service,
@@ -1374,23 +1383,12 @@ else if (mode == "deferred-start-pending")
 // start; the previous version may have kept no record of it.
 else if (mode == "mark-explicit-start")
     exit((ARGV[1] == "if-running" && !runtime_is_running()) || mark_explicit_start() ? 0 : 1);
-// service/package.uc prerm: the stop in effect is the user's; a runtime
-// that still runs is on its way down (D-15(a)).
-else if (mode == "user-stop-requested")
-    exit(user_stop_requested() ? 0 : 1);
-// service/package.uc prerm: the stop request that its stop for the upgrade
-// left, its first line or nothing.
-else if (mode == "stop-request")
-    print(stop_request_value(), "\n");
 // service/package.uc postinst: the stop request that the start after the
 // upgrade follows (FORKOP_START_AFTER_STOP), its first line or nothing;
-// exit 3 when the stop in effect is a stop of the user's made after the one
-// prerm's stop left (ARGV[1]): no start follows it (D-15(a)). prerm's stop
-// itself is recorded as the user's when it lands on the user's stop
-// (stop_request_source), as on one that a start deferred for reload.lock
-// followed.
+// exit 3 when the stop in effect is the user's: no start follows it
+// (D-15(a)).
 else if (mode == "own-stop-request") {
-    if (user_stop_requested() && stop_request_value() != as_string(ARGV[1]))
+    if (user_stop_requested())
         exit(3);
     print(stop_request_value(), "\n");
 }

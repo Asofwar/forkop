@@ -1,43 +1,109 @@
 "use strict";
 
-// Seeded and exhaustive properties of config/domain.uc against the UTS46
-// processing of url.domainToASCII (WHATWG URL, the one browsers and LuCI's
-// new URL() use): a domain written in any case reaches the same punycode,
-// so a rule matches the name a DNS query carries (UC-087).
+// Seeded and exhaustive properties of config/domain.uc against UTS46: a
+// domain written in any case reaches the punycode a DNS query carries, as
+// browsers and the LuCI form (new URL()) process it (UC-087).
+//
+// The reference is UTS46 17.0.0, pinned in tests/fixtures/uts46_case_mappings.json
+// (the IdnaMappingTable mappings of the cased code points), not the
+// url.domainToASCII of the node that runs the test: its UTS46 revision comes
+// with the node release (node 20 and 22 map U+1E9E to "ss" and refuse
+// U+04C0 and the Georgian capitals; node 24 maps them as UTS46 16 does).
+// url.domainToASCII only encodes the folded, lower-case result, which every
+// revision treats alike; a code point that this node does not know yet is
+// checked by folding alone.
 //
 //   node domain.js <lib> <work>   run the properties
-//   node domain.js --table        print config/domain.uc UNICODE_FOLD_RANGES
+//   node domain.js --generate <IdnaMappingTable.txt> <DerivedCoreProperties.txt>
+//                                 write the fixture from the Unicode data
+//                                 files of one version and print the
+//                                 UNICODE_FOLD_RANGES of config/domain.uc
 //
-// The folding table of config/domain.uc is generated here: every code point
-// that changes under case mapping or case folding and that UTS46 maps to one
-// other code point. UTS46 mappings to several code points are compatibility
-// mappings (ligatures, digraphs, Roman numerals, Greek iota subscript), not
-// case: config/domain.uc maps only the two letters among them whose case
-// mapping itself is two code points (U+0130, U+1E9E).
+// The folding table of config/domain.uc: every code point that changes under
+// case mapping or case folding (Changes_When_Casemapped,
+// Changes_When_Casefolded) and that UTS46 maps to one other code point. UTS46
+// maps other cased code points to several (ligatures, digraphs, Roman
+// numerals, Greek iota subscript): those are compatibility mappings, not
+// case, and config/domain.uc maps only U+0130 among them, whose case mapping
+// itself is two code points. ß and ς are deviations, which nontransitional
+// processing keeps.
 
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const url = require("node:url");
 
-const MULTI_FOLDED = new Set([0x130, 0x1e9e]);
-const CASED = /^[\p{Changes_When_Casefolded}\p{Changes_When_Casemapped}]$/u;
+const FIXTURE = path.join(__dirname, "..", "..", "fixtures", "uts46_case_mappings.json");
+const MULTI_FOLDED = new Set([0x130]);
 
-function uts46(text) {
-  const ascii = url.domainToASCII(text);
-  return ascii === "" ? null : url.domainToUnicode(ascii);
+const hex = (cp) => cp.toString(16).toUpperCase().padStart(4, "0");
+const codePoints = (field) =>
+  field
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((h) => parseInt(h, 16));
+
+// The code points of a Unicode data file whose second field matches.
+function* dataLines(text, accept) {
+  for (const raw of text.split("\n")) {
+    const line = raw.replace(/#.*/, "").trim();
+    if (line === "") continue;
+    const fields = line.split(";").map((field) => field.trim());
+    if (!accept(fields)) continue;
+    const [first, last = first] = fields[0].split("..").map((h) => parseInt(h, 16));
+    for (let cp = first; cp <= last; cp++) yield [cp, fields];
+  }
 }
 
-// [code point, [mapped code points]] for every cased code point UTS46 maps.
-function utsCaseMappings() {
-  const result = [];
-  for (let cp = 0x80; cp <= 0x10ffff; cp++) {
-    if (cp >= 0xd800 && cp <= 0xdfff) continue;
-    const ch = String.fromCodePoint(cp);
-    if (!CASED.test(ch)) continue;
-    const mapped = uts46(ch);
-    if (mapped === null || mapped === ch) continue;
-    result.push([cp, [...mapped].map((c) => c.codePointAt(0))]);
+function generate(idnaFile, propertiesFile) {
+  const idna = fs.readFileSync(idnaFile, "utf8");
+  const properties = fs.readFileSync(propertiesFile, "utf8");
+  const uts46 = /^# Version: (\S+)/m.exec(idna)?.[1];
+  const unicode = /^# DerivedCoreProperties-(\S+)\.txt/m.exec(properties)?.[1];
+  assert.ok(uts46 && unicode, "an IdnaMappingTable.txt and a DerivedCoreProperties.txt");
+  assert.equal(uts46, unicode, "the two files of one Unicode version");
+
+  const cased = new Set();
+  const caseProperties = ["Changes_When_Casemapped", "Changes_When_Casefolded"];
+  for (const [cp] of dataLines(properties, (fields) => caseProperties.includes(fields[1]))) cased.add(cp);
+
+  const mappings = new Map();
+  for (const [cp, fields] of dataLines(idna, (fields) => fields[1] === "mapped"))
+    if (cp >= 0x80 && cased.has(cp)) mappings.set(cp, codePoints(fields[2]));
+
+  const entries = [...mappings].sort(([a], [b]) => a - b);
+  const lines = entries.map(([cp, mapped]) => `    "${hex(cp)}": "${mapped.map(hex).join(" ")}"`);
+  fs.writeFileSync(
+    FIXTURE,
+    `{
+  "uts46": "${uts46}",
+  "sources": [
+    "https://www.unicode.org/Public/${uts46}/idna/IdnaMappingTable.txt",
+    "https://www.unicode.org/Public/${unicode}/ucd/DerivedCoreProperties.txt"
+  ],
+  "generated_by": "node tests/helpers/property/domain.js --generate IdnaMappingTable.txt DerivedCoreProperties.txt",
+  "about": "UTS46 mappings of the non-ASCII code points that change under case mapping or case folding",
+  "mappings": {
+${lines.join(",\n")}
   }
-  return result;
+}
+`,
+  );
+
+  const items = foldRanges(entries).map(([a, b, d, s]) => `[ 0x${a.toString(16)}, 0x${b.toString(16)}, ${d}, ${s} ]`);
+  const table = [];
+  let line = "   ";
+  for (const item of items) {
+    if (`${line} ${item},`.length > 100) {
+      table.push(line);
+      line = "   ";
+    }
+    line += ` ${item},`;
+  }
+  table.push(line.replace(/,$/, ""));
+  console.log(`// UTS46 ${uts46}: ${items.length} ranges`);
+  console.log(table.join("\n"));
 }
 
 // [first, last, delta, step]: every step-th code point from first to last maps
@@ -64,21 +130,10 @@ function foldRanges(mappings) {
   return ranges.map(([first, last, delta, step]) => [first, last, delta, step || 1]);
 }
 
-function printTable() {
-  const hex = (n) => `0x${n.toString(16)}`;
-  const items = foldRanges(utsCaseMappings()).map(([a, b, d, s]) => `[ ${hex(a)}, ${hex(b)}, ${d}, ${s} ]`);
-  const lines = [];
-  let line = "   ";
-  for (const item of items) {
-    if (`${line} ${item},`.length > 100) {
-      lines.push(line);
-      line = "   ";
-    }
-    line += ` ${item},`;
-  }
-  lines.push(line.replace(/,$/, ""));
-  console.log(`// Unicode ${process.versions.unicode} (node ${process.versions.node}, ICU ${process.versions.icu})`);
-  console.log(lines.join("\n"));
+function loadFixture() {
+  const data = JSON.parse(fs.readFileSync(FIXTURE, "utf8"));
+  const mappings = Object.entries(data.mappings).map(([cp, mapped]) => [parseInt(cp, 16), codePoints(mapped)]);
+  return { uts46: data.uts46, mappings };
 }
 
 function run(lib, work) {
@@ -98,10 +153,27 @@ function evaluate(input) {
       inputs,
     );
 
+  const { uts46, mappings } = loadFixture();
+  assert.ok(mappings.length > 1000, "the UTS46 case mappings are read");
+  const source = fs.readFileSync(`${lib}/config/domain.uc`, "utf8");
+  assert.ok(source.includes(`UTS46 ${uts46}`), `config/domain.uc names the UTS46 revision of its table (${uts46})`);
+
+  // What config/domain.uc folds, and the reference folding of a text.
+  const folds = new Map(mappings.filter(([cp, m]) => m.length === 1 || MULTI_FOLDED.has(cp)));
+  const compatibility = new Set(mappings.filter(([cp]) => !folds.has(cp)).map(([cp]) => cp));
+  const fold = (text) =>
+    [...text]
+      .map((ch) => {
+        const mapped = folds.get(ch.codePointAt(0));
+        return mapped ? String.fromCodePoint(...mapped) : ch;
+      })
+      .join("");
+  // The punycode of the folded text; "" for a code point this node's UTS46
+  // does not know yet (url.domainToASCII refuses it).
+  const reference = (text) => url.domainToASCII(fold(text));
+
   const range = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => String.fromCodePoint(a + i));
   const letter = (ch) => /^\p{L}$/u.test(ch);
-  const mappings = utsCaseMappings();
-  const compatibility = new Set(mappings.filter(([cp, m]) => m.length > 1 && !MULTI_FOLDED.has(cp)).map(([cp]) => cp));
   const usable = (ch) => letter(ch) && !compatibility.has(ch.codePointAt(0));
   // The scripts of the finding: Latin with Latin-1 and Extended-A
   // (Polish, Turkish), Cyrillic with the Ukrainian and Belarusian letters,
@@ -135,21 +207,28 @@ function evaluate(input) {
     const name = rng.array(1, 3, label).join(".");
     return rng.bool(0.2) ? `.${name}` : name;
   });
-  // The examples of UC-087.
+  // The examples of UC-087, and the letters whose UTS46 mapping changed
+  // between revisions (U+1E9E, U+04C0, Georgian Asomtavruli).
   cases.push("Їжак.укр", "Іграшка.укр", "Ґанок.укр", "ЄВРОПА.eu", "Ўсход.бел", "ΕΛΛΆΔΑ.gr", "ŁÓDŹ.pl", "ÇALIŞ.tr",
-    "İSTANBUL.tr", "STRAẞE.de");
+    "İSTANBUL.tr", "STRAẞE.de", "straße.de", "ӀӀ.example", "ႠႡ.ge");
   const results = domain(cases.map((value) => ({ kind: "suffix", value })));
   let compared = 0;
-  forAll("suffix_to_ascii folds like UTS46", seed, cases, (value, i) => {
+  forAll(`suffix_to_ascii folds like UTS46 ${uts46}`, seed, cases, (value, i) => {
     const dot = value.startsWith(".") ? "." : "";
-    const expected = url.domainToASCII(value.slice(dot.length));
+    const expected = reference(value.slice(dot.length));
     if (expected === "") return;
     compared++;
     assert.equal(results[i], dot + expected);
   });
-  exercised("suffix_to_ascii folds like UTS46", compared, 500);
-  assert.equal(results[cases.indexOf("Їжак.укр")], "xn--80aln7i.xn--j1amh");
-  assert.equal(results[cases.indexOf("Іграшка.укр")], "xn--80aah3a2a3c8e.xn--j1amh");
+  exercised(`suffix_to_ascii folds like UTS46 ${uts46}`, compared, 500);
+  const at = (value) => results[cases.indexOf(value)];
+  assert.equal(at("Їжак.укр"), "xn--80aln7i.xn--j1amh");
+  assert.equal(at("Іграшка.укр"), "xn--80aah3a2a3c8e.xn--j1amh");
+  // UTS46 15.1 and later: ẞ maps to ß, which nontransitional processing keeps.
+  assert.equal(at("STRAẞE.de"), "xn--strae-oqa.de");
+  assert.equal(at("STRAẞE.de"), at("straße.de"));
+  assert.equal(at("ӀӀ.example"), "xn--s5aa.example");
+  assert.equal(at("ႠႡ.ge"), "xn--rkjc.ge");
 
   // 2. Normalizing again changes nothing.
   const again = domain(results.filter((r) => r !== null).map((value) => ({ kind: "suffix", value })));
@@ -158,7 +237,6 @@ function evaluate(input) {
 
   // config/domain.uc finds a code point's range by binary search: the table
   // must be sorted and free of overlaps.
-  const source = require("node:fs").readFileSync(`${lib}/config/domain.uc`, "utf8");
   const table = source.slice(source.indexOf("const UNICODE_FOLD_RANGES = ["), source.indexOf("];", source.indexOf("const UNICODE_FOLD_RANGES")));
   const rows = [...table.matchAll(/\[ (0x[0-9a-f]+), (0x[0-9a-f]+), (-?\d+), (\d+) \]/g)].map((m) => [parseInt(m[1], 16), parseInt(m[2], 16)]);
   assert.ok(rows.length > 100, "the folding table of config/domain.uc is read");
@@ -167,47 +245,62 @@ function evaluate(input) {
     if (i > 0) assert.ok(first > rows[i - 1][1], `range ${i} starts after range ${i - 1} ends`);
   });
 
-  // 3. Every cased code point UTS46 maps to one code point folds as UTS46 maps
-  // it (a doubled letter: one label, one script direction).
-  const folds = mappings.filter(([cp, m]) => m.length === 1 || MULTI_FOLDED.has(cp));
-  const doubled = folds.map(([cp]) => {
-    const ch = String.fromCodePoint(cp);
-    return ch + ch;
-  });
+  // 3. Every cased code point UTS46 maps to one code point folds to it (a
+  // doubled letter: one label, one script direction), on any node; where
+  // this node knows the mapped code point, the punycode is the one UTS46
+  // gives.
+  const entries = [...folds];
+  const doubled = entries.map(([cp]) => String.fromCodePoint(cp).repeat(2));
+  const targets = entries.map(([, mapped]) => String.fromCodePoint(...mapped).repeat(2));
   const folded = domain(doubled.map((value) => ({ kind: "suffix", value })));
+  const foldedTargets = domain(targets.map((value) => ({ kind: "suffix", value })));
   let checked = 0;
-  forAll("every cased code point folds like UTS46", seed, doubled, (value, i) => {
-    const expected = url.domainToASCII(value);
+  forAll(`every cased code point folds like UTS46 ${uts46}`, seed, doubled, (value, i) => {
+    const name = `U+${hex(value.codePointAt(0))}`;
+    assert.notEqual(folded[i], null, name);
+    assert.equal(folded[i], foldedTargets[i], name);
+    const expected = url.domainToASCII(targets[i]);
     if (expected === "") return;
     checked++;
-    assert.equal(folded[i], expected, `U+${value.codePointAt(0).toString(16).toUpperCase()}`);
+    assert.equal(folded[i], expected, name);
   });
-  exercised("every cased code point folds like UTS46", checked, Math.floor(folds.length * 0.9));
+  exercised(`every cased code point folds like UTS46 ${uts46}`, checked, Math.floor(entries.length * 0.8));
 
   // 4. Keywords and regular expressions fold their non-ASCII labels the same
   // way; a letter that folds to ASCII (KELVIN SIGN) leaves no raw byte.
+  // sing-box matches both against the lower-case domain (strings.ToLower in
+  // its domain_keyword and domain_regex items), so an ASCII keyword is
+  // lower-cased too. ASCII letters of a regular expression stay as written:
+  // a class name (\p{Greek}), a group name or a flag ((?U)) is case
+  // sensitive.
   const keywords = Array.from({ length: casesFrom(200) }, () => `${label()}${flipCase(rng.pick(nonAscii))}`);
-  const keywordOut = domain(keywords.map((value) => ({ kind: "keyword", value })));
+  const asciiKeywords = Array.from({ length: casesFrom(100) }, () =>
+    rng.array(1, 12, () => flipCase(rng.pick(alphabet.filter((ch) => ch < "\x80")))).join(""));
+  asciiKeywords.push("YouTube", "GOOGLEVIDEO", "x-Cdn");
+  const keywordOut = domain([...keywords, ...asciiKeywords].map((value) => ({ kind: "keyword", value })));
   forAll("keyword_to_ascii folds like UTS46", seed, keywords, (value, i) => {
-    const expected = url.domainToASCII(value);
+    const expected = reference(value);
     if (expected !== "") assert.equal(keywordOut[i], expected);
   });
+  forAll("keyword_to_ascii lower-cases an ASCII keyword", seed, asciiKeywords, (value, i) =>
+    assert.equal(keywordOut[keywords.length + i], value.toLowerCase()));
   const regexLabels = Array.from({ length: casesFrom(200) }, () => [
     `${label()}${flipCase(rng.pick(nonAscii))}`,
     `${flipCase(rng.pick(nonAscii))}${label()}`,
   ]);
   const regexes = regexLabels.map(([a, b]) => `^${a}\\.${b}$`);
-  regexes.push("^Key\\.example$");
+  regexes.push("^Key\\.example$", "^\\p{Greek}+\\.Example$");
   const regexOut = domain(regexes.map((value) => ({ kind: "regex", value })));
   forAll("regex_to_ascii folds like UTS46", seed, regexLabels, ([a, b], i) => {
-    const ea = url.domainToASCII(a);
-    const eb = url.domainToASCII(b);
+    const ea = reference(a);
+    const eb = reference(b);
     if (ea !== "" && eb !== "") assert.equal(regexOut[i], `^${ea}\\.${eb}$`);
   });
-  assert.equal(regexOut[regexes.length - 1], "^key\\.example$", "a letter folding to ASCII must not stay raw in a regex");
+  assert.equal(regexOut[regexes.length - 2], "^key\\.example$", "a letter folding to ASCII must not stay raw in a regex");
+  assert.equal(regexOut[regexes.length - 1], "^\\p{Greek}+\\.Example$", "ASCII letters of a regex stay as written");
 
-  console.log(`domain normalization properties passed (seed ${seed}, ${compared} domains, ${checked} code points)`);
+  console.log(`domain normalization properties passed (UTS46 ${uts46}, seed ${seed}, ${compared} domains, ${checked} code points)`);
 }
 
-if (process.argv[2] === "--table") printTable();
+if (process.argv[2] === "--generate") generate(process.argv[3], process.argv[4]);
 else run(process.argv[2], process.argv[3]);

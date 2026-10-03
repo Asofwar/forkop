@@ -33,15 +33,19 @@ function valid_continuation(value, offset) {
     return (byte & 0xc0) == 0x80 ? byte : -1;
 }
 
-// Case folding before punycode, as UTS46 (url.domainToASCII, browsers, the
-// LuCI form) folds a domain: every code point that changes under case
-// mapping or case folding and that UTS46 maps to one other code point
-// (UC-087). [first, last, delta, step]: every step-th code point from first
-// to last maps to itself plus delta. Generated for Unicode 17.0 (node
-// 22.22.2, ICU 78.2) by `node tests/helpers/property/domain.js --table`;
-// ASCII is folded before the table is searched. UTS46 maps other cased code points to
-// several (ligatures, digraphs, Roman numerals, Greek iota subscript): those
-// are compatibility mappings, not case, and are not folded here.
+// Case folding before punycode, as UTS46 folds a domain (browsers, the LuCI
+// form's new URL()): every code point that changes under case mapping or
+// case folding and that UTS46 17.0.0 maps to one other code point (UC-087).
+// [first, last, delta, step]: every step-th code point from first to last
+// maps to itself plus delta. Generated from IdnaMappingTable.txt and
+// DerivedCoreProperties.txt of Unicode 17.0.0 by
+// `node tests/helpers/property/domain.js --generate`, which also writes the
+// mappings tests/property_domain_normalization.sh checks this table against
+// (tests/fixtures/uts46_case_mappings.json). ASCII is folded before the
+// table is searched. UTS46 maps other cased code points to several
+// (ligatures, digraphs, Roman numerals, Greek iota subscript): those are
+// compatibility mappings, not case, and are not folded here. ß and ς stay:
+// nontransitional processing keeps them, and ẞ maps to ß.
 const UNICODE_FOLD_RANGES = [
     [ 0xb5, 0xb5, 775, 1 ], [ 0xc0, 0xd6, 32, 1 ], [ 0xd8, 0xde, 32, 1 ], [ 0x100, 0x12e, 1, 2 ],
     [ 0x134, 0x136, 1, 2 ], [ 0x139, 0x13d, 1, 2 ], [ 0x141, 0x147, 1, 2 ], [ 0x14a, 0x176, 1, 2 ],
@@ -71,29 +75,31 @@ const UNICODE_FOLD_RANGES = [
     [ 0x3f4, 0x3f4, -60, 1 ], [ 0x3f5, 0x3f5, -64, 1 ], [ 0x3f7, 0x3f7, 1, 1 ],
     [ 0x3f9, 0x3f9, -54, 1 ], [ 0x3fa, 0x3fa, 1, 1 ], [ 0x3fd, 0x3ff, -130, 1 ],
     [ 0x400, 0x40f, 80, 1 ], [ 0x410, 0x42f, 32, 1 ], [ 0x460, 0x480, 1, 2 ],
-    [ 0x48a, 0x4be, 1, 2 ], [ 0x4c1, 0x4cd, 1, 2 ], [ 0x4d0, 0x52e, 1, 2 ], [ 0x531, 0x556, 48, 1 ],
-    [ 0x10c7, 0x10c7, 7264, 1 ], [ 0x10cd, 0x10cd, 7264, 1 ], [ 0x13f8, 0x13fd, -8, 1 ],
-    [ 0x1c80, 0x1c80, -6222, 1 ], [ 0x1c81, 0x1c81, -6221, 1 ], [ 0x1c82, 0x1c82, -6212, 1 ],
-    [ 0x1c83, 0x1c84, -6210, 1 ], [ 0x1c85, 0x1c85, -6211, 1 ], [ 0x1c86, 0x1c86, -6204, 1 ],
-    [ 0x1c87, 0x1c87, -6180, 1 ], [ 0x1c88, 0x1c88, 35267, 1 ], [ 0x1c90, 0x1cba, -3008, 1 ],
+    [ 0x48a, 0x4be, 1, 2 ], [ 0x4c0, 0x4c0, 15, 1 ], [ 0x4c1, 0x4cd, 1, 2 ], [ 0x4d0, 0x52e, 1, 2 ],
+    [ 0x531, 0x556, 48, 1 ], [ 0x10a0, 0x10c5, 7264, 1 ], [ 0x10c7, 0x10c7, 7264, 1 ],
+    [ 0x10cd, 0x10cd, 7264, 1 ], [ 0x13f8, 0x13fd, -8, 1 ], [ 0x1c80, 0x1c80, -6222, 1 ],
+    [ 0x1c81, 0x1c81, -6221, 1 ], [ 0x1c82, 0x1c82, -6212, 1 ], [ 0x1c83, 0x1c84, -6210, 1 ],
+    [ 0x1c85, 0x1c85, -6211, 1 ], [ 0x1c86, 0x1c86, -6204, 1 ], [ 0x1c87, 0x1c87, -6180, 1 ],
+    [ 0x1c88, 0x1c88, 35267, 1 ], [ 0x1c89, 0x1c89, 1, 1 ], [ 0x1c90, 0x1cba, -3008, 1 ],
     [ 0x1cbd, 0x1cbf, -3008, 1 ], [ 0x1e00, 0x1e94, 1, 2 ], [ 0x1e9b, 0x1e9b, -58, 1 ],
-    [ 0x1ea0, 0x1efe, 1, 2 ], [ 0x1f08, 0x1f0f, -8, 1 ], [ 0x1f18, 0x1f1d, -8, 1 ],
-    [ 0x1f28, 0x1f2f, -8, 1 ], [ 0x1f38, 0x1f3f, -8, 1 ], [ 0x1f48, 0x1f4d, -8, 1 ],
-    [ 0x1f59, 0x1f5f, -8, 2 ], [ 0x1f68, 0x1f6f, -8, 1 ], [ 0x1f71, 0x1f71, -7109, 1 ],
-    [ 0x1f73, 0x1f73, -7110, 1 ], [ 0x1f75, 0x1f75, -7111, 1 ], [ 0x1f77, 0x1f77, -7112, 1 ],
-    [ 0x1f79, 0x1f79, -7085, 1 ], [ 0x1f7b, 0x1f7b, -7086, 1 ], [ 0x1f7d, 0x1f7d, -7087, 1 ],
-    [ 0x1fb8, 0x1fb9, -8, 1 ], [ 0x1fba, 0x1fba, -74, 1 ], [ 0x1fbb, 0x1fbb, -7183, 1 ],
-    [ 0x1fbe, 0x1fbe, -7173, 1 ], [ 0x1fc8, 0x1fc8, -86, 1 ], [ 0x1fc9, 0x1fc9, -7196, 1 ],
-    [ 0x1fca, 0x1fca, -86, 1 ], [ 0x1fcb, 0x1fcb, -7197, 1 ], [ 0x1fd3, 0x1fd3, -7235, 1 ],
-    [ 0x1fd8, 0x1fd9, -8, 1 ], [ 0x1fda, 0x1fda, -100, 1 ], [ 0x1fdb, 0x1fdb, -7212, 1 ],
-    [ 0x1fe3, 0x1fe3, -7219, 1 ], [ 0x1fe8, 0x1fe9, -8, 1 ], [ 0x1fea, 0x1fea, -112, 1 ],
-    [ 0x1feb, 0x1feb, -7198, 1 ], [ 0x1fec, 0x1fec, -7, 1 ], [ 0x1ff8, 0x1ff8, -128, 1 ],
-    [ 0x1ff9, 0x1ff9, -7213, 1 ], [ 0x1ffa, 0x1ffa, -126, 1 ], [ 0x1ffb, 0x1ffb, -7213, 1 ],
-    [ 0x2126, 0x2126, -7517, 1 ], [ 0x212a, 0x212a, -8383, 1 ], [ 0x212b, 0x212b, -8262, 1 ],
-    [ 0x2160, 0x2160, -8439, 1 ], [ 0x2164, 0x2164, -8430, 1 ], [ 0x2169, 0x2169, -8433, 1 ],
-    [ 0x216c, 0x216c, -8448, 1 ], [ 0x216d, 0x216e, -8458, 1 ], [ 0x216f, 0x216f, -8450, 1 ],
-    [ 0x2170, 0x2170, -8455, 1 ], [ 0x2174, 0x2174, -8446, 1 ], [ 0x2179, 0x2179, -8449, 1 ],
-    [ 0x217c, 0x217c, -8464, 1 ], [ 0x217d, 0x217e, -8474, 1 ], [ 0x217f, 0x217f, -8466, 1 ],
+    [ 0x1e9e, 0x1e9e, -7615, 1 ], [ 0x1ea0, 0x1efe, 1, 2 ], [ 0x1f08, 0x1f0f, -8, 1 ],
+    [ 0x1f18, 0x1f1d, -8, 1 ], [ 0x1f28, 0x1f2f, -8, 1 ], [ 0x1f38, 0x1f3f, -8, 1 ],
+    [ 0x1f48, 0x1f4d, -8, 1 ], [ 0x1f59, 0x1f5f, -8, 2 ], [ 0x1f68, 0x1f6f, -8, 1 ],
+    [ 0x1f71, 0x1f71, -7109, 1 ], [ 0x1f73, 0x1f73, -7110, 1 ], [ 0x1f75, 0x1f75, -7111, 1 ],
+    [ 0x1f77, 0x1f77, -7112, 1 ], [ 0x1f79, 0x1f79, -7085, 1 ], [ 0x1f7b, 0x1f7b, -7086, 1 ],
+    [ 0x1f7d, 0x1f7d, -7087, 1 ], [ 0x1fb8, 0x1fb9, -8, 1 ], [ 0x1fba, 0x1fba, -74, 1 ],
+    [ 0x1fbb, 0x1fbb, -7183, 1 ], [ 0x1fbe, 0x1fbe, -7173, 1 ], [ 0x1fc8, 0x1fc8, -86, 1 ],
+    [ 0x1fc9, 0x1fc9, -7196, 1 ], [ 0x1fca, 0x1fca, -86, 1 ], [ 0x1fcb, 0x1fcb, -7197, 1 ],
+    [ 0x1fd3, 0x1fd3, -7235, 1 ], [ 0x1fd8, 0x1fd9, -8, 1 ], [ 0x1fda, 0x1fda, -100, 1 ],
+    [ 0x1fdb, 0x1fdb, -7212, 1 ], [ 0x1fe3, 0x1fe3, -7219, 1 ], [ 0x1fe8, 0x1fe9, -8, 1 ],
+    [ 0x1fea, 0x1fea, -112, 1 ], [ 0x1feb, 0x1feb, -7198, 1 ], [ 0x1fec, 0x1fec, -7, 1 ],
+    [ 0x1ff8, 0x1ff8, -128, 1 ], [ 0x1ff9, 0x1ff9, -7213, 1 ], [ 0x1ffa, 0x1ffa, -126, 1 ],
+    [ 0x1ffb, 0x1ffb, -7213, 1 ], [ 0x2126, 0x2126, -7517, 1 ], [ 0x212a, 0x212a, -8383, 1 ],
+    [ 0x212b, 0x212b, -8262, 1 ], [ 0x2132, 0x2132, 28, 1 ], [ 0x2160, 0x2160, -8439, 1 ],
+    [ 0x2164, 0x2164, -8430, 1 ], [ 0x2169, 0x2169, -8433, 1 ], [ 0x216c, 0x216c, -8448, 1 ],
+    [ 0x216d, 0x216e, -8458, 1 ], [ 0x216f, 0x216f, -8450, 1 ], [ 0x2170, 0x2170, -8455, 1 ],
+    [ 0x2174, 0x2174, -8446, 1 ], [ 0x2179, 0x2179, -8449, 1 ], [ 0x217c, 0x217c, -8464, 1 ],
+    [ 0x217d, 0x217e, -8474, 1 ], [ 0x217f, 0x217f, -8466, 1 ], [ 0x2183, 0x2183, 1, 1 ],
     [ 0x24b6, 0x24cf, -9301, 1 ], [ 0x24d0, 0x24e9, -9327, 1 ], [ 0x2c00, 0x2c2f, 48, 1 ],
     [ 0x2c60, 0x2c60, 1, 1 ], [ 0x2c62, 0x2c62, -10743, 1 ], [ 0x2c63, 0x2c63, -3814, 1 ],
     [ 0x2c64, 0x2c64, -10727, 1 ], [ 0x2c67, 0x2c6b, 1, 2 ], [ 0x2c6d, 0x2c6d, -10780, 1 ],
@@ -108,19 +114,18 @@ const UNICODE_FOLD_RANGES = [
     [ 0xa7ae, 0xa7ae, -42308, 1 ], [ 0xa7b0, 0xa7b0, -42258, 1 ], [ 0xa7b1, 0xa7b1, -42282, 1 ],
     [ 0xa7b2, 0xa7b2, -42261, 1 ], [ 0xa7b3, 0xa7b3, 928, 1 ], [ 0xa7b4, 0xa7c2, 1, 2 ],
     [ 0xa7c4, 0xa7c4, -48, 1 ], [ 0xa7c5, 0xa7c5, -42307, 1 ], [ 0xa7c6, 0xa7c6, -35384, 1 ],
-    [ 0xa7c7, 0xa7c9, 1, 2 ], [ 0xa7d0, 0xa7d0, 1, 1 ], [ 0xa7d6, 0xa7d8, 1, 2 ],
-    [ 0xa7f5, 0xa7f5, 1, 1 ], [ 0xab70, 0xabbf, -38864, 1 ], [ 0xff21, 0xff3a, -65216, 1 ],
-    [ 0xff41, 0xff5a, -65248, 1 ], [ 0x10400, 0x10427, 40, 1 ], [ 0x104b0, 0x104d3, 40, 1 ],
-    [ 0x10570, 0x1057a, 39, 1 ], [ 0x1057c, 0x1058a, 39, 1 ], [ 0x1058c, 0x10592, 39, 1 ],
-    [ 0x10594, 0x10595, 39, 1 ], [ 0x10c80, 0x10cb2, 64, 1 ], [ 0x118a0, 0x118bf, 32, 1 ],
-    [ 0x16e40, 0x16e5f, 32, 1 ], [ 0x1e900, 0x1e921, 34, 1 ]
+    [ 0xa7c7, 0xa7c9, 1, 2 ], [ 0xa7cb, 0xa7cb, -42343, 1 ], [ 0xa7cc, 0xa7da, 1, 2 ],
+    [ 0xa7dc, 0xa7dc, -42561, 1 ], [ 0xa7f5, 0xa7f5, 1, 1 ], [ 0xab70, 0xabbf, -38864, 1 ],
+    [ 0xff21, 0xff3a, -65216, 1 ], [ 0xff41, 0xff5a, -65248, 1 ], [ 0x10400, 0x10427, 40, 1 ],
+    [ 0x104b0, 0x104d3, 40, 1 ], [ 0x10570, 0x1057a, 39, 1 ], [ 0x1057c, 0x1058a, 39, 1 ],
+    [ 0x1058c, 0x10592, 39, 1 ], [ 0x10594, 0x10595, 39, 1 ], [ 0x10c80, 0x10cb2, 64, 1 ],
+    [ 0x10d50, 0x10d65, 32, 1 ], [ 0x118a0, 0x118bf, 32, 1 ], [ 0x16e40, 0x16e5f, 32, 1 ],
+    [ 0x16ea0, 0x16eb8, 27, 1 ], [ 0x1e900, 0x1e921, 34, 1 ]
 ];
 
-// The two letters whose case mapping itself is two code points.
-const UNICODE_FOLD_EXPANSIONS = {
-    "304": [ 0x69, 0x307 ],
-    "7838": [ 0x73, 0x73 ]
-};
+// The letter whose case mapping itself is two code points: U+0130 to "i̇".
+const DOTTED_CAPITAL_I = 0x130;
+const DOTTED_CAPITAL_I_FOLDED = [ 0x69, 0x307 ];
 
 function unicode_lower_codepoint(cp) {
     if (cp < 0x80)
@@ -151,8 +156,8 @@ function unicode_lower_codepoint(cp) {
 // A non-ASCII code point, folded: cp is the folded code point, cps the
 // folded code points when there are several, raw the code point as written.
 function folded_codepoint(raw, next) {
-    if (raw == 0x130 || raw == 0x1e9e)
-        return { cp: raw, cps: UNICODE_FOLD_EXPANSIONS[raw], raw, next };
+    if (raw == DOTTED_CAPITAL_I)
+        return { cp: raw, cps: DOTTED_CAPITAL_I_FOLDED, raw, next };
     return { cp: unicode_lower_codepoint(raw), raw, next };
 }
 
@@ -385,12 +390,18 @@ function keyword_to_ascii(value) {
         }
     }
 
+    // sing-box looks for the keyword in the lower-case domain (its
+    // domain_keyword item, as routing/resolve.uc): an upper-case letter
+    // never matched.
     if (!has_non_ascii)
-        return value;
+        return ascii_lower(value);
 
     return domain_to_ascii(value, false);
 }
 
+// The non-ASCII labels of a regular expression, folded and punycoded. Its
+// ASCII letters stay as written: a class name (\p{Greek}), a group name or
+// a flag ((?U)) is case sensitive.
 function regex_to_ascii(value) {
     value = as_string(value);
     if (match(value, /[,[:space:]]/) != null)

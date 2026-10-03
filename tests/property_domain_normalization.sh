@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Seeded and exhaustive properties of config/domain.uc against UTS46
-# (url.domainToASCII, as browsers and the LuCI form process a domain): any
-# letter case gives the punycode a DNS query carries (UC-087). PROPERTY_SEED
-# and PROPERTY_CASES override the fixed seed and case count; see
+# Seeded and exhaustive properties of config/domain.uc against UTS46 17.0.0
+# (as browsers and the LuCI form process a domain): any letter case gives the
+# punycode a DNS query carries (UC-087). The case mappings are pinned in
+# tests/fixtures/uts46_case_mappings.json, so the result does not depend on
+# the UTS46 revision of the node that runs it. PROPERTY_SEED and
+# PROPERTY_CASES override the fixed seed and case count; see
 # tests/helpers/property/scaffold.js.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

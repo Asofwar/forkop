@@ -236,8 +236,9 @@ SH
     # of the version picker, GitHub the metadata of the installed one. A
     # package file names the package and version it holds, whatever the file
     # is called. Flags: github_down, download_fail_<version>,
-    # tamper_<package> (the server holds other bytes than the metadata
-    # names); while the upgrade asks GitHub (before Forkop is stopped for it),
+    # tamper_<package> and tamper_<package>_<version> (the server holds
+    # other bytes than the metadata names, for every release or for that
+    # one); while the upgrade asks GitHub (before Forkop is stopped for it),
     # user_stop_on_github has the user stop Forkop and crash_on_github takes
     # it down without a stop.
     cat >"$UPGRADE_BIN/curl" <<'SH'
@@ -275,7 +276,9 @@ case "$url" in
         version="${version%.*}"
         [ ! -e "$state/flags/download_fail_$version" ] || exit 22
         printf 'name=%s\nversion=%s-r1\n' "$name" "$version" >"$out"
-        [ ! -e "$state/flags/tamper_$name" ] || printf 'tampered\n' >>"$out"
+        if [ -e "$state/flags/tamper_$name" ] || [ -e "$state/flags/tamper_${name}_$version" ]; then
+            printf 'tampered\n' >>"$out"
+        fi
         ;;
     *)
         exit 6

@@ -2159,6 +2159,11 @@ function release_asset_sha256(metadata, name) {
     return "";
 }
 
+// "" when the file cannot be read: it matches no checksum.
+function file_sha256(path) {
+    return split(trim(command_output_from_args([ "sha256sum", path ])), /[ \t]+/)[0];
+}
+
 function resolve_forkop_release_json(latest_version, release_json) {
     if (release_json == "")
         return null;
@@ -2388,6 +2393,17 @@ function prepare_forkop_package_set(backend_file, app_file, i18n_file) {
         (with_i18n && !download_with_retry(previous.i18n_url, old_files[2], previous.i18n_name))) {
         command_success_from_args([ "rm", "-rf", FORKOP_OPKG_RECOVERY_DIR ]);
         return "Failed to stage previous Forkop release packages; automatic upgrade refused";
+    }
+    // The rollback installs this set: it is checked as the new one is,
+    // wherever its GitHub metadata names a digest (UC-080). Older assets
+    // name none (digest null); their set is staged unchecked.
+    let old_names = [ previous.backend_name, previous.app_name, previous.i18n_name ];
+    let old_sums = [ previous.backend_sha256, previous.app_sha256, previous.i18n_sha256 ];
+    for (let i = 0; i < length(old_files); i++) {
+        if (old_sums[i] && file_sha256(old_files[i]) != old_sums[i]) {
+            command_success_from_args([ "rm", "-rf", FORKOP_OPKG_RECOVERY_DIR ]);
+            return "Previous Forkop release package checksum mismatch for " + old_names[i] + "; automatic upgrade refused";
+        }
     }
 
     let new_files = [ backend_file, app_file ];
@@ -2647,8 +2663,7 @@ function require_release_checksums(packages, latest_version) {
 
 function verify_release_downloads(packages, latest_version) {
     for (let item in packages) {
-        let actual = split(trim(command_output_from_args([ "sha256sum", item[0] ])), /[ \t]+/)[0];
-        if (actual != item[2])
+        if (file_sha256(item[0]) != item[2])
             action_fail("forkop", "install", "Release package checksum mismatch for " + item[1] +
                 "; automatic upgrade refused", FORKOP_VERSION, latest_version);
     }

@@ -12,6 +12,10 @@ set -eu
 # digest) of its metadata, and metadata without one refuses the upgrade, as
 # install.sh does. A refusal comes while Forkop still runs.
 #
+# The previous release, staged as the rollback set and installed by the
+# rollback, is checked alike wherever its GitHub metadata names a digest;
+# older assets name none (digest null), and their set is staged unchecked.
+#
 # Also before: on a router without the Russian language pack the release
 # plan ends in two empty fields, which trim() cut off, and every in-app
 # upgrade failed with "Failed to resolve Forkop release packages" (UC-027).
@@ -97,6 +101,20 @@ for pm in apk opkg; do
     upgrade_harness_release_json 1.1.0 "$ext" github >"$UPGRADE_STATE/latest.json"
     upgrade_harness_flag tamper_forkop
     refused_untouched "$pm latest tampered with GitHub digests" "checksum mismatch"
+
+    # --- the previous release, staged for the rollback ----------------------
+    for package in forkop luci-app-forkop luci-i18n-forkop-ru; do
+        upgrade_harness_reset "$pm"
+        upgrade_harness_flag "tamper_${package}_1.0.0"
+        refused_untouched "$pm previous release tampered $package" "Previous Forkop release package checksum mismatch"
+        expect_message "$pm previous release tampered $package" "${package}_1.0.0.$ext"
+    done
+    # GitHub names no digest for older assets: the set is staged unchecked.
+    upgrade_harness_reset "$pm"
+    upgrade_harness_release_json 1.0.0 "$ext" none >"$UPGRADE_STATE/previous.json"
+    case="$pm previous release without digests"
+    upgrade_harness_run || fail "$case: the upgrade failed: $(upgrade_harness_message)"
+    [ "$(upgrade_harness_version forkop)" = 1.1.0-r1 ] || fail "$case: the new release is not installed"
 
     # --- a version picked in the version picker -----------------------------
     upgrade_harness_reset "$pm"

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-03 09:43+0000\n"
-"PO-Revision-Date: 2026-10-03 09:43+0000\n"
+"POT-Creation-Date: 2026-10-03 10:11+0000\n"
+"PO-Revision-Date: 2026-10-03 10:11+0000\n"
 "Last-Translator: Asofwar <7397608+Asofwar@users.noreply.github.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -2391,7 +2391,7 @@ msgstr ""
 msgid "Forkop X is running"
 msgstr ""
 
-#: src/forkop/tabs/updates/fullUninstallStatus.ts:51
+#: src/forkop/tabs/updates/fullUninstallStatus.ts:53
 msgid "Forkop X is still active after its stop, so nothing was removed. Still in place: %s. Stop Forkop X or restart the router, then try again."
 msgstr ""
 
@@ -2465,7 +2465,7 @@ msgstr ""
 msgid "Forkop X was not stopped by the user: its start failed or it stopped unexpectedly."
 msgstr ""
 
-#: src/forkop/tabs/updates/fullUninstallStatus.ts:56
+#: src/forkop/tabs/updates/fullUninstallStatus.ts:58
 msgid "Forkop X was removed, but this is still in place: %s. See the removal log in /tmp/forkop-uninstall.*/output.log."
 msgstr ""
 
@@ -3925,7 +3925,7 @@ msgstr ""
 msgid "Optional values must be attached with '=' here; a separate token would be ignored by nfqws2."
 msgstr ""
 
-#: src/forkop/tabs/updates/fullUninstallStatus.ts:44
+#: src/forkop/tabs/updates/fullUninstallStatus.ts:46
 msgid "Original repositories could not be restored. Removal was cancelled before deleting packages."
 msgstr ""
 
@@ -4271,7 +4271,7 @@ msgstr ""
 msgid "Regular expression must not contain spaces or commas"
 msgstr ""
 
-#: src/forkop/tabs/updates/fullUninstallStatus.ts:60
+#: src/forkop/tabs/updates/fullUninstallStatus.ts:62
 msgid "Removal did not finish. See the removal log in /tmp/forkop-uninstall.*/output.log."
 msgstr ""
 
@@ -5413,6 +5413,10 @@ msgstr ""
 
 #: src/forkop/tabs/autotune/model.ts:1062
 msgid "The confidence of the recommendation is below the policy minimum."
+msgstr ""
+
+#: src/forkop/tabs/updates/fullUninstallStatus.ts:24
+msgid "the configuration backup in /etc/forkop-backups"
 msgstr ""
 
 #: src/forkop/tabs/autotune/model.ts:1461

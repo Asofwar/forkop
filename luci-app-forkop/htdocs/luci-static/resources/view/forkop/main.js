@@ -16238,6 +16238,8 @@ function describeLeftItem(item) {
       return _('the lines marked "# forkop-" in /etc/crontabs/root');
     case "loader":
       return _("the kill-switch loader in /usr/share/nftables.d/ruleset-post");
+    case "backup":
+      return _("the configuration backup in /etc/forkop-backups");
     default:
       return item;
   }

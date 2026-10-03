@@ -96,9 +96,34 @@ find_left_behind() {
         done
         loader=/usr/share/nftables.d/ruleset-post/90-forkop-killswitch-loader.nft
         if [ -e "$ROOT$loader" ]; then left_behind loader "kill-switch loader $loader"; fi
+        # Kept only behind a link remove_backups does not follow, or when
+        # its removal failed.
+        if [ -f "$ROOT$UNINSTALL_BACKUP_ARCHIVE" ] && [ ! -L "$ROOT$UNINSTALL_BACKUP_ARCHIVE" ]; then
+            left_behind backup "configuration backup $UNINSTALL_BACKUP_ARCHIVE"
+        fi
     fi
     LEFT="${LEFT#, }"
     LEFT_CODES="${LEFT_CODES#,}"
+}
+
+# The configuration backups (D-10(a), UC-079). Before it installs another
+# release, the version picker saves the whole configuration, subscriptions
+# and credentials included, as configuration.tar.gz (components/action.uc
+# save_forkop_configuration_backup, through a temporary .configuration.XXXXXX
+# beside it). The removal promises to delete the settings, so these go too,
+# but only these, as regular files of the real directory: a directory that
+# is a symbolic link is not followed (what it points at is not Forkop's to
+# remove; the final check names the archive left behind it), a link in it
+# is no file Forkop wrote (a save replaces it with its archive), and the
+# directory itself goes only once nothing else is in it.
+UNINSTALL_BACKUP_DIR=/etc/forkop-backups
+UNINSTALL_BACKUP_ARCHIVE="$UNINSTALL_BACKUP_DIR/configuration.tar.gz"
+remove_backups() {
+    [ -d "$ROOT$UNINSTALL_BACKUP_DIR" ] && [ ! -L "$ROOT$UNINSTALL_BACKUP_DIR" ] || return 0
+    for file in "$ROOT$UNINSTALL_BACKUP_ARCHIVE" "$ROOT$UNINSTALL_BACKUP_DIR"/.configuration.??????; do
+        if [ -f "$file" ] && [ ! -L "$file" ]; then rm -f "$file"; fi
+    done
+    rmdir "$ROOT$UNINSTALL_BACKUP_DIR" 2>/dev/null || true
 }
 
 state() {
@@ -219,6 +244,7 @@ run() {
         /usr/share/nftables.d/ruleset-post/90-forkop-killswitch.nft; do
         rm -f "$ROOT$file"
     done
+    remove_backups
     # The rc.d links of the removed services. The disable of a release whose
     # TorrServer Direct had START=100 and STOP=9 never removed its links
     # (S100, K9; UC-161).

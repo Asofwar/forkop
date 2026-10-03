@@ -4016,7 +4016,7 @@
     "call": "Forkop X is still active after its stop, so nothing was removed. Still in place: %s. Stop Forkop X or restart the router, then try again.",
     "key": "Forkop X is still active after its stop, so nothing was removed. Still in place: %s. Stop Forkop X or restart the router, then try again.",
     "places": [
-      "src/forkop/tabs/updates/fullUninstallStatus.ts:51"
+      "src/forkop/tabs/updates/fullUninstallStatus.ts:53"
     ]
   },
   {
@@ -4144,7 +4144,7 @@
     "call": "Forkop X was removed, but this is still in place: %s. See the removal log in /tmp/forkop-uninstall.*/output.log.",
     "key": "Forkop X was removed, but this is still in place: %s. See the removal log in /tmp/forkop-uninstall.*/output.log.",
     "places": [
-      "src/forkop/tabs/updates/fullUninstallStatus.ts:56"
+      "src/forkop/tabs/updates/fullUninstallStatus.ts:58"
     ]
   },
   {
@@ -6597,7 +6597,7 @@
     "call": "Original repositories could not be restored. Removal was cancelled before deleting packages.",
     "key": "Original repositories could not be restored. Removal was cancelled before deleting packages.",
     "places": [
-      "src/forkop/tabs/updates/fullUninstallStatus.ts:44"
+      "src/forkop/tabs/updates/fullUninstallStatus.ts:46"
     ]
   },
   {
@@ -7183,7 +7183,7 @@
     "call": "Removal did not finish. See the removal log in /tmp/forkop-uninstall.*/output.log.",
     "key": "Removal did not finish. See the removal log in /tmp/forkop-uninstall.*/output.log.",
     "places": [
-      "src/forkop/tabs/updates/fullUninstallStatus.ts:60"
+      "src/forkop/tabs/updates/fullUninstallStatus.ts:62"
     ]
   },
   {
@@ -9137,6 +9137,13 @@
     "key": "The confidence of the recommendation is below the policy minimum.",
     "places": [
       "src/forkop/tabs/autotune/model.ts:1062"
+    ]
+  },
+  {
+    "call": "the configuration backup in /etc/forkop-backups",
+    "key": "the configuration backup in /etc/forkop-backups",
+    "places": [
+      "src/forkop/tabs/updates/fullUninstallStatus.ts:24"
     ]
   },
   {

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-03 09:43+0000\n"
-"PO-Revision-Date: 2026-10-03 09:43+0000\n"
+"POT-Creation-Date: 2026-10-03 10:11+0000\n"
+"PO-Revision-Date: 2026-10-03 10:11+0000\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -3757,6 +3757,9 @@ msgstr "Проверка отложена. Причина — в состоян�
 
 msgid "The confidence of the recommendation is below the policy minimum."
 msgstr "Уверенность рекомендации ниже минимума политики."
+
+msgid "the configuration backup in /etc/forkop-backups"
+msgstr "резервная копия настроек в /etc/forkop-backups"
 
 msgid "The configuration before the change is restored."
 msgstr "Конфигурация до изменения восстановлена."

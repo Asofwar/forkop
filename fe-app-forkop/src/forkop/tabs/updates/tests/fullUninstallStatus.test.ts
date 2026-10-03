@@ -69,6 +69,12 @@ describe('what a removal left', () => {
     );
   });
 
+  it('names the configuration backup a link kept in place', () => {
+    expect(describeLeftItems('backup')).toBe(
+      'the configuration backup in /etc/forkop-backups',
+    );
+  });
+
   it('shows an item it does not know as the backend sent it', () => {
     expect(describeLeftItems(' something new ,, cron')).toBe(
       'something new, the lines marked "# forkop-" in /etc/crontabs/root',

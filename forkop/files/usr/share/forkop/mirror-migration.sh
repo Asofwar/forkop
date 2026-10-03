@@ -39,6 +39,29 @@ root_path() {
     printf '%s%s\n' "$MIGRATION_ROOT" "$1"
 }
 
+migration_applied() {
+    "$UCI_BIN" -q get "$SETTINGS_SECTION.applied_migrations" 2>/dev/null |
+        tr ' ' '\n' | grep -Fxq "$MIGRATION_ID"
+}
+
+retired_mirror_in_feeds() {
+    for feed in "$(root_path /etc/apk/repositories)" \
+        "$(root_path /etc/apk/repositories.d/distfeeds.list)" \
+        "$(root_path /etc/opkg/distfeeds.conf)"; do
+        [ -f "$feed" ] && grep -Eq 'https?://mirror\.51343\.ru/' "$feed" && return 0
+    done
+    return 1
+}
+
+# The package feeds move to the mirror once (D-3 (a), UC-081): every package
+# change runs this script, and a recorded migration leaves the feeds, the
+# mirror key and the Forkop feed as they are, also official feeds the user
+# put back, without asking the mirror. Only a feed on the retired mirror,
+# which serves nothing, still moves.
+if migration_applied && ! retired_mirror_in_feeds; then
+    exit 0
+fi
+
 TRANSACTION_DIR="$(mktemp -d "${TMPDIR:-/tmp}/forkop-mirror-migration.XXXXXX")"
 TRANSACTION_MANIFEST="$TRANSACTION_DIR/manifest"
 TRANSACTION_ACTIVE=0

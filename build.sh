@@ -293,7 +293,8 @@ installed_size_bytes() {
 # (UC-077). The mirror migration of the package feeds is best effort: an
 # unreachable mirror, or one that does not list this platform yet, must not
 # keep Forkop stopped; the script puts the feeds back itself and runs again
-# on the next package change. package_postinst always runs: it brings back
+# on the next package change, until the migration is recorded (it moves the
+# feeds once, D-3 (a)). package_postinst always runs: it brings back
 # the service state from before the upgrade and starts Forkop only on a
 # configuration this release has migrated (fail closed). The script ends
 # with the first failure of the migration and package_postinst (UC-026).

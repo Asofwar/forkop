@@ -62,15 +62,17 @@ if [ "${MIGRATION_PACKAGE_UPDATE_FAIL:-0}" -eq 1 ] && [ "${1:-}" = "update" ]; t
   exit 1
 fi
 EOF
+# Reads answer from the environment; what changes UCI goes to the event log.
 cat > "$WORK_DIR/bin/uci" <<'EOF'
 #!/bin/sh
 case "$*" in
   *' get '*'mirror_base_url') printf '%s' "${MIGRATION_CONFIGURED_MIRROR:-}"; exit 0 ;;
+  *' get '*'applied_migrations')
+    printf '%s\n' "${MIGRATION_APPLIED:-interface_sections enable_component_checks}"
+    exit 0
+    ;;
 esac
 printf 'uci %s\n' "$*" >> "${MIGRATION_EVENT_LOG:?}"
-case "$*" in
-  *' get '*'applied_migrations') printf '%s\n' 'interface_sections enable_component_checks' ;;
-esac
 EOF
 chmod 0755 "$WORK_DIR/bin/"*
 
@@ -380,3 +382,71 @@ fi
 [ ! -e "$WORK_DIR/unavailable-events.log" ] || fail "unready mirror changed package state"
 
 printf 'PASS: legacy mirror key rotation and readiness gate\n'
+
+# The feeds move to the mirror once (D-3 (a), UC-081): with the migration
+# recorded in applied_migrations, a package change leaves the package feeds,
+# the mirror key and the Forkop feed as they are, also official feeds the
+# user put back, and needs no mirror for that.
+applied='interface_sections mirror_infotechtg_ru_v1 enable_component_checks'
+for manager in apk opkg; do
+  root="$WORK_DIR/applied-$manager-root"
+  if [ "$manager" = apk ]; then
+    mkdir -p "$root/etc/apk/repositories.d"
+    cp "$WORK_DIR/failure-root/etc/openwrt_release" "$root/etc/openwrt_release"
+    cp "$WORK_DIR/failure-repositories.original" "$root/etc/apk/repositories"
+    cp "$WORK_DIR/failure-distfeeds.original" "$root/etc/apk/repositories.d/distfeeds.list"
+    apk_bin="$WORK_DIR/bin/apk"
+  else
+    mkdir -p "$root/etc/opkg"
+    cp "$WORK_DIR/opkg-postinst-root/etc/openwrt_release" "$root/etc/openwrt_release"
+    printf '%s\n' \
+      'src/gz openwrt_core https://downloads.openwrt.org/releases/24.10.5/targets/mediatek/filogic/packages' \
+      > "$root/etc/opkg/distfeeds.conf"
+    apk_bin="$WORK_DIR/bin/missing-apk"
+  fi
+  (cd "$root" && find . -type f -exec md5sum {} + | LC_ALL=C sort) > "$WORK_DIR/applied-$manager.before"
+  status=0
+  PATH="$WORK_DIR/bin:$PATH" \
+    FORKOP_MIGRATION_ROOT="$root" \
+    FORKOP_MIGRATION_APK_BIN="$apk_bin" \
+    FORKOP_MIGRATION_OPKG_BIN="$WORK_DIR/bin/opkg" \
+    FORKOP_MIGRATION_CURL_BIN="$WORK_DIR/bin/curl" \
+    FORKOP_MIGRATION_UCI_BIN="$WORK_DIR/bin/uci" \
+    FORKOP_PACKAGE_POSTINST=1 \
+    MIGRATION_APPLIED="$applied" \
+    MIGRATION_PLATFORM_UNAVAILABLE=1 \
+    MIGRATION_PLATFORM_INDEX="$WORK_DIR/platforms.tsv" \
+    MIGRATION_EVENT_LOG="$WORK_DIR/applied-$manager-events.log" \
+      sh "$MIGRATION" > "$WORK_DIR/applied-$manager.out" 2>&1 || status=$?
+  [ "$status" -eq 0 ] ||
+    fail "$manager: the recorded mirror migration ran again and needed the mirror: $(cat "$WORK_DIR/applied-$manager.out")"
+  (cd "$root" && find . -type f -exec md5sum {} + | LC_ALL=C sort) > "$WORK_DIR/applied-$manager.after"
+  cmp -s "$WORK_DIR/applied-$manager.before" "$WORK_DIR/applied-$manager.after" ||
+    fail "$manager: the recorded mirror migration changed the package feeds or keys again"
+  [ ! -e "$WORK_DIR/applied-$manager-events.log" ] ||
+    fail "$manager: the recorded mirror migration changed UCI or ran the package manager"
+done
+
+# A feed on the retired mirror is no choice of the user's: it still moves to
+# the current mirror.
+root="$WORK_DIR/applied-retired-root"
+mkdir -p "$root/etc/opkg"
+cp "$WORK_DIR/opkg-postinst-root/etc/openwrt_release" "$root/etc/openwrt_release"
+printf '%s\n' \
+  'src/gz openwrt_core https://mirror.51343.ru/openwrt/releases/24.10.5/targets/mediatek/filogic/packages' \
+  > "$root/etc/opkg/distfeeds.conf"
+PATH="$WORK_DIR/bin:$PATH" \
+  FORKOP_MIGRATION_ROOT="$root" \
+  FORKOP_MIGRATION_APK_BIN="$WORK_DIR/bin/missing-apk" \
+  FORKOP_MIGRATION_OPKG_BIN="$WORK_DIR/bin/opkg" \
+  FORKOP_MIGRATION_CURL_BIN="$WORK_DIR/bin/curl" \
+  FORKOP_MIGRATION_UCI_BIN="$WORK_DIR/bin/uci" \
+  FORKOP_PACKAGE_POSTINST=1 \
+  MIGRATION_APPLIED="$applied" \
+  MIGRATION_PLATFORM_INDEX="$WORK_DIR/platforms.tsv" \
+  MIGRATION_EVENT_LOG="$WORK_DIR/applied-retired-events.log" \
+    sh "$MIGRATION" >/dev/null 2>&1 || fail "the feed on the retired mirror was not migrated"
+grep -Fxq 'src/gz openwrt_core https://mirror.infotechtg.ru/openwrt/releases/24.10.5/targets/mediatek/filogic/packages' \
+  "$root/etc/opkg/distfeeds.conf" || fail "the feed on the retired mirror did not move to the current mirror"
+
+printf 'PASS: recorded mirror migration leaves the package feeds alone\n'

@@ -48,6 +48,22 @@ started_after_user_stop() {
         END { exit found ? 0 : 1 }' "$UPGRADE_STATE/init.log"
 }
 
+# Forkop's own restart after the change: COUNT stops of its own for the
+# change (by=component; the sing-box change stops Forkop before it, too),
+# then the awaited start.
+restarted_after_change() {
+    [ "$(grep -c '^stop source=component$' "$UPGRADE_STATE/init.log")" -eq "$1" ] &&
+        grep -Fxq 'start-and-wait start' "$UPGRADE_STATE/initd.log" &&
+        ! grep -q '^restart' "$UPGRADE_STATE/init.log"
+}
+
+# A failed restart is no stop by the user: Forkop's own stop for it is
+# recorded as such (UC-235).
+expect_own_stop_kept() {
+    grep -Fxq 'by=component' "$UPGRADE_STATE/run/stop.requested" 2>/dev/null ||
+        fail "$1: Forkop's own stop for the restart is not recorded as its own"
+}
+
 expect_user_stop_kept() {
     grep -Eq '^stop source=$|^start skipped: the user stopped Forkop$' "$UPGRADE_STATE/init.log" ||
         fail "$1: the user's stop did not happen during the change"
@@ -132,9 +148,21 @@ for pm in apk opkg; do
     case="$pm zapret removal"
     upgrade_harness_run zapret remove || fail "$case: the removal failed: $(upgrade_harness_message)"
     [ -z "$(upgrade_harness_version zapret)" ] || fail "$case: zapret was not removed"
-    grep -Fxq 'start-and-wait restart' "$UPGRADE_STATE/initd.log" ||
-        fail "$case: Forkop was not restarted after the change"
+    restarted_after_change 1 || fail "$case: Forkop was not restarted after the change"
     upgrade_harness_running || fail "$case: Forkop does not run after the change"
+
+    # The restart's own stop fails (init.d exits before its start), or its
+    # start is deferred past the wait: Forkop did not come back, and nobody
+    # stopped it. The removal reports that.
+    for flag in stop_status start_deferred; do
+        upgrade_harness_reset "$pm"
+        printf '1.0-r1\n' >"$UPGRADE_STATE/pkg/zapret"
+        upgrade_harness_flag "$flag"
+        case="$pm zapret removal, $flag"
+        upgrade_harness_run zapret remove && fail "$case: the removal was reported as done"
+        expect_message "$case" "zapret package has been removed, but Forkop did not start again"
+        expect_own_stop_kept "$case"
+    done
 
     # The user stops Forkop while the package is removed.
     upgrade_harness_reset "$pm"
@@ -173,11 +201,17 @@ done
 upgrade_harness_reset opkg
 case="sing-box change"
 scenario sing-box-change || fail "$case: the change failed: $(upgrade_harness_message)"
-grep -Fxq 'stop source=component' "$UPGRADE_STATE/init.log" ||
-    fail "$case: Forkop was not stopped for the change as its own"
-grep -Fxq 'start-and-wait restart' "$UPGRADE_STATE/initd.log" ||
-    fail "$case: Forkop was not restarted after the change"
+restarted_after_change 2 || fail "$case: Forkop was not stopped for the change and restarted as its own"
 upgrade_harness_running || fail "$case: Forkop does not run after the change"
+
+# The restart's start is deferred past the wait: the new variant did not
+# start cleanly, which is a failure (the action rolls the variant back).
+upgrade_harness_reset opkg
+upgrade_harness_flag start_deferred
+case="sing-box change, the restart's start deferred"
+scenario sing-box-change && fail "$case: the change was reported as done"
+expect_message "$case" "Forkop did not start cleanly"
+expect_own_stop_kept "$case"
 
 # The user stops Forkop while the variant is replaced: the change completes,
 # Forkop stays stopped, and the standalone sing-box service stays disabled.
@@ -228,8 +262,17 @@ expect_user_stop_kept "$case"
 upgrade_harness_reset opkg
 case="Direct Proxy"
 scenario direct-proxy || fail "$case: the change failed: $(upgrade_harness_message)"
-grep -Fxq 'start-and-wait restart' "$UPGRADE_STATE/initd.log" || fail "$case: Forkop was not restarted"
+restarted_after_change 1 || fail "$case: Forkop was not restarted"
 upgrade_harness_running || fail "$case: Forkop does not run after the change"
+
+# The restart's own stop fails: the setting is not applied, and the action
+# fails (the previous setting is restored).
+upgrade_harness_reset opkg
+upgrade_harness_flag stop_status 1
+case="Direct Proxy, the restart's stop fails"
+scenario direct-proxy && fail "$case: the change was reported as done"
+expect_message "$case" "Failed to apply Direct Proxy settings"
+expect_own_stop_kept "$case"
 
 upgrade_harness_reset opkg
 upgrade_harness_flag user_stop_on_start

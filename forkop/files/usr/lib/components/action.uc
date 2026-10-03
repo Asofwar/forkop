@@ -373,6 +373,24 @@ function forkop_stopped_by_user() {
     return by == null || by[2] == "user";
 }
 
+// Forkop's own stop for a component change, followed by a start: not the
+// user's stop (service/initd.uc stop_request_source).
+function forkop_stop_for_component_change_args() {
+    return [ "env", "FORKOP_STOP_SOURCE=component", SERVICE_INIT, "stop" ];
+}
+
+// The restart that applies a change: Forkop's own stop for it, then the
+// awaited start. The stop of an init.d restart is recorded as the user's,
+// and a restart that failed before its start removed that record (its stop
+// failed, its start was deferred past the wait) then read as the user's
+// stop: the failed change as one that the user's stop overtook (UC-235).
+// A stop that the user made meanwhile holds: no start follows it.
+function forkop_restart_and_wait() {
+    if (!command_success_from_args(forkop_stop_for_component_change_args()) || forkop_stopped_by_user())
+        return false;
+    return forkop_start_and_wait("start");
+}
+
 // Nor does its restart fallback: a start that the user's stop overtook
 // failed for the stop, which wins (UC-235).
 function restart_forkop_after_failed_sing_box_change() {
@@ -385,7 +403,7 @@ function restart_forkop_after_failed_sing_box_change() {
     updates_log("Restarting Forkop after failed sing-box component change");
     if (forkop_start_and_wait("start") || forkop_stopped_by_user())
         return;
-    if (!forkop_start_and_wait("restart") && !forkop_stopped_by_user())
+    if (!forkop_restart_and_wait() && !forkop_stopped_by_user())
         updates_log("Forkop did not start again after the failed sing-box component change", "error");
 }
 
@@ -1033,7 +1051,7 @@ function restart_forkop_after_successful_change() {
         return true;
     }
     updates_log("Restarting Forkop after successful component change");
-    if (forkop_start_and_wait("restart"))
+    if (forkop_restart_and_wait())
         return true;
     if (forkop_stopped_by_user()) {
         updates_log("Forkop was stopped by the user during its restart after the component change");
@@ -1042,12 +1060,6 @@ function restart_forkop_after_successful_change() {
     }
     updates_log("Forkop did not start again after the component change", "error");
     return false;
-}
-
-// Forkop's own stop for a component change, followed by a start: not the
-// user's stop (service/initd.uc stop_request_source).
-function forkop_stop_for_component_change_args() {
-    return [ "env", "FORKOP_STOP_SOURCE=component", SERVICE_INIT, "stop" ];
 }
 
 const SING_BOX_CHANGE_STOP_REFUSED = "Forkop was not stopped: another sing-box process makes the ownership of its runtime ambiguous; the current sing-box variant was kept";
@@ -2813,7 +2825,7 @@ function set_direct_proxy(action) {
 
     if (!forkop_active_for_setting_change())
         updates_log("Forkop is not running; the Direct Proxy setting applies at its next start");
-    else if (!forkop_start_and_wait("restart")) {
+    else if (!forkop_restart_and_wait()) {
         // The user's stop overtook the restart: it wins, and the setting
         // applies at the next start. The restart with the previous settings
         // would start Forkop again (D-15, UC-235).
@@ -2826,7 +2838,7 @@ function set_direct_proxy(action) {
             else
                 uci_core.delete(port_path);
             uci_core.commit(CONFIG_NAME);
-            if (!forkop_stopped_by_user() && !forkop_start_and_wait("restart") && !forkop_stopped_by_user())
+            if (!forkop_stopped_by_user() && !forkop_restart_and_wait() && !forkop_stopped_by_user())
                 updates_log("Forkop did not start again with the previous Direct Proxy settings", "error");
             action_fail("direct_proxy", action, "Failed to apply Direct Proxy settings", current_enabled, target_enabled);
         }

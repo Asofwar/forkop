@@ -164,13 +164,16 @@ UCODE
     # The init script records every call with the source of a stop. A stop
     # records its request as service/initd.uc does (by=<source>; a stop made
     # while the user's stop is in effect stays the user's; a refused stop
-    # records none), a start removes it. A start refuses, as
-    # service/lifecycle.uc start_inner does, while the upgrade marker is
-    # stale, and consumes it. Flags: stop_status (exit status of a stop: 2 is
-    # a refusal), start_fail, marker_stale (the package manager ran longer
-    # than the marker's age), user_stop_on_start (the user's stop overtakes
-    # the next start or restart: it is skipped, as service/initd.uc skips a
-    # start when a stop was requested after it).
+    # records none), a start removes it. A restart is rc.common's: its stop
+    # (the user's unless the caller names a source), then the start, only
+    # once that stop succeeded. A start refuses, as service/lifecycle.uc
+    # start_inner does, while the upgrade marker is stale, and consumes it.
+    # Flags: stop_status (exit status of a stop: 2 is a refusal), start_fail,
+    # start_deferred (the start waits for reload.lock past every wait: it
+    # neither runs nor removes the stop request), marker_stale (the package
+    # manager ran longer than the marker's age), user_stop_on_start (the
+    # user's stop overtakes the next start: it is skipped, as
+    # service/initd.uc skips a start when a stop was requested after it).
     cat >"$UPGRADE_INIT" <<'SH'
 #!/bin/sh
 state="$UPGRADE_STATE"
@@ -190,13 +193,21 @@ case "$1" in
         [ "$status" -ne 0 ] || rm -f "$state/running"
         exit "$status"
         ;;
-    start|restart)
+    restart)
+        "$0" stop || exit
+        exec "$0" start
+        ;;
+    start)
         if [ -e "$state/flags/marker_stale" ] && [ -e "$FORKOP_MANAGED_UPGRADE_SING_BOX_MARKER" ]; then
             rm -f "$FORKOP_MANAGED_UPGRADE_SING_BOX_MARKER"
             printf 'start refused: stale managed upgrade marker\n' >>"$state/init.log"
             exit 1
         fi
         [ ! -e "$state/flags/start_fail" ] || exit 1
+        if [ -e "$state/flags/start_deferred" ]; then
+            printf 'start deferred\n' >>"$state/init.log"
+            exit 0
+        fi
         if [ -e "$state/flags/user_stop_on_start" ]; then
             rm -f "$state/flags/user_stop_on_start" "$state/running"
             mkdir -p "$FORKOP_RUNTIME_STATE_DIR"

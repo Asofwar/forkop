@@ -433,10 +433,16 @@ function forkop_status_running_with_timeout() {
     push(calls, "status");
     return length(status_results) > 0 ? shift(status_results) : false;
 }
-// The init script accepts every request at once, as under procd.
+// The init script accepts every request at once, as under procd. The
+// action's own stop names its source: it is not the user's (UC-235).
 function command_success_from_args(args) {
     if (args[0] == "sleep")
         return true;
+    if (args[0] == "env") {
+        check(args[1] == "FORKOP_STOP_SOURCE=component" && args[3] == "stop",
+            "the action's own stop is not recorded as its own: " + join(" ", args));
+        args = slice(args, 2);
+    }
     check(args[0] == SERVICE_INIT, "unexpected command " + join(" ", args));
     push(calls, "init:" + args[1]);
     return true;
@@ -484,13 +490,14 @@ function run(fn) {
 '''
 
 cases = r'''
-// Direct Proxy: a restart that does not bring Forkop up rolls the settings
-// back, restarts the previous configuration and fails the action.
+// Direct Proxy: a restart (Forkop's own stop, then the awaited start) that
+// does not bring Forkop up rolls the settings back, restarts the previous
+// configuration and fails the action.
 reset([ false, true ]);
 run(function() { set_direct_proxy("enable"); });
 check(outcome != null && !outcome.success, "Direct Proxy enable was reported as success although Forkop did not start");
 check(uci["forkop.settings.direct_proxy_enabled"] == "0", "the failed Direct Proxy settings were kept");
-check(join(",", calls) == "wait:restart,wait:restart", "the previous Direct Proxy settings were not restarted: " + join(",", calls));
+check(join(",", calls) == "init:stop,wait:start,init:stop,wait:start", "the previous Direct Proxy settings were not restarted: " + join(",", calls));
 
 reset([ true ]);
 run(function() { set_direct_proxy("enable"); });
@@ -516,7 +523,7 @@ check(outcome != null && !outcome.success, "a component removal was reported as 
 reset([ false, true ]);
 forkop_stopped_for_sing_box_change = true;
 restart_forkop_after_failed_sing_box_change();
-check(join(",", calls) == "log:info,wait:start,wait:restart", "a failed start after a failed sing-box change had no restart fallback: " + join(",", calls));
+check(join(",", calls) == "log:info,wait:start,init:stop,wait:start", "a failed start after a failed sing-box change had no restart fallback: " + join(",", calls));
 // Direct Proxy of a stopped Forkop: the setting is saved and applies at its
 // next start; a setting change does not start it (D-15).
 reset([]);
@@ -541,16 +548,16 @@ reset([ true ]);
 forkop_was_running = false; runtime_table = true;
 run(function() { set_direct_proxy("enable"); });
 check(outcome != null && outcome.success, "Direct Proxy of a Forkop in a transition was reported as failure");
-check(join(",", calls) == "wait:restart", "Direct Proxy of a Forkop in a transition was not applied by a restart: " + join(",", calls));
+check(join(",", calls) == "init:stop,wait:start", "Direct Proxy of a Forkop in a transition was not applied by a restart: " + join(",", calls));
 
 // An older release installed by the action has no start-and-wait: the
-// restart goes through init.d and the runtime is polled instead.
+// start goes through init.d and the runtime is polled instead.
 reset([]);
 initd_source = 'else if (mode == "start-service")';
 status_results = [ false, true ];
 check(restart_forkop_after_successful_change() === true, "a restart through an older initd.uc was reported as failed");
 check(index(join(",", calls), "wait:") < 0, "start-and-wait was used with an initd.uc that has no such mode");
-check(index(join(",", calls), "init:restart,status,status") >= 0,
+check(index(join(",", calls), "init:stop,init:start,status,status") >= 0,
     "an older initd.uc was not restarted through init.d and polled: " + join(",", calls));
 reset([]);
 initd_source = 'else if (mode == "start-service")';
@@ -561,6 +568,8 @@ print("component start outcome checks passed\n");
 pathlib.Path(sys.argv[2]).write_text('\n'.join([
     doubles,
     extract('forkop_start_and_wait', optional=True),
+    extract('forkop_stop_for_component_change_args'),
+    extract('forkop_restart_and_wait'),
     extract('forkop_active_for_setting_change', optional=True),
     extract('restart_forkop_after_failed_sing_box_change'),
     extract('restart_forkop_after_successful_change'),

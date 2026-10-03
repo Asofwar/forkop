@@ -11,16 +11,25 @@ set -euo pipefail
 # holds Forkop down until the user starts it again (D-15 (a)). postinst
 # started Forkop from the hand-off without looking at it and undid it.
 #
-# postinst leaves Forkop down when the user's stop is recorded: it keeps the
-# record, consumes the hand-off and logs why. Its start follows prerm's own
-# stop (FORKOP_START_AFTER_STOP, service/initd.uc start_service): a user's
-# Stop that gets procd's lock just before that start wins as well, and
-# postinst reports it as the user's stop, not as a failed start.
+# postinst leaves Forkop down when the user stopped it after prerm's stop:
+# it keeps the record, consumes the hand-off and logs why. Its start follows
+# prerm's own stop (FORKOP_START_AFTER_STOP, service/initd.uc start_service):
+# a user's Stop that gets procd's lock just before that start wins as well,
+# and postinst reports it as the user's stop, not as a failed start.
+#
+# Which stop came after prerm's is told by the stop request prerm's stop
+# left, which the hand-off names, not by who the stop in effect is recorded
+# for: a stop made while the user's stop is in effect is recorded as the
+# user's (service/initd.uc stop_request_source). The user's Start deferred
+# for reload.lock after the user's stop is the user's last request: prerm
+# hands it over, its stop cancels it, and postinst starts Forkop in its place
+# (UC-012). A user's stop that is under way when prerm looks (recorded, the
+# runtime not down yet) holds Forkop down: prerm hands over no start.
 #
 # service/package.uc, service/initd.uc and the init script are the real
 # ones; the init script runs behind an rc.common stand-in that holds fd 1000
-# like procd.sh. Its backend `forkop`, logger, nft and the modules of DNS,
-# health and the kill-switch are test doubles.
+# like procd.sh. Its backend `forkop`, logger, nft, ip and the modules of
+# DNS, health and the kill-switch are test doubles.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB="$ROOT_DIR/forkop/files/usr/lib"
@@ -113,6 +122,7 @@ cat >"$WORK_DIR/bin/logger" <<'SH'
 printf '%s\n' "$*" >>"$TEST_WORK/syslog"
 SH
 printf '#!/bin/sh\nexit 1\n' >"$WORK_DIR/bin/nft"
+printf '#!/bin/sh\nexit 0\n' >"$WORK_DIR/bin/ip"
 
 # `forkop` behind initd.uc: start brings the runtime up, stop takes it down.
 cat >"$WORK_DIR/bin/forkop" <<'SH'
@@ -189,19 +199,36 @@ stop_request_by() {
   sed -n 's/^by=//p' "$FORKOP_RUNTIME_STATE_DIR/stop.requested" 2>/dev/null || true
 }
 
-# Forkop runs, started explicitly; prerm of the upgrade stopped it for the
-# start that postinst makes (service/package.uc prerm_cleanup).
-prerm_stopped() {
+reset_state() {
   kill_retry_workers
   rm -f "$WORK_DIR"/starts "$WORK_DIR"/user-stop.before-start "$WORK_DIR"/user-stop.done \
-    "$WORK_DIR"/out "$FORKOP_RUNTIME_STATE_DIR"/stop.requested \
+    "$WORK_DIR"/out "$FORKOP_RUNTIME_STATE_DIR"/stop.requested "$FORKOP_PACKAGE_UPGRADE_STATE" \
     "$FORKOP_RUNTIME_STATE_DIR"/start.retry "$FORKOP_RUNTIME_STATE_DIR"/start-result.*
   : >"$WORK_DIR/syslog"
   : >"$WORK_DIR/init.log"
+}
+
+# prerm of the upgrade (service/package.uc prerm_cleanup, as the package
+# scripts run it): it hands the start over to postinst and stops Forkop.
+# rt_tables, the managed sing-box and DNS are the test's.
+prerm_upgrade() {
+  FORKOP_RT_TABLES="$WORK_DIR/rt_tables" \
+  FORKOP_DNS_APPLY_UC="$WORK_DIR/missing-dns-apply.uc" \
+  FORKOP_SING_BOX_INIT="$WORK_DIR/missing-sing-box-init" \
+  FORKOP_SING_BOX_BIN="$WORK_DIR/missing-sing-box" \
+  FORKOP_SING_BOX_CRONET="$WORK_DIR/missing-cronet" \
+    "$REAL_UCODE" -L "$LIB" "$PACKAGE_UC" prerm upgrade 9.9.9 >"$WORK_DIR/out" 2>&1 ||
+      fail "prerm of the upgrade failed"
+}
+
+# Forkop runs, started explicitly; prerm of the upgrade stopped it for the
+# start that postinst makes.
+prerm_stopped() {
+  reset_state
   : >"$WORK_DIR/runtime.up"
   printf 'explicit\n' >"$FORKOP_RUNTIME_STATE_DIR/start.explicit"
-  printf '1\n' >"$FORKOP_PACKAGE_UPGRADE_STATE"
-  FORKOP_STOP_SOURCE=package "$FORKOP_SERVICE_INIT" stop >/dev/null 2>&1 || fail "prerm's stop failed"
+  prerm_upgrade
+  [ -e "$FORKOP_PACKAGE_UPGRADE_STATE" ] || fail "prerm did not hand the start of the running Forkop over"
   [ ! -e "$WORK_DIR/runtime.up" ] || fail "prerm's stop left the runtime up"
   [ "$(stop_request_by)" = package ] || fail "prerm's stop was not recorded as the package's"
   : >"$WORK_DIR/init.log"
@@ -219,13 +246,19 @@ postinst() {
 }
 
 # Forkop stays down as the user left it: no start ran, the user's stop and
-# the end of the explicit start stay recorded, and the hand-off is gone.
-expect_user_stop_holds() {
+# the end of the explicit start stay recorded, and no hand-off is left.
+expect_user_stopped() {
   [ ! -e "$WORK_DIR/runtime.up" ] || fail "$1: Forkop runs after the user stopped it"
   [ ! -s "$WORK_DIR/starts" ] || fail "$1: Forkop was started after the user's stop"
   [ "$(stop_request_by)" = user ] || fail "$1: the user's stop is no longer recorded ($(stop_request_by))"
   [ ! -e "$FORKOP_RUNTIME_STATE_DIR/start.explicit" ] || fail "$1: postinst recorded an explicit start against the user's stop"
   [ ! -e "$FORKOP_PACKAGE_UPGRADE_STATE" ] || fail "$1: the hand-off of the start was not consumed"
+}
+
+# ... and postinst consumed the hand-off of the start and logged why it
+# made none.
+expect_user_stop_holds() {
+  expect_user_stopped "$1"
   grep -q 'not started after the package upgrade: it was stopped by the user' "$WORK_DIR/syslog" ||
     fail "$1: the log does not say why Forkop was not started"
   if grep -q 'did not start after the package upgrade' "$WORK_DIR/out"; then
@@ -262,5 +295,53 @@ postinst || fail "$case: postinst failed"
 [ -e "$WORK_DIR/user-stop.done" ] || fail "$case: the user's stop did not run"
 [ "$(cat "$WORK_DIR/user-stop.done")" = 0 ] || fail "$case: the user's stop failed"
 expect_user_stop_holds "$case"
+
+# 4. The hand-off of a release whose prerm named no stop request: a stop of
+#    the user's that is in effect came after prerm's.
+prerm_stopped
+printf '1\n' >"$FORKOP_PACKAGE_UPGRADE_STATE"
+user_stops
+case="the user's stop after the prerm of an older release"
+postinst || fail "$case: postinst failed"
+expect_user_stop_holds "$case"
+
+# 5. The user stopped Forkop, then started it while reload.lock was busy: the
+#    start was deferred (service/initd.uc defer_start) and keeps the user's
+#    stop recorded until it runs. The upgrade comes first. prerm hands the
+#    start over and its stop, made while the user's stop is recorded, is
+#    recorded as the user's and cancels the deferred start. The user's last
+#    request is the start: postinst makes it.
+reset_state
+user_stops
+user_stop_line="$(sed -n 1p "$FORKOP_RUNTIME_STATE_DIR/stop.requested")"
+printf 'reason=start_deferred\nupdated_at=1\nstop_request=%s\n' "$user_stop_line" \
+  >"$FORKOP_RUNTIME_STATE_DIR/start.retry"
+printf 'explicit\n' >"$FORKOP_RUNTIME_STATE_DIR/start.explicit"
+"$REAL_UCODE" -L "$LIB" "$LIB/service/initd.uc" deferred-start-pending ||
+  fail "the deferred start after the user's stop is not pending"
+prerm_upgrade
+case="the user's start deferred after the user's stop"
+[ -e "$FORKOP_PACKAGE_UPGRADE_STATE" ] || fail "$case: prerm did not hand the deferred start over"
+[ ! -e "$FORKOP_RUNTIME_STATE_DIR/start.retry" ] || fail "$case: prerm's stop did not cancel the deferred start"
+postinst || fail "$case: postinst failed"
+[ -e "$WORK_DIR/runtime.up" ] || fail "$case: Forkop was not started after the upgrade"
+[ "$(grep -c '^start$' "$WORK_DIR/starts" 2>/dev/null || true)" = 1 ] || fail "$case: Forkop was not started once"
+[ ! -e "$FORKOP_RUNTIME_STATE_DIR/stop.requested" ] || fail "$case: the start left the stop request ($(stop_request_by))"
+[ -e "$FORKOP_RUNTIME_STATE_DIR/start.explicit" ] || fail "$case: the start was not recorded as explicit"
+[ ! -e "$FORKOP_PACKAGE_UPGRADE_STATE" ] || fail "$case: the hand-off of the start was not consumed"
+if grep -q 'stopped by the user' "$WORK_DIR/syslog"; then
+  fail "$case: the log says the user stopped Forkop during the upgrade"
+fi
+
+# 6. The user's stop is under way when prerm looks: recorded, the runtime
+#    not down yet (it waits for procd's lock or reload.lock). Its stop holds
+#    Forkop down, also across the upgrade.
+reset_state
+: >"$WORK_DIR/runtime.up"
+printf '1.000000001.1\nby=user\n' >"$FORKOP_RUNTIME_STATE_DIR/stop.requested"
+prerm_upgrade
+case="the user's stop under way when prerm looks"
+postinst || fail "$case: postinst failed"
+expect_user_stopped "$case"
 
 printf 'package_postinst_user_stop: PASS\n'

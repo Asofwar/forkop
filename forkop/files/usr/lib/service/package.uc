@@ -274,12 +274,37 @@ function remember_upgrade_state(action) {
     // the router would come back with Forkop down. Service state decides:
     // record a restart only when Forkop was actually running immediately
     // before prerm, or a start deferred for reload.lock was still to run: the
-    // stop below cancels it.
-    if (command_success_from_args([ INIT_PATH, "status" ]) ||
-        command_success_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/service/initd.uc", "deferred-start-pending" ]))
+    // stop below cancels it. A Forkop that runs while the user's stop is
+    // recorded is on its way down: that stop holds it down also across the
+    // upgrade (D-15(a)).
+    let initd_module = LIB_DIR + "/service/initd.uc";
+    if ((command_success_from_args([ INIT_PATH, "status" ]) &&
+         !command_success_from_args([ "ucode", "-L", LIB_DIR, initd_module, "user-stop-requested" ])) ||
+        command_success_from_args([ "ucode", "-L", LIB_DIR, initd_module, "deferred-start-pending" ]))
         fs.writefile(PACKAGE_UPGRADE_STATE, "1\n");
     else
         unlink_if_exists(PACKAGE_UPGRADE_STATE);
+}
+
+// The hand-off names the stop request that prerm's stop left (its first
+// line, empty for none): postinst tells a stop made after it from it. Who
+// the stop in effect is recorded for cannot: prerm's stop is recorded as the
+// user's when it lands on the user's stop, as on one that the user's start
+// deferred for reload.lock followed (service/initd.uc stop_request_source).
+function hand_off_stop_request() {
+    if (!path_exists(PACKAGE_UPGRADE_STATE))
+        return;
+    let request = command_capture_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/service/initd.uc", "stop-request" ]);
+    if (request.status == 0)
+        fs.writefile(PACKAGE_UPGRADE_STATE, "1\nstop_request=" + trim(request.output) + "\n");
+}
+
+// The stop request that the hand-off names; empty when it names none, as
+// the hand-off of an older release does, whose prerm's stop is recorded as
+// none or the package's.
+function handed_off_stop_request() {
+    let recorded = match(as_string(fs.readfile(PACKAGE_UPGRADE_STATE)), /(^|\n)stop_request=([A-Za-z0-9._-]*)(\n|$)/);
+    return recorded == null ? "" : recorded[2];
 }
 
 // The newest release without the VPN kill-switch. Older code neither knows
@@ -414,6 +439,8 @@ function prerm_cleanup(action, version) {
         // (service/initd.uc stop_request_source).
         let removal = as_string(action) == "remove";
         let stopped = command_success_from_args([ "env", "FORKOP_STOP_SOURCE=package", INIT_PATH, "stop" ]);
+        if (!removal)
+            hand_off_stop_request();
         // A removal leaves nobody to own what a failed or refused stop kept
         // (UC-028): the explicit stop, as the user's (FORKOP_STOP_SOURCE=user),
         // removes Forkop's own interception without a proof of ownership and
@@ -649,7 +676,8 @@ function postinst_restore() {
     // own stop (FORKOP_START_AFTER_STOP): a stop requested after that one
     // wins over it also when it comes after this check (service/initd.uc
     // start_service).
-    let own_stop = command_capture_from_args([ "ucode", "-L", LIB_DIR, initd_module, "own-stop-request" ]);
+    let prerm_stop = handed_off_stop_request();
+    let own_stop = command_capture_from_args([ "ucode", "-L", LIB_DIR, initd_module, "own-stop-request", prerm_stop ]);
     if (own_stop.status == 3) {
         unlink_if_exists(PACKAGE_UPGRADE_STATE);
         log_info(POSTINST_USER_STOPPED);
@@ -695,7 +723,7 @@ function postinst_restore() {
         "ucode", "-L", LIB_DIR, LIB_DIR + "/service/initd.uc", "start-and-wait", "start", "",
         POSTINST_START_WAIT_SECONDS ]);
     if (started.status != 0 &&
-        command_capture_from_args([ "ucode", "-L", LIB_DIR, initd_module, "own-stop-request" ]).status == 3)
+        command_capture_from_args([ "ucode", "-L", LIB_DIR, initd_module, "own-stop-request", prerm_stop ]).status == 3)
         log_info(POSTINST_USER_STOPPED);
     else if (started.status != 0 && match(started.output, /(^|\n)pending\n/) != null)
         warn("Forkop is still starting after the package upgrade; see the Forkop log for its outcome.\n");

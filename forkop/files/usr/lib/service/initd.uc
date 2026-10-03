@@ -1374,12 +1374,23 @@ else if (mode == "deferred-start-pending")
 // start; the previous version may have kept no record of it.
 else if (mode == "mark-explicit-start")
     exit((ARGV[1] == "if-running" && !runtime_is_running()) || mark_explicit_start() ? 0 : 1);
+// service/package.uc prerm: the stop in effect is the user's; a runtime
+// that still runs is on its way down (D-15(a)).
+else if (mode == "user-stop-requested")
+    exit(user_stop_requested() ? 0 : 1);
+// service/package.uc prerm: the stop request that its stop for the upgrade
+// left, its first line or nothing.
+else if (mode == "stop-request")
+    print(stop_request_value(), "\n");
 // service/package.uc postinst: the stop request that the start after the
 // upgrade follows (FORKOP_START_AFTER_STOP), its first line or nothing;
-// exit 3 when the stop in effect is the user's: no start follows it
-// (D-15(a)).
+// exit 3 when the stop in effect is a stop of the user's made after the one
+// prerm's stop left (ARGV[1]): no start follows it (D-15(a)). prerm's stop
+// itself is recorded as the user's when it lands on the user's stop
+// (stop_request_source), as on one that a start deferred for reload.lock
+// followed.
 else if (mode == "own-stop-request") {
-    if (user_stop_requested())
+    if (user_stop_requested() && stop_request_value() != as_string(ARGV[1]))
         exit(3);
     print(stop_request_value(), "\n");
 }

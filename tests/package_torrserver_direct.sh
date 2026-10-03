@@ -10,12 +10,17 @@ set -euo pipefail
 # (S99forkop, S100forkop-torrserver-direct, K9forkop-torrserver-direct). An
 # upgrade kept the worker of the previous release running until a reboot.
 #
-# Now a removal stops TorrServer Direct and disables both services. An
-# upgrade restarts TorrServer Direct on the new code when it is switched on
-# and enabled. The links of releases with START=100 and STOP=9 (UC-161),
-# which rc.common's disable never removed and enabled no longer sees, are
-# replaced with the current ones, or only removed when TorrServer Direct is
-# switched off.
+# Now a removal stops TorrServer Direct, which removes its nft table. It
+# keeps the rc.d links of both services: opkg's install --force-reinstall
+# (the in-app rollback of a failed upgrade, the usual manual repair) runs the
+# installed package's "prerm remove" before the package goes back on, and the
+# postinst of no release enables Forkop again. Full uninstall removes the
+# links (tests/full_uninstall_runtime_leftovers.sh). An upgrade or a reinstall
+# restarts TorrServer Direct on the new code when it is switched on and
+# enabled. The links of releases with START=100 and STOP=9 (UC-161), which
+# rc.common's disable never removed and enabled no longer sees, are replaced
+# with the current ones, or only removed when TorrServer Direct is switched
+# off.
 #
 # The real service/package.uc runs against init scripts that record what they
 # are asked to do and keep their rc.d links as rc.common does.
@@ -117,17 +122,31 @@ called() { grep -Fqx "$1" "$EVENTS"; }
 prerm() { ucode -L "$LIB" "$PACKAGE_UC" prerm "$@" >>"$EVENTS" 2>&1 || true; }
 postinst() { ucode -L "$LIB" "$PACKAGE_UC" postinst >>"$EVENTS" 2>&1 || fail "postinst failed"; }
 
-# 1. A removal stops TorrServer Direct and leaves no rc.d link of the
-#    package's services, also none that an older release made.
+# 1. A removal stops TorrServer Direct and keeps the rc.d links of both
+#    services, as a reinstall needs them.
 reset_case 1
 link S99forkop
-legacy_links
+link S99forkop-torrserver-direct
+link K10forkop-torrserver-direct
 prerm remove
 called 'forkop-torrserver-direct stop' || fail "a removal did not stop TorrServer Direct"
-called 'forkop-torrserver-direct disable' || fail "a removal did not disable TorrServer Direct"
-called 'forkop disable' || fail "a removal did not disable Forkop"
-[ -z "$(links_of forkop)$(links_of forkop-torrserver-direct)" ] ||
-  fail "a removal left rc.d links behind: $(links_of forkop)$(links_of forkop-torrserver-direct)"
+! grep -Eq '^(forkop|forkop-torrserver-direct) disable$' "$EVENTS" ||
+  fail "a removal disabled a service, which a reinstall does not enable again"
+[ "$(links_of forkop)" = 'S99forkop ' ] &&
+  [ "$(links_of forkop-torrserver-direct)" = 'K10forkop-torrserver-direct S99forkop-torrserver-direct ' ] ||
+  fail "a removal changed the rc.d links: $(links_of forkop)$(links_of forkop-torrserver-direct)"
+
+# 1b. opkg install --force-reinstall: the installed package's "prerm remove",
+#     then the postinst of the package that goes back on. Forkop stays
+#     enabled at boot, and TorrServer Direct, switched on, stays enabled and
+#     runs again on the code that went on.
+: >"$EVENTS"
+postinst
+[ "$(links_of forkop)" = 'S99forkop ' ] || fail "a reinstall lost Forkop's autostart: $(links_of forkop)"
+[ "$(links_of forkop-torrserver-direct)" = 'K10forkop-torrserver-direct S99forkop-torrserver-direct ' ] ||
+  fail "a reinstall lost the rc.d links of TorrServer Direct: $(links_of forkop-torrserver-direct)"
+grep -Eq '^forkop-torrserver-direct (restart|start)$' "$EVENTS" ||
+  fail "a reinstall left TorrServer Direct stopped although it is switched on"
 
 # 2. An upgrade keeps both services enabled and TorrServer Direct running
 #    until postinst.

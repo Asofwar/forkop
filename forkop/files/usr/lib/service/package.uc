@@ -226,22 +226,23 @@ function torrserver_direct_switched_on() {
     return trim(as_string(uci_core.get(CONFIG_NAME + ".settings.torrserver_direct_enabled"))) == "1";
 }
 
-// A removal leaves nothing to run the package's services: TorrServer Direct
-// stops (its stop removes its nft table), and neither service keeps an rc.d
-// link to a script that goes with the package (UC-083).
-function disable_package_services() {
-    command_success_from_args([ INIT_PATH, "disable" ]);
-    if (path_exists(TORRSERVER_DIRECT_INIT)) {
+// A removal leaves nothing running of the package's second service: its
+// worker would go on from the loaded script and its stop removes its nft
+// table (UC-083). The rc.d links of both services stay, as they did: opkg's
+// install --force-reinstall (the in-app rollback of a failed upgrade, the
+// usual manual repair) runs this "prerm remove" before the package goes back
+// on, and the postinst of no release enables Forkop again. Full uninstall
+// removes them; after a plain removal they point to scripts that are gone,
+// which the boot cannot run and passes over.
+function stop_torrserver_direct() {
+    if (path_exists(TORRSERVER_DIRECT_INIT))
         command_success_from_args([ TORRSERVER_DIRECT_INIT, "stop" ]);
-        command_success_from_args([ TORRSERVER_DIRECT_INIT, "disable" ]);
-    }
-    remove_torrserver_direct_legacy_links();
 }
 
 // The TorrServer Direct worker keeps running across an upgrade on the code it
-// was started with: restart it on the new code when it is switched on and
-// enabled (UC-083). The links of an older release become the current ones,
-// or just go when it is switched off (UC-161).
+// was started with, and a reinstall stopped it: restart it on the new code
+// when it is switched on and enabled (UC-083). The links of an older release
+// become the current ones, or just go when it is switched off (UC-161).
 function torrserver_direct_postinst() {
     if (!path_exists(TORRSERVER_DIRECT_INIT))
         return;
@@ -407,7 +408,7 @@ function prerm_cleanup(action, version) {
         // D-15(a)).
         if (removal) {
             command_success_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/service/initd.uc", "clear-explicit-start" ]);
-            disable_package_services();
+            stop_torrserver_direct();
         }
         // A stop that failed or was refused (another sing-box makes
         // ownership ambiguous) may have left Forkop's nft table and ip rule

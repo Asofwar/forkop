@@ -1003,43 +1003,12 @@ function managed_sing_box_service_installed() {
     return file_exists("/etc/init.d/sing-box") && index(read_file("/etc/init.d/sing-box"), SB_MANAGED_SERVICE_MARKER) >= 0;
 }
 
-function managed_sing_box_service_text() {
-    return "#!/bin/sh /etc/rc.common\n" +
-        "# " + SB_MANAGED_SERVICE_MARKER + "\n\n" +
-        "USE_PROCD=1\n" +
-        "START=99\n" +
-        "PROG=\"/usr/bin/sing-box\"\n\n" +
-        "start_service() {\n" +
-        "    config_load \"sing-box\"\n" +
-        "    local enabled config_file working_directory\n" +
-        "    local log_stderr\n\n" +
-        "    config_get_bool enabled \"main\" \"enabled\" \"0\"\n" +
-        "    [ \"$enabled\" -eq \"1\" ] || return 0\n\n" +
-        "    config_get config_file \"main\" \"conffile\" \"/etc/sing-box/config.json\"\n" +
-        "    config_get working_directory \"main\" \"workdir\" \"/usr/share/sing-box\"\n" +
-        "    config_get_bool log_stderr \"main\" \"log_stderr\" \"1\"\n\n" +
-        "    procd_open_instance\n" +
-        "    procd_set_param command \"$PROG\" run -c \"$config_file\" -D \"$working_directory\"\n" +
-        "    procd_set_param file \"$config_file\"\n" +
-        "    procd_set_param stderr \"$log_stderr\"\n" +
-        "    procd_set_param limits core=\"unlimited\"\n" +
-        "    procd_set_param limits nofile=\"1000000 1000000\"\n" +
-        "    procd_set_param respawn\n" +
-        "    procd_close_instance\n" +
-        "}\n\n" +
-        "service_triggers() {\n" +
-        "    procd_add_reload_trigger \"sing-box\"\n" +
-        "}\n";
-}
-
-// Read back and flushed before and after the rename (core/durable.uc): a
-// full overlay took the write and left an empty init script in place. The
-// copy is named after this process, which lives until the rename, as the
-// copy of singbox/runtime.uc is: a start removes the copies whose writer is
-// gone (owner_pid() names a short-lived shell, gone at once).
+// The script of singbox/managed_service.uc, the one every writer installs
+// (UC-085): written only when it differs, read back and flushed before and
+// after the rename, stale copies of it removed. Loaded here, as only the
+// sing-box actions install it.
 function install_managed_sing_box_service_script() {
-    return durable.durable_replace("/etc/init.d/sing-box.forkop." + fs.readlink("/proc/self"), "/etc/init.d/sing-box",
-        managed_sing_box_service_text(), 0755);
+    return require("singbox.managed_service").install();
 }
 
 function remove_managed_sing_box_service_script() {

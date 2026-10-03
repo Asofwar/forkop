@@ -332,8 +332,10 @@ FORKOP_RT_TABLES="$WORK_DIR/rt_tables_upgrade" \
 [ ! -e "$FORKOP_PACKAGE_UPGRADE_STATE" ] ||
   fail "package pre-upgrade must not mark an already stopped service"
 
-# opkg calls prerm without an action argument on some OpenWrt 24 builds, an
-# ordinary upgrade included. The running service must still be restored.
+# A prerm without an action (the package scripts pass none on only under
+# PKG_UPGRADE=1, which no known opkg sends without one; package_prerm run by
+# hand) is decided by the service's state: a running service must still be
+# restored.
 FORKOP_PACKAGE_TEST_MODE=1 \
 FORKOP_INIT="$WORK_DIR/upgrade-init" \
 FORKOP_RT_TABLES="$WORK_DIR/rt_tables_upgrade" \

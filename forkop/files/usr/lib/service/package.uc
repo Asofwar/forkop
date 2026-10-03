@@ -263,13 +263,18 @@ function remember_upgrade_state(action) {
         return;
     }
 
-    // opkg invokes prerm without an action argument on some OpenWrt 24 builds,
-    // including an ordinary version upgrade. Treating an empty action as "not
-    // an upgrade" erased the only hand-off telling postinst to restart a
-    // service that prerm had just stopped, so the router came back with Forkop
-    // down. Service state is authoritative here: record a restart only when
-    // Forkop was actually running immediately before prerm, or a start
-    // deferred for reload.lock was still to run: the stop below cancels it.
+    // opkg runs prerm as "upgrade <new version>" or "remove" and sets
+    // PKG_UPGRADE for it (opkg-lede: libopkg opkg_install.c
+    // prerm_upgrade_old_pkg, opkg_remove.c, pkg.c pkg_run_script). The
+    // package scripts pass an empty action on only under PKG_UPGRADE=1
+    // (build.sh, forkop/Makefile), which no known opkg sends without an
+    // action, and `forkop package_prerm` run by hand passes none. Such a
+    // prerm is not taken for a removal: that would erase the only hand-off
+    // telling postinst to restart a service that prerm has just stopped, and
+    // the router would come back with Forkop down. Service state decides:
+    // record a restart only when Forkop was actually running immediately
+    // before prerm, or a start deferred for reload.lock was still to run: the
+    // stop below cancels it.
     if (command_success_from_args([ INIT_PATH, "status" ]) ||
         command_success_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/service/initd.uc", "deferred-start-pending" ]))
         fs.writefile(PACKAGE_UPGRADE_STATE, "1\n");

@@ -18,17 +18,47 @@ COMPONENT_LOCK="$ROOT/var/run/forkop/component-action.lock"
 PACKAGES="luci-i18n-forkop-ru luci-app-forkop forkop sing-box sing-box-tiny sing-box-extended"
 PHASE=preflight
 
-# uci on the filesystem root with a directory of the job's own for the
-# changes it stages: it reads what is committed, and a commit writes only
-# what went through it, never what someone else staged in /tmp/.uci. A test
-# root keeps the job, and so the staged changes, under it.
-job_uci() {
-    mkdir -p "$JOB/uci" || return 1
-    if [ -z "$ROOT" ]; then
-        uci -t "$JOB/uci" "$@"
-        return
-    fi
-    uci -c "$ROOT/etc/config" -t "$JOB/uci" "$@"
+# detach_servers_file: dnsmasq no longer reads the kill-switch block list.
+# 0: it was detached; 1: dhcp could not be changed; 2: dnsmasq did not read
+# it. A uci commit of dhcp would also commit what someone staged for dhcp in
+# /tmp/.uci (LuCI before Save & Apply), and no option of the uci CLI keeps
+# that out: libuci merges /tmp/.uci whatever save directory -t names, and
+# then leaves it staged a second time. So, as core/uci.uc does, the option
+# is deleted on a copy of dhcp under a package name nobody stages for, and
+# the copy replaces dhcp: written next to it with its mode, read back and
+# flushed (UC-025), renamed under the lock a uci commit takes and only while
+# dhcp still holds what was copied. A dhcp someone committed meanwhile is
+# read again. A symbolic link stays one: the file it points to is replaced,
+# as a uci commit does.
+UNINSTALL_SERVERS_FILE=/etc/forkop/killswitch/dnsmasq.servers
+detach_servers_file() {
+    dhcp="$ROOT/etc/config/dhcp"
+    if [ -L "$dhcp" ]; then dhcp="$(readlink -f "$dhcp")" || return 1; fi
+    [ -f "$dhcp" ] || return 2
+    copy="$JOB/dhcp"
+    staged="$dhcp.forkop-detach.$$"
+    attempt=0
+    while [ "$attempt" -lt 5 ]; do
+        attempt=$((attempt + 1))
+        rm -rf "$copy"
+        mkdir -p "$copy/save" && cp "$dhcp" "$copy/read" && cp "$copy/read" "$copy/forkop_detach" || return 1
+        [ "$(uci -q -c "$copy" -t "$copy/save" get 'forkop_detach.@dnsmasq[0].serversfile' || true)" = \
+            "$UNINSTALL_SERVERS_FILE" ] || return 2
+        uci -q -c "$copy" -t "$copy/save" delete 'forkop_detach.@dnsmasq[0].serversfile' &&
+            uci -q -c "$copy" -t "$copy/save" commit forkop_detach || return 1
+        if ! { cp -p "$dhcp" "$staged" && cat "$copy/forkop_detach" > "$staged" &&
+            cmp -s "$copy/forkop_detach" "$staged" && sync; }; then
+            rm -f "$staged"
+            return 1
+        fi
+        if flock "$dhcp" sh -c 'cmp -s "$1" "$2" && mv -f "$3" "$1"' detach "$dhcp" "$copy/read" "$staged"; then
+            # Renamed: dhcp holds the change, whatever this flush reports.
+            sync || true
+            return 0
+        fi
+        rm -f "$staged"
+    done
+    return 1
 }
 
 has_mirror() {
@@ -354,17 +384,17 @@ run() {
     # while the file is unchanged, without changes someone staged for dhcp).
     # Forkop's libraries are gone here, and the detach must not be skipped:
     # /etc/forkop with the servers file is already removed, and dnsmasq must
-    # not keep reading a file that Forkop no longer owns. The uci CLI does
-    # it with the job's own directory for staged changes (job_uci): the
-    # commit re-reads dhcp under libuci's lock of the file and writes only
-    # this deletion; what someone staged for dhcp in /tmp/.uci stays staged
-    # (S5: a plain commit wrote it too).
+    # not keep reading a file that Forkop no longer owns. detach_servers_file
+    # does it the same way in shell, so what someone staged for dhcp in
+    # /tmp/.uci stays staged and is not committed (S5: a uci commit of dhcp
+    # wrote it too).
     if [ -z "$ROOT" ]; then nft delete table inet ForkopKillswitch 2>/dev/null || true; fi
-    if [ "$(job_uci -q get dhcp.@dnsmasq[0].serversfile 2>/dev/null || true)" = /etc/forkop/killswitch/dnsmasq.servers ]; then
-        if job_uci -q delete dhcp.@dnsmasq[0].serversfile &&
-            job_uci -q commit dhcp && [ -x "$ROOT/etc/init.d/dnsmasq" ]; then
-            "$ROOT/etc/init.d/dnsmasq" restart || true
-        fi
+    detached=0
+    detach_servers_file || detached=$?
+    if [ "$detached" -eq 0 ] && [ -x "$ROOT/etc/init.d/dnsmasq" ]; then
+        "$ROOT/etc/init.d/dnsmasq" restart || true
+    elif [ "$detached" -eq 1 ]; then
+        echo "dnsmasq may still read $UNINSTALL_SERVERS_FILE: /etc/config/dhcp could not be changed." >&2
     fi
     # The fail-closed DPI guards outlive Forkop's stop: the one of a failed
     # transition when its removal failed, the one of a restore or an

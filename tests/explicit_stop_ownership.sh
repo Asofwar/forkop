@@ -360,9 +360,11 @@ reset_case() {
   [ ! -e "$FORKOP_RELOAD_LOCK_DIR" ] || fail "reload.lock leaked from the previous case"
 }
 
-rc() { # rc <action> [FORKOP_STOP_SOURCE]: status of /etc/init.d/forkop <action>
-  local rc=0
-  env ${2:+FORKOP_STOP_SOURCE="$2"} bash "$WORK_DIR/rc" "$1" >>"$EVENTS" 2>&1 || rc=$?
+rc() { # rc <action> [FORKOP_STOP_SOURCE [NAME=value...]]: status of /etc/init.d/forkop <action>
+  local rc=0 action="$1" source="${2:-}"
+  shift
+  [ "$#" -eq 0 ] || shift
+  env ${source:+FORKOP_STOP_SOURCE="$source"} "$@" bash "$WORK_DIR/rc" "$action" >>"$EVENTS" 2>&1 || rc=$?
   no_event '^unmodelled state mode' || fail "the stop asked service/state.uc for a mode this test does not model"
   printf '%s\n' "$rc"
 }
@@ -481,6 +483,40 @@ alive "$foreign_pid" || fail "a refused package stop signalled another program's
 no_event '^dns ' || fail "a refused package stop changed DNS under the runtime it left running"
 [ ! -e "$STOP_MARKER" ] || fail "a refused package stop left its stop request: $(cat "$STOP_MARKER")"
 [ -e "$START_RECORD" ] || fail "a refused package stop ended the explicit start"
+
+# 4b. Forkop's own stop for a component change whose earlier stop already
+#     took the runtime down (FORKOP_STOP_CLEANUP=1, components/action.uc):
+#     nothing runs that the guard would keep. A stray sing-box that runs
+#     Forkop's configuration is what is left of that runtime, and the stop
+#     clears it as the user's Stop does; another program's sing-box stays.
+#     It is still Forkop's own stop: recorded as the component's, the
+#     explicit start kept for the start that follows. Without the cleanup
+#     the stop keeps the guard and refuses; so does a managed upgrade in
+#     progress.
+reset_case
+stray_runtime
+stray_pid=$LAST_DOUBLE
+foreign_sing_box
+foreign_pid=$LAST_DOUBLE
+[ "$(rc stop component)" = 2 ] || fail "a component stop with ambiguous sing-box ownership was not refused"
+alive "$stray_pid" || fail "a refused component stop signalled the stray sing-box"
+[ "$(rc stop component FORKOP_STOP_CLEANUP=1)" = 0 ] || fail "the cleanup stop of a stopped Forkop failed next to a stray runtime"
+wait_until 10 gone "$stray_pid" || fail "the cleanup stop left a stray sing-box that runs Forkop's configuration"
+alive "$foreign_pid" || fail "the cleanup stop signalled a sing-box that Forkop does not own"
+grep -qx 'by=component' "$STOP_MARKER" 2>/dev/null ||
+  fail "the cleanup stop was not recorded as Forkop's own stop: $(cat "$STOP_MARKER" 2>/dev/null)"
+[ -e "$START_RECORD" ] || fail "the cleanup stop ended the explicit start"
+
+reset_case
+runtime_up
+procd_instance
+forkop_pid=$LAST_DOUBLE
+foreign_sing_box
+start_ticks="$(ucode -L "$REAL_LIB" -e 'print(require("core.process_identity").start_ticks(ARGV[0]))' "$forkop_pid")"
+printf 'format=1\npid=%s\nstart_ticks=%s\ncreated_at=%s\n' "$forkop_pid" "$start_ticks" "$(date +%s)" >"$MARKER"
+[ "$(rc stop component FORKOP_STOP_CLEANUP=1)" = 2 ] || fail "a cleanup stop during a managed upgrade did not keep the ownership guard"
+alive "$forkop_pid" || fail "a cleanup stop during a managed upgrade signalled Forkop's sing-box"
+[ -e "$NFT_TABLE_FILE" ] || fail "a cleanup stop during a managed upgrade tore down Forkop's interception"
 
 # 5. A stale upgrade marker (a failed in-app upgrade left it) does not turn
 #    the user's Stop into a refused one; a fresh one keeps the guard of the

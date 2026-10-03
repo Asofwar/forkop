@@ -446,13 +446,15 @@ function forkop_status_running_with_timeout() {
 function command_success_from_args(args) {
     if (args[0] == "sleep")
         return true;
+    let cleanup = false;
     if (args[0] == "env") {
-        check(args[1] == "FORKOP_STOP_SOURCE=component" && args[3] == "stop",
+        cleanup = args[2] == "FORKOP_STOP_CLEANUP=1";
+        check(args[1] == "FORKOP_STOP_SOURCE=component" && args[cleanup ? 4 : 3] == "stop",
             "the action's own stop is not recorded as its own: " + join(" ", args));
-        args = slice(args, 2);
+        args = slice(args, cleanup ? 3 : 2);
     }
     check(args[0] == SERVICE_INIT, "unexpected command " + join(" ", args));
-    push(calls, "init:" + args[1]);
+    push(calls, "init:" + args[1] + (cleanup ? "-cleanup" : ""));
     return true;
 }
 function command_status_from_args(args) {
@@ -553,7 +555,7 @@ check(join(",", calls) == "init:remove,log:info,init:stop-refused,log:warn", "a 
 reset([ false, true ]);
 forkop_stopped_for_sing_box_change = true;
 restart_forkop_after_failed_sing_box_change();
-check(join(",", calls) == "log:info,wait:start,init:stop,wait:start", "a failed start after a failed sing-box change had no restart fallback: " + join(",", calls));
+check(join(",", calls) == "log:info,wait:start,init:stop-cleanup,wait:start", "a failed start after a failed sing-box change had no restart fallback: " + join(",", calls));
 // Direct Proxy of a stopped Forkop: the setting is saved and applies at its
 // next start; a setting change does not start it (D-15).
 reset([]);

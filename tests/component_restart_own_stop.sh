@@ -121,7 +121,9 @@ printf '#!/bin/sh\nexit 1\n' >"$WORK_DIR/bin/nft"
 # stop takes the runtime down and exits with stop.status. With stray, a
 # sing-box that runs Forkop's configuration outside procd makes the
 # ownership of the runtime ambiguous: service/lifecycle.uc refuses
-# Forkop's own stop (exit 2, nothing changed), and the start fails.
+# Forkop's own stop (exit 2, nothing changed) unless it is the cleanup stop
+# of a Forkop already down for the change (FORKOP_STOP_CLEANUP=1), which
+# stops the stray as the user's Stop does; the start fails while it runs.
 cat >"$WORK_DIR/bin/forkop" <<'SH'
 #!/bin/sh
 case "$1" in
@@ -138,7 +140,8 @@ case "$1" in
     exit "$status"
     ;;
   stop)
-    if [ -e "$TEST_WORK/stray" ] && [ "${FORKOP_STOP_SOURCE:-}" = component ]; then
+    if [ -e "$TEST_WORK/stray" ] && [ "${FORKOP_STOP_SOURCE:-}" = component ] &&
+      [ "${FORKOP_STOP_CLEANUP:-}" != 1 ]; then
       exit 2
     fi
     rm -f "$TEST_WORK/stray" "$TEST_WORK/runtime.up"
@@ -180,7 +183,7 @@ FORKOP_LIB="$TEST_LIB"
 FORKOP_INITD_UC="$TEST_LIB/service/initd.uc"
 stop() { stop_service "$@"; }
 start() { start_service "$@"; service_started; }
-printf '%s source=%s\n' "$action" "${FORKOP_STOP_SOURCE:-}" >>"$TEST_WORK/init.log"
+printf '%s source=%s cleanup=%s\n' "$action" "${FORKOP_STOP_SOURCE:-}" "${FORKOP_STOP_CLEANUP:-}" >>"$TEST_WORK/init.log"
 own_stop=""
 [ "$action" != stop ] || [ "${FORKOP_STOP_SOURCE:-}" != component ] || own_stop=1
 if [ -n "$own_stop" ] && [ -e "$TEST_WORK/user-stop.queued" ]; then
@@ -274,6 +277,19 @@ else if (scenario == "failed-sing-box") {
     fs.writefile(TEST_WORK + "/start.status", "1\n");
     fs.writefile(TEST_WORK + "/stop.status", "1\n");
     restart_forkop_after_failed_sing_box_change();
+    print("done\n");
+}
+else if (scenario == "sing-box-stray") {
+    // Forkop's own stop for the change; then a sing-box that runs Forkop's
+    // configuration is left behind (with failed: the new variant does not
+    // start cleanly).
+    if (!stop_forkop_before_sing_box_change())
+        die("the stop for the sing-box change was refused");
+    fs.writefile(TEST_WORK + "/stray", "");
+    if (ARGV[1] == "failed")
+        restart_forkop_after_failed_sing_box_change();
+    else
+        print("restarted=", restart_forkop_after_successful_change() ? "yes" : "no", "\n");
     print("done\n");
 }
 UCODE
@@ -452,5 +468,26 @@ grep -q 'Forkop was not restarted: another sing-box process' "$WORK_DIR/out" ||
 grep -q '"forkop.settings.direct_proxy_enabled": *"1"' "$WORK_DIR/uci.committed" ||
   fail "$case: the new Direct Proxy setting was kept: $(cat "$WORK_DIR/uci.committed")"
 expect_refused_restart "$case"
+
+# 11. A sing-box change: Forkop is down already, stopped for the change, and
+#     a sing-box that runs Forkop's configuration is left behind. Nothing
+#     runs that the ownership guard would keep: the stop of the restart
+#     clears it as the user's Stop does, still as Forkop's own stop, and
+#     Forkop starts again. So does the restart fallback after a failed change.
+for mode in successful failed; do
+  reset_case
+  case="sing-box change ($mode), a stray sing-box left behind"
+  probe sing-box-stray "$mode" || fail "$case: the probe failed"
+  [ "$mode" = failed ] || grep -qx 'restarted=yes' "$WORK_DIR/out" || fail "$case: the restart was reported as failed"
+  [ ! -e "$WORK_DIR/stray" ] || fail "$case: the stray sing-box was left running"
+  [ -e "$WORK_DIR/runtime.up" ] || fail "$case: Forkop does not run again"
+  grep -q '^stop source=component cleanup=1$' "$WORK_DIR/init.log" || fail "$case: the stop of the restart was no cleanup stop"
+  [ "$(grep -c '^stop source=component cleanup=$' "$WORK_DIR/init.log")" -eq 1 ] ||
+    fail "$case: the stop for the change was not the guarded one"
+  expect_not_user_stop "$case"
+  if grep -q 'did not start again\|was not restarted' "$WORK_DIR/syslog"; then
+    fail "$case: the restart was reported as failed"
+  fi
+done
 
 printf 'component_restart_own_stop: PASS\n'

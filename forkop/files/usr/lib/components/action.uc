@@ -403,9 +403,17 @@ function own_stop_request() {
 }
 
 // Forkop's own stop for a component change, followed by a start: not the
-// user's stop (service/initd.uc stop_request_source).
-function forkop_stop_for_component_change_args() {
-    return [ "env", "FORKOP_STOP_SOURCE=component", SERVICE_INIT, "stop" ];
+// user's stop (service/initd.uc stop_request_source). With cleanup, Forkop
+// is down already, stopped for this change: no runtime runs that the
+// ownership guard would keep, and the stop ends what is left of it (a
+// sing-box that runs Forkop's configuration) as the user's Stop does
+// (FORKOP_STOP_CLEANUP, service/lifecycle.uc stop).
+function forkop_stop_for_component_change_args(cleanup) {
+    let args = [ "env", "FORKOP_STOP_SOURCE=component" ];
+    if (cleanup)
+        push(args, "FORKOP_STOP_CLEANUP=1");
+    push(args, SERVICE_INIT, "stop");
+    return args;
 }
 
 // The restart that applies a change: Forkop's own stop for it, then the
@@ -422,7 +430,7 @@ function forkop_stop_for_component_change_args() {
 // runtime ambiguous, and service/lifecycle.uc changed nothing (UC-215).
 // That is no failed start, and a second restart is refused alike.
 function forkop_restart_and_wait() {
-    let status = command_status_from_args(forkop_stop_for_component_change_args());
+    let status = command_status_from_args(forkop_stop_for_component_change_args(forkop_stopped_for_sing_box_change));
     if (status != 0)
         return status == 2 ? 2 : 1;
     let after_stop = own_stop_request();

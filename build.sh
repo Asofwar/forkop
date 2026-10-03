@@ -346,12 +346,19 @@ EOF
 #!/usr/bin/ucode
 
 // opkg runs "prerm upgrade <new version>" or "prerm remove": the new
-// version tells whether the incoming release can lift the kill-switch.
+// version tells whether the incoming release can lift the kill-switch. A
+// prerm without an action (service/package.uc remember_upgrade_state) is an
+// upgrade only under PKG_UPGRADE=1, which opkg sets for an upgrade, as
+// OpenWrt's default_prerm takes it: package_prerm then decides by the
+// service's state. Otherwise it is a removal.
+let action = ARGV[0] || "";
+if (action == "" && getenv("PKG_UPGRADE") != "1")
+	action = "remove";
 let version = ARGV[1] || "";
 if (match(version, /^[A-Za-z0-9.~+_-]+$/) == null)
 	version = "";
 if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "")
-	system("/usr/bin/forkop package_prerm " + (ARGV[0] || "") + " " + version + " >/dev/null 2>&1");
+	system("/usr/bin/forkop package_prerm " + action + " " + version + " >/dev/null 2>&1");
 
 exit(0);
 EOF

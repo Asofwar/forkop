@@ -18,9 +18,11 @@
 # build.sh's packages do, once their postinst no longer enables it. Their
 # prerm also stopped Forkop a second time on an opkg upgrade, as the user,
 # after package_prerm's stop for the upgrade; and the SDK prerm took an
-# opkg prerm without an action (some OpenWrt 24 builds, also on an upgrade)
-# for a removal, where build.sh's lets package_prerm decide by the
-# service's state.
+# opkg prerm without an action (service/package.uc remember_upgrade_state)
+# for a removal also on an upgrade (PKG_UPGRADE=1), where build.sh's let
+# package_prerm decide by the service's state, while build.sh's took it for
+# an upgrade also on a removal, which left the kill-switch, the explicit
+# start and a restart for the next install behind.
 #
 # The SDK recipe runs through GNU make against a stand-in of the SDK's
 # rules.mk and package.mk with OpenWrt's install commands and its way of
@@ -35,6 +37,9 @@ BUILD_SCRIPT="$ROOT_DIR/build.sh"
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "${WORK_DIR:?}"' EXIT
 trap 'exit 1' HUP INT TERM
+# What a package manager or Forkop sets for a package script is each case's
+# own.
+unset PKG_ROOT PKG_UPGRADE APK_SCRIPT IPKG_INSTROOT FORKOP_START_REQUEST FORKOP_STOP_SOURCE
 # shellcheck source=tests/helpers/build_recipe.sh
 . "$ROOT_DIR/tests/helpers/build_recipe.sh"
 
@@ -214,23 +219,38 @@ called() {
   PATH="$WORK_DIR/bin:$PATH" "$@" >/dev/null 2>&1 || status=$?
   printf '%s|%s\n' "$status" "$(tr '\n' ';' <"$EVENTS")"
 }
-# opkg runs the installed "prerm upgrade <new>" or "prerm remove"; the
-# ipk's prerm sources prerm-pkg from default_prerm with its own $0 first.
-# Some opkg builds of OpenWrt 24 run prerm without an action, also for an
-# ordinary upgrade: build.sh's prerm passes none on, and package_prerm
-# decides by the service's state (service/package.uc
-# remember_upgrade_state); a removal would leave a Forkop that ran before
-# the upgrade down and lift its kill-switch. opkg sets PKG_ROOT. It runs
-# the incoming "preinst upgrade <old>" with PKG_UPGRADE=1, which must not
-# stop Forkop a second time.
-for args in "upgrade 1.2.4" "remove" ""; do
+# opkg runs the installed "prerm upgrade <new>" with PKG_UPGRADE=1 or
+# "prerm remove" with PKG_UPGRADE=0, and sets PKG_ROOT (libopkg
+# pkg_run_script); the ipk's prerm sources prerm-pkg from default_prerm
+# with its own $0 first. A prerm without an action (service/package.uc
+# remember_upgrade_state) is an upgrade under PKG_UPGRADE=1, as
+# default_prerm takes it: both recipes pass no action on, and
+# package_prerm decides by the service's state; a removal would leave a
+# Forkop that ran before the upgrade down and lift its kill-switch. Under
+# PKG_UPGRADE=0 it is a removal: package_prerm must lift the kill-switch,
+# whose watcher default_prerm stops right after, end the explicit start and
+# hand no restart to a later install. opkg runs the incoming "preinst
+# upgrade <old>" with PKG_UPGRADE=1, which must not stop Forkop a second
+# time.
+for run in "1|upgrade 1.2.4|upgrade 1.2.4" "0|remove|remove" "1||" "0||remove"; do
+  IFS='|' read -r pkg_upgrade args action <<<"$run"
   # shellcheck disable=SC2086 # the package manager's arguments
-  expected="$(called ucode "$WORK_DIR/ipk-prerm" $args)"
-  [ "$expected" = "0|forkop package_prerm${args:+ $args};" ] || fail "build.sh's prerm ${args:-without an action}: $expected"
+  expected="$(called env PKG_ROOT=/ PKG_UPGRADE="$pkg_upgrade" ucode "$WORK_DIR/ipk-prerm" $args)"
+  [ "$expected" = "0|forkop package_prerm${action:+ $action};" ] ||
+    fail "build.sh's prerm ${args:-without an action} (PKG_UPGRADE=$pkg_upgrade): $expected"
   # shellcheck disable=SC2016,SC2086 # expanded by sh; the package manager's arguments
-  sdk="$(called env PKG_ROOT=/ sh -c '. "$1"' /usr/lib/opkg/info/forkop.prerm "$WORK_DIR/sdk-prerm-pkg" $args)"
+  sdk="$(called env PKG_ROOT=/ PKG_UPGRADE="$pkg_upgrade" sh -c '. "$1"' /usr/lib/opkg/info/forkop.prerm "$WORK_DIR/sdk-prerm-pkg" $args)"
   [ "$sdk" = "$expected" ] ||
-    fail "the SDK prerm ${args:-without an action} does not do what build.sh's does: $sdk (build.sh: $expected)"
+    fail "the SDK prerm ${args:-without an action} (PKG_UPGRADE=$pkg_upgrade) does not do what build.sh's does: $sdk (build.sh: $expected)"
+done
+# The SDK text is also apk's pre-deinstall, which only ever removes: also
+# from an apk that sets no APK_SCRIPT, and whatever PKG_UPGRADE or PKG_ROOT
+# it inherits. Only opkg's upgrade passes no action on.
+for env_run in "PKG_UPGRADE=1" "APK_SCRIPT=pre-deinstall PKG_ROOT=/ PKG_UPGRADE=1"; do
+  # shellcheck disable=SC2016,SC2086 # expanded by sh; the environment of the case
+  sdk="$(called env $env_run sh -c '. "$1"' /usr/lib/apk/scripts/forkop.pre-deinstall "$WORK_DIR/sdk-prerm-pkg")"
+  [ "$sdk" = "0|forkop package_prerm remove;" ] ||
+    fail "the SDK prerm without an action outside opkg ($env_run) must remove the package: $sdk"
 done
 sdk="$(called env PKG_UPGRADE=1 sh "$WORK_DIR/sdk-preinst" upgrade 1.2.3)"
 [ "$sdk" = "0|" ] || fail "the SDK preinst of an opkg upgrade must leave the stop to prerm: $sdk"
@@ -351,7 +371,6 @@ SH
 cp "$INSTALLED/postinst-pkg" "$INSTALLED/opkg-info/forkop.postinst-pkg"
 cp "$WORK_DIR/sdk-prerm-pkg" "$INSTALLED/opkg-info/forkop.prerm-pkg"
 export INSTALLED RC_D
-unset PKG_ROOT PKG_UPGRADE APK_SCRIPT IPKG_INSTROOT FORKOP_START_REQUEST
 # The ipk's postinst and prerm (package-pack.mk); the apk's post-install,
 # whose own script follows default_postinst (25.12), its post-upgrade,
 # which exports PKG_UPGRADE=1 first, and its pre-deinstall, whose own
@@ -385,6 +404,7 @@ package_script() {
     "ipk install") set -- env OPKG_INFO="$INSTALLED/opkg-info" PKG_ROOT=/ PKG_UPGRADE=0 sh "$WORK_DIR/ipk-postinst" configure ;;
     "ipk upgrade") set -- env OPKG_INFO="$INSTALLED/opkg-info" PKG_ROOT=/ PKG_UPGRADE=1 sh "$WORK_DIR/ipk-postinst" configure ;;
     "ipk remove") set -- env OPKG_INFO="$INSTALLED/opkg-info" PKG_ROOT=/ PKG_UPGRADE=0 sh "$WORK_DIR/ipk-prerm-sdk" remove ;;
+    "ipk remove without an action") set -- env OPKG_INFO="$INSTALLED/opkg-info" PKG_ROOT=/ PKG_UPGRADE=0 sh "$WORK_DIR/ipk-prerm-sdk" ;;
     "ipk prerm upgrade") set -- env OPKG_INFO="$INSTALLED/opkg-info" PKG_ROOT=/ PKG_UPGRADE=1 sh "$WORK_DIR/ipk-prerm-sdk" upgrade 1.2.4 ;;
     "ipk prerm without an action") set -- env OPKG_INFO="$INSTALLED/opkg-info" PKG_ROOT=/ PKG_UPGRADE=1 sh "$WORK_DIR/ipk-prerm-sdk" ;;
     "apk install") set -- env OPKG_INFO="$INSTALLED/none" APK_SCRIPT=post-install sh "$WORK_DIR/apk-post-install" 1.2.4 ;;
@@ -448,6 +468,18 @@ for manager in ipk apk; do
     grep -q '^initd stop-service' "$EVENTS" || fail "$manager remove: the default prerm's stop must reach Forkop"
   done
 done
+# An opkg removal whose prerm comes without an action (PKG_UPGRADE=0) is a
+# removal, as default_prerm, which disables and stops every init script of
+# the package around it, takes it.
+set_autostart enabled
+: >"$EVENTS"
+package_script "ipk remove without an action"
+grep -Fxq "forkop package_prerm remove" "$EVENTS" ||
+  fail "ipk remove without an action: the package's own prerm must remove the package, as default_prerm does"
+grep -q '^forkop-killswitch disable' "$EVENTS" ||
+  fail "ipk remove without an action: the default prerm did not reach the other init scripts"
+grep -q '^initd stop-service' "$EVENTS" || fail "ipk remove without an action: the default prerm's stop must reach Forkop"
+autostart_enabled || fail "ipk remove without an action: OpenWrt's default package script disabled Forkop's autostart"
 
 # An opkg upgrade stops Forkop once, as build.sh's packages do: package_prerm
 # stops it for the upgrade (FORKOP_STOP_SOURCE=package), and the default

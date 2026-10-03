@@ -53,15 +53,18 @@ define Package/forkop/prerm
 # default_prerm, where opkg's "prerm remove" or "prerm upgrade <new
 # version>" arrive as $$2 and $$3, and apk appends it to the pre-deinstall
 # script, which runs only for a removal. The new version tells whether the
-# incoming release can lift the kill-switch. Some opkg builds of OpenWrt 24
-# run prerm without an action, also for an upgrade: as build.sh's prerm,
-# this passes none on, and package_prerm decides by the service's state
-# (service/package.uc remember_upgrade_state). opkg sets PKG_ROOT, apk
-# APK_SCRIPT.
+# incoming release can lift the kill-switch. opkg sets PKG_ROOT and
+# PKG_UPGRADE (1 for an upgrade, 0 otherwise), apk APK_SCRIPT. A prerm
+# without an action (service/package.uc remember_upgrade_state) is taken
+# as default_prerm takes it: as build.sh's prerm, this passes none on for
+# opkg's upgrade, and package_prerm decides by the service's state; any
+# other is a removal, which lifts the kill-switch whose watcher
+# default_prerm stops right after this.
 [ -n "$${IPKG_INSTROOT}" ] && exit 0
 forkop_action="$$2"
 forkop_version="$$3"
-if [ -z "$$forkop_action" ] && { [ -n "$${APK_SCRIPT}" ] || [ -z "$${PKG_ROOT}" ]; }; then
+if [ -z "$$forkop_action" ] &&
+	{ [ -n "$${APK_SCRIPT}" ] || [ -z "$${PKG_ROOT}" ] || [ "$${PKG_UPGRADE}" != 1 ]; }; then
 	forkop_action=remove
 fi
 case "$$forkop_version" in

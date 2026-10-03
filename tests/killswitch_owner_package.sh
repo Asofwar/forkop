@@ -293,6 +293,39 @@ run_sh_script "$WORK_DIR/sdk-pre-deinstall" 1.0.40
 grep -Fqx 'package_prerm remove' "$WORK_DIR/cli.log" || fail "the SDK pre-deinstall must reach package_prerm: $(cat "$WORK_DIR/cli.log")"
 assert_lifted "package removal (SDK package, apk)"
 
+# opkg sets PKG_ROOT and PKG_UPGRADE for every script it runs (libopkg
+# pkg_run_script). A prerm without an action (service/package.uc
+# remember_upgrade_state) is a removal unless PKG_UPGRADE=1, as
+# default_prerm takes it: it disables and stops the kill-switch watcher
+# right after the SDK prerm, so only the prerm can lift the protection, and
+# no restart may be handed to a later install.
+for recipe in sdk ipk; do
+  arm
+  printf '1\n' >"$FORKOP_PACKAGE_UPGRADE_STATE"
+  : >"$WORK_DIR/killswitch-init.log"
+  if [ "$recipe" = sdk ]; then
+    PKG_ROOT=/ PKG_UPGRADE=0 run_sh_script "$WORK_DIR/opkg-info/forkop.prerm"
+    grep -Fqx disable "$WORK_DIR/killswitch-init.log" || fail "default_prerm must disable the kill-switch service on a removal"
+  else
+    PKG_ROOT=/ PKG_UPGRADE=0 run_script ipk-prerm
+  fi
+  grep -Fqx 'package_prerm remove' "$WORK_DIR/cli.log" ||
+    fail "the $recipe prerm without an action must remove the package under PKG_UPGRADE=0: $(cat "$WORK_DIR/cli.log")"
+  [ ! -e "$FORKOP_PACKAGE_UPGRADE_STATE" ] ||
+    fail "the $recipe prerm without an action must not hand a restart to the next install of a removed package"
+  assert_lifted "package removal without an action ($recipe package, opkg)"
+
+  arm
+  if [ "$recipe" = sdk ]; then
+    PKG_ROOT=/ PKG_UPGRADE=1 run_sh_script "$WORK_DIR/opkg-info/forkop.prerm"
+  else
+    PKG_ROOT=/ PKG_UPGRADE=1 run_script ipk-prerm
+  fi
+  grep -Fqx 'package_prerm' "$WORK_DIR/cli.log" ||
+    fail "the $recipe prerm without an action must leave an upgrade to the service's state: $(cat "$WORK_DIR/cli.log")"
+  assert_kept "upgrade without an action ($recipe package, opkg)"
+done
+
 arm
 run_script ipk-prerm upgrade
 assert_kept "upgrade without a version (opkg)"

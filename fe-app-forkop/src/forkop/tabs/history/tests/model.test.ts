@@ -254,6 +254,30 @@ describe('history list', () => {
     );
   });
 
+  it('names removed subscription settings (D-17)', () => {
+    const [item] = historyItems(
+      [
+        {
+          kind: 'config_migration',
+          status: 'success',
+          timestamp: 7,
+          notices: [
+            {
+              code: 'subscription_options_removed',
+              section: 'vpn',
+              values: ['hwid', 'hide_detour_outbounds'],
+              replacements: [],
+            },
+          ],
+        },
+      ],
+      'all',
+    );
+    expect(item.details).toEqual([
+      'Rule “vpn”: the subscription settings hwid, hide_detour_outbounds were removed. This version always generates the HWID from the router and hides nodes of imported URLTest groups and cascades.',
+    ]);
+  });
+
   it('names a raised update interval (D-18)', () => {
     const [item] = historyItems(
       [

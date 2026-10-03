@@ -41,7 +41,7 @@ const EVENT_KINDS = [ "start", "reload", "restore", "recovery", "autotune_apply"
 // them (the journal and the runtime file stay small).
 // update_interval_raised also keeps the interval it replaced and the new
 // one (`from`, `to`).
-const MIGRATION_NOTICE_CODES = [ "retired_rule_sets", "update_interval_raised" ];
+const MIGRATION_NOTICE_CODES = [ "retired_rule_sets", "update_interval_raised", "subscription_options_removed" ];
 const MIGRATION_NOTICES_MAX = 16;
 const MIGRATION_NOTICE_IDS_MAX = 32;
 // "not_started": a snapshot restore replaced the configuration while an

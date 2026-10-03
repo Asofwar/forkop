@@ -222,6 +222,12 @@ export function migrationNoticeText(notice: Forkop.MigrationNotice) {
           ).replace('%s', notice.replacements.join(', '))}`
         : `${removed} ${_('No built-in rule set replaces them.')}`;
     }
+    case 'subscription_options_removed':
+      return _(
+        'Rule “%s”: the subscription settings %s were removed. This version always generates the HWID from the router and hides nodes of imported URLTest groups and cascades.',
+      )
+        .replace('%s', notice.section)
+        .replace('%s', notice.values.join(', '));
     case 'update_interval_raised':
       return (
         notice.values[0] === 'component_update_check_interval'

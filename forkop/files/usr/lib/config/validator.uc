@@ -1327,14 +1327,12 @@ function subscription_update_interval_for_source(section, entry) {
     return value != "" ? value : "4h";
 }
 
+// D-17 (a): a User-Agent a source names is sent as it is, except one with
+// control characters (config/connections.uc), which an earlier version
+// may have stored: the automatic profiles are used, and the log says why.
 function validate_subscription_request_profile(section, entry) {
-    if (connections.subscription_auto_hwid(section, entry))
-        return;
-
-    if (connections.subscription_hwid(section, entry) != "")
-        return;
-
-    fail_validation("Subscription source in rule '" + section_name(section) + "' has manual HWID enabled but HWID is empty. Fill HWID or enable auto-generation. Aborted.");
+    if (match(connections.subscription_configured_user_agent(section, entry), /[[:cntrl:]]/) != null)
+        log_message("User-Agent of a subscription source in rule '" + section_name(section) + "' contains control characters and is not sent; the automatic User-Agent profiles are used", "warn");
 }
 
 function validate_provider_strategy(kind, section, context) {

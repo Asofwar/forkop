@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-03 14:37+0000\n"
-"PO-Revision-Date: 2026-10-03 14:37+0000\n"
+"POT-Creation-Date: 2026-10-03 14:44+0000\n"
+"PO-Revision-Date: 2026-10-03 14:44+0000\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -3239,6 +3239,9 @@ msgstr "Правило «%s»: изменено обновлением."
 msgid "Rule “%s”: the retired rule sets %s were removed from Built-in rule sets #2, their source no longer publishes them."
 msgstr "Правило «%s»: из встроенных наборов правил #2 удалены выведенные наборы %s — источник их больше не публикует."
 
+msgid "Rule “%s”: the subscription settings %s were removed. This version always generates the HWID from the router and hides nodes of imported URLTest groups and cascades."
+msgstr "Правило «%s»: удалены настройки подписки %s. Эта версия всегда генерирует HWID по данным роутера и скрывает узлы импортированных групп URLTest и каскадов."
+
 msgid "Rule not calculated"
 msgstr "Правило не рассчитано"
 
@@ -3394,6 +3397,9 @@ msgstr "Выбрано %d из %d"
 
 msgid "Selector and URLTest outbounds must contain a non-empty outbounds array"
 msgstr "Selector и URLTest outbound должны содержать непустой массив outbounds"
+
+msgid "Sent with the requests for this subscription. Leave empty to try compatible client profiles automatically."
+msgstr "Передаётся в запросах этой подписки. Оставьте пустым, чтобы совместимые профили клиентов подбирались автоматически."
 
 msgid "Server closed the connection without a response"
 msgstr "Сервер закрыл соединение без ответа"
@@ -4480,6 +4486,12 @@ msgstr "используется правилом; поле «Сетевой и�
 
 msgid "used by the rule: text mode is on"
 msgstr "используется правилом: включён текстовый режим"
+
+msgid "User-Agent"
+msgstr "User-Agent"
+
+msgid "User-Agent must not contain control characters"
+msgstr "User-Agent не должен содержать управляющих символов"
 
 msgid "Username cannot be empty"
 msgstr "Логин не может быть пустым"

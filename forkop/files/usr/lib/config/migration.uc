@@ -725,15 +725,12 @@ function migrate_subscription_url_item_settings(ctx, section) {
         set_option(ctx, child, "url", profile.value);
         set_option(ctx, child, "subscription_update_enabled", update_enabled ? "1" : "0");
         set_option(ctx, child, "subscription_update_interval", update_enabled ? update_interval : "");
-        set_option(ctx, child, "auto_user_agent", profile.user_agent != "" ? "0" : "1");
+        // The User-Agent of a 'url | UA' entry is sent as it is (D-17 (a)).
         if (profile.user_agent != "")
             set_option(ctx, child, "user_agent", profile.user_agent);
-        set_option(ctx, child, "auto_hwid", "1");
         set_option(ctx, child, "show_dashboard_metadata", "1");
         set_option(ctx, child, "prefix_nodes", "0");
         set_option(ctx, child, "include_urltest_groups", "1");
-        set_option(ctx, child, "hide_urltest_group_outbounds", "1");
-        set_option(ctx, child, "hide_detour_outbounds", "1");
         index++;
     }
 
@@ -1589,6 +1586,94 @@ function migrate_update_interval_minimum(ctx) {
     }
 }
 
+// D-17 (a), UC-090: subscription request options the runtime ignores are
+// not kept. A source sends the User-Agent its user_agent names
+// (config/connections.uc), so auto_user_agent goes, and with it a
+// user_agent that it switched off; HWID is always generated and the nodes
+// of imported URLTest groups and cascades are always hidden, so auto_hwid,
+// hwid and the hide_* options go too. Nothing a source sends or shows
+// changes; a value that asked for something else, which the runtime did
+// not do either, is named in a notice (option names only: a URL may carry
+// a token).
+const SUBSCRIPTION_IGNORED_DEFAULTS = {
+    auto_hwid: "1", hwid: "", hide_urltest_group_outbounds: "1", hide_detour_outbounds: "1"
+};
+
+function subscription_option_true(value) {
+    value = as_string(value);
+    return value == "1" || value == "true" || value == "yes" || value == "on";
+}
+
+// Removes the ignored options from `settings` (an item's options), returns
+// the names of those that asked for something else.
+function strip_ignored_subscription_options(settings, remove) {
+    let named = [];
+    let automatic = settings.auto_user_agent;
+    if (automatic != null) {
+        if (subscription_option_true(automatic) && settings.user_agent != null)
+            remove("user_agent");
+        remove("auto_user_agent");
+    }
+    for (let key in [ "auto_hwid", "hwid", "hide_urltest_group_outbounds", "hide_detour_outbounds" ]) {
+        let value = settings[key];
+        if (value == null)
+            continue;
+        let different = key == "hwid"
+            ? trim(as_string(value)) != ""
+            : !subscription_option_true(value);
+        if (different)
+            push(named, key);
+        remove(key);
+    }
+    return named;
+}
+
+function migrate_subscription_ignored_options(ctx) {
+    let named = {};
+    let note = function(section, keys) {
+        named[section] ??= [];
+        for (let key in keys)
+            if (index(named[section], key) < 0)
+                push(named[section], key);
+    };
+
+    for (let child in ctx.model.subscription_url || [])
+        note(option(child, "section", ""), strip_ignored_subscription_options(child,
+            (key) => delete_option(ctx, child, key)));
+
+    for (let section in ctx.model.sections) {
+        let raw = option(section, "subscription_url_settings", "");
+        if (raw == "")
+            continue;
+        let map;
+        try {
+            map = json(raw);
+        }
+        catch (e) {
+            continue;
+        }
+        if (type(map) != "object")
+            continue;
+        let changed = false;
+        for (let url, settings in map) {
+            if (type(settings) != "object")
+                continue;
+            note(section_name(section), strip_ignored_subscription_options(settings, (key) => {
+                delete settings[key];
+                changed = true;
+            }));
+        }
+        if (changed)
+            set_option(ctx, section, "subscription_url_settings", sprintf("%J", map));
+    }
+
+    for (let section in sort(keys(named))) {
+        let values = filter(keys(SUBSCRIPTION_IGNORED_DEFAULTS), (key) => index(named[section], key) >= 0);
+        if (section != "" && length(values) > 0)
+            push(ctx.notices, { code: "subscription_options_removed", section, values });
+    }
+}
+
 const MIGRATIONS = [
     { id: "interface_sections", run: migrate_interface_sections },
     { id: "enable_component_checks", run: migrate_enable_component_checks },
@@ -1602,7 +1687,8 @@ const MIGRATIONS = [
     { id: "urltest_section_names_v1", run: migrate_urltest_section_names },
     { id: "vpn_guard_kill_switch_v1", run: migrate_vpn_guard_to_kill_switch },
     { id: "output_network_interface_switch_v1", run: migrate_output_network_interface_switch },
-    { id: "update_interval_minimum_v1", run: migrate_update_interval_minimum }
+    { id: "update_interval_minimum_v1", run: migrate_update_interval_minimum },
+    { id: "subscription_ignored_options_v1", run: migrate_subscription_ignored_options }
 ];
 
 // Whether the migrations raise a config_version: they write 1.0.5 over an
@@ -1919,6 +2005,9 @@ function notice_text(notice) {
             " (no longer published); " + (length(notice.replacements) > 0
                 ? "the built-in rule sets " + join(", ", notice.replacements) + " cover the same services and can be added in the rule editor"
                 : "no built-in rule set replaces them");
+    if (notice.code == "subscription_options_removed")
+        return "rule '" + notice.section + "': removed the subscription options " + join(", ", notice.values) +
+            ", which this version does not use (HWID is generated from the router, nodes of URLTest groups and cascades are hidden)";
     if (notice.code == "update_interval_raised")
         return "settings." + notice.values[0] + " was " + notice.from + ", shorter than the 1h minimum of automatic updates: set to " + notice.to;
     return notice.code;

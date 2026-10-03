@@ -2398,6 +2398,7 @@ function subscriptionUrlSettingsKeys() {
     "subscription_update_interval",
     "download_via_proxy_enabled",
     "download_via_proxy_section",
+    "user_agent",
     "prefix_nodes",
     "node_prefix",
     "include_urltest_groups",
@@ -2410,6 +2411,7 @@ function defaultSubscriptionUrlSettings() {
     subscription_update_interval: "4h",
     download_via_proxy_enabled: "0",
     download_via_proxy_section: "",
+    user_agent: "",
     prefix_nodes: "0",
     node_prefix: "",
     include_urltest_groups: "1",
@@ -2696,6 +2698,25 @@ function addSubscriptionUrlItemOptions(itemSection, options = {}) {
       return _("Current section cannot download its own subscription");
     }
     return unavailableChoiceError(this, value) || true;
+  };
+
+  // D-17 (a), UC-090: a User-Agent set here is sent as it is; empty, the
+  // backend tries compatible profiles (subscription/cache.uc). A value with
+  // control characters is never sent (config/connections.uc).
+  o = itemSection.option(
+    form.Value,
+    "user_agent",
+    _("User-Agent"),
+    _(
+      "Sent with the requests for this subscription. Leave empty to try compatible client profiles automatically.",
+    ),
+  );
+  o.placeholder = _("Automatic");
+  subscriptionUserAgentChoices().forEach((choice) => o.value(choice));
+  o.validate = function (_itemId, value) {
+    return /[\u0000-\u001f\u007f]/.test(`${value || ""}`)
+      ? _("User-Agent must not contain control characters")
+      : true;
   };
 
   o = itemSection.option(

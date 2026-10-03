@@ -3307,16 +3307,11 @@ function hydrateConfigSections(configSections) {
           subscription_update_interval: item.subscription_update_interval,
           download_via_proxy_enabled: item.download_via_proxy_enabled,
           download_via_proxy_section: item.download_via_proxy_section,
-          auto_user_agent: item.auto_user_agent,
           user_agent: item.user_agent,
-          auto_hwid: item.auto_hwid,
-          hwid: item.hwid,
           show_dashboard_metadata: item.show_dashboard_metadata,
           prefix_nodes: item.prefix_nodes,
           node_prefix: item.node_prefix,
-          include_urltest_groups: item.include_urltest_groups,
-          hide_urltest_group_outbounds: item.hide_urltest_group_outbounds,
-          hide_detour_outbounds: item.hide_detour_outbounds
+          include_urltest_groups: item.include_urltest_groups
         };
       });
       next.subscription_url_settings = compactSettingsMap(settings);
@@ -17947,6 +17942,10 @@ function migrationNoticeText(notice) {
         "Built-in rule sets of the same services: %s. They were not added; the rule editor offers them."
       ).replace("%s", notice.replacements.join(", "))}` : `${removed} ${_("No built-in rule set replaces them.")}`;
     }
+    case "subscription_options_removed":
+      return _(
+        "Rule \u201C%s\u201D: the subscription settings %s were removed. This version always generates the HWID from the router and hides nodes of imported URLTest groups and cascades."
+      ).replace("%s", notice.section).replace("%s", notice.values.join(", "));
     case "update_interval_raised":
       return (notice.values[0] === "component_update_check_interval" ? _(
         "Component update check interval was %s, shorter than the 1 h minimum of automatic updates: set to %s."

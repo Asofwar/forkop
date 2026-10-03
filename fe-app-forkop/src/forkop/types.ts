@@ -109,6 +109,9 @@ export namespace Forkop {
   // retired_rule_sets: the rule `section` lost the retired b4geoip rule sets
   // `values`; `replacements` have a built-in rule set of the same service
   // that the rule does not use yet (D-13 (b), never added automatically).
+  // subscription_options_removed: the subscription sources of the rule
+  // `section` asked for `values` (HWID, shown nodes), which this version
+  // does not do, and the options were removed (D-17 (a)).
   // update_interval_raised: the settings option `values[0]` held `from`,
   // shorter than the hour automatic updates wait at least, and is now `to`
   // (D-18 (a)).
@@ -823,16 +826,12 @@ export namespace Forkop {
     outbound_detour_section?: string;
     download_via_proxy_enabled?: '0' | '1';
     download_via_proxy_section?: string;
-    auto_user_agent?: '0' | '1';
+    // Sent as it is when set (D-17 (a)); automatic profiles otherwise.
     user_agent?: string;
-    auto_hwid?: '0' | '1';
-    hwid?: string;
     show_dashboard_metadata?: '0' | '1';
     prefix_nodes?: '0' | '1';
     node_prefix?: string;
     include_urltest_groups?: '0' | '1';
-    hide_urltest_group_outbounds?: '0' | '1';
-    hide_detour_outbounds?: '0' | '1';
     yacd_secret_key?: string;
     config_path?: string;
   }

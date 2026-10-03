@@ -175,7 +175,7 @@ assert(JSON.stringify(config.settings.dns_server) === JSON.stringify(['9.9.9.9']
 assert(JSON.stringify(config.settings.bootstrap_dns_server) === JSON.stringify(['1.1.1.1']), 'legacy Bootstrap DNS scalar migrated to ordered list');
 assert(config.settings.config_version === '1.0.5', 'legacy config should be marked at the current schema version');
 assert(config.settings.component_update_check_enabled === '1', 'component update checks should be enabled during migration');
-assert(JSON.stringify(config.settings.applied_migrations) === JSON.stringify(['interface_sections', 'enable_component_checks', 'http_connection_urls', 'flintnet_urltest_default', 'retired_secondary_rulesets', 'retired_secondary_rulesets_v2', 'secondary_rulesets_mirror_v1', 'own_dependency_mirror_v1', 'clash_api_secret_v1', 'urltest_section_names_v1', 'vpn_guard_kill_switch_v1', 'output_network_interface_switch_v1', 'update_interval_minimum_v1']), 'legacy config should record named migrations');
+assert(JSON.stringify(config.settings.applied_migrations) === JSON.stringify(['interface_sections', 'enable_component_checks', 'http_connection_urls', 'flintnet_urltest_default', 'retired_secondary_rulesets', 'retired_secondary_rulesets_v2', 'secondary_rulesets_mirror_v1', 'own_dependency_mirror_v1', 'clash_api_secret_v1', 'urltest_section_names_v1', 'vpn_guard_kill_switch_v1', 'output_network_interface_switch_v1', 'update_interval_minimum_v1', 'subscription_ignored_options_v1']), 'legacy config should record named migrations');
 
 function assert(condition, message) {
   if (!condition) {
@@ -248,12 +248,12 @@ assert(JSON.stringify(childValues(legacySub, subscriptionUrls, 'url')) === JSON.
 assert(legacySub.action === 'connection', 'legacy-sub action');
 const legacySubSource = childObjects(legacySub, subscriptionUrls)[0];
 assert(legacySubSource.user_agent === 'Agent/1.0', 'subscription user-agent setting');
-assert(legacySubSource.auto_user_agent === '0', 'subscription user-agent manual mode');
-assert(legacySubSource.auto_hwid === '1', 'subscription HWID auto-generation');
+// D-17 (a): the User-Agent is sent as it is; the options the runtime
+// ignores are not written.
+for (const key of ['auto_user_agent', 'auto_hwid', 'hide_urltest_group_outbounds', 'hide_detour_outbounds'])
+  absent(legacySubSource, key, 'legacy-sub subscription source');
 assert(legacySubSource.prefix_nodes === '0', 'subscription node prefix disabled by default');
 assert(legacySubSource.include_urltest_groups === '1', 'subscription URLTest groups import default');
-assert(legacySubSource.hide_urltest_group_outbounds === '1', 'subscription URLTest group member hiding default');
-assert(legacySubSource.hide_detour_outbounds === '1', 'subscription detour hiding default');
 assert(legacySubSource.subscription_update_enabled === '0', 'subscription update disabled flag');
 assert(legacySubSource.download_via_proxy_enabled === '1', 'subscription download through section flag');
 assert(legacySubSource.download_via_proxy_section === 'legacy-urltest', 'subscription download target');
@@ -288,9 +288,9 @@ assert(JSON.stringify(childValues(legacyListSub, subscriptionUrls, 'url')) === J
 const legacyListSubSource = childByValue(legacyListSub, subscriptionUrls, 'url', 'https://example.com/list.txt');
 const legacyListSubAutoSource = childByValue(legacyListSub, subscriptionUrls, 'url', 'https://example.com/auto.txt');
 assert(legacyListSubSource.user_agent === 'ListAgent/2.0', 'legacy list subscription user-agent migrated');
-assert(legacyListSubSource.auto_user_agent === '0', 'legacy list subscription manual user-agent mode');
+absent(legacyListSubSource, 'auto_user_agent', 'legacy list subscription source');
 assert(legacyListSubSource.subscription_update_interval === '6h', 'legacy list subscription interval migrated');
-assert(legacyListSubAutoSource.auto_user_agent === '1', 'legacy list subscription without User-Agent stays automatic');
+absent(legacyListSubAutoSource, 'auto_user_agent', 'legacy list automatic subscription source');
 assert(!Object.prototype.hasOwnProperty.call(legacyListSubAutoSource, 'user_agent'), 'automatic legacy list subscription should not get user-agent');
 absent(legacyListSub, 'subscription_url_settings', 'legacy-list-sub');
 absent(legacyListSub, 'subscription_url_items', 'legacy-list-sub');
@@ -394,7 +394,7 @@ function assert(condition, message) {
 assert(out.changed === true, '1.0.1 config should require migration');
 assert(out.config.settings.config_version === '1.0.5', 'config schema version should advance to 1.0.5');
 assert(out.config.settings.component_update_check_enabled === '1', 'updates from 1.0.1 and below should enable component update checks');
-assert(JSON.stringify(out.config.settings.applied_migrations) === JSON.stringify(['interface_sections', 'enable_component_checks', 'http_connection_urls', 'flintnet_urltest_default', 'retired_secondary_rulesets', 'retired_secondary_rulesets_v2', 'secondary_rulesets_mirror_v1', 'own_dependency_mirror_v1', 'clash_api_secret_v1', 'urltest_section_names_v1', 'vpn_guard_kill_switch_v1', 'output_network_interface_switch_v1', 'update_interval_minimum_v1']), 'named migrations should be recorded');
+assert(JSON.stringify(out.config.settings.applied_migrations) === JSON.stringify(['interface_sections', 'enable_component_checks', 'http_connection_urls', 'flintnet_urltest_default', 'retired_secondary_rulesets', 'retired_secondary_rulesets_v2', 'secondary_rulesets_mirror_v1', 'own_dependency_mirror_v1', 'clash_api_secret_v1', 'urltest_section_names_v1', 'vpn_guard_kill_switch_v1', 'output_network_interface_switch_v1', 'update_interval_minimum_v1', 'subscription_ignored_options_v1']), 'named migrations should be recorded');
 assert(!Object.prototype.hasOwnProperty.call(section, 'interfaces'), 'parent interface list should be removed');
 assert(JSON.stringify(interfaces.map(item => item.name)) === JSON.stringify(['awg0', 'tun0']), 'interfaces should keep their order');
 for (const item of interfaces) {
@@ -432,7 +432,7 @@ function assert(condition, message) {
 
 assert(out.config.settings.component_update_check_enabled === '0', '1.0.2 config must preserve an explicitly disabled component check');
 assert(out.config.settings.config_version === '1.0.5', '1.0.2 config should advance through the HTTP URL migration schema');
-assert(JSON.stringify(out.config.settings.applied_migrations) === JSON.stringify(['interface_sections', 'enable_component_checks', 'http_connection_urls', 'flintnet_urltest_default', 'retired_secondary_rulesets', 'retired_secondary_rulesets_v2', 'secondary_rulesets_mirror_v1', 'own_dependency_mirror_v1', 'clash_api_secret_v1', 'urltest_section_names_v1', 'vpn_guard_kill_switch_v1', 'output_network_interface_switch_v1', 'update_interval_minimum_v1']), 'newer configs should mark skipped migrations');
+assert(JSON.stringify(out.config.settings.applied_migrations) === JSON.stringify(['interface_sections', 'enable_component_checks', 'http_connection_urls', 'flintnet_urltest_default', 'retired_secondary_rulesets', 'retired_secondary_rulesets_v2', 'secondary_rulesets_mirror_v1', 'own_dependency_mirror_v1', 'clash_api_secret_v1', 'urltest_section_names_v1', 'vpn_guard_kill_switch_v1', 'output_network_interface_switch_v1', 'update_interval_minimum_v1', 'subscription_ignored_options_v1']), 'newer configs should mark skipped migrations');
 NODE
 
 cat >"$WORK_DIR/forkop-1.0.4-http.json" <<'JSON'
@@ -498,7 +498,7 @@ assert(JSON.stringify(jsonOutbounds[1]) === JSON.stringify({
   server_port: 8080,
 }), 'unnamed HTTP URL should receive a unique http tag');
 assert(jsonOutbounds[2].type === 'direct' && jsonOutbounds[2].tag === 'http', 'existing JSON outbounds should remain unchanged');
-assert(JSON.stringify(out.config.settings.applied_migrations) === JSON.stringify(['interface_sections', 'enable_component_checks', 'http_connection_urls', 'flintnet_urltest_default', 'retired_secondary_rulesets', 'retired_secondary_rulesets_v2', 'secondary_rulesets_mirror_v1', 'own_dependency_mirror_v1', 'clash_api_secret_v1', 'urltest_section_names_v1', 'vpn_guard_kill_switch_v1', 'output_network_interface_switch_v1', 'update_interval_minimum_v1']), 'HTTP URL migration should be recorded');
+assert(JSON.stringify(out.config.settings.applied_migrations) === JSON.stringify(['interface_sections', 'enable_component_checks', 'http_connection_urls', 'flintnet_urltest_default', 'retired_secondary_rulesets', 'retired_secondary_rulesets_v2', 'secondary_rulesets_mirror_v1', 'own_dependency_mirror_v1', 'clash_api_secret_v1', 'urltest_section_names_v1', 'vpn_guard_kill_switch_v1', 'output_network_interface_switch_v1', 'update_interval_minimum_v1', 'subscription_ignored_options_v1']), 'HTTP URL migration should be recorded');
 NODE
 
 cat >"$WORK_DIR/forkop-1.0.5-http.json" <<'JSON'

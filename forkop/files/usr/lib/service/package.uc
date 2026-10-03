@@ -415,15 +415,18 @@ function prerm_cleanup(action, version) {
         let removal = as_string(action) == "remove";
         let stopped = command_success_from_args([ "env", "FORKOP_STOP_SOURCE=package", INIT_PATH, "stop" ]);
         // A removal leaves nobody to own what a failed or refused stop kept
-        // (UC-028): the explicit stop removes Forkop's own interception
-        // without a proof of ownership and stops only the sing-box Forkop
-        // owns (UC-213). What the stop left decides, not its exit status:
-        // rc.common drops the status of stop_service unless a hook passes it
-        // on, and a stop that cannot delete the table or the rule goes on.
+        // (UC-028): the explicit stop, as the user's (FORKOP_STOP_SOURCE=user),
+        // removes Forkop's own interception without a proof of ownership and
+        // stops only the sing-box Forkop owns (UC-213). It names its source:
+        // the plain stop of OpenWrt's default prerm, which an SDK package runs
+        // around this one, stops nothing (/etc/init.d/forkop stop_service).
+        // What the stop left decides, not its exit status: rc.common drops
+        // the status of stop_service unless a hook passes it on, and a stop
+        // that cannot delete the table or the rule goes on.
         let left = removal ? runtime_left() : [];
         if (length(left) > 0) {
             log_warning("Forkop's stop for its removal left " + join(", ", left) + "; taking it down with an explicit stop");
-            command_success_from_args([ "env", "-u", "FORKOP_STOP_SOURCE", INIT_PATH, "stop" ]);
+            command_success_from_args([ "env", "FORKOP_STOP_SOURCE=user", INIT_PATH, "stop" ]);
         }
         // No start follows a removal: the explicit start ends with it, and
         // a reinstall that does not start Forkop shows it not started, not

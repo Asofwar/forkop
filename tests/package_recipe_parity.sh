@@ -17,8 +17,11 @@
 # Their prerm disables Forkop on a removal: a reinstall (opkg install
 # --force-reinstall, remove and install) must keep Forkop's autostart, as
 # build.sh's packages do, once their postinst no longer enables it. Their
-# prerm also stopped Forkop a second time on an opkg upgrade, as the user,
-# after package_prerm's stop for the upgrade; and the SDK prerm took an
+# prerm also stopped Forkop a second time on an opkg upgrade and on a
+# removal (on apk before package_prerm), as the user, besides
+# package_prerm's stops: after a removal and a new install Forkop showed as
+# stopped by the user where build.sh's shows it not started; and the SDK
+# prerm took an
 # opkg prerm without an action (service/package.uc remember_upgrade_state)
 # for a removal also on an upgrade (PKG_UPGRADE=1), where build.sh's let
 # package_prerm decide by the service's state, while build.sh's took it for
@@ -473,8 +476,15 @@ for manager in ipk apk; do
     if [ "$autostart" = disabled ] && autostart_enabled; then
       fail "$manager reinstall: OpenWrt's default package script enabled Forkop's autostart"
     fi
-    # A removal's stops go through: nothing is left to own the runtime.
-    grep -q '^initd stop-service' "$EVENTS" || fail "$manager remove: the default prerm's stop must reach Forkop"
+    # package_prerm stops Forkop for the removal, as build.sh's prerm does,
+    # and takes down what that stop left with an explicit stop of its own
+    # (FORKOP_STOP_SOURCE=user). The default prerm's plain stop, after it on
+    # opkg and before it on apk, would stop Forkop once more, as the user:
+    # after the new install Forkop would show as stopped by the user where
+    # build.sh's shows it not started.
+    if grep -q '^initd stop-service' "$EVENTS"; then
+      fail "$manager remove: OpenWrt's default prerm stopped Forkop, as the user"
+    fi
   done
 done
 # An opkg removal whose prerm comes without an action (PKG_UPGRADE=0) is a
@@ -487,7 +497,9 @@ grep -Fxq "forkop package_prerm remove" "$EVENTS" ||
   fail "ipk remove without an action: the package's own prerm must remove the package, as default_prerm does"
 grep -q '^forkop-killswitch disable' "$EVENTS" ||
   fail "ipk remove without an action: the default prerm did not reach the other init scripts"
-grep -q '^initd stop-service' "$EVENTS" || fail "ipk remove without an action: the default prerm's stop must reach Forkop"
+if grep -q '^initd stop-service' "$EVENTS"; then
+  fail "ipk remove without an action: OpenWrt's default prerm stopped Forkop, as the user"
+fi
 autostart_enabled || fail "ipk remove without an action: OpenWrt's default package script disabled Forkop's autostart"
 
 # An opkg upgrade stops Forkop once, as build.sh's packages do: package_prerm
@@ -521,10 +533,21 @@ initd_stopped env PKG_ROOT=/ PKG_UPGRADE=1 FORKOP_STOP_SOURCE=package "$INSTALLE
   fail "package_prerm's stop for an opkg upgrade must stop Forkop"
 initd_stopped env APK_SCRIPT=pre-upgrade PKG_UPGRADE=1 FORKOP_STOP_SOURCE=package "$INSTALLED/etc/init.d/forkop" stop ||
   fail "package_prerm's stop for an apk upgrade must stop Forkop"
-initd_stopped env PKG_ROOT=/ PKG_UPGRADE=0 "$INSTALLED/etc/init.d/forkop" stop ||
+initd_stopped env PKG_ROOT=/ PKG_UPGRADE=0 FORKOP_STOP_SOURCE=package "$INSTALLED/etc/init.d/forkop" stop ||
+  fail "package_prerm's stop for an opkg removal must stop Forkop"
+initd_stopped env APK_SCRIPT=pre-deinstall FORKOP_STOP_SOURCE=package "$INSTALLED/etc/init.d/forkop" stop ||
+  fail "package_prerm's stop for an apk removal must stop Forkop"
+initd_stopped env PKG_ROOT=/ PKG_UPGRADE=0 FORKOP_STOP_SOURCE=user "$INSTALLED/etc/init.d/forkop" stop ||
   fail "package_prerm's explicit stop for an opkg removal must stop Forkop"
-initd_stopped env APK_SCRIPT=pre-deinstall "$INSTALLED/etc/init.d/forkop" stop ||
+initd_stopped env APK_SCRIPT=pre-deinstall FORKOP_STOP_SOURCE=user "$INSTALLED/etc/init.d/forkop" stop ||
   fail "package_prerm's explicit stop for an apk removal must stop Forkop"
+# The plain stop of the default prerm of a removal stops nothing (above).
+for env_run in "PKG_ROOT=/ PKG_UPGRADE=0" "PKG_ROOT=/" "APK_SCRIPT=pre-deinstall"; do
+  # shellcheck disable=SC2086 # the environment of the case
+  if initd_stopped env $env_run "$INSTALLED/etc/init.d/forkop" stop; then
+    fail "the plain stop of OpenWrt's default prerm ($env_run) stopped Forkop"
+  fi
+done
 initd_stopped env PKG_ROOT=/ PKG_UPGRADE=1 FORKOP_STOP_SOURCE=component "$INSTALLED/etc/init.d/forkop" stop ||
   fail "a component change's stop must stop Forkop"
 initd_stopped "$INSTALLED/etc/init.d/forkop" stop ||

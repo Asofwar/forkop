@@ -82,11 +82,9 @@ service_started() {
 # "start" is that default script. Forkop's own start passes
 # FORKOP_START_REQUEST (service/initd.uc start-and-wait), a deferred or
 # triggered start its reason, and an image build (IPKG_INSTROOT) enables and
-# disables Forkop as every other init script. The default prerm's stop of
-# a removal goes through: there a plain stop is also package_prerm's own,
-# which takes down what a failed or refused stop for the removal left
-# (UC-028). Its stop of an upgrade (PKG_UPGRADE=1) follows package_prerm's
-# own stop for the upgrade and stops nothing (stop_service).
+# disables Forkop as every other init script. The default prerm's plain
+# stop stops nothing: package_prerm's own stops name their source
+# (stop_service).
 package_default_action() {
     [ -z "${IPKG_INSTROOT:-}" ] &&
         [ -n "${PKG_ROOT:-}${APK_SCRIPT:-}" ] &&
@@ -124,14 +122,17 @@ disable() {
 }
 
 stop_service() {
-    # The plain stop of OpenWrt's default prerm for an upgrade
-    # (PKG_UPGRADE=1) stops nothing: package_prerm stopped Forkop for the
-    # upgrade just before it (FORKOP_STOP_SOURCE=package) and reported a
-    # stop that failed or was refused. A second, plain stop would be the
-    # user's (service/initd.uc stop_request_source); build.sh's packages
-    # stop Forkop once. The exit leaves procd as package_prerm's stop left it.
-    if [ "${action:-}" = stop ] && [ "${PKG_UPGRADE:-}" = 1 ] && [ -z "${FORKOP_STOP_SOURCE:-}" ] &&
-        package_default_action "$1"; then
+    # The plain stop of OpenWrt's default prerm stops nothing:
+    # package_prerm stops Forkop for the upgrade or the removal
+    # (FORKOP_STOP_SOURCE=package) and reports a stop that failed or was
+    # refused; for a removal it takes down what that stop left with an
+    # explicit stop of its own (FORKOP_STOP_SOURCE=user). The default
+    # prerm's stop runs after it (opkg) or before it (apk's pre-deinstall),
+    # and a second, plain stop would be the user's (service/initd.uc
+    # stop_request_source): a new install would show Forkop stopped by the
+    # user, not as not started. build.sh's packages run no default script.
+    # The exit leaves procd as package_prerm's stop left it.
+    if [ "${action:-}" = stop ] && [ -z "${FORKOP_STOP_SOURCE:-}" ] && package_default_action "$1"; then
         exit 0
     fi
 

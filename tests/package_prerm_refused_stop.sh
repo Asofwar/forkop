@@ -64,6 +64,10 @@ export FORKOP_SING_BOX_BIN="$WORK_DIR/sing-box"
 export FORKOP_SING_BOX_CRONET="$WORK_DIR/libcronet.so"
 export FORKOP_RT_TABLES="$WORK_DIR/rt_tables"
 export FORKOP_PACKAGE_UPGRADE_STATE="$WORK_DIR/package-was-running"
+# A removal checks what is left of Forkop: never the host's crontab or
+# kill-switch policy.
+export FORKOP_CRONTAB_FILE="$WORK_DIR/crontab"
+export KILLSWITCH_NFT_POLICY="$WORK_DIR/killswitch-policy.nft"
 printf 'forkop.settings=settings\nforkop.settings.dont_touch_dhcp=0\n' >"$FORKOP_UCI_STATE_FILE"
 
 # /etc/init.d/forkop: "status" reports a running Forkop. Forkop's own stop

@@ -59,6 +59,7 @@ export FORKOP_LEGACY_GUARD_ROOT="$WORK_DIR/legacy-guard"
 export FORKOP_COMPONENT_UPDATE_CHECK_CACHE_DIR="$WORK_DIR/component-update-checks"
 export FORKOP_COMPONENT_UPDATE_CHECK_STATE_FILE="$WORK_DIR/component-update-check.timestamp"
 export FORKOP_CRONTAB_FILE="$WORK_DIR/crontab"
+export KILLSWITCH_NFT_POLICY="$WORK_DIR/killswitch-policy.nft"
 printf "config settings 'settings'\n" >"$FORKOP_CONFIG_PATH"
 cp "$FORKOP_CONFIG_PATH" "$FORKOP_DEFAULT_CONFIG_PATH"
 

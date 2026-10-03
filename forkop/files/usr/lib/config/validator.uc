@@ -1632,7 +1632,20 @@ function validate_subscription_download_sections(sections, context) {
     }
 }
 
+// D-18 (a), UC-091: an automatic update runs at most once an hour. A shorter
+// interval that a configuration already holds stays valid (the migration
+// and the settings page raise it to 1h); the scheduler runs it hourly.
+function warn_short_update_interval(value, label) {
+    let seconds = duration_to_seconds_value(value);
+    if (seconds != null && seconds < 3600)
+        log_message("Interval " + label + " '" + value + "' is shorter than 1h, the minimum for automatic updates; they run every hour. Updates started by hand always run", "warn");
+}
+
 function validate_list_update_settings(settings) {
+    if (bool_option(settings, "component_update_check_enabled", false))
+        warn_short_update_interval(option(settings, "component_update_check_interval", "1d"),
+            "settings.component_update_check_interval");
+
     if (!bool_option(settings, "list_update_enabled", true))
         return;
 
@@ -1640,6 +1653,7 @@ function validate_list_update_settings(settings) {
     if (update_interval == "")
         update_interval = "1d";
     validate_required_duration_option(update_interval, "settings.update_interval");
+    warn_short_update_interval(update_interval, "settings.update_interval");
 }
 
 // D-1 (b), UC-038: the Clash API controller always listens (on the LAN, or

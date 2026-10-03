@@ -6,6 +6,7 @@ let connections = require("config.connections");
 let core_ip = require("core.ip");
 let core_url = require("core.url");
 let process_identity = require("core.process_identity");
+let common = require("core.common");
 const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || "forkop";
 const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
 const STATE_UC = getenv("FORKOP_STATE_UC") || LIB_DIR + "/service/state.uc";
@@ -1382,7 +1383,7 @@ function due_check_cron_schedule(value) {
 }
 
 function update_cron_job(interval, command, bin, marker) {
-    let seconds = duration_to_seconds_value(interval);
+    let seconds = common.automatic_update_seconds(duration_to_seconds_value(interval));
     if (seconds == null)
         exit(1);
 
@@ -1552,7 +1553,7 @@ function cron_refresh_plan_rows(settings, sections, bin, list_marker, subscripti
             push(rows, "list-disabled");
         }
         else {
-            let seconds = duration_to_seconds_value(interval);
+            let seconds = common.automatic_update_seconds(duration_to_seconds_value(interval));
             if (seconds == null) {
                 push(rows, "list-error\t" + as_string(interval));
                 status = 1;
@@ -1594,7 +1595,7 @@ function cron_refresh_plan_rows(settings, sections, bin, list_marker, subscripti
 
     let component_interval = settings_component_update_check_interval(settings);
     if (component_interval != "") {
-        let component_seconds = duration_to_seconds_value(component_interval);
+        let component_seconds = common.automatic_update_seconds(duration_to_seconds_value(component_interval));
         if (component_seconds == null) {
             push(rows, "component-error\t" + as_string(component_interval));
             status = 1;
@@ -1794,7 +1795,7 @@ function list_update_due_status(settings, timestamp_path, now) {
     if (interval == "")
         exit(1);
 
-    let seconds = duration_to_seconds_value(interval);
+    let seconds = common.automatic_update_seconds(duration_to_seconds_value(interval));
     if (seconds == null) {
         print("error\t", interval, "\n");
         exit(2);
@@ -2808,7 +2809,7 @@ function component_updates_if_due() {
     if (interval == "")
         exit(0);
 
-    let seconds = duration_to_seconds_value(interval);
+    let seconds = common.automatic_update_seconds(duration_to_seconds_value(interval));
     if (seconds == null) {
         log_message("Invalid component_update_check_interval value: " + interval, "error");
         exit(1);
@@ -4233,7 +4234,7 @@ function list_update_after_start() {
         run_deferred_ruleset_refresh();
         exit(0);
     }
-    let seconds = duration_to_seconds_value(interval);
+    let seconds = common.automatic_update_seconds(duration_to_seconds_value(interval));
     if (seconds == null)
         exit(1);
     let status = update_due_status(now_seconds(), list_update_last_success(), seconds);
@@ -4248,7 +4249,7 @@ function list_update_if_due() {
     if (interval == "")
         exit(1);
 
-    let seconds = duration_to_seconds_value(interval);
+    let seconds = common.automatic_update_seconds(duration_to_seconds_value(interval));
     if (seconds == null) {
         log_message("Invalid update_interval value: " + interval, "error");
         exit(1);

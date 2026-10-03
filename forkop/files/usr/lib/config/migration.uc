@@ -1569,6 +1569,26 @@ function migrate_output_network_interface_switch(ctx) {
         set_option(ctx, settings, "enable_output_network_interface", "1");
 }
 
+// D-18 (a), UC-091: automatic list updates and component update checks run
+// at most once an hour (the runtime runs a shorter interval hourly). A
+// configuration that holds a shorter one gets 1h, which is what it does
+// now, and a notice says so. What is not a duration is left for the
+// validator.
+const AUTOMATIC_UPDATE_INTERVAL_OPTIONS = [ "update_interval", "component_update_check_interval" ];
+
+function migrate_update_interval_minimum(ctx) {
+    let settings = ctx.model.settings;
+    for (let key in AUTOMATIC_UPDATE_INTERVAL_OPTIONS) {
+        let value = trim(option(settings, key, ""));
+        let seconds = duration_to_seconds_value(value);
+        if (seconds == null || seconds >= 3600)
+            continue;
+        set_option(ctx, settings, key, "1h");
+        push(ctx.notices, { code: "update_interval_raised", section: section_name(settings),
+            values: [ key ], from: value, to: "1h" });
+    }
+}
+
 const MIGRATIONS = [
     { id: "interface_sections", run: migrate_interface_sections },
     { id: "enable_component_checks", run: migrate_enable_component_checks },
@@ -1581,7 +1601,8 @@ const MIGRATIONS = [
     { id: "clash_api_secret_v1", run: migrate_clash_api_secret },
     { id: "urltest_section_names_v1", run: migrate_urltest_section_names },
     { id: "vpn_guard_kill_switch_v1", run: migrate_vpn_guard_to_kill_switch },
-    { id: "output_network_interface_switch_v1", run: migrate_output_network_interface_switch }
+    { id: "output_network_interface_switch_v1", run: migrate_output_network_interface_switch },
+    { id: "update_interval_minimum_v1", run: migrate_update_interval_minimum }
 ];
 
 // Whether the migrations raise a config_version: they write 1.0.5 over an
@@ -1898,6 +1919,8 @@ function notice_text(notice) {
             " (no longer published); " + (length(notice.replacements) > 0
                 ? "the built-in rule sets " + join(", ", notice.replacements) + " cover the same services and can be added in the rule editor"
                 : "no built-in rule set replaces them");
+    if (notice.code == "update_interval_raised")
+        return "settings." + notice.values[0] + " was " + notice.from + ", shorter than the 1h minimum of automatic updates: set to " + notice.to;
     return notice.code;
 }
 

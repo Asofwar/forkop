@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-03 14:31+0000\n"
-"PO-Revision-Date: 2026-10-03 14:31+0000\n"
+"POT-Creation-Date: 2026-10-03 14:37+0000\n"
+"PO-Revision-Date: 2026-10-03 14:37+0000\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -865,6 +865,9 @@ msgstr "Доступно обновление компонента"
 
 msgid "Component update check interval"
 msgstr "Период проверки обновлений"
+
+msgid "Component update check interval was %s, shorter than the 1 h minimum of automatic updates: set to %s."
+msgstr "Период проверки обновлений был %s — меньше минимума автоматических обновлений в 1 ч: установлен %s."
 
 msgid "Components"
 msgstr "Компоненты"
@@ -2290,6 +2293,9 @@ msgstr "Список из правила"
 
 msgid "List Update Frequency"
 msgstr "Частота обновления списков"
+
+msgid "List update frequency was %s, shorter than the 1 h minimum of automatic updates: set to %s."
+msgstr "Частота обновления списков была %s — меньше минимума автоматических обновлений в 1 ч: установлена %s."
 
 msgid "Lists and updates"
 msgstr "Списки и обновления"
@@ -3848,6 +3854,9 @@ msgstr "Не удалось надёжно определить DPI-правил
 msgid "The editor has no field for downloaded lists: they cannot be converted and stay as they are."
 msgstr "Для загружаемых списков в редакторе нет поля: их нельзя конвертировать, они остаются как есть."
 
+msgid "The interval must be at least 1h: automatic updates run at most once an hour. An update started by hand always runs."
+msgstr "Интервал должен быть не меньше 1h: автоматические обновления выполняются не чаще раза в час. Обновление, запущенное вручную, выполняется всегда."
+
 msgid "the kill-switch loader in /usr/share/nftables.d/ruleset-post"
 msgstr "загрузчик kill-switch в /usr/share/nftables.d/ruleset-post"
 
@@ -4048,6 +4057,9 @@ msgstr "правила подключаются друг через друга �
 
 msgid "The same result this many checks in a row (2–10)."
 msgstr "Столько проверок подряд с одинаковым результатом (2–10)."
+
+msgid "The saved interval %s is shorter than 1h: it runs every hour, and saving the settings sets it to 1h."
+msgstr "Сохранённый интервал %s меньше 1h: обновление выполняется раз в час, а при сохранении настроек интервал станет 1h."
 
 msgid "The selected section cannot be used here. Choose another section."
 msgstr "Выбранную секцию нельзя использовать здесь. Выберите другую секцию."
@@ -4444,6 +4456,12 @@ msgstr "Использовать другую секцию как промежу
 
 msgid "Use sing-box duration format like 10s, 1m or 2m30s"
 msgstr "Используйте формат длительности sing-box, например 10s, 1m или 2m30s"
+
+msgid "Use sing-box duration format like 1d or 12h"
+msgstr "Используйте формат длительности sing-box, например 1d или 12h"
+
+msgid "Use sing-box duration format like 1d or 12h. Automatic updates run at most once an hour; an update started by hand always runs."
+msgstr "Используйте формат длительности sing-box, например 1d или 12h. Автоматические обновления выполняются не чаще раза в час; обновление, запущенное вручную, выполняется всегда."
 
 msgid "Use sing-box duration format like 1d, 12h or 30m"
 msgstr "Используйте формат длительности sing-box, например 1d, 12h или 30m"

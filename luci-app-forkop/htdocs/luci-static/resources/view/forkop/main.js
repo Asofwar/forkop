@@ -17947,6 +17947,12 @@ function migrationNoticeText(notice) {
         "Built-in rule sets of the same services: %s. They were not added; the rule editor offers them."
       ).replace("%s", notice.replacements.join(", "))}` : `${removed} ${_("No built-in rule set replaces them.")}`;
     }
+    case "update_interval_raised":
+      return (notice.values[0] === "component_update_check_interval" ? _(
+        "Component update check interval was %s, shorter than the 1 h minimum of automatic updates: set to %s."
+      ) : _(
+        "List update frequency was %s, shorter than the 1 h minimum of automatic updates: set to %s."
+      )).replace("%s", notice.from ?? "").replace("%s", notice.to ?? "");
     default:
       return _("Rule \u201C%s\u201D: changed by the update.").replace(
         "%s",

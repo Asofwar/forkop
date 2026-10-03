@@ -12,6 +12,89 @@ function isSingBoxDuration(value) {
   return /^(?=.*[1-9])([0-9]+(?:\.[0-9]+)?(?:ns|us|ms|s|m|h|d))+$/.test(value);
 }
 
+// D-18 (a), UC-091: automatic list updates and component update checks run
+// at most once an hour; the backend runs a shorter stored interval hourly.
+// A new shorter value is refused. One the configuration already holds is
+// shown as it is, with a warning, and saved as 1h; an update started by
+// hand always runs.
+const MIN_AUTOMATIC_UPDATE_SECONDS = 3600;
+const DURATION_UNIT_SECONDS = {
+  ns: 1e-9,
+  us: 1e-6,
+  ms: 1e-3,
+  s: 1,
+  m: 60,
+  h: 3600,
+  d: 86400,
+};
+
+function isShortUpdateInterval(value) {
+  const text = `${value || ""}`.trim();
+  if (!isSingBoxDuration(text)) {
+    return false;
+  }
+  let seconds = 0;
+  for (const [, amount, unit] of text.matchAll(
+    /([0-9]+(?:\.[0-9]+)?)(ns|us|ms|s|m|h|d)/g,
+  )) {
+    seconds += Number(amount) * DURATION_UNIT_SECONDS[unit];
+  }
+  return seconds < MIN_AUTOMATIC_UPDATE_SECONDS;
+}
+
+function setupAutomaticUpdateInterval(option, key) {
+  const description = _(
+    "Use sing-box duration format like 1d or 12h. Automatic updates run at most once an hour; an update started by hand always runs.",
+  );
+  const stored = (section_id) =>
+    `${uci.get(UCI_PACKAGE, section_id, key) || ""}`.trim();
+
+  option.placeholder = "1d";
+  option.default = "1d";
+  option.rmempty = false;
+  // A stored interval shorter than 1h is raised even when the field is left
+  // as it is.
+  option.forcewrite = true;
+  option.cfgvalue = function (section_id) {
+    const value = stored(section_id) || "1d";
+    this.description = isShortUpdateInterval(value)
+      ? `${description} ${_(
+          "The saved interval %s is shorter than 1h: it runs every hour, and saving the settings sets it to 1h.",
+        ).format(value)}`
+      : description;
+    return value;
+  };
+  option.write = function (section_id, value) {
+    const normalized = value ? `${value}`.trim() : "";
+    const next = !normalized.length
+      ? "1d"
+      : isShortUpdateInterval(normalized)
+        ? "1h"
+        : normalized;
+
+    if (next !== stored(section_id)) {
+      uci.set(UCI_PACKAGE, section_id, key, next);
+    }
+  };
+  option.validate = function (section_id, value) {
+    const normalized = value ? `${value}`.trim() : "";
+
+    if (!normalized.length || !isSingBoxDuration(normalized)) {
+      return _("Use sing-box duration format like 1d or 12h");
+    }
+    if (
+      isShortUpdateInterval(normalized) &&
+      normalized !== stored(section_id)
+    ) {
+      return _(
+        "The interval must be at least 1h: automatic updates run at most once an hour. An update started by hand always runs.",
+      );
+    }
+
+    return true;
+  };
+}
+
 function latencyTestUrlChoices() {
   return Array.isArray(main.LATENCY_TEST_URL_OPTIONS)
     ? main.LATENCY_TEST_URL_OPTIONS
@@ -636,37 +719,9 @@ function createSettingsContent(sections, capabilities) {
     form.Value,
     "update_interval",
     _("List Update Frequency"),
-    _("Use sing-box duration format like 1d, 12h or 30m"),
   );
   o.depends("list_update_enabled", "1");
-  o.placeholder = "1d";
-  o.default = "1d";
-  o.rmempty = false;
-  o.cfgvalue = function (section_id) {
-    return uci.get(UCI_PACKAGE, section_id, "update_interval") || "1d";
-  };
-  o.write = function (section_id, value) {
-    const normalized = value ? `${value}`.trim() : "";
-
-    if (normalized.length) {
-      uci.set(UCI_PACKAGE, section_id, "update_interval", normalized);
-    } else {
-      uci.set(UCI_PACKAGE, section_id, "update_interval", "1d");
-    }
-  };
-  o.validate = function (_section_id, value) {
-    const normalized = value ? `${value}`.trim() : "";
-
-    if (!normalized.length) {
-      return _("Use sing-box duration format like 1d, 12h or 30m");
-    }
-
-    if (isSingBoxDuration(normalized)) {
-      return true;
-    }
-
-    return _("Use sing-box duration format like 1d, 12h or 30m");
-  };
+  setupAutomaticUpdateInterval(o, "update_interval");
 
   o = sections.lists.option(
     form.Flag,
@@ -681,36 +736,9 @@ function createSettingsContent(sections, capabilities) {
     form.Value,
     "component_update_check_interval",
     _("Component update check interval"),
-    _("Use sing-box duration format like 1d, 12h or 30m"),
   );
   o.depends("component_update_check_enabled", "1");
-  o.placeholder = "1d";
-  o.default = "1d";
-  o.rmempty = false;
-  o.cfgvalue = function (section_id) {
-    return (
-      uci.get(UCI_PACKAGE, section_id, "component_update_check_interval") ||
-      "1d"
-    );
-  };
-  o.write = function (section_id, value) {
-    const normalized = value ? `${value}`.trim() : "";
-    uci.set(
-      UCI_PACKAGE,
-      section_id,
-      "component_update_check_interval",
-      normalized.length ? normalized : "1d",
-    );
-  };
-  o.validate = function (_section_id, value) {
-    const normalized = value ? `${value}`.trim() : "";
-
-    if (normalized.length && isSingBoxDuration(normalized)) {
-      return true;
-    }
-
-    return _("Use sing-box duration format like 1d, 12h or 30m");
-  };
+  setupAutomaticUpdateInterval(o, "component_update_check_interval");
 
   o = sections.lists.option(
     form.Value,

@@ -167,6 +167,45 @@ function output_network_interface(settings) {
         : "";
 }
 
+// D-18 (a), UC-091: automatic list updates and component update checks run
+// at most once an hour, whatever interval the configuration holds; an
+// update started by hand always runs. A shorter interval stays valid where
+// it is stored (the migration and the settings page raise it to 1h).
+const AUTOMATIC_UPDATE_MIN_SECONDS = 3600;
+
+// The seconds of a sing-box duration (1d, 12h, 1h30m, 100ms), not rounded;
+// null when the value is none.
+function duration_seconds(value) {
+    let rest = trim(as_string(value));
+    if (rest == "")
+        return null;
+    let units = { ns: 0.000000001, us: 0.000001, ms: 0.001, s: 1, m: 60, h: 3600, d: 86400 };
+    let total = 0.0;
+    while (rest != "") {
+        let matched = match(rest, /^([0-9]+(\.[0-9]+)?)(ns|us|ms|s|m|h|d)/);
+        if (!matched)
+            return null;
+        total += matched[1] * units[matched[3]];
+        rest = substr(rest, length(matched[0]));
+    }
+    return total > 0 ? total : null;
+}
+
+// The period, in seconds, of an automatic update configured with an interval
+// of `seconds` (null stays null: no valid interval).
+function automatic_update_seconds(seconds) {
+    if (seconds == null)
+        return null;
+    return seconds < AUTOMATIC_UPDATE_MIN_SECONDS ? AUTOMATIC_UPDATE_MIN_SECONDS : seconds;
+}
+
+// The interval an automatic update runs at, as a duration: `value`, or 1h
+// in place of a shorter one. What is not a duration is returned as it is.
+function automatic_update_interval(value) {
+    let seconds = duration_seconds(value);
+    return seconds != null && seconds < AUTOMATIC_UPDATE_MIN_SECONDS ? "1h" : value;
+}
+
 function int_option(section, key, fallback) {
     let value = option(section, key, fallback);
     if (match(value, /[^0-9]/))
@@ -204,6 +243,9 @@ return {
     list_option,
     bool_option,
     int_option,
+    duration_seconds,
+    automatic_update_seconds,
+    automatic_update_interval,
     output_network_interface,
     clash_api_secret,
     random_hex_secret,

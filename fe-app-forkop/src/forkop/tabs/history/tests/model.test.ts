@@ -254,6 +254,41 @@ describe('history list', () => {
     );
   });
 
+  it('names a raised update interval (D-18)', () => {
+    const [item] = historyItems(
+      [
+        {
+          kind: 'config_migration',
+          status: 'success',
+          timestamp: 6,
+          notices: [
+            {
+              code: 'update_interval_raised',
+              section: 'settings',
+              values: ['update_interval'],
+              replacements: [],
+              from: '5m',
+              to: '1h',
+            },
+            {
+              code: 'update_interval_raised',
+              section: 'settings',
+              values: ['component_update_check_interval'],
+              replacements: [],
+              from: '30m',
+              to: '1h',
+            },
+          ],
+        },
+      ],
+      'all',
+    );
+    expect(item.details).toEqual([
+      'List update frequency was 5m, shorter than the 1 h minimum of automatic updates: set to 1h.',
+      'Component update check interval was 30m, shorter than the 1 h minimum of automatic updates: set to 1h.',
+    ]);
+  });
+
   it('names manual and automatic autotune applies', () => {
     const titles = historyItems(
       [

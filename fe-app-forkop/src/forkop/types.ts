@@ -109,11 +109,16 @@ export namespace Forkop {
   // retired_rule_sets: the rule `section` lost the retired b4geoip rule sets
   // `values`; `replacements` have a built-in rule set of the same service
   // that the rule does not use yet (D-13 (b), never added automatically).
+  // update_interval_raised: the settings option `values[0]` held `from`,
+  // shorter than the hour automatic updates wait at least, and is now `to`
+  // (D-18 (a)).
   export interface MigrationNotice {
     code: string;
     section: string;
     values: string[];
     replacements: string[];
+    from?: string;
+    to?: string;
   }
 
   export interface HistoryEvent {

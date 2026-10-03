@@ -39,7 +39,9 @@ const EVENT_KINDS = [ "start", "reload", "restore", "recovery", "autotune_apply"
 // reads: a known code, a UCI section name, ids of rule sets or options.
 // Anything else is dropped; an event keeps at most MIGRATION_NOTICES_MAX of
 // them (the journal and the runtime file stay small).
-const MIGRATION_NOTICE_CODES = [ "retired_rule_sets" ];
+// update_interval_raised also keeps the interval it replaced and the new
+// one (`from`, `to`).
+const MIGRATION_NOTICE_CODES = [ "retired_rule_sets", "update_interval_raised" ];
 const MIGRATION_NOTICES_MAX = 16;
 const MIGRATION_NOTICE_IDS_MAX = 32;
 // "not_started": a snapshot restore replaced the configuration while an
@@ -105,7 +107,15 @@ function notice_view(notice) {
     let values = notice_ids(notice.values);
     if (length(values) == 0)
         return null;
-    return { code: notice.code, section: notice.section, values, replacements: notice_ids(notice.replacements) };
+    let view = { code: notice.code, section: notice.section, values, replacements: notice_ids(notice.replacements) };
+    if (notice.code == "update_interval_raised") {
+        for (let key in [ "from", "to" ]) {
+            if (type(notice[key]) != "string" || match(notice[key], /^[0-9][0-9.a-z]{0,15}$/) == null)
+                return null;
+            view[key] = notice[key];
+        }
+    }
+    return view;
 }
 
 // The event as stored and shown: only known fields, extras only when valid.

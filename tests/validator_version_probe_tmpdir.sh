@@ -59,4 +59,17 @@ grep -Fq "Package 'sing-box' version (1.0.0) is lower than the required minimum"
   fail "the probed version was not read back: $(cat "$WORK/logger.log" 2>/dev/null)"
 ok "the sing-box version is read through a file that mktemp makes in TMPDIR and is removed"
 
+# When mktemp cannot make the file (TMPDIR names a missing directory), the
+# probe gives nothing and the check goes on quietly: mktemp's own complaint
+# must not reach the output of check-requirements.
+rm -f "$WORK/probe-target" "$WORK/logger.log"
+PATH="$WORK/bin:$PATH" PROBE_TARGET="$WORK/probe-target" LOGGER_LOG="$WORK/logger.log" \
+  FORKOP_UCI_STATE_FILE="$WORK/uci.state" FORKOP_UCI_LOG_FILE="$WORK/uci.log" \
+  FORKOP_RUNTIME_STATE_DIR="$WORK/run" TMPDIR="$WORK/missing" \
+  ucode -L "$LIB" "$LIB/config/validator.uc" check-requirements > "$WORK/missing.out" 2> "$WORK/missing.err" || true
+[ ! -e "$WORK/probe-target" ] || fail "sing-box was probed although mktemp could not make the file"
+! grep -q mktemp "$WORK/missing.out" "$WORK/missing.err" ||
+  fail "mktemp's error leaked into check-requirements output: $(cat "$WORK/missing.out" "$WORK/missing.err")"
+ok "a failed mktemp leaves the probe empty without noise"
+
 printf 'validator_version_probe_tmpdir: PASS\n'

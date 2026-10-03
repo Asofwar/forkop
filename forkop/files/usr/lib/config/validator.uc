@@ -197,7 +197,7 @@ function bounded_command_output_from_args(args, timeout_seconds) {
         timeout_seconds = 5;
     // The output goes to a file of mktemp's own name in TMPDIR (/tmp when
     // it is unset): not a fixed name in /tmp that others can guess.
-    let script = "tmp=$(mktemp \"${TMPDIR:-/tmp}/forkop-validator-version.XXXXXX\") || exit 1; " + command_from_args(args) +
+    let script = "tmp=$(mktemp \"${TMPDIR:-/tmp}/forkop-validator-version.XXXXXX\" 2>/dev/null) || exit 1; " + command_from_args(args) +
         " >\"$tmp\" 2>/dev/null & child=$!; " +
         "elapsed=0; while kill -0 \"$child\" 2>/dev/null && [ \"$elapsed\" -lt " + as_string(timeout_seconds) + " ]; do sleep 1; elapsed=$((elapsed + 1)); done; " +
         "if kill -0 \"$child\" 2>/dev/null; then kill -KILL \"$child\" 2>/dev/null; fi; " +

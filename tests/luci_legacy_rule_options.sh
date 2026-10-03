@@ -211,9 +211,13 @@ async function check(label, fn) {
     });
 
     // Removing the rule's interfaces does not bring back a legacy list they
-    // shadowed.
+    // shadowed. The rule keeps a connection URL: left without any
+    // connection, the modal refuses the save (UC-092,
+    // tests/luci_connection_rule_sources.sh).
     await check(`${version} legacy_interfaces_shadowed: remove interfaces`, async () => {
-      const env = createEnvironment({ version, config: fixtures.legacy_interfaces_shadowed });
+      const config = JSON.parse(JSON.stringify(fixtures.legacy_interfaces_shadowed));
+      config.rule.selector_proxy_links = ['socks5://10.0.0.1:1080'];
+      const env = createEnvironment({ version, config });
       const modal = await env.openRule('rule');
       modal.option('interfaces').getUIElement('rule').setValue([]);
       await modal.save();

@@ -6,8 +6,12 @@ set -euo pipefail
 # JSON outbound), before anything is written: the sing-box generator refuses
 # such a rule, and config/validator.uc refuses it before the reload
 # (UC-092). It counts the sources the backend counts
-# (config/connections.uc has_connection_sources), legacy options included.
-# A disabled rule may keep none, and another action needs none.
+# (config/connections.uc has_connection_sources), legacy options included,
+# as the save leaves them: removing the last interface item also removes the
+# legacy `list interfaces` those items shadowed. A disabled rule may keep
+# none, and another action needs none. The Enable checkbox of the rules grid
+# refuses to enable such a rule as well; a rule left as it is does not hold
+# up the save of the other rows.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 node - "$ROOT_DIR/tests/helpers/luci_form_harness.js" <<'NODE'
@@ -85,6 +89,68 @@ async function check(label, fn) {
       const modal = await env.openRule('vpn');
       await modal.save();
       assert.equal(env.uci.data.vpn.enabled, '1');
+    });
+
+    // InterfaceSettingsDynamicList.remove() drops the legacy list the
+    // removed items shadowed; a legacy `option interface` stays.
+    await check(`${version}: removing the last interface item that shadows a legacy list is refused`, async () => {
+      const config = { settings, vpn: section('vpn', { action: 'connection', interfaces: ['wg1'] }),
+        if1: { '.name': 'if1', '.type': 'section_interface', '.anonymous': false, section: 'vpn', name: 'wg0' } };
+      const env = createEnvironment({ version, config });
+      const before = JSON.parse(JSON.stringify(env.uci.data));
+      const modal = await env.openRule('vpn');
+      modal.option('interfaces').getUIElement('vpn').setValue([]);
+      await assert.rejects(modal.save(), NO_SOURCE);
+      assert.deepEqual(env.uci.data, before, 'a refused modal save changed UCI');
+    });
+    await check(`${version}: removing the last interface item next to a legacy interface option saves`, async () => {
+      const config = { settings, vpn: section('vpn', { action: 'connection', interface: 'wg1' }),
+        if1: { '.name': 'if1', '.type': 'section_interface', '.anonymous': false, section: 'vpn', name: 'wg0' } };
+      const env = createEnvironment({ version, config });
+      const modal = await env.openRule('vpn');
+      modal.option('interfaces').getUIElement('vpn').setValue([]);
+      await modal.save();
+      assert.equal(env.uci.data.if1, undefined);
+      assert.equal(env.uci.data.vpn.interface, 'wg1');
+    });
+
+    // The Enable checkbox of the rules grid.
+    const disabled = (values) => section('vpn', Object.assign({ enabled: '0' }, values));
+    await check(`${version}: the grid refuses to enable a Connection rule without a connection`, async () => {
+      const config = { settings, vpn: disabled({ action: 'connection', community_lists: ['youtube'] }) };
+      const env = createEnvironment({ version, config });
+      const before = JSON.parse(JSON.stringify(env.uci.data));
+      const rules = await env.openRules();
+      rules.setEnabled('vpn', '1');
+      await assert.rejects(rules.save(), NO_SOURCE);
+      assert.deepEqual(env.uci.data, before, 'a refused grid save changed UCI');
+    });
+    for (const [label, values, extra] of [
+      ['a connection URL', { action: 'connection', selector_proxy_links: ['socks5://10.0.0.1:1080'] }, {}],
+      ['a network interface', { action: 'connection' },
+        { if1: { '.name': 'if1', '.type': 'section_interface', '.anonymous': false, section: 'vpn', name: 'wg0' } }],
+      ['a subscription', { action: 'connection' },
+        { sub1: { '.name': 'sub1', '.type': 'subscription_url', '.anonymous': false, section: 'vpn',
+          url: 'https://example.com/sub', subscription_update_enabled: '1', subscription_update_interval: '4h' } }],
+      ['a legacy interface option', { action: 'connection', interface: 'wg0' }, {}],
+      ['a legacy JSON outbound', { action: 'proxy', outbound_json: '{"type":"direct"}' }, {}],
+      ['no connection, another action', { action: 'block' }, {}],
+    ]) await check(`${version}: the grid enables a rule with ${label}`, async () => {
+      const config = Object.assign({ settings, vpn: disabled(values) }, extra);
+      const env = createEnvironment({ version, config });
+      const rules = await env.openRules();
+      rules.setEnabled('vpn', '1');
+      await rules.save();
+      assert.equal(env.uci.data.vpn.enabled, '1');
+    });
+    await check(`${version}: an enabled rule without a connection does not hold up the grid`, async () => {
+      const config = { settings, vpn: section('vpn', { action: 'connection' }),
+        off: section('off', { enabled: '0', action: 'block' }) };
+      const env = createEnvironment({ version, config });
+      const rules = await env.openRules();
+      rules.setEnabled('off', '1');
+      await rules.save();
+      assert.equal(env.uci.data.off.enabled, '1');
     });
 
     await check(`${version}: an enabled Connection rule without a connection is refused`, async () => {

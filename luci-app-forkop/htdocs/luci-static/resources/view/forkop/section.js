@@ -1957,7 +1957,8 @@ function currentLiveDynamicListValues(section_id, optionName) {
 
 // The connections of a rule as config/connections.uc
 // has_connection_sources() counts them: the "Where to" lists as the rule
-// modal holds them, and the legacy options they replaced (UC-092).
+// modal holds them, and the legacy options they replaced as the save leaves
+// them (UC-092).
 const CONNECTION_SOURCE_OPTIONS = [
   "selector_proxy_links",
   "subscription_url",
@@ -1972,6 +1973,8 @@ const LEGACY_CONNECTION_SOURCE_OPTIONS = [
 ];
 
 function modalRuleHasConnection(option, section_id) {
+  const dropped = new Set();
+
   for (const sibling of option.section.children) {
     if (
       !CONNECTION_SOURCE_OPTIONS.includes(sibling.option) ||
@@ -1991,10 +1994,49 @@ function modalRuleHasConnection(option, section_id) {
     if (normalizeDynamicListItems(value).length) {
       return true;
     }
+    // An emptied interface list removes the legacy list its items shadowed
+    // (InterfaceSettingsDynamicList.remove()).
+    if (
+      typeof sibling.dropsLegacyList === "function" &&
+      sibling.dropsLegacyList(section_id)
+    ) {
+      dropped.add(sibling.option);
+    }
   }
 
   return LEGACY_CONNECTION_SOURCE_OPTIONS.some(
-    (key) => getConfigListValues(section_id, key).length > 0,
+    (key) =>
+      !dropped.has(key) && getConfigListValues(section_id, key).length > 0,
+  );
+}
+
+// The same over the rule as UCI holds it, for the Enable checkbox of the
+// rules grid, which edits no "Where to" list: child items take the place of
+// the legacy lists they replaced, as in config/connections.uc.
+function configRuleHasConnection(section_id) {
+  const itemValues = (typeName, valueOption) =>
+    getChildItemIds(section_id, typeName)
+      .map((id) =>
+        backendOptionText(uci.get(UCI_PACKAGE, id, valueOption)).trim(),
+      )
+      .filter(Boolean);
+  const subscriptions = getChildItemIds(section_id, "subscription_url").length
+    ? itemValues("subscription_url", "url")
+    : getConfigListValues(section_id, "subscription_urls");
+
+  return (
+    getConfigListValues(section_id, "selector_proxy_links").length > 0 ||
+    subscriptions.length > 0 ||
+    itemValues("section_interface", "name").length > 0 ||
+    ["interfaces", "interface", "outbound_jsons", "outbound_json"].some(
+      (key) => getConfigListValues(section_id, key).length > 0,
+    )
+  );
+}
+
+function connectionRuleSourceRefusal() {
+  return _(
+    "A Connection rule needs a connection: add a connection URL, a subscription, a network interface or a JSON outbound, or disable the rule.",
   );
 }
 
@@ -2285,10 +2327,19 @@ const InterfaceSettingsDynamicList = SettingsDynamicList.extend({
   // no interface items (config/connections.uc interfaces()). The widget
   // shows the items only, so an empty widget keeps a legacy list it never
   // showed; a list the removed items shadowed goes with them.
+  dropsLegacyList(section_id) {
+    return (
+      getChildItemIds(
+        this.childOwner(section_id),
+        this.childType,
+        this.ownerOption,
+      ).length > 0
+    );
+  },
+
   remove(section_id) {
     const ownerId = this.childOwner(section_id);
-    const hadItems =
-      getChildItemIds(ownerId, this.childType, this.ownerOption).length > 0;
+    const hadItems = this.dropsLegacyList(section_id);
 
     cleanupRemovedChildItems(ownerId, this.childType, [], this.ownerOption);
     if (hadItems) {
@@ -8443,9 +8494,29 @@ function createSectionContent(section) {
   // checked, so the state comes from formvalue(). A rule that Settings could
   // not use already (disabled, or an action that carries no DNS or
   // downloads) is fixed in Settings and does not hold up this save.
+  //
+  // Enabling a Connection rule without a connection in the grid is refused
+  // as the rule modal refuses it (UC-092); the modal checks what it holds
+  // (selector_proxy_links), and a rule left enabled does not hold up the
+  // save of the other rows.
   o.validate = function (section_id) {
+    if (this.formvalue(section_id) !== this.disabled) {
+      const enabling =
+        this.section instanceof form.GridSection &&
+        !ruleSectionFlag(
+          { enabled: this.cfgvalue(section_id) },
+          "enabled",
+          true,
+        );
+      const connectionRule = CONNECTION_RULE_ACTIONS.includes(
+        backendOptionText(getRuleConfiguredAction(section_id)),
+      );
+
+      return enabling && connectionRule && !configRuleHasConnection(section_id)
+        ? connectionRuleSourceRefusal()
+        : true;
+    }
     if (
-      this.formvalue(section_id) !== this.disabled ||
       !settingsSectionUsable(
         this.cfgvalue(section_id),
         getRuleConfiguredAction(section_id),
@@ -8805,9 +8876,7 @@ function createSectionContent(section) {
       return true;
     }
 
-    return _(
-      "A Connection rule needs a connection: add a connection URL, a subscription, a network interface or a JSON outbound, or disable the rule.",
-    );
+    return connectionRuleSourceRefusal();
   };
   outboundNameSourceOptions.set("selector_proxy_links", o);
 

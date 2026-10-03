@@ -359,6 +359,9 @@ msgstr "и ещё %d"
 msgid "Anime"
 msgstr "Аниме"
 
+msgid "Another action of this kind is already running. Try again when it finishes."
+msgstr "Уже выполняется другое такое же действие. Повторите, когда оно завершится."
+
 msgid "Another autotune operation is running."
 msgstr "Уже выполняется другая операция автоподбора."
 
@@ -412,6 +415,9 @@ msgstr "Применяются изменения…"
 
 msgid "Applying Forkop configuration…"
 msgstr "Применение конфигурации Forkop…"
+
+msgid "Applying the change was not confirmed in time; check the service status."
+msgstr "Применение изменения не подтвердилось вовремя; проверьте состояние службы."
 
 msgid "Applying the new strategy did not finish: its reload did not succeed, and the configuration was changed meanwhile. Forkop X kept that change instead of rolling back. Check the rule, or restore the snapshot you need in History and recovery."
 msgstr "Применение новой стратегии не завершено: её перезагрузка не удалась, а конфигурацию тем временем изменили. Forkop X сохранил это изменение вместо отката. Проверьте правило или восстановите нужный снимок в разделе «История и восстановление»."
@@ -1682,6 +1688,9 @@ msgstr "В этом режиме Forkop X не применяет рекомен
 msgid "Forkop X is busy with another operation: the change applies when it finishes."
 msgstr "Forkop X занят другой операцией: изменение применится, когда она завершится."
 
+msgid "Forkop X is busy with another service action, so the change is not applied yet; apply it again when that action finishes."
+msgstr "Forkop X занят другим действием со службой, поэтому изменение ещё не применено; примените его снова, когда это действие завершится."
+
 msgid "Forkop X is running"
 msgstr "Forkop X работает"
 
@@ -1690,6 +1699,9 @@ msgstr "Forkop X остался активен после остановки, п
 
 msgid "Forkop X is still changing its configuration (a snapshot restore, an autotune run or another change), so nothing was removed. Try again once it has finished."
 msgstr "Forkop X ещё меняет свою конфигурацию (восстановление снимка, прогон автоподбора или другое изменение), поэтому ничего не удалено. Повторите, когда это закончится."
+
+msgid "Forkop X is still starting. Try again when the start finishes."
+msgstr "Forkop X ещё запускается. Повторите, когда запуск завершится."
 
 msgid "Forkop X is stopped; start it first"
 msgstr "Forkop X остановлен; сначала запустите его"
@@ -2611,6 +2623,9 @@ msgstr "Не подключена: dnsmasq использует другой ser
 
 msgid "Not available for checking"
 msgstr "Недоступно для проверки"
+
+msgid "Not available in read-only mode."
+msgstr "Недоступно в режиме только для чтения."
 
 msgid "Not checked"
 msgstr "Не проверено"
@@ -3764,6 +3779,15 @@ msgstr "Тестировать серверы, имена которых сов�
 msgid "Testing URL"
 msgstr "URL проверки"
 
+msgid "The action stopped unexpectedly and its outcome is unknown; check the status before trying again."
+msgstr "Действие неожиданно прервалось, и его результат неизвестен; проверьте состояние, прежде чем повторять."
+
+msgid "The action was not confirmed in time and may still be running; check the service status."
+msgstr "Действие не подтвердилось вовремя и, возможно, ещё выполняется; проверьте состояние службы."
+
+msgid "The action was not found; it may have finished already."
+msgstr "Действие не найдено; возможно, оно уже завершилось."
+
 msgid "The address is blocked by a rule"
 msgstr "Адрес блокируется правилом"
 
@@ -3814,6 +3838,21 @@ msgstr "Проверка неожиданно остановилась"
 
 msgid "The check was postponed. See the state above."
 msgstr "Проверка отложена. Причина — в состоянии выше."
+
+msgid "The Clash API credentials could not be prepared."
+msgstr "Не удалось подготовить учётные данные Clash API."
+
+msgid "The Clash API of sing-box answered with an error."
+msgstr "Clash API sing-box ответил ошибкой."
+
+msgid "The Clash API of sing-box did not answer in time."
+msgstr "Clash API sing-box не ответил вовремя."
+
+msgid "The Clash API of sing-box did not list its proxies."
+msgstr "Clash API sing-box не вернул список прокси."
+
+msgid "The Clash API of sing-box is not reachable."
+msgstr "Clash API sing-box недоступен."
 
 msgid "The confidence of the recommendation is below the policy minimum."
 msgstr "Уверенность рекомендации ниже минимума политики."
@@ -3911,11 +3950,17 @@ msgstr "Последнее изменение конфигурации не уд
 msgid "The last known good snapshot cannot be deleted"
 msgstr "Последнюю рабочую конфигурацию удалить нельзя"
 
+msgid "The last known good snapshot cannot be deleted: it is the configuration Forkop X returns to after a failed change."
+msgstr "Снимок последней рабочей конфигурации удалить нельзя: к нему Forkop X возвращается после неудачного изменения."
+
 msgid "The last known working configuration is missing; nothing was rolled back. Restore a snapshot in History and recovery first."
 msgstr "Последней рабочей конфигурации нет; ничего не откачено. Сначала восстановите снимок в разделе «История и восстановление»."
 
 msgid "The last known working configuration is restored; the damaged record is set aside."
 msgstr "Последняя рабочая конфигурация восстановлена; повреждённая запись отложена в сторону."
+
+msgid "The latency test measured no delay: no tested proxy answered."
+msgstr "Проверка задержки не получила результата: ни один проверенный прокси не ответил."
 
 msgid "The legacy conditions cannot be converted without changing what the rule matches:"
 msgstr "Устаревшие условия нельзя конвертировать, не изменив того, что сопоставляет правило:"
@@ -3988,6 +4033,9 @@ msgstr "Запись о последнем изменении автоподбо
 
 msgid "The record of the last autotune change is damaged. Checks and changes wait until an administrator rolls it back: Forkop X then makes sure the last known working configuration is active."
 msgstr "Запись о последнем изменении автоподбора повреждена. Проверки и изменения ждут, пока администратор не выполнит откат: Forkop X убедится, что активна последняя рабочая конфигурация."
+
+msgid "The request was refused: invalid input."
+msgstr "Запрос отклонён: неверные входные данные."
 
 msgid "The rollback did not finish: the configuration was changed while the \"Before autotune\" snapshot was being restored, and Forkop X kept that change. It is not known whether Forkop X now runs the snapshot or the change: check the rule, or restore the snapshot you need in History and recovery."
 msgstr "Откат не завершился: конфигурацию изменили, пока восстанавливался снимок «Перед автоподбором», и Forkop X сохранил это изменение. Неизвестно, работает ли Forkop X сейчас со снимком или с изменением: проверьте правило или восстановите нужный снимок в разделе «История и восстановление»."
@@ -4105,6 +4153,9 @@ msgstr "Снимка, к которому нужно вернуться, нет;
 
 msgid "The snapshot to return to is missing: restore a snapshot in History and recovery. Checks and changes wait until then."
 msgstr "Снимка, к которому нужно вернуться, нет: восстановите снимок в разделе «История и восстановление». До этого проверки и изменения ждут."
+
+msgid "The snapshot was not found or cannot be read."
+msgstr "Снимок не найден или не читается."
 
 msgid "The state of the last autotune change could not be read."
 msgstr "Не удалось прочитать состояние последнего изменения автоподбора."

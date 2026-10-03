@@ -91,6 +91,8 @@ describe('ForkopShellMethods.componentAction', () => {
     ).resolves.toEqual({
       success: false,
       error: 'Another component action is already running',
+      // A backend without reason codes: its refusal text stands for busy.
+      reason: 'busy',
     });
   });
 

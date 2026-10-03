@@ -76,6 +76,8 @@ describe('ForkopShellMethods.serviceAction', () => {
     ).resolves.toEqual({
       success: false,
       error: 'Another service action is already running',
+      // A backend without reason codes: its refusal text stands for busy.
+      reason: 'busy',
     });
   });
 });

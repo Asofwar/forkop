@@ -535,6 +535,50 @@ wait_until 30 uninstall_finished || fail "full uninstall did not finish"
 grep -q '"state":"complete"' "$UNINSTALL_ROOT"/www/forkop-uninstall.*.json ||
   fail "full uninstall of a stopped Forkop failed: $(cat "$UNINSTALL_ROOT"/www/forkop-uninstall.*.json)"
 
+# 6b. Full uninstall while a managed upgrade runs next to another program's
+#     sing-box: Forkop's stop keeps the ownership guard and refuses, so its
+#     interception stays. Removing the packages would leave ForkopTable
+#     without the sing-box that serves it: the removal is refused before
+#     anything is disabled, stopped or removed, and its status names what
+#     is left (UC-028).
+reset_case
+runtime_up
+procd_instance
+forkop_pid=$LAST_DOUBLE
+foreign_sing_box
+foreign_pid=$LAST_DOUBLE
+start_ticks="$(ucode -L "$REAL_LIB" -e 'print(require("core.process_identity").start_ticks(ARGV[0]))' "$forkop_pid")"
+printf 'format=1\npid=%s\nstart_ticks=%s\ncreated_at=%s\n' "$forkop_pid" "$start_ticks" "$(date +%s)" >"$MARKER"
+REFUSED_ROOT="$WORK_DIR/uninstall-refused"
+mkdir -p "$REFUSED_ROOT/etc/init.d" "$REFUSED_ROOT/usr/bin" "$REFUSED_ROOT/bin" "$REFUSED_ROOT/packages"
+touch "$REFUSED_ROOT/packages/forkop"
+printf '#!/bin/sh\nexec bash %q "$@"\n' "$WORK_DIR/rc" >"$REFUSED_ROOT/etc/init.d/forkop"
+# shellcheck disable=SC2016 # the stub expands its arguments when it runs
+printf '#!/bin/sh\nprintf "forkop-cli %%s\\n" "$*" >>"$EVENTS"\n' >"$REFUSED_ROOT/usr/bin/forkop"
+cat >"$REFUSED_ROOT/bin/opkg" <<'SH'
+#!/bin/sh
+case "$1" in
+  status) [ -e "$FORKOP_UNINSTALL_ROOT/packages/$2" ] && echo 'Status: install ok installed' ;;
+  remove) shift; for p in "$@"; do rm -f "$FORKOP_UNINSTALL_ROOT/packages/$p"; done ;;
+  *) exit 1 ;;
+esac
+SH
+chmod +x "$REFUSED_ROOT/etc/init.d/forkop" "$REFUSED_ROOT/usr/bin/forkop" "$REFUSED_ROOT/bin/opkg"
+FORKOP_UNINSTALL_ROOT="$REFUSED_ROOT" FORKOP_MIRROR_BASE_URL=https://mirror.invalid PATH="$REFUSED_ROOT/bin:$PATH" \
+  sh "$REAL_LIB/full-uninstall.sh" start >"$WORK_DIR/uninstall-refused.response" ||
+  fail "full uninstall did not start: $(cat "$WORK_DIR/uninstall-refused.response")"
+refused_uninstall_finished() {
+  grep -qE '"state":"(complete|failed)"' "$REFUSED_ROOT"/www/forkop-uninstall.*.json 2>/dev/null
+}
+wait_until 30 refused_uninstall_finished || fail "full uninstall next to a refused stop did not finish"
+grep -Fq '"state":"failed","phase":"stop","left":"table:ForkopTable"' "$REFUSED_ROOT"/www/forkop-uninstall.*.json ||
+  fail "full uninstall went on after a refused stop: $(cat "$REFUSED_ROOT"/www/forkop-uninstall.*.json)"
+[ -e "$REFUSED_ROOT/packages/forkop" ] || fail "full uninstall removed Forkop after a refused stop"
+[ -e "$NFT_TABLE_FILE" ] || fail "fixture: the refused stop tore down ForkopTable"
+alive "$forkop_pid" || fail "full uninstall stopped the sing-box that serves the interception"
+alive "$foreign_pid" || fail "full uninstall signalled another program's sing-box"
+no_event '^forkop-cli' || fail "full uninstall went on to lift the kill-switch or restore DNS after a refused stop"
+
 # 7. Stop stays offered while Forkop owns a sing-box, not for another
 #    program's (service/ui.uc stop_available).
 ui_stop_available() {

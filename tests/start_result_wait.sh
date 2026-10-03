@@ -316,6 +316,8 @@ postinst() {
   FORKOP_DEFAULT_CONFIG_PATH="$WORK_DIR/forkop.conf" \
   FORKOP_PACKAGE_UPGRADE_STATE="$WORK_DIR/was-running" \
   FORKOP_PROC_DIR="$WORK_DIR/proc" \
+  FORKOP_RC_D_DIR="$WORK_DIR/rc.d" \
+  FORKOP_TORRSERVER_DIRECT_INIT="$WORK_DIR/missing-torrserver-direct-init" \
   FORKOP_UPGRADE_SING_BOX_WAIT_SECONDS=1 \
     "$REAL_UCODE" -L "$LIB" "$LIB/service/package.uc" postinst >"$WORK_DIR/postinst.out" 2>&1
 }

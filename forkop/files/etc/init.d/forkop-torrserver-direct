@@ -1,7 +1,11 @@
 #!/bin/sh /etc/rc.common
+# shellcheck disable=SC2034
 
-START=100
-STOP=9
+# rc.d orders its links by name: two digits, so that TorrServer Direct starts
+# after Forkop (START=99, S99forkop sorts first) and stops early at shutdown,
+# and rc.common's disable (S??, K??) removes the links again (UC-161).
+START=99
+STOP=10
 USE_PROCD=1
 
 start_service() {

@@ -27,6 +27,16 @@ const SING_BOX_INIT = env("FORKOP_SING_BOX_INIT", "/etc/init.d/sing-box");
 const SING_BOX_BIN = env("FORKOP_SING_BOX_BIN", "/usr/bin/sing-box");
 const SING_BOX_CRONET = env("FORKOP_SING_BOX_CRONET", "/usr/lib/libcronet.so");
 const SING_BOX_MANAGED_MARKER = env("SB_MANAGED_SERVICE_MARKER", "Forkop managed sing-box service for binary variants");
+const TORRSERVER_DIRECT_INIT = env("FORKOP_TORRSERVER_DIRECT_INIT", "/etc/init.d/forkop-torrserver-direct");
+const RC_D_DIR = env("FORKOP_RC_D_DIR", "/etc/rc.d");
+// The rc.d links of releases whose forkop-torrserver-direct had START=100
+// and STOP=9: rc.common's disable (S??, K??) never removes them, and its
+// enabled looks for the links of the current values (UC-161).
+const TORRSERVER_DIRECT_LEGACY_LINKS = [ "S100forkop-torrserver-direct", "K9forkop-torrserver-direct" ];
+const CRONTAB_FILE = env("FORKOP_CRONTAB_FILE", "/etc/crontabs/root");
+// The markers of Forkop's lines in the crontab (service/lifecycle.uc,
+// autotune/manager.uc).
+const CRON_MARKERS = /# forkop-(list-update|subscription-update|component-update-check|autotune)/;
 const PACKAGE_UPGRADE_STATE = env("FORKOP_PACKAGE_UPGRADE_STATE", "/tmp/forkop-package-was-running");
 const UPGRADE_SING_BOX_WAIT_SECONDS = int(env("FORKOP_UPGRADE_SING_BOX_WAIT_SECONDS", "15"));
 // The start after an upgrade runs while the package manager holds its lock;
@@ -200,6 +210,51 @@ function remove_managed_sing_box(keep_running) {
     unlink_if_exists(SING_BOX_CRONET);
 }
 
+// Removes the rc.d links an older release made for TorrServer Direct;
+// true when there were any.
+function remove_torrserver_direct_legacy_links() {
+    let found = false;
+    for (let name in TORRSERVER_DIRECT_LEGACY_LINKS) {
+        let path = RC_D_DIR + "/" + name;
+        if (fs.lstat(path) != null) {
+            fs.unlink(path);
+            found = true;
+        }
+    }
+    return found;
+}
+
+function torrserver_direct_switched_on() {
+    return trim(as_string(uci_core.get(CONFIG_NAME + ".settings.torrserver_direct_enabled"))) == "1";
+}
+
+// A removal leaves nothing running of the package's second service: its
+// worker would go on from the loaded script and its stop removes its nft
+// table (UC-083). The rc.d links of both services stay, as they did: opkg's
+// install --force-reinstall (the in-app rollback of a failed upgrade, the
+// usual manual repair) runs this "prerm remove" before the package goes back
+// on, and the postinst of no release enables Forkop again. Full uninstall
+// removes them; after a plain removal they point to scripts that are gone,
+// which the boot cannot run and passes over.
+function stop_torrserver_direct() {
+    if (path_exists(TORRSERVER_DIRECT_INIT))
+        command_success_from_args([ TORRSERVER_DIRECT_INIT, "stop" ]);
+}
+
+// The TorrServer Direct worker keeps running across an upgrade on the code it
+// was started with, and a reinstall stopped it: restart it on the new code
+// when it is switched on and enabled (UC-083). The links of an older release
+// become the current ones, or just go when it is switched off (UC-161).
+function torrserver_direct_postinst() {
+    if (!path_exists(TORRSERVER_DIRECT_INIT))
+        return;
+    let on = torrserver_direct_switched_on();
+    if (remove_torrserver_direct_legacy_links() && on)
+        command_success_from_args([ TORRSERVER_DIRECT_INIT, "enable" ]);
+    if (on && command_success_from_args([ TORRSERVER_DIRECT_INIT, "enabled" ]))
+        command_success_from_args([ TORRSERVER_DIRECT_INIT, "restart" ]);
+}
+
 function remember_upgrade_state(action) {
     // An explicit removal is unambiguous: nothing should be restored later.
     if (as_string(action) == "remove") {
@@ -260,19 +315,62 @@ function killswitch_outlives_package(action, version) {
     return command_success_from_args([ "sh", "-c", "command -v apk" ]);
 }
 
-// Forkop's interception: its nft table, or its fwmark rule at priority 105
-// that routes marked traffic to the table of its sing-box listener.
-function forkop_interception_present() {
-    if (command_success_from_args([ "nft", "-t", "list", "table", "inet", constants.NFT_TABLE_NAME || "ForkopTable" ]))
-        return true;
+function nft_table_present(name) {
+    return command_success_from_args([ "nft", "-t", "list", "table", "inet", name ]);
+}
+
+// Forkop's interception that is in place, one entry each: its nft table, or
+// its fwmark rule at priority 105 that routes marked traffic to the table of
+// its sing-box listener (by the table's name, or by number once rt_tables
+// lost it).
+function interception_left() {
+    let left = [];
+    let table = constants.NFT_TABLE_NAME || "ForkopTable";
+    if (nft_table_present(table))
+        push(left, "nft table inet " + table);
     let lookup = constants.RT_TABLE_NAME || "forkop";
-    for (let family in [ "-4", "-6" ])
-        for (let line in split(command_capture_from_args([ "ip", family, "rule", "show" ]).output, "\n")) {
+    for (let family in [ "4", "6" ])
+        for (let line in split(command_capture_from_args([ "ip", "-" + family, "rule", "show" ]).output, "\n")) {
             let rule = match(line, /^105:.*[ \t]lookup[ \t]+([^ \t]+)/);
-            if (rule != null && (rule[1] == lookup || rule[1] == "105"))
-                return true;
+            if (rule != null && (rule[1] == lookup || rule[1] == "105")) {
+                push(left, "IPv" + family + " rule 105");
+                break;
+            }
         }
-    return false;
+    return left;
+}
+
+function forkop_interception_present() {
+    return length(interception_left()) > 0;
+}
+
+// What Forkop's stop is to take down and did not: its interception and its
+// lines in the crontab, which would call a removed /usr/bin/forkop.
+function runtime_left() {
+    let left = interception_left();
+    if (match(as_string(fs.readfile(CRONTAB_FILE)), CRON_MARKERS) != null)
+        push(left, "scheduled jobs in " + CRONTAB_FILE);
+    return left;
+}
+
+// What a removal left of Forkop (UC-028): besides the runtime, the
+// kill-switch it could not lift (its table, and the saved policy its fw4
+// loader would load again on a reinstall), the TorrServer Direct table and
+// the fail-closed DPI guards. Forkop's stop leaves the guard of a restore or
+// an autotune apply that ended needs_attention, which only a restore
+// releases: it stays across a reinstall, and after a removal until a
+// reboot or Full uninstall.
+function removal_left() {
+    let left = runtime_left();
+    let killswitch_table = constants.KILLSWITCH_NFT_TABLE || "ForkopKillswitch";
+    let table_name = constants.NFT_TABLE_NAME || "ForkopTable";
+    for (let table in [ killswitch_table, "ForkopTorrServerDirect", table_name + "DpiGuard", "ForkopConfigRestoreDpiGuard" ])
+        if (nft_table_present(table))
+            push(left, "nft table inet " + table);
+    let policy = constants.KILLSWITCH_NFT_POLICY || "/etc/forkop/killswitch/policy.nft";
+    if (path_exists(policy))
+        push(left, "saved kill-switch policy " + policy);
+    return left;
 }
 
 // The package managers discard prerm's output (build.sh, forkop/Makefile):
@@ -308,24 +406,30 @@ function prerm_cleanup(action, version) {
         // A removal leaves nobody to own what a failed or refused stop kept
         // (UC-028): the explicit stop removes Forkop's own interception
         // without a proof of ownership and stops only the sing-box Forkop
-        // owns (UC-213).
-        if (!stopped && removal && forkop_interception_present()) {
-            log_warning("Forkop's stop for its removal did not take it down; removing its interception with an explicit stop");
-            stopped = command_success_from_args([ "env", "-u", "FORKOP_STOP_SOURCE", INIT_PATH, "stop" ]);
+        // owns (UC-213). What the stop left decides, not its exit status:
+        // rc.common drops the status of stop_service unless a hook passes it
+        // on, and a stop that cannot delete the table or the rule goes on.
+        let left = removal ? runtime_left() : [];
+        if (length(left) > 0) {
+            log_warning("Forkop's stop for its removal left " + join(", ", left) + "; taking it down with an explicit stop");
+            command_success_from_args([ "env", "-u", "FORKOP_STOP_SOURCE", INIT_PATH, "stop" ]);
         }
         // No start follows a removal: the explicit start ends with it, and
         // a reinstall that does not start Forkop shows it not started, not
         // as a start that failed (service/initd.uc EXPLICIT_START_FILE;
         // D-15(a)).
-        if (removal)
+        if (removal) {
             command_success_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/service/initd.uc", "clear-explicit-start" ]);
+            stop_torrserver_direct();
+        }
         // A stop that failed or was refused (another sing-box makes
         // ownership ambiguous) may have left Forkop's nft table and ip rule
         // in place. An upgrade then keeps their listener, the managed
         // sing-box, its DNS and the routing table name: without them the
         // interception would black-hole traffic with nobody left to own it
-        // (UC-197).
-        let intercepting = !stopped && forkop_interception_present();
+        // (UC-197). After an upgrade whose stop succeeded, the start in
+        // postinst brings the runtime back over whatever the stop left.
+        let intercepting = (removal || !stopped) && forkop_interception_present();
         // An upgrade keeps the kill-switch: protected traffic must stay
         // blocked while the old runtime is down. A removal or a release
         // without the kill-switch lifts it, since nothing would be left to
@@ -344,10 +448,19 @@ function prerm_cleanup(action, version) {
         // could not take down is gone after a reboot.
         restore_dnsmasq_if_needed();
         remove_managed_sing_box(intercepting);
-        if (intercepting) {
-            remove_rt_tables_entry();
+        if (intercepting)
             log_warning("Forkop could not be stopped for its removal and still intercepts traffic until a reboot; its DNS was restored");
-            return false;
+        if (removal) {
+            let removed = remove_rt_tables_entry();
+            // The package managers go on with a removal whatever prerm
+            // returns: it never reports success with something of Forkop
+            // in place, and the system log says what (UC-028).
+            left = removal_left();
+            if (length(left) > 0) {
+                log_warning("Forkop's removal left in place: " + join(", ", left));
+                return false;
+            }
+            return removed;
         }
     }
     return remove_rt_tables_entry();
@@ -486,6 +599,7 @@ function postinst_restore() {
         warn("Forkop configuration is invalid or unavailable to UCI.\n");
         return false;
     }
+    torrserver_direct_postinst();
 
     // Only an explicit start since boot lets a reload start a runtime that
     // is down (service/initd.uc EXPLICIT_START_FILE; D-15(a)), and a previous

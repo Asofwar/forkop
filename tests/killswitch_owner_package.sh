@@ -43,6 +43,7 @@ mkdir -p "$WORK_DIR/bin" "$WORK_DIR/apk-bin" "$WORK_DIR/run" "$WORK_DIR/ks" "$WO
 cat >"$WORK_DIR/bin/nft" <<'NFT'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$WORK_DIR/nft.log"
+[ "$1" != -t ] || shift
 case "$1 $2" in
   "list table")
     [ "$4" = "ForkopKillswitch" ] && { [ -e "$WORK_DIR/ks-present" ]; exit $?; }
@@ -409,8 +410,8 @@ else
 #!/bin/sh
 printf '%s\n' "$*" >> "$FORKOP_UNINSTALL_ROOT/uci-calls"
 case "$*" in
-  *" get dhcp.@dnsmasq[0].serversfile")
-    grep -Fq " delete dhcp.@dnsmasq[0].serversfile" "$FORKOP_UNINSTALL_ROOT/uci-calls" ||
+  *" get forkop_detach.@dnsmasq[0].serversfile")
+    grep -Fq " delete forkop_detach.@dnsmasq[0].serversfile" "$FORKOP_UNINSTALL_ROOT/uci-calls" ||
       printf '/etc/forkop/killswitch/dnsmasq.servers\n' ;;
 esac
 exit 0
@@ -445,21 +446,34 @@ for path in /usr/share/nftables.d/ruleset-post/90-forkop-killswitch-loader.nft \
   /usr/share/nftables.d/ruleset-post/90-forkop-killswitch.nft /etc/forkop; do
   [ ! -e "$ROOT$path" ] || fail "full uninstall left $path behind"
 done
-# The changes it stages stay under the fixture root: the host's /tmp/.uci
-# is neither read nor committed.
-root_uci_call="-c $ROOT/etc/config -t $ROOT/tmp/.uci -q"
-grep -Fqx -- "$root_uci_call delete dhcp.@dnsmasq[0].serversfile" "$ROOT/uci-calls" ||
+# It edits a copy of dhcp in its job under the fixture root, under a package
+# name of its own (tests/full_uninstall_dhcp_detach.sh: what someone staged
+# for dhcp in /tmp/.uci is neither committed nor dropped), never dhcp in the
+# host's or the root's /etc/config through uci.
+own_copy_call() { # own_copy_call <uci arguments>
+  local line
+  while IFS= read -r line; do
+    case "$line" in
+      "-q -c $ROOT/tmp/forkop-uninstall."*"/dhcp -t $ROOT/tmp/forkop-uninstall."*"/dhcp/save $1") return 0 ;;
+    esac
+  done <"$ROOT/uci-calls"
+  return 1
+}
+own_copy_call 'delete forkop_detach.@dnsmasq[0].serversfile' ||
   fail "full uninstall must detach the kill-switch servers file from dnsmasq: $(cat "$ROOT/uci-calls")"
-grep -Fqx -- "$root_uci_call commit dhcp" "$ROOT/uci-calls" || fail "full uninstall must commit dhcp through uci"
-if grep -Fv -- "-c $ROOT/etc/config -t $ROOT/tmp/.uci " "$ROOT/uci-calls" >"$WORK_DIR/host-uci-calls"; then
-  fail "full uninstall on a fixture root must keep uci's staged changes under it: $(cat "$WORK_DIR/host-uci-calls")"
-fi
+own_copy_call 'commit forkop_detach' || fail "full uninstall must commit its copy of dhcp through uci: $(cat "$ROOT/uci-calls")"
+while IFS= read -r line; do
+  case "$line" in
+    "-q -c $ROOT/tmp/forkop-uninstall."*"/dhcp -t $ROOT/tmp/forkop-uninstall."*"/dhcp/save "*" forkop_detach"*) ;;
+    *) fail "full uninstall must edit only its own copy of dhcp through uci: $line" ;;
+  esac
+done <"$ROOT/uci-calls"
 grep -Fqx restart "$ROOT/dnsmasq-calls" || fail "dnsmasq must be restarted without the block list"
 if [ -n "$UCI_BIN" ]; then
-  [ -z "$("$UCI_BIN" -c "$ROOT/etc/config" -t "$ROOT/tmp/.uci" -q get 'dhcp.@dnsmasq[0].serversfile')" ] ||
+  ! grep -Fq /etc/forkop/killswitch/dnsmasq.servers "$ROOT/etc/config/dhcp" ||
     fail "full uninstall must detach the kill-switch servers file from dnsmasq"
-  [ "$("$UCI_BIN" -c "$ROOT/etc/config" -t "$ROOT/tmp/.uci" -q get 'dhcp.@dnsmasq[0].domain')" = lan ] ||
-    fail "full uninstall must keep the rest of dhcp"
+  grep -Fqx "	option domain 'lan'" "$ROOT/etc/config/dhcp" ||
+    fail "full uninstall must keep the rest of dhcp: $(cat "$ROOT/etc/config/dhcp")"
 fi
 
 # ---- the package went away and nothing lifted the protection -------------------

@@ -1,6 +1,12 @@
 import { executeShellCommand } from '../../../helpers';
 import { renderXIcon24 } from '../../../icons';
 import { renderButton } from '../../../partials';
+import {
+  describeFailedRemoval,
+  followRemoval,
+  FullUninstallStatus,
+  startRemovalWait,
+} from './fullUninstallStatus';
 
 let removing = false;
 
@@ -40,10 +46,10 @@ function confirmRemoval() {
               ),
             );
           }
-          const deadline = Date.now() + 180000;
-          while (Date.now() < deadline) {
+          let wait = startRemovalWait(Date.now());
+          while (Date.now() < wait.deadline) {
             await new Promise((resolve) => setTimeout(resolve, 1500));
-            let status: { state?: string; phase?: string };
+            let status: FullUninstallStatus;
             try {
               const reply = await fetch(result.status_url, {
                 cache: 'no-store',
@@ -52,6 +58,15 @@ function confirmRemoval() {
               status = await reply.json();
             } catch {
               continue;
+            }
+            const waited = wait.waitingForChanges;
+            wait = followRemoval(wait, status, Date.now());
+            if (wait.waitingForChanges !== waited) {
+              progress.textContent = wait.waitingForChanges
+                ? _(
+                    'Waiting for a configuration change of Forkop X to finish before removing it…',
+                  )
+                : _('Removing Forkop X…');
             }
             if (status.state === 'complete') {
               progress.textContent = _(
@@ -63,15 +78,7 @@ function confirmRemoval() {
               return;
             }
             if (status.state === 'failed') {
-              throw new Error(
-                status.phase === 'preflight'
-                  ? _(
-                      'Original repositories could not be restored. Removal was cancelled before deleting packages.',
-                    )
-                  : _(
-                      'Removal did not finish. See the removal log in /tmp/forkop-uninstall.*/output.log.',
-                    ),
-              );
+              throw new Error(describeFailedRemoval(status));
             }
           }
           throw new Error(

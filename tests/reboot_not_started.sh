@@ -76,6 +76,9 @@ export FORKOP_SING_BOX_INIT="$WORK/missing-sing-box-init" FORKOP_SING_BOX_BIN="$
 export FORKOP_SING_BOX_CRONET="$WORK/missing-cronet"
 export FORKOP_COMPONENT_UPDATE_CHECK_CACHE_DIR="$RUN/forkop/component-update-checks"
 export FORKOP_COMPONENT_UPDATE_CHECK_STATE_FILE="$RUN/forkop/component-update-check.timestamp"
+# What a package removal checks and stops besides Forkop: never the host's.
+export FORKOP_CRONTAB_FILE="$ETC/crontabs/root" KILLSWITCH_NFT_POLICY="$ETC/forkop/killswitch/policy.nft"
+export FORKOP_RC_D_DIR="$ETC/rc.d" FORKOP_TORRSERVER_DIRECT_INIT="$WORK/missing-torrserver-direct-init"
 export FORKOP_START_SETTLE_SECONDS=5
 unset FORKOP_UI_ACTION_TRACKED FORKOP_STOP_SOURCE FORKOP_START_REQUEST FORKOP_PACKAGE_TEST_MODE
 STOP_MARKER="$RUN/forkop/stop.requested"

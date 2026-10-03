@@ -16223,6 +16223,70 @@ function shouldExposeCheckResults({
   return mounted3 && cacheResolved;
 }
 
+// src/forkop/tabs/updates/fullUninstallStatus.ts
+function describeLeftItem(item) {
+  if (item.startsWith("table:")) {
+    const table = item.slice("table:".length);
+    return _("nft table %s").replace("%s", () => table);
+  }
+  switch (item) {
+    case "rule:4":
+      return _("IPv4 routing rule at priority 105");
+    case "rule:6":
+      return _("IPv6 routing rule at priority 105");
+    case "cron":
+      return _('the lines marked "# forkop-" in /etc/crontabs/root');
+    case "loader":
+      return _("the kill-switch loader in /usr/share/nftables.d/ruleset-post");
+    case "backup":
+      return _("the configuration backup in /etc/forkop-backups");
+    default:
+      return item;
+  }
+}
+function describeLeftItems(left) {
+  return left.split(",").map((item) => item.trim()).filter((item) => item !== "").map(describeLeftItem).join(", ");
+}
+var REMOVAL_WAIT_MS = 18e4;
+var TRANSACTIONS_WAIT_MS = 12e4;
+function startRemovalWait(now) {
+  return { deadline: now + REMOVAL_WAIT_MS, waitingForChanges: false };
+}
+function followRemoval(wait, status2, now) {
+  const waitingForChanges = status2.state === "running" && status2.phase === "transactions";
+  if (waitingForChanges === wait.waitingForChanges) return wait;
+  return {
+    deadline: now + (waitingForChanges ? TRANSACTIONS_WAIT_MS : REMOVAL_WAIT_MS),
+    waitingForChanges
+  };
+}
+function describeFailedRemoval(status2) {
+  const left = typeof status2.left === "string" ? describeLeftItems(status2.left) : "";
+  if (status2.phase === "preflight") {
+    return _(
+      "Original repositories could not be restored. Removal was cancelled before deleting packages."
+    );
+  }
+  if (status2.phase === "transactions") {
+    return _(
+      "Forkop X is still changing its configuration (a snapshot restore, an autotune run or another change), so nothing was removed. Try again once it has finished."
+    );
+  }
+  if (status2.phase === "stop" && left) {
+    return _(
+      "Forkop X is still active after its stop, so nothing was removed. Still in place: %s. Stop Forkop X or restart the router, then try again."
+    ).replace("%s", () => left);
+  }
+  if (left) {
+    return _(
+      "Forkop X was removed, but this is still in place: %s. See the removal log in /tmp/forkop-uninstall.*/output.log."
+    ).replace("%s", () => left);
+  }
+  return _(
+    "Removal did not finish. See the removal log in /tmp/forkop-uninstall.*/output.log."
+  );
+}
+
 // src/forkop/tabs/updates/fullUninstall.ts
 var removing = false;
 function confirmRemoval() {
@@ -16257,8 +16321,8 @@ function confirmRemoval() {
               )
             );
           }
-          const deadline = Date.now() + 18e4;
-          while (Date.now() < deadline) {
+          let wait = startRemovalWait(Date.now());
+          while (Date.now() < wait.deadline) {
             await new Promise((resolve) => setTimeout(resolve, 1500));
             let status2;
             try {
@@ -16270,6 +16334,13 @@ function confirmRemoval() {
             } catch {
               continue;
             }
+            const waited = wait.waitingForChanges;
+            wait = followRemoval(wait, status2, Date.now());
+            if (wait.waitingForChanges !== waited) {
+              progress.textContent = wait.waitingForChanges ? _(
+                "Waiting for a configuration change of Forkop X to finish before removing it\u2026"
+              ) : _("Removing Forkop X\u2026");
+            }
             if (status2.state === "complete") {
               progress.textContent = _(
                 "Forkop X and sing-box have been removed. Original repositories have been restored."
@@ -16280,13 +16351,7 @@ function confirmRemoval() {
               return;
             }
             if (status2.state === "failed") {
-              throw new Error(
-                status2.phase === "preflight" ? _(
-                  "Original repositories could not be restored. Removal was cancelled before deleting packages."
-                ) : _(
-                  "Removal did not finish. See the removal log in /tmp/forkop-uninstall.*/output.log."
-                )
-              );
+              throw new Error(describeFailedRemoval(status2));
             }
           }
           throw new Error(

@@ -2237,22 +2237,19 @@ function install_forkop_package_set(latest_version, backend_file, app_file, i18n
         return "Failed to prepare Forkop package-set recovery storage";
     if (!command_success_from_args([ "mkdir", "-m", "0700", FORKOP_OPKG_RECOVERY_DIR ]))
         return "Failed to reserve Forkop package-set recovery storage";
-    let old_backend = FORKOP_OPKG_RECOVERY_DIR + "/backend.ipk";
-    let old_app = FORKOP_OPKG_RECOVERY_DIR + "/app.ipk";
-    let old_i18n = with_i18n ? FORKOP_OPKG_RECOVERY_DIR + "/i18n.ipk" : "";
-    if (!download_with_retry(previous.backend_url, old_backend, previous.backend_name) ||
-        !download_with_retry(previous.app_url, old_app, previous.app_name) ||
-        (with_i18n && !download_with_retry(previous.i18n_url, old_i18n, previous.i18n_name))) {
+    // Stage under the names recovery reads back, so a rollback in this call or
+    // a later one finds the archives with the package manager's extension.
+    let old_files = forkop_recovery_files(with_i18n);
+    if (!download_with_retry(previous.backend_url, old_files[0], previous.backend_name) ||
+        !download_with_retry(previous.app_url, old_files[1], previous.app_name) ||
+        (with_i18n && !download_with_retry(previous.i18n_url, old_files[2], previous.i18n_name))) {
         command_success_from_args([ "rm", "-rf", FORKOP_OPKG_RECOVERY_DIR ]);
         return "Failed to stage previous Forkop release packages; automatic upgrade refused";
     }
 
-    let old_files = [ old_backend, old_app ];
     let new_files = [ backend_file, app_file ];
-    if (with_i18n) {
-        push(old_files, old_i18n);
+    if (with_i18n)
         push(new_files, i18n_file);
-    }
     if (!run_logged("Checking new Forkop package set", pkg_forkop_set_command(new_files, true)) ||
         !run_logged("Checking previous Forkop package set", pkg_forkop_set_command(old_files, true, true))) {
         command_success_from_args([ "rm", "-rf", FORKOP_OPKG_RECOVERY_DIR ]);

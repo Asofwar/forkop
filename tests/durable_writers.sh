@@ -373,7 +373,7 @@ else
   chmod 0755 "$WORK/bin/sing-box" "$WORK/bin/nft"
   : >"$WORK/validator-uci.state"
   FORKOP_UCI_STATE_FILE="$WORK/validator-uci.state" SB_VARIANT_STATE_FILE="$WORK/variant" \
-    SB_VERSION_STATE_FILE="$WORK/etc/forkop/sing-box-version" \
+    SB_VERSION_STATE_FILE="$WORK/etc/forkop/sing-box-version" TMPDIR="$WORK" \
     ucode -L "$LIB" "$LIB/config/validator.uc" check-requirements || true
 fi
 INSTALL

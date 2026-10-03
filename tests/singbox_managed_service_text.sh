@@ -71,7 +71,8 @@ sing-box.main.user=root
 sing-box.main.conffile=$WORK/config.json
 EOF
 : >"$WORK/validator-uci.state"
-export PATH="$WORK/bin:$PATH" LIB WORK
+# The requirements check keeps its temporary file in TMPDIR.
+export PATH="$WORK/bin:$PATH" LIB WORK TMPDIR="$WORK"
 export FORKOP_RUNTIME_STATE_DIR="$WORK/run" FORKOP_UCI_LOG_FILE="$WORK/uci.log"
 export SB_VARIANT_STATE_FILE="$WORK/variant" SB_VERSION_STATE_FILE="$WORK/version"
 

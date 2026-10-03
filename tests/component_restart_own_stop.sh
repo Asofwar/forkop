@@ -173,7 +173,7 @@ cat >"$WORK_DIR/rc" <<'SH'
 action="$1"
 shift
 exec 1000>"$RC_PROCD_LOCK"
-[ -z "${FORKOP_TEST_USER_STOP_DELAY:-}" ] || : >"$TEST_WORK/user-stop.waiting"
+[ -z "${FORKOP_TEST_USER_STOP_DELAY:-}" ] || printf '%s\n' "$$" >"$TEST_WORK/user-stop.waiting"
 flock 1000
 [ -z "${FORKOP_TEST_USER_STOP_DELAY:-}" ] || sleep "$FORKOP_TEST_USER_STOP_DELAY"
 initscript="$REAL_INITD"
@@ -194,11 +194,12 @@ if [ -n "$own_stop" ] && [ -e "$TEST_WORK/user-stop.queued" ]; then
     env -u FORKOP_STOP_SOURCE FORKOP_TEST_USER_STOP_DELAY=0.5 "$FORKOP_SERVICE_INIT" stop || status=$?
     printf '%s\n' "$status" >"$TEST_WORK/user-stop.done"
   ) </dev/null >/dev/null 2>&1 &
-  for _ in $(seq 100); do
-    [ ! -e "$TEST_WORK/user-stop.waiting" ] || break
+  # Until the user's stop waits in flock for procd's lock.
+  for _ in $(seq 200); do
+    waiting="$(cat "$TEST_WORK/user-stop.waiting" 2>/dev/null || true)"
+    [ -z "$waiting" ] || ! pgrep -P "$waiting" -x flock >/dev/null || break
     sleep 0.05
   done
-  sleep 0.2
 fi
 case "$action" in
   start) start "$@" ;;

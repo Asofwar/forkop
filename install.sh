@@ -2791,6 +2791,14 @@ migrate_legacy_configuration() {
             cp "$LEGACY_CONFIG_BACKUP" /etc/config/forkop 2>/dev/null || true
             fail "Legacy configuration migration failed; the original configuration was restored"
         fi
+        # The package moves the feeds to the mirror once and records it in
+        # its configuration (D-3 (a), UC-081), which the migrated one has
+        # just replaced. Its mirror migration runs again on this one while
+        # the feeds are still as configure_package_mirror left them, so the
+        # record is not lost and the next package change does not move
+        # official feeds the user may put back.
+        /usr/share/forkop/mirror-migration.sh ||
+            warn "The migrated configuration does not record the move of the package feeds to the mirror; the next Forkop package change may move them again"
     else
         warn "The legacy package had no readable configuration; Forkop defaults will be used"
     fi

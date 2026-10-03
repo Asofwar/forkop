@@ -19,7 +19,9 @@
 #    feeds as every package change did before, once; a move the mirror
 #    could not serve is not recorded and runs again on the next change;
 #  - a mirror chosen explicitly (install.sh FORKOP_MIRROR_BASE_URL) after
-#    the recorded move is saved, and the feeds stay as they are.
+#    the recorded move is saved, and the feeds stay as they are;
+#  - the installer's legacy (podkop) migration, which replaces the
+#    configuration the package recorded the move in, keeps the record.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -288,3 +290,73 @@ before="$(state)"
 FORKOP_MIRROR_BASE_URL=https://alt.example package_change
 expect_left_alone "the explicit mirror saved before" "$before"
 ok "explicit mirror after the recorded move: saved, feeds and keys left alone"
+
+# 5. The installer's legacy migration (install.sh, podkop): install.sh
+# moved the feeds and the package recorded it, then the migrated legacy
+# configuration replaces the configuration with the record. The record is
+# not lost, and the next package change leaves official feeds the user put
+# back alone. A mirror that cannot serve the move at that point records
+# nothing and does not fail the migration.
+# install.sh as a library, with /etc/config/forkop and the package's
+# mirror-migration.sh of the case; the legacy migration (migrate-podkop)
+# writes a migrated configuration without the record.
+legacy_migration() {
+  local library="$CASE_DIR/install-library.sh" apk_bin="$WORK/bin/missing-apk"
+  [ "$MANAGER" != apk ] || apk_bin="$WORK/bin/apk"
+  sed -e '/^main "\$@"$/d' -e "s#/etc/config/forkop#$CASE_DIR/config/forkop#g" \
+    -e "s#/usr/share/forkop/mirror-migration.sh#sh $MIGRATION#g" "$ROOT_DIR/install.sh" >"$library"
+  printf '%s\n' "config settings 'settings'" "	option dns_server '8.8.8.8'" >"$CASE_DIR/legacy.uci"
+  : >"$CASE_DIR/events"
+  RUN_RC=0
+  (
+    # shellcheck disable=SC1090
+    . "$library"
+    # shellcheck disable=SC2317 # called by migrate_legacy_configuration
+    ucode() {
+      case "$*" in
+        *'/config/migration.uc migrate-podkop')
+          uci set forkop.settings.config_version=1.0.5 &&
+            uci add_list forkop.settings.applied_migrations=interface_sections &&
+            uci commit forkop ;;
+        *) return 1 ;;
+      esac
+    }
+    # shellcheck disable=SC2317 # called by migrate_legacy_configuration
+    install_json_ucode() { [ "$1" = installer-finalize-legacy ]; }
+    # shellcheck disable=SC2034 # read by migrate_legacy_configuration
+    FORKOP_LEGACY_DETECTED=1 LEGACY_CONFIG_BACKUP="$CASE_DIR/legacy.uci"
+    export CASE_DIR FORKOP_MIGRATION_ROOT="$ROOT" FORKOP_MIGRATION_APK_BIN="$apk_bin" \
+      FORKOP_MIGRATION_OPKG_BIN="$WORK/bin/opkg" FORKOP_MIGRATION_CURL_BIN="$WORK/bin/curl" \
+      FORKOP_MIGRATION_UCI_BIN="$WORK/bin/uci"
+    PATH="$WORK/bin:$PATH" migrate_legacy_configuration
+  ) >"$CASE_DIR/out" 2>&1 || RUN_RC=$?
+  [ "$RUN_RC" -eq 0 ] || fail "legacy migration failed (status $RUN_RC)"
+  if [ "$(case_uci dns_server)" != 8.8.8.8 ] || [ "$(case_uci config_version)" != 1.0.5 ]; then
+    fail "the legacy configuration was not migrated"
+  fi
+  [ ! -s "$CASE_DIR/uci-save/forkop" ] || fail "legacy migration: UCI changes were left uncommitted"
+}
+for manager in opkg apk; do
+  new_case "legacy-$manager" "$manager" "$SHIPPED_CONFIG"
+  package_change
+  expect_moved "$manager legacy: package install"
+  before="$(state root)"
+  legacy_migration
+  [ "$(recorded)" = 1 ] || fail "$manager legacy migration: the move is recorded $(recorded) times"
+  [ "$(case_uci mirror_base_url)" = "$MIRROR" ] ||
+    fail "$manager legacy migration: the mirror is not saved: '$(case_uci mirror_base_url)'"
+  [ "$(state root)" = "$before" ] || fail "$manager legacy migration changed feeds or keys:
+$(diff <(printf '%s\n' "$before") <(state root) || true)"
+  restore_official_feeds
+  before="$(state)"
+  package_change
+  expect_left_alone "$manager upgrade after the legacy migration" "$before"
+done
+new_case legacy-down opkg "$SHIPPED_CONFIG"
+package_change
+before="$(state root)"
+MIRROR_DOWN=1 legacy_migration
+[ "$(recorded)" = 0 ] || fail "legacy migration: an unreachable mirror recorded the move"
+[ "$(state root)" = "$before" ] || fail "legacy migration: an unreachable mirror changed feeds or keys"
+grep -Fq 'may move them again' "$CASE_DIR/out" || fail "legacy migration: the lost record was not reported"
+ok "legacy migration: the migrated configuration records the move; an unreachable mirror records nothing"

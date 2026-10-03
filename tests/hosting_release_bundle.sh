@@ -5,8 +5,9 @@
 # earlier GitHub releases that the mirror serves.
 #
 # The test has no network: the catalog builder's GitHub API and mirror are
-# test doubles (tests/helpers/hosting_network/sitecustomize.py on
-# PYTHONPATH) that answer from the test's fixtures, log every request and
+# test doubles (tests/helpers/hosting_network/sitecustomize.py, a copy in the
+# test's directory on PYTHONPATH, so that Python's bytecode cache stays
+# there too) that answer from the test's fixtures, log every request and
 # refuse every socket.
 set -euo pipefail
 
@@ -87,14 +88,22 @@ releases = [
 (network / "github-releases.json").write_text(json.dumps(releases))
 PY
 
+mkdir -p "$WORK_DIR/pythonpath"
+cp "$ROOT_DIR/tests/helpers/hosting_network/sitecustomize.py" "$WORK_DIR/pythonpath/"
+: >"$WORK_DIR/started"
 HOSTING_TEST_NETWORK="$NETWORK" \
   HOSTING_TEST_GITHUB_URL="$GITHUB_URL" \
   HOSTING_TEST_BASE_URL="$BASE_URL" \
-  PYTHONPATH="$ROOT_DIR/tests/helpers/hosting_network" \
+  PYTHONPATH="$WORK_DIR/pythonpath" \
   FORKOP_RELEASE_REPO="$REPOSITORY" \
   FORKOP_RELEASE_BASE_URL="$BASE_URL" \
   "$ROOT_DIR/ops/hosting/prepare-release.sh" \
   "$VERSION" "$WORK_DIR/artifacts" "$WORK_DIR/output"
+
+# The test writes only into its own directory, also no bytecode cache next
+# to the test doubles in the checkout.
+written="$(find "$ROOT_DIR/tests/helpers/hosting_network" -newer "$WORK_DIR/started" -print)"
+[[ -z "$written" ]] || fail "the test wrote into the checkout: $written"
 
 grep -Fxq "GET $GITHUB_URL" "$NETWORK/requests" ||
   fail "the catalog builder did not list the releases through the test's GitHub API"

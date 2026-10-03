@@ -5891,7 +5891,7 @@ function lastEvent(health2) {
 }
 function lastChangeEvent(health2) {
   const events = (health2?.recent_activity || []).filter(
-    (event) => event.kind !== "cron_refresh"
+    (event) => event.kind !== "cron_refresh" && event.kind !== "config_migration"
   );
   return events.length ? events[events.length - 1] : null;
 }

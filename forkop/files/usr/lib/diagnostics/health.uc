@@ -295,10 +295,13 @@ function health(ui, guards, package_pending, events, reload_busy) {
         forkop.stopped_by_user == 1 ? "stopped" : forkop.not_started == 1 ? "not_started" : "error";
     // The last configuration change: a cron_refresh event tells about the
     // scheduled jobs only, and is last in the history when its start or
-    // reload gave way to a stop; it never asks for recovery.
+    // reload gave way to a stop; it never asks for recovery. A
+    // config_migration event changes nothing in the runtime: a package
+    // upgrade that does not start Forkop again (stopped by the user) leaves
+    // it last, and a failed change before it still counts.
     let last = null;
     for (let i = length(events) - 1; i >= 0 && last == null; i--)
-        if (events[i].kind != "cron_refresh")
+        if (events[i].kind != "cron_refresh" && events[i].kind != "config_migration")
             last = events[i];
     let last_reload = null;
     for (let i = length(events) - 1; i >= 0; i--)

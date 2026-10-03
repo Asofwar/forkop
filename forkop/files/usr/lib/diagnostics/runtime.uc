@@ -3,6 +3,7 @@
 let fs = require("fs");
 let constants = require("core.constants");
 let core_ip = require("core.ip");
+let core_url = require("core.url");
 let uci_core = require("core.uci");
 let runtime_dns = require("singbox.dns");
 let netstat = require("core.netstat");
@@ -1293,8 +1294,10 @@ function validate_nfqws2_strategy_json(raw_opt) {
     return 0;
 }
 
+// The host of a DNS server value the way the generated sing-box config reads
+// it (singbox/dns.uc), [v6] and bare IPv6 literals included (UC-086).
 function url_host(value) {
-    return helper_output("url-get-host", [ value ]);
+    return core_url.host(value);
 }
 
 function dns_check_resolve_host(host, resolver, timeout_seconds) {

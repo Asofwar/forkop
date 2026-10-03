@@ -61,7 +61,19 @@ case "\$1" in
 esac
 exec "$REAL_SLEEP" "\$@"
 SH
-chmod +x "$WORK/bin/sleep"
+# grep: OpenWrt's is BusyBox's, which matches a line as a C string. In a
+# /proc/<pid>/cmdline it sees argv[0] ("ucode") alone, up to the first NUL,
+# never the module a transaction runs: a search of the command lines finds
+# no transaction on a router, and finds none here either (GNU grep reads on).
+REAL_GREP="$(command -v grep)"
+cat >"$WORK/bin/grep" <<SH
+#!/bin/sh
+for arg do
+  case "\$arg" in /proc/*/cmdline) : >"$WORK/cmdline-grep"; exit 1 ;; esac
+done
+exec "$REAL_GREP" "\$@"
+SH
+chmod +x "$WORK/bin/sleep" "$WORK/bin/grep"
 export PATH="$WORK/bin:$PATH"
 
 fixture() {
@@ -150,6 +162,7 @@ for transaction in "config/snapshots.uc restore" "config/snapshots.uc create" \
   [ ! -e "$ROOT/etc/config/forkop" ] || fail "what $transaction wrote outlived the removal"
   [ ! -e "$ROOT/packages/forkop" ] || fail "the packages were not removed"
 done
+[ ! -e "$WORK/cmdline-grep" ] || fail "the removal searched the command lines with grep"
 
 # 2. What only reads, or is no transaction of this Forkop, holds nothing up.
 fixture reads

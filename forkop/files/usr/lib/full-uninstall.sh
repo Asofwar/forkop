@@ -95,12 +95,17 @@ transaction_of() {
 }
 
 # transaction_running: such a transaction runs; UNINSTALL_TRANSACTIONS names
-# each one.
+# each one. No grep picks the processes out: OpenWrt's grep is BusyBox's,
+# which reads a command line as a C string, up to the NUL after argv[0]. A
+# transaction runs the executable its lock requires, ucode, so its comm says
+# "ucode": read by a builtin, that leaves transaction_of, and its forks, to
+# the few ucode processes.
 transaction_running() {
     UNINSTALL_TRANSACTIONS=
-    for cmdline in $(grep -lsF -- "$UNINSTALL_LIB/" /proc/[0-9]*/cmdline); do
+    for cmdline in /proc/[0-9]*/cmdline; do
         pid="${cmdline#/proc/}"
         pid="${pid%/cmdline}"
+        if ! read -r comm 2>/dev/null <"/proc/$pid/comm" || [ "$comm" != ucode ]; then continue; fi
         found="$(transaction_of "$pid")"
         if [ -n "$found" ]; then
             UNINSTALL_TRANSACTIONS="${UNINSTALL_TRANSACTIONS:+$UNINSTALL_TRANSACTIONS, }$found (pid $pid)"

@@ -43,6 +43,7 @@ mkdir -p "$WORK_DIR/bin" "$WORK_DIR/apk-bin" "$WORK_DIR/run" "$WORK_DIR/ks" "$WO
 cat >"$WORK_DIR/bin/nft" <<'NFT'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$WORK_DIR/nft.log"
+[ "$1" != -t ] || shift
 case "$1 $2" in
   "list table")
     [ "$4" = "ForkopKillswitch" ] && { [ -e "$WORK_DIR/ks-present" ]; exit $?; }

@@ -56,8 +56,47 @@ installed() {
     else opkg status "$1" 2>/dev/null | grep -q '^Status: .* installed$'; fi
 }
 
+# LEFT: what of Forkop is still in place (UC-028), comma-separated: its nft
+# table and its fwmark rule at priority 105 (by the table's name, or by
+# number once rt_tables lost it), which divert traffic to a listener the
+# packages take away, and its lines in the crontab, which would call a
+# removed /usr/bin/forkop. With "all" also what the removal itself takes
+# away: the TorrServer Direct table, the kill-switch table and its fw4
+# loader. The status the UI reads names it when the removal fails over it.
+LEFT=
+find_left_behind() {
+    LEFT=
+    if nft -t list table inet ForkopTable >/dev/null 2>&1; then
+        LEFT="$LEFT, nft table inet ForkopTable"
+    fi
+    for family in 4 6; do
+        if ip "-$family" rule show 2>/dev/null |
+            grep -Eq '^105:.*[[:space:]]lookup[[:space:]]+(forkop|105)([[:space:]]|$)'; then
+            LEFT="$LEFT, IPv$family rule 105"
+        fi
+    done
+    if grep -Eqs '# forkop-(list-update|subscription-update|component-update-check|autotune)' \
+        "$ROOT/etc/crontabs/root"; then
+        LEFT="$LEFT, scheduled jobs in /etc/crontabs/root"
+    fi
+    if [ "${1:-}" = all ]; then
+        for table in ForkopTorrServerDirect ForkopKillswitch; do
+            if nft -t list table inet "$table" >/dev/null 2>&1; then
+                LEFT="$LEFT, nft table inet $table"
+            fi
+        done
+        loader=/usr/share/nftables.d/ruleset-post/90-forkop-killswitch-loader.nft
+        if [ -e "$ROOT$loader" ]; then LEFT="$LEFT, kill-switch loader $loader"; fi
+    fi
+    LEFT="${LEFT#, }"
+}
+
 state() {
-    printf '{"state":"%s","phase":"%s"}\n' "$1" "$PHASE" > "$STATUS.new"
+    if [ -n "$LEFT" ]; then
+        printf '{"state":"%s","phase":"%s","left":"%s"}\n' "$1" "$PHASE" "$LEFT" > "$STATUS.new"
+    else
+        printf '{"state":"%s","phase":"%s"}\n' "$1" "$PHASE" > "$STATUS.new"
+    fi
     chmod 644 "$STATUS.new"
     mv "$STATUS.new" "$STATUS"
 }
@@ -86,9 +125,29 @@ run() {
 
     PHASE=stop
     state running
+    stop_status=0
     if [ -x "$ROOT/etc/init.d/forkop" ]; then
-        "$ROOT/etc/init.d/forkop" stop
-        "$ROOT/etc/init.d/forkop" disable
+        "$ROOT/etc/init.d/forkop" stop || stop_status=$?
+    fi
+    # The exit status of the stop does not tell everything: rc.common drops
+    # it unless a hook passes it on, and a stop that could not delete the
+    # table or the rule goes on. What decides is what is left. The packages
+    # would take away the sing-box that serves it and the code that can take
+    # it down, so nothing is disabled, stopped or removed (UC-028).
+    find_left_behind
+    if [ -n "$LEFT" ]; then
+        echo "Forkop is still active after its stop: $LEFT. Nothing was removed; stop Forkop or restart the router, then run the removal again." >&2
+        return 1
+    fi
+    if [ "$stop_status" -ne 0 ]; then
+        echo "Forkop could not be stopped (exit status $stop_status). Nothing was removed." >&2
+        return 1
+    fi
+    if [ -x "$ROOT/etc/init.d/forkop" ]; then "$ROOT/etc/init.d/forkop" disable; fi
+    # The package's second service: its stop removes its nft table (UC-083).
+    if [ -x "$ROOT/etc/init.d/forkop-torrserver-direct" ]; then
+        "$ROOT/etc/init.d/forkop-torrserver-direct" stop
+        "$ROOT/etc/init.d/forkop-torrserver-direct" disable
     fi
     # The VPN kill-switch outlives a stopped Forkop by design; removing the
     # product must lift it, or protected traffic would stay blocked forever.
@@ -140,12 +199,19 @@ run() {
         /etc/config/sing-box.apk-old /etc/config/sing-box-opkg /etc/config/sing-box.opkg-new \
         /etc/config/sing-box.opkg-old /etc/config/sing-box.opkg-dist \
         /usr/bin/forkop /usr/libexec/forkop-ro /usr/bin/sing-box /usr/lib/libcronet.so \
-        /etc/init.d/forkop /etc/init.d/forkop-killswitch /etc/init.d/sing-box /etc/uci-defaults/50_luci-forkop \
+        /etc/init.d/forkop /etc/init.d/forkop-killswitch /etc/init.d/forkop-torrserver-direct \
+        /etc/init.d/sing-box /etc/uci-defaults/50_luci-forkop \
         /usr/share/luci/menu.d/luci-app-forkop.json /usr/share/rpcd/acl.d/luci-app-forkop.json \
         /usr/share/nftables.d/ruleset-post/90-forkop-killswitch-loader.nft \
         /usr/share/nftables.d/ruleset-post/90-forkop-killswitch.nft; do
         rm -f "$ROOT$file"
     done
+    # The rc.d links of the removed services. The disable of a release whose
+    # TorrServer Direct had START=100 and STOP=9 never removed its links
+    # (S100, K9; UC-161).
+    rm -f "$ROOT"/etc/rc.d/[SK][0-9][0-9]forkop "$ROOT"/etc/rc.d/[SK][0-9][0-9]forkop-killswitch \
+        "$ROOT"/etc/rc.d/[SK][0-9][0-9]forkop-torrserver-direct \
+        "$ROOT/etc/rc.d/S100forkop-torrserver-direct" "$ROOT/etc/rc.d/K9forkop-torrserver-direct"
     # Whatever the kill-switch left (its removal above failed or an older
     # Forkop never lifted it) must not outlive the product (UC-191).
     #
@@ -175,6 +241,12 @@ run() {
     for item in "$ROOT"/var/run/forkop/*; do
         [ "$item" = "$COMPONENT_LOCK" ] || rm -rf "$item"
     done
+    # Success only when nothing of Forkop is left (UC-028).
+    find_left_behind all
+    if [ -n "$LEFT" ]; then
+        echo "Forkop was removed, but this is still in place: $LEFT." >&2
+        return 1
+    fi
     PHASE=complete
     state complete
 }

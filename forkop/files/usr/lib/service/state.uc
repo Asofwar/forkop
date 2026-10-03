@@ -1849,7 +1849,9 @@ function sing_box_signature_body(settings, sections, mwan3_active) {
     settings = object_or_empty(settings);
     let body = "";
 
-    body = signature_add_value(body, "settings.dns_type", option(settings, "dns_type", "doh"));
+    // Absent means UDP, as for the runtime (singbox/dns.uc state_template),
+    // the validator and LuCI (UC-088).
+    body = signature_add_value(body, "settings.dns_type", option(settings, "dns_type", "udp"));
     body = signature_add_value(body, "settings.dns_strategy", option(settings, "dns_strategy", "prefer_ipv4"));
     for (let value in list_option(settings, "dns_server", "77.88.8.8"))
         body = signature_add_value(body, "settings.dns_server", value);
@@ -1858,6 +1860,9 @@ function sing_box_signature_body(settings, sections, mwan3_active) {
     body = signature_add_value(body, "settings.dns_check_interval", option(settings, "dns_check_interval", "10s"));
     body = signature_add_value(body, "settings.dns_recovery_check_interval", option(settings, "dns_recovery_check_interval", "60s"));
     body = signature_add_value(body, "settings.dns_check_timeout", option(settings, "dns_check_timeout", "2s"));
+    // Read by the DNS failover worker, which reload restarts with sing-box
+    // (UC-095).
+    body = signature_add_value(body, "settings.dns_failover_failure_threshold", option(settings, "dns_failover_failure_threshold", "3"));
     let dns_detour_enabled = bool_option_value(settings, "dns_detour_enabled", false);
     body = signature_add_value(body, "settings.dns_detour_enabled", dns_detour_enabled);
     if (dns_detour_enabled == "1")

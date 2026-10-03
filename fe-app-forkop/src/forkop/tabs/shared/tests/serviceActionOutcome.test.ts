@@ -113,6 +113,29 @@ describe('service action outcomes', () => {
     });
   });
 
+  it('presents a runtime that did not reach the expected state as an error', async () => {
+    // The command returned, then Forkop X stayed down for the whole wait:
+    // that failed; it is no unconfirmed action that may still finish.
+    const jobId = newJobId();
+    shell.serviceActionStart.mockResolvedValue({
+      success: true,
+      data: { success: true, job_id: jobId, message: '' },
+    });
+    shell.waitServiceActionJob.mockResolvedValue({
+      success: true,
+      data: finished(jobId, {
+        message: 'Service restart did not reach expected state',
+      }),
+    });
+
+    const error = await failure(runForkopServiceAction('restart'));
+
+    expect(serviceActionNotice(error)).toEqual({
+      text: 'Service action failed: Service restart did not reach expected state',
+      type: 'error',
+    });
+  });
+
   it('reports the failure of a job this browser started once', () => {
     const jobId = newJobId();
     markUiActionOwned('service', jobId);

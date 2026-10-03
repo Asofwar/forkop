@@ -1393,6 +1393,18 @@ function write_skipped_reload_state(path, outcome) {
     return write_state_file(path, value);
 }
 
+// The command returned 0; the job ends with what the runtime then did. A
+// runtime that stayed in the wrong state for the whole wait (Forkop down
+// after a start, up after a stop) is a failure, not an unconfirmed action
+// (reason timeout): that is only a start still pending (service_action_worker).
+function service_action_finish_expected_state(path, action) {
+    if (service_action_wait_for_expected_state(action, SERVICE_ACTION_TIMEOUT_SECONDS, SERVICE_ACTION_SETTLE_SECONDS))
+        write_finished_service_action_state(path, action, true, "Service " + as_string(action) + " completed", 0);
+    else
+        write_finished_service_action_state(path, action, false, "Service " + as_string(action) + " did not reach expected state", 1,
+            "failure");
+}
+
 // reload_token: what init.d told this UI-tracked reload ("queued",
 // "stopped" or empty; service_action_worker).
 function finish_service_action_after_command(action, job_id_value, status, spawn_waiter, reload_token) {
@@ -1448,11 +1460,7 @@ function finish_service_action_after_command(action, job_id_value, status, spawn
         return 0;
     }
 
-    if (service_action_wait_for_expected_state(action, SERVICE_ACTION_TIMEOUT_SECONDS, SERVICE_ACTION_SETTLE_SECONDS))
-        write_finished_service_action_state(path, action, true, "Service " + as_string(action) + " completed", 0);
-    else
-        write_finished_service_action_state(path, action, false, "Service " + as_string(action) + " did not reach expected state", 1,
-            "timeout");
+    service_action_finish_expected_state(path, action);
     return 0;
 }
 
@@ -1521,11 +1529,7 @@ function service_action_worker(path, action, job_id_value, reason) {
 }
 
 function service_action_wait_worker(path, action, job_id_value) {
-    if (service_action_wait_for_expected_state(action, SERVICE_ACTION_TIMEOUT_SECONDS, SERVICE_ACTION_SETTLE_SECONDS))
-        write_finished_service_action_state(path, action, true, "Service " + as_string(action) + " completed", 0);
-    else
-        write_finished_service_action_state(path, action, false, "Service " + as_string(action) + " did not reach expected state", 1,
-            "timeout");
+    service_action_finish_expected_state(path, action);
 }
 
 function service_action_async(action) {

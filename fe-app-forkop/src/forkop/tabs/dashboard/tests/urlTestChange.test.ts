@@ -60,6 +60,22 @@ describe('URLTest settings change', () => {
     expect(result.toast.text).toContain('could not apply the change');
   });
 
+  it('keeps the editor open when Forkop X did not come back after the reload', async () => {
+    const flow = steps(async () =>
+      job({
+        success: false,
+        message: 'Service reload did not reach expected state',
+        reason: 'failure',
+      }),
+    );
+
+    const result = await runUrlTestChange(flow, false);
+
+    expect(result.close).toBe(false);
+    expect(result.toast.type).toBe('error');
+    expect(result.toast.text).toContain('could not apply the change');
+  });
+
   it('keeps the editor open when the reload was refused because Forkop X is busy', async () => {
     const flow = steps(async () => {
       throw new ActionFailureError(

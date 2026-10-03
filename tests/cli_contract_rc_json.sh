@@ -320,10 +320,26 @@ expect service_action_status 1 not_found -- 1700000000_123
 expect ui_action_ack 1 busy -- service job-busy
 expect ui_action_ack 1 invalid_input -- nothing job-busy
 owned_kill TERM "$LIVE" || true
-printf '{"success":false,"running":false,"kind":"service","action":"restart","message":"Service restart did not reach expected state","reason":"timeout","exit_code":1,"started_at":1,"updated_at":2}\n' \
+printf '{"success":false,"running":false,"kind":"service","action":"restart","message":"Service restart did not finish within 120 s and is still pending; see the Forkop log for its outcome","reason":"timeout","exit_code":1,"started_at":1,"updated_at":2}\n' \
   >"$FORKOP_UI_SERVICE_ACTION_DIR/job-busy.json"
 expect service_action_status 0 timeout -- job-busy
 expect ui_action_ack 0 "" -- service job-busy
+# A command that returned 0 while the runtime then stayed in the wrong state
+# for the whole wait failed: that is no unconfirmed action (timeout), which
+# the page shows as a warning that it may still finish.
+printf '{"success":true,"running":true,"kind":"service","action":"start","source":"ui","message":"Service action is running","started_at":%s}\n' \
+  "$(date +%s)" >"$FORKOP_UI_SERVICE_ACTION_DIR/job-state.json"
+mkdir -p "${WORK:?}/no-runtime"
+for tool in nft ubus ip pidof; do
+  printf '#!/bin/sh\nexit 1\n' >"${WORK:?}/no-runtime/$tool"
+done
+chmod +x "${WORK:?}/no-runtime/"*
+PATH="${WORK:?}/no-runtime:$PATH" FORKOP_UI_SERVICE_ACTION_TIMEOUT_SECONDS=1 FORKOP_UI_SERVICE_ACTION_SETTLE_SECONDS=1 \
+  ucode -L "$LIB" "$LIB/service/ui.uc" service-action-wait-worker \
+  "$FORKOP_UI_SERVICE_ACTION_DIR/job-state.json" start job-state >/dev/null 2>&1 ||
+  fail "service-action-wait-worker exited non-zero"
+expect service_action_status 0 failure -- job-state
+grep -Fq 'did not reach expected state' "${WORK:?}/out" || fail "fixture: the start was expected to miss its state: $(cat "${WORK:?}/out")"
 
 # --- Latency tests --------------------------------------------------------------------
 expect latency_test_async 1 invalid_input -- bogus main tag 5000

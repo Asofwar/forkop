@@ -1174,7 +1174,9 @@ if (mode == "create") {
     // The reload's snapshot ends the keep of the Save & Apply snapshot
     // (trim_retention), taken or not.
     let kind = value(ARGV[1] || "manual");
-    if (index([ "manual", "automatic" ], kind) >= 0)
+    if (index([ "manual", "automatic", "before-apply" ], kind) < 0)
+        answer = { status: "failed", reason: "invalid_input" };
+    else if (index([ "manual", "automatic" ], kind) >= 0)
         answer = create(kind, kind == "manual" ? "manual" : "before-reload", kind == "automatic");
     else if (kind == "before-apply") {
         answer = create("automatic", "before-apply", true);
@@ -1187,8 +1189,14 @@ if (mode == "create") {
         success([ "ucode", "-L", LIB_DIR, LIB_DIR + "/diagnostics/health.uc", "record", "snapshot_create", "success" ]);
 }
 else if (mode == "delete") {
+    // A refusal says why (UC-119); the snapshot that is the last known
+    // working configuration is never deleted.
     let id = value(ARGV[1]);
-    if (valid_id(id) && id != trim(value(fs.readfile(LKG))) && read_snapshot(id, true) != null && fs.unlink(snapshot_path(id))) {
+    if (!valid_id(id)) answer = { status: "failed", reason: "invalid_input" };
+    else if (id == trim(value(fs.readfile(LKG)))) answer = { status: "failed", reason: "lkg_protected" };
+    else if (read_snapshot(id, true) == null) answer = { status: "failed", reason: "invalid_snapshot" };
+    else if (!fs.unlink(snapshot_path(id))) answer = { status: "failed", reason: "delete_failed" };
+    else {
         answer = { status: "deleted" };
         success([ "ucode", "-L", LIB_DIR, LIB_DIR + "/diagnostics/health.uc", "record", "snapshot_delete", "success" ]);
     }

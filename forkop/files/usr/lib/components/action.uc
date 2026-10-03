@@ -323,8 +323,10 @@ function cleanup_action() {
     release_component_lock();
 }
 
-function updates_response(success, component, action, message, current_version, latest_version, changed, status, release_url) {
-    write_json({
+// A failed action also says why with a stable reason (UC-119): busy,
+// invalid_input or failure; message stays the English text.
+function updates_response(success, component, action, message, current_version, latest_version, changed, status, release_url, reason) {
+    let value = {
         success: !!success,
         kind: "component",
         component: as_string(component),
@@ -335,7 +337,10 @@ function updates_response(success, component, action, message, current_version, 
         changed: int(changed || 0),
         status: as_string(status),
         release_url: as_string(release_url)
-    });
+    };
+    if (!value.success)
+        value.reason = as_string(reason) != "" ? as_string(reason) : "failure";
+    write_json(value);
 }
 
 function forkop_status_running_with_timeout() {
@@ -499,11 +504,12 @@ function action_success(component, action, message, current_version, latest_vers
     exit(0);
 }
 
-function action_fail(component, action, message, current_version, latest_version, status, release_url) {
+function action_fail(component, action, message, current_version, latest_version, status, release_url, reason) {
     updates_log(message, "error");
     restart_forkop_after_failed_sing_box_change();
     restart_forkop_after_failed_upgrade();
-    updates_response(false, component, action, message, current_version || "", latest_version || "", 0, status || "", release_url || "");
+    updates_response(false, component, action, message, current_version || "", latest_version || "", 0, status || "", release_url || "",
+        reason);
     cleanup_action();
     exit(1);
 }
@@ -947,8 +953,15 @@ function forkop_releases() {
     let rows = [];
     for (let release in forkop_release_catalog())
         push(rows, { version: as_string(release.tag_name), channel: "stable" });
-    print(sprintf("%J", { success: length(rows) > 0, releases: rows }), "\n");
+    // No release could be listed: a failure, with its exit code (UC-118).
+    let answer = { success: length(rows) > 0, releases: rows };
+    if (!answer.success) {
+        answer.reason = "failure";
+        answer.message = "No Forkop release could be listed";
+    }
+    print(sprintf("%J", answer), "\n");
     cleanup_tmp_dir();
+    return answer.success;
 }
 
 function forkop_release_page_url(version, fallback) {
@@ -2991,7 +3004,8 @@ function component_action(component, action, version) {
     action = as_string(action);
     version = as_string(version);
     if (!acquire_component_lock())
-        action_fail(component != "" ? component : "unknown", action != "" ? action : "unknown", "Another component action is already running");
+        action_fail(component != "" ? component : "unknown", action != "" ? action : "unknown", "Another component action is already running",
+            "", "", "", "", "busy");
     if (!init_tmp_dir())
         action_fail(component != "" ? component : "unknown", action != "" ? action : "unknown", "Failed to create temporary directory");
     if (component == "forkop" && action == "install" &&
@@ -3042,7 +3056,8 @@ function component_action(component, action, version) {
     else if (component == "torrserver_direct" && (action == "enable" || action == "disable"))
         set_torrserver_direct(action);
     else
-        action_fail(component != "" ? component : "unknown", action != "" ? action : "unknown", "Unknown component action");
+        action_fail(component != "" ? component : "unknown", action != "" ? action : "unknown", "Unknown component action",
+            "", "", "", "", "invalid_input");
 }
 
 let mode = ARGV[0] || "";
@@ -3050,7 +3065,7 @@ let mode = ARGV[0] || "";
 if (mode == "component-action")
     component_action(ARGV[1], ARGV[2], ARGV[3]);
 else if (mode == "forkop-releases")
-    forkop_releases();
+    exit(forkop_releases() ? 0 : 1);
 else if (mode == "available-kib-fixture")
     print(available_kib(ARGV[1]), "\n");
 else if (mode == "install-managed-sing-box-service-fixture")

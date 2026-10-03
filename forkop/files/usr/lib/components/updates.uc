@@ -61,6 +61,8 @@ const DNS_FAILOVER_UC = getenv("FORKOP_DNS_FAILOVER_UC") || LIB_DIR + "/singbox/
 const DIAGNOSTICS_UC = getenv("FORKOP_DIAGNOSTICS_UC") || LIB_DIR + "/diagnostics/runtime.uc";
 const RULESET_CACHE_UC = getenv("FORKOP_RULESET_CACHE_UC") || LIB_DIR + "/singbox/ruleset_cache.uc";
 const COMPONENT_JOB_DIR = getenv("UPDATES_JOB_DIR") || getenv("FORKOP_UI_COMPONENT_ACTION_DIR") || "/var/run/forkop/component-actions";
+// The lock of components/action.uc component_action.
+const COMPONENT_ACTION_LOCK_DIR = getenv("UPDATES_LOCK_DIR") || RUNTIME_STATE_DIR + "/component-action.lock";
 const COMPONENT_UPDATE_CHECK_CACHE_DIR = getenv("FORKOP_COMPONENT_UPDATE_CHECK_CACHE_DIR") || RUNTIME_STATE_DIR + "/component-update-checks";
 const COMPONENT_UPDATE_CHECK_STATE_FILE = getenv("FORKOP_COMPONENT_UPDATE_CHECK_STATE_FILE") || RUNTIME_STATE_DIR + "/component-update-check.timestamp";
 const COMPONENT_UPDATE_CHECK_LOCK_DIR = getenv("FORKOP_COMPONENT_UPDATE_CHECK_LOCK_DIR") || RUNTIME_STATE_DIR + "/component-update-check.lock";
@@ -1852,12 +1854,21 @@ function subscription_job_state_path(job_dir, job_id) {
     print(job_dir, "/", job_id, ".json\n");
 }
 
-function subscription_job_json_response(success, job_id, message) {
-    write_json({
+// A refusal also carries a stable reason (UC-119): invalid_input, not_found,
+// busy or failure; message stays the English text.
+function job_json_response(success, job_id, message, reason) {
+    let value = {
         success: arg_bool(success),
         job_id: as_string(job_id),
         message: as_string(message)
-    });
+    };
+    if (!value.success)
+        value.reason = as_string(reason) != "" ? as_string(reason) : "failure";
+    write_json(value);
+}
+
+function subscription_job_json_response(success, job_id, message, reason) {
+    job_json_response(success, job_id, message, reason);
 }
 
 function subscription_running_job_state_value(section, source_index, started_at) {
@@ -1928,7 +1939,7 @@ function subscription_job_refresh_plan(path, now, grace_seconds) {
 }
 
 function subscription_finished_job_state_value(success, message, exit_code, updated_at, section, source_index, started_at) {
-    return {
+    let value = {
         success: arg_bool(success),
         running: false,
         kind: "subscription",
@@ -1940,6 +1951,9 @@ function subscription_finished_job_state_value(success, message, exit_code, upda
         exit_code: arg_number(exit_code),
         updated_at: arg_number(updated_at)
     };
+    if (!value.success)
+        value.reason = "failure";
+    return value;
 }
 
 function subscription_finished_job_state(success, message, exit_code, updated_at, section, source_index, started_at) {
@@ -1952,6 +1966,7 @@ function subscription_stale_job_state_value(updated_at, section, source_index, s
         running: false,
         kind: "subscription",
         message: "Subscription update worker exited unexpectedly",
+        reason: "failure",
         section: as_string(section),
         source_index: as_string(source_index),
         pid: null,
@@ -1965,17 +1980,18 @@ function subscription_stale_job_state(updated_at, section, source_index, started
     write_json(subscription_stale_job_state_value(updated_at, section, source_index, started_at));
 }
 
-function subscription_status_error(message) {
+function subscription_status_error(message, reason) {
     write_json({
         success: false,
         running: false,
         message: as_string(message),
+        reason: as_string(reason) != "" ? as_string(reason) : "failure",
         exit_code: null
     });
 }
 
-function subscription_status_error_exit(message) {
-    subscription_status_error(message);
+function subscription_status_error_exit(message, reason) {
+    subscription_status_error(message, reason);
     exit(1);
 }
 
@@ -2241,24 +2257,20 @@ function subscription_update_status(job_id) {
 
     let state_file = subscription_job_state_path_value(SUBSCRIPTION_JOB_DIR, job_id);
     if (state_file == "")
-        subscription_status_error_exit("Invalid subscription update job id");
+        subscription_status_error_exit("Invalid subscription update job id", "invalid_input");
 
     if (fs.stat(state_file) == null)
-        subscription_status_error_exit("Subscription update job was not found");
+        subscription_status_error_exit("Subscription update job was not found", "not_found");
 
     refresh_subscription_running_job_state(state_file);
     print(as_string(fs.readfile(state_file)));
 }
 
-function component_job_json_response(success, job_id, message) {
-    write_json({
-        success: arg_bool(success),
-        job_id: as_string(job_id),
-        message: as_string(message)
-    });
+function component_job_json_response(success, job_id, message, reason) {
+    job_json_response(success, job_id, message, reason);
 }
 
-function component_action_status_error(message) {
+function component_action_status_error(message, reason) {
     write_json({
         success: false,
         running: false,
@@ -2266,6 +2278,7 @@ function component_action_status_error(message) {
         component: "unknown",
         action: "status",
         message: as_string(message),
+        reason: as_string(reason) != "" ? as_string(reason) : "failure",
         current_version: "",
         latest_version: "",
         changed: 0,
@@ -2274,8 +2287,8 @@ function component_action_status_error(message) {
     });
 }
 
-function component_action_status_error_exit(message) {
-    component_action_status_error(message);
+function component_action_status_error_exit(message, reason) {
+    component_action_status_error(message, reason);
     exit(1);
 }
 
@@ -2312,6 +2325,39 @@ function valid_component_name(component) {
     return component == "forkop" || component == "sing_box" || component == "zapret" ||
         component == "zapret2" || component == "byedpi" || component == "zapret_manager" ||
         component == "packet_steering" || component == "direct_proxy" || component == "torrserver_direct";
+}
+
+// The actions components/action.uc component_action runs, by component (its
+// dispatch). The UI's background start refuses any other before it starts a
+// job (UC-119).
+const COMPONENT_ACTIONS = {
+    forkop: [ "check_update", "install" ],
+    sing_box: [ "check_update", "install", "install_extended", "install_extended_compressed", "install_tiny", "install_stable" ],
+    zapret: [ "check_update", "install", "remove" ],
+    zapret2: [ "check_update", "install", "remove" ],
+    byedpi: [ "check_update", "install", "remove" ],
+    zapret_manager: [ "install", "remove" ],
+    packet_steering: [ "enable", "restore" ],
+    direct_proxy: [ "enable", "disable" ],
+    torrserver_direct: [ "enable", "disable" ]
+};
+
+function component_action_supported(component, action) {
+    let actions = COMPONENT_ACTIONS[normalize_component_name(component)];
+    return type(actions) == "array" && index(actions, as_string(action)) >= 0;
+}
+
+// Another component action holds the lock of components/action.uc. The job
+// itself still refuses when the lock is taken after this check.
+function component_action_lock_busy() {
+    let runtime_lock = null;
+    try {
+        runtime_lock = require("core.runtime_lock");
+    }
+    catch (e) {
+        return false;
+    }
+    return runtime_lock.busy(COMPONENT_ACTION_LOCK_DIR);
 }
 
 function component_update_check_cache_path(component) {
@@ -2477,6 +2523,7 @@ function write_component_stale_job_state(path) {
     value.running = false;
     value.kind = "component";
     value.message = "Component action job is stale or the worker process exited unexpectedly";
+    value.reason = "failure";
     value.changed = 0;
     value.status = "";
     value.exit_code = null;
@@ -2627,6 +2674,7 @@ function component_fallback_job_state(component, action, message, exit_code, upd
         component: as_string(component),
         action: as_string(action),
         message: as_string(message),
+        reason: "failure",
         current_version: "",
         latest_version: "",
         changed: 0,
@@ -2706,10 +2754,20 @@ function component_action_async(component, action, version) {
     version = as_string(version);
     if (version != "" && (normalize_component_name(component) != "forkop" || as_string(action) != "install" ||
         match(version, /^[0-9]+[.][0-9]+[.][0-9]+$/) == null)) {
-        component_job_json_response(false, "", "Invalid release selection");
+        component_job_json_response(false, "", "Invalid release selection", "invalid_input");
         exit(1);
     }
     component = normalize_component_name(component);
+    // Refusals that need no job: an action components/action.uc does not run,
+    // or another component action that holds its lock (UC-119).
+    if (!component_action_supported(component, action)) {
+        component_job_json_response(false, "", "Unknown component action", "invalid_input");
+        exit(1);
+    }
+    if (component_action_lock_busy()) {
+        component_job_json_response(false, "", "Another component action is already running", "busy");
+        exit(1);
+    }
     if (!ensure_component_runtime_dirs()) {
         component_job_json_response(false, "", "Failed to create component action state directory");
         exit(1);
@@ -2755,10 +2813,10 @@ function component_action_status(job_id) {
 
     let state_file = component_job_state_path_value(job_id);
     if (state_file == "")
-        component_action_status_error_exit("Invalid component action job id");
+        component_action_status_error_exit("Invalid component action job id", "invalid_input");
 
     if (fs.stat(state_file) == null)
-        component_action_status_error_exit("Component action job was not found");
+        component_action_status_error_exit("Component action job was not found", "not_found");
 
     refresh_component_running_job_state(state_file);
     print(as_string(fs.readfile(state_file)));
@@ -4902,7 +4960,7 @@ else if (mode == "job-pid")
 else if (mode == "subscription-job-state-path")
     subscription_job_state_path(ARGV[1], ARGV[2]);
 else if (mode == "subscription-job-json-response")
-    subscription_job_json_response(ARGV[1], ARGV[2], ARGV[3]);
+    subscription_job_json_response(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
 else if (mode == "subscription-running-job-state")
     subscription_running_job_state(ARGV[1], ARGV[2], ARGV[3]);
 else if (mode == "subscription-job-refresh-plan")

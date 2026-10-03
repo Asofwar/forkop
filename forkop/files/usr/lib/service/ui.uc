@@ -355,12 +355,18 @@ function ui_state_json() {
     });
 }
 
-function action_start_response(success, job_id, message) {
-    write_json({
+// A refusal also carries a stable reason (UC-119): busy,
+// startup_in_progress, invalid_input, not_found or failure. message stays
+// the English text older pages show.
+function action_start_response(success, job_id, message, reason) {
+    let value = {
         success: arg_bool(success),
         job_id: as_string(job_id),
         message: as_string(message)
-    });
+    };
+    if (!value.success)
+        value.reason = as_string(reason) != "" ? as_string(reason) : "failure";
+    write_json(value);
 }
 
 function service_action_valid(action) {
@@ -419,28 +425,6 @@ function set_running_job_pid(path, pid) {
     let value = object_or_empty(read_json_file(path));
     if (value.running === true)
         value.pid = as_string(pid);
-    write_json(value);
-}
-
-function finished_action_state(path, success, message, exit_code, updated_at) {
-    let value = object_or_empty(read_json_file(path));
-    value.success = arg_bool(success);
-    value.running = false;
-    value.message = as_string(message);
-    value.exit_code = as_string(exit_code) == "" ? null : arg_number(exit_code);
-    value.updated_at = arg_number(updated_at);
-    write_json(value);
-}
-
-function stale_action_state(path, message, updated_at) {
-    let value = object_or_empty(read_json_file(path));
-    if (value.running === true) {
-        value.success = false;
-        value.running = false;
-        value.message = as_string(message);
-        value.exit_code = null;
-        value.updated_at = arg_number(updated_at);
-    }
     write_json(value);
 }
 
@@ -669,13 +653,20 @@ function update_latency_progress_state_mode(path, completed, total, failed) {
     exit(update_latency_progress_state(path, completed, total, failed) ? 0 : 1);
 }
 
-function finished_action_state_value(path, success, message, exit_code, updated_at) {
+// A job that did not succeed says why with a stable reason (UC-119):
+// failure, timeout (not confirmed in time), busy, queued, or the error code of
+// clash_api for a latency test.
+function finished_action_state_value(path, success, message, exit_code, updated_at, reason) {
     let value = object_or_empty(read_json_file(path));
     value.success = arg_bool(success);
     value.running = false;
     value.message = as_string(message);
     value.exit_code = as_string(exit_code) == "" ? null : arg_number(exit_code);
     value.updated_at = arg_number(updated_at);
+    if (value.success)
+        delete value.reason;
+    else
+        value.reason = as_string(reason) != "" ? as_string(reason) : "failure";
     return value;
 }
 
@@ -685,10 +676,19 @@ function stale_action_state_value(path, message, updated_at) {
         value.success = false;
         value.running = false;
         value.message = as_string(message);
+        value.reason = "failure";
         value.exit_code = null;
         value.updated_at = arg_number(updated_at);
     }
     return value;
+}
+
+function finished_action_state(path, success, message, exit_code, updated_at, reason) {
+    write_json(finished_action_state_value(path, success, message, exit_code, updated_at, reason));
+}
+
+function stale_action_state(path, message, updated_at) {
+    write_json(stale_action_state_value(path, message, updated_at));
 }
 
 function ack_action_state_value(path, acked_at) {
@@ -713,8 +713,8 @@ function set_running_job_pid_file(path, pid) {
     return false;
 }
 
-function write_finished_action_state(path, success, message, exit_code) {
-    return write_state_file(path, finished_action_state_value(path, success, message, exit_code, now_seconds()));
+function write_finished_action_state(path, success, message, exit_code, reason) {
+    return write_state_file(path, finished_action_state_value(path, success, message, exit_code, now_seconds(), reason));
 }
 
 function write_stale_action_state(path, message) {
@@ -1374,8 +1374,8 @@ function run_pending_reload_after_service_action(action, success) {
         mark_pending_reload("pending");
 }
 
-function write_finished_service_action_state(path, action, success, message, exit_code) {
-    let written = write_finished_action_state(path, success, message, exit_code);
+function write_finished_service_action_state(path, action, success, message, exit_code, reason) {
+    let written = write_finished_action_state(path, success, message, exit_code, reason);
     if (written)
         run_pending_reload_after_service_action(action, success);
     return written;
@@ -1387,7 +1387,8 @@ function write_skipped_reload_state(path, outcome) {
     let queued = outcome == "queued";
     let value = finished_action_state_value(path, !queued, queued ?
         "Service reload queued: it runs after the operation in progress" :
-        "Service reload skipped: Forkop is stopped; the configuration applies when it is started", 0, now_seconds());
+        "Service reload skipped: Forkop is stopped; the configuration applies when it is started", 0, now_seconds(),
+        queued ? "queued" : "");
     value.outcome = outcome;
     return write_state_file(path, value);
 }
@@ -1450,7 +1451,8 @@ function finish_service_action_after_command(action, job_id_value, status, spawn
     if (service_action_wait_for_expected_state(action, SERVICE_ACTION_TIMEOUT_SECONDS, SERVICE_ACTION_SETTLE_SECONDS))
         write_finished_service_action_state(path, action, true, "Service " + as_string(action) + " completed", 0);
     else
-        write_finished_service_action_state(path, action, false, "Service " + as_string(action) + " did not reach expected state", 1);
+        write_finished_service_action_state(path, action, false, "Service " + as_string(action) + " did not reach expected state", 1,
+            "timeout");
     return 0;
 }
 
@@ -1511,7 +1513,8 @@ function service_action_worker(path, action, job_id_value, reason) {
     // (start-and-wait prints "pending"); the log says how it ends.
     if (result.status != 0 && match(result.output, /(^|\n)pending\n/) != null && fs.stat(path) != null) {
         write_finished_service_action_state(path, action, false, "Service " + action + " did not finish within " +
-            SERVICE_ACTION_TIMEOUT_SECONDS + " s and is still pending; see the Forkop log for its outcome", result.status);
+            SERVICE_ACTION_TIMEOUT_SECONDS + " s and is still pending; see the Forkop log for its outcome", result.status,
+            "timeout");
         return;
     }
     finish_service_action_after_command(action, job_id_value, result.status, false);
@@ -1521,24 +1524,25 @@ function service_action_wait_worker(path, action, job_id_value) {
     if (service_action_wait_for_expected_state(action, SERVICE_ACTION_TIMEOUT_SECONDS, SERVICE_ACTION_SETTLE_SECONDS))
         write_finished_service_action_state(path, action, true, "Service " + as_string(action) + " completed", 0);
     else
-        write_finished_service_action_state(path, action, false, "Service " + as_string(action) + " did not reach expected state", 1);
+        write_finished_service_action_state(path, action, false, "Service " + as_string(action) + " did not reach expected state", 1,
+            "timeout");
 }
 
 function service_action_async(action) {
     action = as_string(action);
     if (!service_action_valid(action)) {
-        action_start_response(false, "", "Invalid service action");
+        action_start_response(false, "", "Invalid service action", "invalid_input");
         exit(1);
     }
 
     if ((action == "start" || action == "restart") && start_worker_running()) {
-        action_start_response(false, "", "Forkop startup is still in progress");
+        action_start_response(false, "", "Forkop startup is still in progress", "startup_in_progress");
         exit(1);
     }
 
     let started = start_service_action(action, "ui", "");
     if (!started.success && active_service_action_value() != "") {
-        action_start_response(false, "", "Another service action is already running");
+        action_start_response(false, "", "Another service action is already running", "busy");
         exit(1);
     }
     if (!started.success) {
@@ -1552,11 +1556,11 @@ function service_action_async(action) {
 function service_action_status(job_id_value) {
     let path = job_state_path_value(SERVICE_ACTION_DIR, job_id_value);
     if (path == "") {
-        action_start_response(false, "", "Invalid service action job id");
+        action_start_response(false, "", "Invalid service action job id", "invalid_input");
         exit(1);
     }
     if (fs.stat(path) == null) {
-        action_start_response(false, "", "Service action job was not found");
+        action_start_response(false, "", "Service action job was not found", "not_found");
         exit(1);
     }
 
@@ -1578,7 +1582,7 @@ function latency_worker(path, latency_type, tag, timeout) {
     if (owner_pid == "" || !module_success(STATE_UC, [
         "acquire-runtime-dir-lock", LATENCY_TEST_LOCK_DIR, owner_pid
     ])) {
-        write_finished_action_state(path, false, "Another latency test is already running", 1);
+        write_finished_action_state(path, false, "Another latency test is already running", 1, "busy");
         return;
     }
 
@@ -1589,30 +1593,35 @@ function latency_worker(path, latency_type, tag, timeout) {
     let args = [ BIN_PATH, "clash_api", method, tag, timeout ];
     if (as_string(latency_type) == "proxy_list")
         push(args, path);
-    let status = command_status(command_from_args(args) + " >/dev/null 2>&1");
+    let result = command_capture(command_from_args(args) + " 2>/dev/null");
     module_success(STATE_UC, [ "release-runtime-dir-lock", LATENCY_TEST_LOCK_DIR, owner_pid ]);
-    if (status == 0)
-        write_finished_action_state(path, true, "Latency test completed", status);
-    else
-        write_finished_action_state(path, false, "Latency test failed", status);
+    if (result.status == 0) {
+        write_finished_action_state(path, true, "Latency test completed", result.status);
+        return;
+    }
+    // Why it failed: the error code of clash_api's failure envelope
+    // (latency_failed, clash_api_unreachable, ...).
+    let answer = object_or_empty(parse_json_or_null(result.output));
+    let reason = match(as_string(answer.error), /^[a-z_]+$/) != null ? answer.error : "failure";
+    write_finished_action_state(path, false, "Latency test failed", result.status, reason);
 }
 
 function latency_test_async(latency_type, section, tag, requested_timeout) {
     latency_type = as_string(latency_type);
     tag = as_string(tag);
     if (!latency_type_valid(latency_type)) {
-        action_start_response(false, "", "Invalid latency test type");
+        action_start_response(false, "", "Invalid latency test type", "invalid_input");
         exit(1);
     }
     if (tag == "") {
-        action_start_response(false, "", "Latency test tag is required");
+        action_start_response(false, "", "Latency test tag is required", "invalid_input");
         exit(1);
     }
 
     // This is only an early busy hint. The worker still acquires the lock
     // atomically and reclaims dead owners; existence alone is not ownership.
     if (runtime_lock.busy(LATENCY_TEST_LOCK_DIR)) {
-        action_start_response(false, "", "Another latency test is already running");
+        action_start_response(false, "", "Another latency test is already running", "busy");
         exit(1);
     }
 
@@ -1640,11 +1649,11 @@ function latency_test_async(latency_type, section, tag, requested_timeout) {
 function latency_test_status(job_id_value) {
     let path = job_state_path_value(LATENCY_ACTION_DIR, job_id_value);
     if (path == "") {
-        action_start_response(false, "", "Invalid latency test job id");
+        action_start_response(false, "", "Invalid latency test job id", "invalid_input");
         exit(1);
     }
     if (fs.stat(path) == null) {
-        action_start_response(false, "", "Latency test job was not found");
+        action_start_response(false, "", "Latency test job was not found", "not_found");
         exit(1);
     }
 
@@ -1668,13 +1677,13 @@ function action_dir(kind) {
 function action_ack(kind, job_id_value) {
     let dir = action_dir(kind);
     if (dir == "") {
-        action_start_response(false, "", "Invalid UI action kind");
+        action_start_response(false, "", "Invalid UI action kind", "invalid_input");
         exit(1);
     }
 
     let path = job_state_path_value(dir, job_id_value);
     if (path == "") {
-        action_start_response(false, "", "Invalid UI action job id");
+        action_start_response(false, "", "Invalid UI action job id", "invalid_input");
         exit(1);
     }
 
@@ -1685,7 +1694,7 @@ function action_ack(kind, job_id_value) {
 
     let value = read_json_file(path);
     if (type(value) == "object" && value.running === true) {
-        action_start_response(false, job_id_value, "UI action is still running");
+        action_start_response(false, job_id_value, "UI action is still running", "busy");
         exit(1);
     }
 
@@ -1708,7 +1717,7 @@ else if (mode == "get-ui-state")
 else if (mode == "service-status-text")
     print_service_status_text(ARGV[1], ARGV[2]);
 else if (mode == "action-start-response")
-    action_start_response(ARGV[1], ARGV[2], ARGV[3]);
+    action_start_response(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
 else if (mode == "service-action-valid")
     exit(service_action_valid(ARGV[1]) ? 0 : 1);
 else if (mode == "latency-type-valid")
@@ -1722,7 +1731,7 @@ else if (mode == "running-latency-action")
 else if (mode == "set-running-job-pid")
     set_running_job_pid(ARGV[1], ARGV[2]);
 else if (mode == "finished-action-state")
-    finished_action_state(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5]);
+    finished_action_state(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6]);
 else if (mode == "stale-action-state")
     stale_action_state(ARGV[1], ARGV[2], ARGV[3]);
 else if (mode == "ack-action-state")

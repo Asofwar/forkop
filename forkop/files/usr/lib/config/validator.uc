@@ -1692,6 +1692,18 @@ function validate_runtime_mark_ranges_context(context) {
     }
 }
 
+// Interface Monitoring Delay: the trigger plan (service/initd.uc) takes
+// whole milliseconds and uses the default 2000 for anything else. Such a
+// value was accepted before, so a configuration with it is reported, not
+// refused (invariant 17); the Settings page refuses it (UC-089).
+function validate_interface_monitoring_delay(settings) {
+    let delay = option(settings, "badwan_reload_delay", "");
+    if (trim(delay) == "" || match(trim(delay), /^[0-9]{1,9}$/) != null)
+        return;
+
+    log_message("Interface Monitoring Delay (badwan_reload_delay) '" + delay + "' is not a whole number of milliseconds; Forkop waits the default 2000 ms instead. Set a number from 0 to 60000 on the Settings page", "warn");
+}
+
 // Dashboard URLTest overrides (config/urltest_override.uc) replace the
 // settings of a URLTest group of a rule in the generated config. The
 // dashboard saved them before the validator read them, so an override that
@@ -1778,6 +1790,7 @@ function validate_runtime_config(context) {
 
     validate_urltest_overrides(sections);
     validate_clash_api_settings(settings);
+    validate_interface_monitoring_delay(settings);
 }
 
 function context_from_runtime() {

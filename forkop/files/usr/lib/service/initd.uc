@@ -1321,16 +1321,29 @@ function reload_release(owner_pid) {
     return 0;
 }
 
+// procd waits this long before the reload a trigger asks for.
+const DEFAULT_RELOAD_DELAY = "2000";
+
+// Interface Monitoring Delay: whole milliseconds. Anything else used to fail
+// procd.sh's numeric test and leave the reloads without a delay; it falls
+// back to the default (config/validator.uc reports it). Nine digits stay
+// within the 32-bit timeout procd takes (UC-089).
+function interface_reload_delay(settings) {
+    let delay = trim(option(settings, "badwan_reload_delay", ""));
+    return match(delay, /^[0-9]{1,9}$/) != null ? delay : DEFAULT_RELOAD_DELAY;
+}
+
+// init.d sets PROCD_RELOAD_DELAY from each delay line, and procd.sh reads it
+// for every trigger added after it: the config.change reload keeps the
+// default, the interface delay applies to the interface reloads only.
 function trigger_plan(settings) {
     settings = object_or_empty(settings);
     let badwan_enabled = option(settings, "enable_badwan_interface_monitoring", "") == "1";
     let badwan_interfaces = split(replace(trim(option(settings, "badwan_monitored_interfaces", "")), /[ \t\r\n]+/g, " "), " ");
-    let delay = option(settings, "badwan_reload_delay", "2000");
-    if (delay == "")
-        delay = "2000";
 
-    print("delay\t", delay, "\n");
+    print("delay\t", DEFAULT_RELOAD_DELAY, "\n");
     print("config\tconfig.change\t", CONFIG_NAME, "\t", SERVICE_INIT, "\treload\t", CONFIG_CHANGE_REASON, "\n");
+    print("delay\t", interface_reload_delay(settings), "\n");
     print("interface\tinterface.*.up\twan\t", SERVICE_INIT, "\thandle_wan_up\t\n");
 
     // The reload for a monitored interface coming up carries the same reason

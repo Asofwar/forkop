@@ -565,9 +565,14 @@ function createSettingsContent(sections, capabilities) {
   o.depends("enable_badwan_interface_monitoring", "1");
   o.default = "2000";
   o.rmempty = false;
+  // Whole milliseconds, as service/initd.uc hands them to procd: "2s" or
+  // "1.5" used to leave the interface reloads without any delay (UC-089).
   o.validate = function (section_id, value) {
     if (!value) {
       return _("Delay value cannot be empty");
+    }
+    if (!/^[0-9]+$/.test(`${value}`) || Number(value) > 60000) {
+      return _("Enter a whole number of milliseconds from 0 to 60000");
     }
     return true;
   };

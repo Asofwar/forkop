@@ -3,6 +3,10 @@ import { describe, expect, it } from 'vitest';
 import {
   describeFailedRemoval,
   describeLeftItems,
+  followRemoval,
+  REMOVAL_WAIT_MS,
+  startRemovalWait,
+  TRANSACTIONS_WAIT_MS,
 } from '../fullUninstallStatus';
 
 describe('failed full removal', () => {
@@ -89,5 +93,53 @@ describe('what a removal left', () => {
       'something new, the lines marked "# forkop-" in /etc/crontabs/root',
     );
     expect(describeLeftItems('')).toBe('');
+  });
+});
+
+describe('how long the dialog follows a removal', () => {
+  it('follows the removal for its own time when nothing held it up', () => {
+    const wait = startRemovalWait(1000);
+    expect(wait.deadline).toBe(1000 + REMOVAL_WAIT_MS);
+    expect(
+      followRemoval(wait, { state: 'running', phase: 'packages' }, 60000),
+    ).toEqual(wait);
+  });
+
+  it('does not count the wait for a configuration change against the removal', () => {
+    let wait = startRemovalWait(0);
+    wait = followRemoval(
+      wait,
+      { state: 'running', phase: 'transactions' },
+      1500,
+    );
+    expect(wait.waitingForChanges).toBe(true);
+    expect(wait.deadline).toBe(1500 + TRANSACTIONS_WAIT_MS);
+    // Still waiting a minute later: the deadline of the wait stays.
+    const later = followRemoval(
+      wait,
+      { state: 'running', phase: 'transactions' },
+      61500,
+    );
+    expect(later).toEqual(wait);
+    // The change ended: the removal proper gets its whole time from now.
+    wait = followRemoval(later, { state: 'running', phase: 'stop' }, 63000);
+    expect(wait.waitingForChanges).toBe(false);
+    expect(wait.deadline).toBe(63000 + REMOVAL_WAIT_MS);
+    expect(wait.deadline).toBeGreaterThan(REMOVAL_WAIT_MS);
+  });
+
+  it('gives up on a removal that never leaves the wait', () => {
+    let wait = startRemovalWait(0);
+    wait = followRemoval(
+      wait,
+      { state: 'running', phase: 'transactions' },
+      1500,
+    );
+    wait = followRemoval(
+      wait,
+      { state: 'running', phase: 'transactions' },
+      1500 + TRANSACTIONS_WAIT_MS,
+    );
+    expect(wait.deadline).toBe(1500 + TRANSACTIONS_WAIT_MS);
   });
 });

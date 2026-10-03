@@ -38,6 +38,40 @@ export function describeLeftItems(left: string): string {
     .join(', ');
 }
 
+// How long the dialog follows the removal before it says it could not
+// confirm the end: the removal proper, and before it the wait for a
+// configuration change that began earlier (phase "transactions": up to 60
+// checks of a second and a look at the processes each; full-uninstall.sh,
+// UC-084). That wait has a time of its own and does not count against the
+// removal, which gets its whole time once the wait is over.
+export const REMOVAL_WAIT_MS = 180000;
+export const TRANSACTIONS_WAIT_MS = 120000;
+
+export interface RemovalWait {
+  deadline: number;
+  waitingForChanges: boolean;
+}
+
+export function startRemovalWait(now: number): RemovalWait {
+  return { deadline: now + REMOVAL_WAIT_MS, waitingForChanges: false };
+}
+
+// The wait after the status the removal reported at now.
+export function followRemoval(
+  wait: RemovalWait,
+  status: FullUninstallStatus,
+  now: number,
+): RemovalWait {
+  const waitingForChanges =
+    status.state === 'running' && status.phase === 'transactions';
+  if (waitingForChanges === wait.waitingForChanges) return wait;
+  return {
+    deadline:
+      now + (waitingForChanges ? TRANSACTIONS_WAIT_MS : REMOVAL_WAIT_MS),
+    waitingForChanges,
+  };
+}
+
 // What the user reads about a removal that failed.
 export function describeFailedRemoval(status: FullUninstallStatus): string {
   const left =

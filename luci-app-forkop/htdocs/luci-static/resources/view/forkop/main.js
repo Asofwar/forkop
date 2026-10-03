@@ -16247,6 +16247,19 @@ function describeLeftItem(item) {
 function describeLeftItems(left) {
   return left.split(",").map((item) => item.trim()).filter((item) => item !== "").map(describeLeftItem).join(", ");
 }
+var REMOVAL_WAIT_MS = 18e4;
+var TRANSACTIONS_WAIT_MS = 12e4;
+function startRemovalWait(now) {
+  return { deadline: now + REMOVAL_WAIT_MS, waitingForChanges: false };
+}
+function followRemoval(wait, status2, now) {
+  const waitingForChanges = status2.state === "running" && status2.phase === "transactions";
+  if (waitingForChanges === wait.waitingForChanges) return wait;
+  return {
+    deadline: now + (waitingForChanges ? TRANSACTIONS_WAIT_MS : REMOVAL_WAIT_MS),
+    waitingForChanges
+  };
+}
 function describeFailedRemoval(status2) {
   const left = typeof status2.left === "string" ? describeLeftItems(status2.left) : "";
   if (status2.phase === "preflight") {
@@ -16308,8 +16321,8 @@ function confirmRemoval() {
               )
             );
           }
-          const deadline = Date.now() + 18e4;
-          while (Date.now() < deadline) {
+          let wait = startRemovalWait(Date.now());
+          while (Date.now() < wait.deadline) {
             await new Promise((resolve) => setTimeout(resolve, 1500));
             let status2;
             try {
@@ -16320,6 +16333,13 @@ function confirmRemoval() {
               status2 = await reply.json();
             } catch {
               continue;
+            }
+            const waited = wait.waitingForChanges;
+            wait = followRemoval(wait, status2, Date.now());
+            if (wait.waitingForChanges !== waited) {
+              progress.textContent = wait.waitingForChanges ? _(
+                "Waiting for a configuration change of Forkop X to finish before removing it\u2026"
+              ) : _("Removing Forkop X\u2026");
             }
             if (status2.state === "complete") {
               progress.textContent = _(

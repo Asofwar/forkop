@@ -1533,7 +1533,7 @@
       "src/forkop/ui/confirmAction.ts:30",
       "src/forkop/tabs/autotune/initController.ts:442",
       "src/forkop/tabs/dashboard/initController.ts:1432",
-      "src/forkop/tabs/updates/fullUninstall.ts:15",
+      "src/forkop/tabs/updates/fullUninstall.ts:17",
       "src/forkop/tabs/updates/releaseSelector.ts:62",
       "src/forkop/tabs/updates/releaseSelector.ts:123"
     ]
@@ -2344,7 +2344,7 @@
     "call": "Could not confirm completion. Check the removal log before retrying.",
     "key": "Could not confirm completion. Check the removal log before retrying.",
     "places": [
-      "src/forkop/tabs/updates/fullUninstall.ts:74"
+      "src/forkop/tabs/updates/fullUninstall.ts:85"
     ]
   },
   {
@@ -2429,7 +2429,7 @@
     "call": "Could not start removal. Another component action may be running.",
     "key": "Could not start removal. Another component action may be running.",
     "places": [
-      "src/forkop/tabs/updates/fullUninstall.ts:42"
+      "src/forkop/tabs/updates/fullUninstall.ts:44"
     ]
   },
   {
@@ -3981,7 +3981,7 @@
     "call": "Forkop X and sing-box have been removed. Original repositories have been restored.",
     "key": "Forkop X and sing-box have been removed. Original repositories have been restored.",
     "places": [
-      "src/forkop/tabs/updates/fullUninstall.ts:61"
+      "src/forkop/tabs/updates/fullUninstall.ts:72"
     ]
   },
   {
@@ -4016,14 +4016,14 @@
     "call": "Forkop X is still active after its stop, so nothing was removed. Still in place: %s. Stop Forkop X or restart the router, then try again.",
     "key": "Forkop X is still active after its stop, so nothing was removed. Still in place: %s. Stop Forkop X or restart the router, then try again.",
     "places": [
-      "src/forkop/tabs/updates/fullUninstallStatus.ts:61"
+      "src/forkop/tabs/updates/fullUninstallStatus.ts:95"
     ]
   },
   {
     "call": "Forkop X is still changing its configuration (a snapshot restore, an autotune run or another change), so nothing was removed. Try again once it has finished.",
     "key": "Forkop X is still changing its configuration (a snapshot restore, an autotune run or another change), so nothing was removed. Try again once it has finished.",
     "places": [
-      "src/forkop/tabs/updates/fullUninstallStatus.ts:54"
+      "src/forkop/tabs/updates/fullUninstallStatus.ts:88"
     ]
   },
   {
@@ -4151,7 +4151,7 @@
     "call": "Forkop X was removed, but this is still in place: %s. See the removal log in /tmp/forkop-uninstall.*/output.log.",
     "key": "Forkop X was removed, but this is still in place: %s. See the removal log in /tmp/forkop-uninstall.*/output.log.",
     "places": [
-      "src/forkop/tabs/updates/fullUninstallStatus.ts:66"
+      "src/forkop/tabs/updates/fullUninstallStatus.ts:100"
     ]
   },
   {
@@ -4263,8 +4263,8 @@
     "call": "Full removal",
     "key": "Full removal",
     "places": [
-      "src/forkop/tabs/updates/fullUninstall.ts:90",
-      "src/forkop/tabs/updates/fullUninstall.ts:118"
+      "src/forkop/tabs/updates/fullUninstall.ts:101",
+      "src/forkop/tabs/updates/fullUninstall.ts:129"
     ]
   },
   {
@@ -6537,8 +6537,8 @@
     "call": "Open LuCI",
     "key": "Open LuCI",
     "places": [
-      "src/forkop/tabs/updates/fullUninstall.ts:64",
-      "src/forkop/tabs/updates/fullUninstall.ts:84"
+      "src/forkop/tabs/updates/fullUninstall.ts:75",
+      "src/forkop/tabs/updates/fullUninstall.ts:95"
     ]
   },
   {
@@ -6604,7 +6604,7 @@
     "call": "Original repositories could not be restored. Removal was cancelled before deleting packages.",
     "key": "Original repositories could not be restored. Removal was cancelled before deleting packages.",
     "places": [
-      "src/forkop/tabs/updates/fullUninstallStatus.ts:46"
+      "src/forkop/tabs/updates/fullUninstallStatus.ts:80"
     ]
   },
   {
@@ -7190,7 +7190,7 @@
     "call": "Removal did not finish. See the removal log in /tmp/forkop-uninstall.*/output.log.",
     "key": "Removal did not finish. See the removal log in /tmp/forkop-uninstall.*/output.log.",
     "places": [
-      "src/forkop/tabs/updates/fullUninstallStatus.ts:70"
+      "src/forkop/tabs/updates/fullUninstallStatus.ts:104"
     ]
   },
   {
@@ -7231,28 +7231,28 @@
     "call": "Remove Forkop X and sing-box with their settings and restore the original device repositories.",
     "key": "Remove Forkop X and sing-box with their settings and restore the original device repositories.",
     "places": [
-      "src/forkop/tabs/updates/fullUninstall.ts:124"
+      "src/forkop/tabs/updates/fullUninstall.ts:135"
     ]
   },
   {
     "call": "Remove Forkop X completely",
     "key": "Remove Forkop X completely",
     "places": [
-      "src/forkop/tabs/updates/fullUninstall.ts:129"
+      "src/forkop/tabs/updates/fullUninstall.ts:140"
     ]
   },
   {
     "call": "Remove Forkop X, sing-box, their settings and cache, and restore the original device repositories?",
     "key": "Remove Forkop X, sing-box, their settings and cache, and restore the original device repositories?",
     "places": [
-      "src/forkop/tabs/updates/fullUninstall.ts:95"
+      "src/forkop/tabs/updates/fullUninstall.ts:106"
     ]
   },
   {
     "call": "Remove permanently",
     "key": "Remove permanently",
     "places": [
-      "src/forkop/tabs/updates/fullUninstall.ts:19"
+      "src/forkop/tabs/updates/fullUninstall.ts:21"
     ]
   },
   {
@@ -7309,7 +7309,8 @@
     "call": "Removing Forkop X…",
     "key": "Removing Forkop X…",
     "places": [
-      "src/forkop/tabs/updates/fullUninstall.ts:25"
+      "src/forkop/tabs/updates/fullUninstall.ts:27",
+      "src/forkop/tabs/updates/fullUninstall.ts:69"
     ]
   },
   {
@@ -10080,7 +10081,7 @@
     "call": "This permanently deletes saved sections and subscriptions. Other components remain installed.",
     "key": "This permanently deletes saved sections and subscriptions. Other components remain installed.",
     "places": [
-      "src/forkop/tabs/updates/fullUninstall.ts:102"
+      "src/forkop/tabs/updates/fullUninstall.ts:113"
     ]
   },
   {
@@ -10840,6 +10841,13 @@
     "key": "Waiting",
     "places": [
       "src/forkop/tabs/autotune/model.ts:764"
+    ]
+  },
+  {
+    "call": "Waiting for a configuration change of Forkop X to finish before removing it…",
+    "key": "Waiting for a configuration change of Forkop X to finish before removing it…",
+    "places": [
+      "src/forkop/tabs/updates/fullUninstall.ts:66"
     ]
   },
   {

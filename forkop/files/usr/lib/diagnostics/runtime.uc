@@ -421,11 +421,18 @@ function nolog(message) {
     print("\033[0;36m[", timestamp, "]\033[0m \033[0;32m", as_string(message), "\033[0m\n");
 }
 
-// Why a diagnostic failed: on a terminal like nolog(), otherwise on stderr,
-// which the UI shows for a command that failed.
+// A report (global_check, support_report) keeps why a part failed next to
+// that part on its stdout; the commands that print one result say it on
+// stderr.
+let failure_in_place = false;
+
+// Why a diagnostic failed: on a terminal like nolog(), in a report in place,
+// otherwise on stderr, which the UI shows for a command that failed.
 function nolog_failure(message) {
     if (stdout_is_tty())
         nolog(message);
+    else if (failure_in_place)
+        print(as_string(message), "\n");
     else
         warn(as_string(message), "\n");
 }
@@ -2327,6 +2334,7 @@ function render_or_fail(mode_args, input, fail_message, ok_statuses) {
 }
 
 function global_check(arg1, arg2) {
+    failure_in_place = true;
     let visibility = as_string(arg2 || "masked");
     if (as_string(arg1) == "raw" || as_string(arg1) == "masked")
         visibility = as_string(arg1);
@@ -2483,6 +2491,7 @@ function support_report_file(title, path) {
 }
 
 function support_report() {
+    failure_in_place = true;
     print("⚠️ CONFIDENTIAL SUPPORT REPORT / КОНФИДЕНЦИАЛЬНЫЙ ОТЧЁТ ДЛЯ ПОДДЕРЖКИ\n\n");
     print("This file contains proxy and subscription URLs, UUIDs, passwords, keys, tokens, client domains and IP addresses, process command lines, and network configuration. Share it only with a trusted support specialist.\n\n");
     print("Файл содержит ссылки прокси и подписок, UUID, пароли, ключи, токены, домены и IP-адреса клиентов, параметры процессов и сетевую конфигурацию. Передавайте его только доверенному специалисту.\n\n");

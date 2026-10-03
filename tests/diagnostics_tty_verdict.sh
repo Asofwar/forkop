@@ -119,4 +119,30 @@ on_tty "${WORK:?}/tty" show-sing-box-config masked
 grep -Fq 'Current sing-box configuration:' "${WORK:?}/tty" ||
   fail "show_sing_box_config must print its progress line on a terminal"
 
+# --- A report keeps a failure next to its part -------------------------------------
+# global_check, which the support report embeds, prints why a part failed in
+# place on stdout: the UI shows that stdout, and on stderr the reason would be
+# detached from its part (the support report collects itself with 2>&1, where
+# stdout is buffered and stderr is not).
+ISOLATE=()
+if unshare --mount --net --propagation private sh -c 'mount -t tmpfs tmpfs /run' 2>/dev/null; then
+  ISOLATE=(unshare --mount --net --propagation private)
+elif unshare --user --map-root-user --mount --net --propagation private sh -c 'mount -t tmpfs tmpfs /run' 2>/dev/null; then
+  ISOLATE=(unshare --user --map-root-user --mount --net --propagation private)
+fi
+[ "${#ISOLATE[@]}" -gt 0 ] && ISOLATE+=(sh -c 'mount -t tmpfs tmpfs /run && exec "$@"' sh)
+printf '%s\n' 'forkop.settings=settings' "forkop.settings.config_path=${WORK:?}/missing-sing-box.json" >"$uci_state"
+set +e
+FORKOP_CONFIG="${WORK:?}/missing-forkop" FORKOP_RUNTIME_STATE_DIR="${WORK:?}/run" \
+  FORKOP_SYSTEM_INFO_CACHE_FILE="${WORK:?}/system-info.json" \
+  "${ISOLATE[@]}" timeout 60 ucode -L "$FORKOP_LIB" "$RUNTIME_UC" global-check masked \
+  >"${WORK:?}/stdout" 2>"${WORK:?}/stderr" </dev/null
+RC=$?
+set -e
+[ "$RC" -eq 0 ] || fail "global_check must finish (rc $RC): $(cat "${WORK:?}/stderr")"
+grep -A1 -F 'Forkop config' "${WORK:?}/stdout" | grep -Fxq 'Configuration file not found' ||
+  fail "global_check must say in place that the Forkop configuration is missing: $(cat "${WORK:?}/stdout")"
+grep -Fq 'Configuration file not found' "${WORK:?}/stderr" &&
+  fail "global_check must not detach a failure to stderr"
+
 printf 'diagnostics terminal verdict checks passed\n'

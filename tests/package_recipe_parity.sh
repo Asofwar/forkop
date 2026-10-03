@@ -211,15 +211,21 @@ called() {
 }
 # opkg runs the installed "prerm upgrade <new>" or "prerm remove"; the
 # ipk's prerm sources prerm-pkg from default_prerm with its own $0 first.
-# It runs the incoming "preinst upgrade <old>" with PKG_UPGRADE=1, which
-# must not stop Forkop a second time.
-for args in "upgrade 1.2.4" "remove"; do
+# Some opkg builds of OpenWrt 24 run prerm without an action, also for an
+# ordinary upgrade: build.sh's prerm passes none on, and package_prerm
+# decides by the service's state (service/package.uc
+# remember_upgrade_state); a removal would leave a Forkop that ran before
+# the upgrade down and lift its kill-switch. opkg sets PKG_ROOT. It runs
+# the incoming "preinst upgrade <old>" with PKG_UPGRADE=1, which must not
+# stop Forkop a second time.
+for args in "upgrade 1.2.4" "remove" ""; do
   # shellcheck disable=SC2086 # the package manager's arguments
   expected="$(called ucode "$WORK_DIR/ipk-prerm" $args)"
-  [ "$expected" = "0|forkop package_prerm $args;" ] || fail "build.sh's prerm $args: $expected"
+  [ "$expected" = "0|forkop package_prerm${args:+ $args};" ] || fail "build.sh's prerm ${args:-without an action}: $expected"
   # shellcheck disable=SC2016,SC2086 # expanded by sh; the package manager's arguments
-  sdk="$(called sh -c '. "$1"' /usr/lib/opkg/info/forkop.prerm "$WORK_DIR/sdk-prerm-pkg" $args)"
-  [ "$sdk" = "$expected" ] || fail "the SDK prerm $args does not do what build.sh's does: $sdk"
+  sdk="$(called env PKG_ROOT=/ sh -c '. "$1"' /usr/lib/opkg/info/forkop.prerm "$WORK_DIR/sdk-prerm-pkg" $args)"
+  [ "$sdk" = "$expected" ] ||
+    fail "the SDK prerm ${args:-without an action} does not do what build.sh's does: $sdk (build.sh: $expected)"
 done
 sdk="$(called env PKG_UPGRADE=1 sh "$WORK_DIR/sdk-preinst" upgrade 1.2.3)"
 [ "$sdk" = "0|" ] || fail "the SDK preinst of an opkg upgrade must leave the stop to prerm: $sdk"

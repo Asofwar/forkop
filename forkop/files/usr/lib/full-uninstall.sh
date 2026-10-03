@@ -18,14 +18,17 @@ COMPONENT_LOCK="$ROOT/var/run/forkop/component-action.lock"
 PACKAGES="luci-i18n-forkop-ru luci-app-forkop forkop sing-box sing-box-tiny sing-box-extended"
 PHASE=preflight
 
-# uci on the filesystem root; a test root keeps the changes uci stages under
-# it too, never in the host's /tmp/.uci.
-root_uci() {
+# uci on the filesystem root with a directory of the job's own for the
+# changes it stages: it reads what is committed, and a commit writes only
+# what went through it, never what someone else staged in /tmp/.uci. A test
+# root keeps the job, and so the staged changes, under it.
+job_uci() {
+    mkdir -p "$JOB/uci" || return 1
     if [ -z "$ROOT" ]; then
-        uci "$@"
+        uci -t "$JOB/uci" "$@"
         return
     fi
-    mkdir -p "$ROOT/tmp/.uci" && uci -c "$ROOT/etc/config" -t "$ROOT/tmp/.uci" "$@"
+    uci -c "$ROOT/etc/config" -t "$JOB/uci" "$@"
 }
 
 has_mirror() {
@@ -344,15 +347,17 @@ run() {
     # The normal path detached the block list already: killswitch_disable
     # above edits dhcp through core/uci.uc (a private copy, replaced only
     # while the file is unchanged, without changes someone staged for dhcp).
-    # This fallback is a plain uci commit, which also commits what someone
-    # staged in /tmp/.uci: Forkop's libraries are gone here, BusyBox sh has
-    # no libuci lock for a compare-and-swap of its own, and the detach must
-    # not be skipped: /etc/forkop with the servers file is already removed,
-    # and dnsmasq must not keep reading a file that Forkop no longer owns.
+    # Forkop's libraries are gone here, and the detach must not be skipped:
+    # /etc/forkop with the servers file is already removed, and dnsmasq must
+    # not keep reading a file that Forkop no longer owns. The uci CLI does
+    # it with the job's own directory for staged changes (job_uci): the
+    # commit re-reads dhcp under libuci's lock of the file and writes only
+    # this deletion; what someone staged for dhcp in /tmp/.uci stays staged
+    # (S5: a plain commit wrote it too).
     if [ -z "$ROOT" ]; then nft delete table inet ForkopKillswitch 2>/dev/null || true; fi
-    if [ "$(root_uci -q get dhcp.@dnsmasq[0].serversfile 2>/dev/null || true)" = /etc/forkop/killswitch/dnsmasq.servers ]; then
-        if root_uci -q delete dhcp.@dnsmasq[0].serversfile &&
-            root_uci -q commit dhcp && [ -x "$ROOT/etc/init.d/dnsmasq" ]; then
+    if [ "$(job_uci -q get dhcp.@dnsmasq[0].serversfile 2>/dev/null || true)" = /etc/forkop/killswitch/dnsmasq.servers ]; then
+        if job_uci -q delete dhcp.@dnsmasq[0].serversfile &&
+            job_uci -q commit dhcp && [ -x "$ROOT/etc/init.d/dnsmasq" ]; then
             "$ROOT/etc/init.d/dnsmasq" restart || true
         fi
     fi

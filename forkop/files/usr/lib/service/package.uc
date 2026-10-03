@@ -178,8 +178,10 @@ function restore_dnsmasq_if_needed() {
         return;
 
     command_success_from_args([ BIN_PATH, "restore_dnsmasq" ]);
+    // dns/apply.uc loads Forkop's modules: without the library path it
+    // could never run (UC-078).
     if (path_exists(DNS_APPLY_UC))
-        command_success_from_args([ "ucode", DNS_APPLY_UC, "failsafe-restore" ]);
+        command_success_from_args([ "ucode", "-L", LIB_DIR, DNS_APPLY_UC, "failsafe-restore" ]);
 }
 
 // keep_running: the sing-box still serves an interception that a removal

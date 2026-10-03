@@ -1938,6 +1938,11 @@ function subscription_job_refresh_plan(path, now, grace_seconds) {
     print("pid\t", pid, "\t", within_grace ? "0" : "1", "\n");
 }
 
+// forkop subscription_update exits with this status when a reload or another
+// subscription update kept its locks (subscription_update_common): the UI job
+// was refused as busy, it did not fail (UC-119).
+const SUBSCRIPTION_UPDATE_BUSY_STATUS = 2;
+
 function subscription_finished_job_state_value(success, message, exit_code, updated_at, section, source_index, started_at) {
     let value = {
         success: arg_bool(success),
@@ -1952,7 +1957,7 @@ function subscription_finished_job_state_value(success, message, exit_code, upda
         updated_at: arg_number(updated_at)
     };
     if (!value.success)
-        value.reason = "failure";
+        value.reason = value.exit_code == SUBSCRIPTION_UPDATE_BUSY_STATUS ? "busy" : "failure";
     return value;
 }
 
@@ -4740,11 +4745,16 @@ function subscription_update_common(force, target_section, target_source_index) 
     let busy = acquire_subscription_update_locks(force);
     if (busy != "") {
         subscription_prefetch_discard();
-        log_message(busy == "reload_busy" ? "Forkop reload is already running; skipping subscription update" :
-            "Subscription update is already running", "info");
-        if (force)
-            mark_pending_reload(busy);
-        return force ? 1 : 0;
+        let message = busy == "reload_busy" ? "Forkop reload is already running; skipping subscription update" :
+            "Subscription update is already running";
+        log_message(message, "info");
+        if (!force)
+            return 0;
+        // A forced update (the UI's, the CLI's) did not run: say why, and
+        // exit busy rather than failed.
+        mark_pending_reload(busy);
+        warn(message, "\n");
+        return SUBSCRIPTION_UPDATE_BUSY_STATUS;
     }
 
     let ok = subscription_update_common_locked(force, target_section, target_source_index);

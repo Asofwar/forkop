@@ -6758,6 +6758,30 @@ function latencyJobFailure(state) {
   );
 }
 
+// src/forkop/tabs/dashboard/subscriptionJob.ts
+function subscriptionUpdateErrorMessage(message) {
+  const detail = `${message || ""}`.trim();
+  const fallback = _("Failed to update subscriptions");
+  if (!detail || detail === fallback || detail === "Subscription update failed") {
+    return fallback;
+  }
+  return `${fallback}: ${detail}`;
+}
+function subscriptionUpdateFailureNotice(response) {
+  const failure = response.success ? { reason: response.data.reason, message: response.data.message } : { reason: response.reason, error: response.error };
+  const reason = failureReason(failure);
+  const reasonText = actionReasonText(reason);
+  if (reasonText && actionReasonIsWarning(reason)) {
+    return { text: reasonText, type: "warning" };
+  }
+  return {
+    text: subscriptionUpdateErrorMessage(
+      reasonText || failure.message || failure.error || ""
+    ),
+    type: "error"
+  };
+}
+
 // src/partials/button/styles.ts
 var styles = `
 .fkp-partial-button {
@@ -7578,14 +7602,6 @@ function setSubscriptionUpdating(sectionName, updating, local = false) {
     }
   });
 }
-function subscriptionUpdateErrorMessage(message) {
-  const detail = `${message || ""}`.trim();
-  const fallback = _("Failed to update subscriptions");
-  if (!detail || detail === fallback || detail === "Subscription update failed") {
-    return fallback;
-  }
-  return `${fallback}: ${detail}`;
-}
 function setSelectorSwitching(sectionName, tag) {
   const sectionsWidget = store.get().sectionsWidget;
   const selectorSwitchingSections = {
@@ -7656,7 +7672,8 @@ async function completeSubscriptionUpdateJob(jobId, sectionName, response) {
   }
   if (failed2) {
     if (shouldNotify) {
-      showToast(subscriptionUpdateErrorMessage(message), "error");
+      const notice = subscriptionUpdateFailureNotice(response);
+      showToast(notice.text, notice.type);
     }
     return;
   }

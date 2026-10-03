@@ -68,7 +68,7 @@ restore_dnsmasq                | rc            | alias of dnsmasq_restore
 main                           | rc            | alias of start (UC-015); covered: cli_main_alias
 list_update                    | rc            | busy is rc 0 (cron); covered: list_update_reload_policy
 list_update_if_due             | rc            | busy is rc 0 (cron); covered: updates_due
-subscription_update            | rc            | covered: subscription_update_job
+subscription_update            | rc            | 0 updated, 1 failed, 2 busy (a reload or another update kept its locks); run (job); covered: subscription_update_busy_pending_reload
 subscription_update_async      | job-start     | run: no worker started here; covered: subscriptionUpdate.test.ts
 subscription_update_status     | job-status    | run
 subscription_update_if_due     | rc            | busy is rc 0 (cron); covered: updates_due
@@ -403,6 +403,21 @@ expect component_action_status 1 not_found -- 1700000000_123
 # --- Subscription updates -----------------------------------------------------------------
 expect subscription_update_status 1 invalid_input -- ../x
 expect subscription_update_status 1 not_found -- 1700000000_123
+# A UI update that another reload or subscription update kept from its locks
+# (forkop subscription_update exits 2) was refused as busy, not failed.
+cat >"${WORK:?}/busy-forkop" <<'SH'
+#!/bin/sh
+echo "Forkop reload is already running; the subscription update did not run"
+exit 2
+SH
+chmod +x "${WORK:?}/busy-forkop"
+printf '{"success":true,"running":true,"kind":"subscription","message":"running","section":"main","source_index":"0","started_at":%s}\n' \
+  "$(date +%s)" >"$FORKOP_SUBSCRIPTION_UPDATE_JOB_DIR/job-busy.json"
+FORKOP_BIN="${WORK:?}/busy-forkop" ucode -L "$LIB" "$LIB/components/updates.uc" subscription-update-worker \
+  "$FORKOP_SUBSCRIPTION_UPDATE_JOB_DIR/job-busy.json" "${WORK:?}/busy-update.out" main 0 ||
+  fail "subscription-update-worker exited non-zero"
+expect subscription_update_status 0 busy -- job-busy
+grep -Fq 'did not run' "${WORK:?}/out" || fail "the busy subscription job must say why: $(cat "${WORK:?}/out")"
 
 # --- Snapshots -------------------------------------------------------------------------------
 expect config_snapshot_create 1 invalid_input -- bogus-kind

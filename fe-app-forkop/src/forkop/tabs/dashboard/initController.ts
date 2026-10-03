@@ -47,6 +47,10 @@ import { runOverviewServiceAction } from './serviceActionFlow';
 import { runUrlTestChange } from './serviceReload';
 import { latencyJobFailure } from './latencyJob';
 import {
+  subscriptionUpdateErrorMessage,
+  subscriptionUpdateFailureNotice,
+} from './subscriptionJob';
+import {
   ActionFailureError,
   failureFromError,
   failureReason,
@@ -394,21 +398,6 @@ function setSubscriptionUpdating(
   });
 }
 
-function subscriptionUpdateErrorMessage(message: string) {
-  const detail = `${message || ''}`.trim();
-  const fallback = _('Failed to update subscriptions');
-
-  if (
-    !detail ||
-    detail === fallback ||
-    detail === 'Subscription update failed'
-  ) {
-    return fallback;
-  }
-
-  return `${fallback}: ${detail}`;
-}
-
 function setSelectorSwitching(sectionName: string, tag?: string) {
   const sectionsWidget = store.get().sectionsWidget;
   const selectorSwitchingSections = {
@@ -506,7 +495,8 @@ async function completeSubscriptionUpdateJob(
 
   if (failed) {
     if (shouldNotify) {
-      showToast(subscriptionUpdateErrorMessage(message), 'error');
+      const notice = subscriptionUpdateFailureNotice(response);
+      showToast(notice.text, notice.type);
     }
     return;
   }

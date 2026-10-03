@@ -216,8 +216,11 @@ grep -q '"running": *false' "$stale_job" ||
 
 # 2. A forced update waits for subscription-update.lock and then gives up. It
 #    applies the queued reload and still leaves its own request for the
-#    subscription-update.lock holder, as before.
-run_case "forced update" subscription-update 1
+#    subscription-update.lock holder, as before. It exits 2: busy, which the
+#    UI job reports as a refusal, not a failure (UC-119).
+run_case "forced update" subscription-update 2
+grep -Fq 'Subscription update is already running' "$WORK_DIR/update.out" ||
+  fail "forced update: it did not say why it did not run: $(cat "$WORK_DIR/update.out")"
 [ "$(pending_reason)" = subscription_update_busy ] ||
   fail "forced update: its subscription_update_busy request is missing (pending reason '$(pending_reason)')"
 

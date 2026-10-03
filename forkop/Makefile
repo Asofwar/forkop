@@ -41,6 +41,9 @@ endef
 define Build/Compile
 endef
 
+# OpenWrt's default_prerm around it also disables the package's init
+# scripts on a removal: /etc/init.d/forkop keeps its autostart, which no
+# postinst brings back after a reinstall, as with build.sh's packages.
 define Package/forkop/prerm
 #!/bin/sh
 

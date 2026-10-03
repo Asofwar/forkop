@@ -66,19 +66,25 @@ service_started() {
     return "${FORKOP_LAST_START_STATUS:-0}"
 }
 
-# OpenWrt's default package script (lib/functions.sh default_postinst),
-# which a package built with the SDK runs around its own (forkop/Makefile),
-# enables every init script of the package on a first install and starts it
-# after every install and upgrade. For Forkop that is package_postinst's
-# decision (service/package.uc): it starts again a Forkop that ran before
-# the upgrade, once its configuration is migrated, and leaves a new install
-# and a Forkop the user stopped down (D-15), as with build.sh's packages,
-# which run no default script. A package manager runs its scripts with
-# PKG_ROOT (opkg) or APK_SCRIPT (apk) set: there a plain "enable" or "start"
-# is that default script. Forkop's own start passes FORKOP_START_REQUEST
-# (service/initd.uc start-and-wait), a deferred or triggered start its
-# reason, and an image build (IPKG_INSTROOT) enables Forkop as every other
-# init script.
+# OpenWrt's default package scripts (lib/functions.sh default_postinst and
+# default_prerm), which a package built with the SDK runs around its own
+# (forkop/Makefile), enable every init script of the package on a first
+# install and start it after every install and upgrade, and disable it on
+# a removal. For Forkop that is package_postinst's decision
+# (service/package.uc): it starts again a Forkop that ran before the
+# upgrade, once its configuration is migrated, and leaves a new install and
+# a Forkop the user stopped down (D-15). Autostart stays as the user left
+# it, also across a removal and a new install (opkg install
+# --force-reinstall, the in-app rollback of a failed upgrade): no package
+# script enables Forkop again. So it is with build.sh's packages, which run
+# no default script. A package manager runs its scripts with PKG_ROOT
+# (opkg) or APK_SCRIPT (apk) set: there a plain "enable", "disable" or
+# "start" is that default script. Forkop's own start passes
+# FORKOP_START_REQUEST (service/initd.uc start-and-wait), a deferred or
+# triggered start its reason, and an image build (IPKG_INSTROOT) enables and
+# disables Forkop as every other init script. The default script's stop
+# goes through: a plain stop is also package_prerm's own, which takes down
+# what a failed or refused stop for a removal left (UC-028).
 package_default_action() {
     [ -z "${IPKG_INSTROOT:-}" ] &&
         [ -n "${PKG_ROOT:-}${APK_SCRIPT:-}" ] &&
@@ -102,6 +108,8 @@ enable() {
 }
 
 disable() {
+    package_default_action && return 0
+
     # A failed start schedules a delayed retry.  Removing only the rc.d link
     # leaves that worker alive, so an explicit disable must cancel it first.
     # A deferred start is no autostart: its retry stays (service/initd.uc).

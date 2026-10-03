@@ -13,13 +13,16 @@
 # the SDK wraps around a package's own, enabled Forkop on its first install
 # and started it after every install and upgrade: also a Forkop the user
 # had stopped (D-15) and, on apk, before its configuration was migrated.
+# Their prerm disables Forkop on a removal: a reinstall (opkg install
+# --force-reinstall, remove and install) must keep Forkop's autostart, as
+# build.sh's packages do, once their postinst no longer enables it.
 #
 # The SDK recipe runs through GNU make against a stand-in of the SDK's
 # rules.mk and package.mk with OpenWrt's install commands and its way of
 # writing a package script (shexport, echo); the default package scripts
 # follow OpenWrt's lib/functions.sh and include/package-pack.mk (24.10
-# ipk, 25.12 apk); the init script is the real one behind an rc.common
-# stand-in.
+# ipk, 25.12 apk); the init script is the real one, with its rc.d moved
+# into a scratch root, behind an rc.common stand-in.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -175,10 +178,10 @@ cat >"$WORK_DIR/bin/mirror-migration" <<'SH'
 #!/bin/sh
 printf 'mirror-migration\n' >>"$EVENTS"
 SH
-for name in logger ln; do
-  # shellcheck disable=SC2016 # expanded by the stub when it runs
-  printf '#!/bin/sh\nprintf "%s %%s\\n" "$*" >>"$EVENTS"\n' "$name" >"$WORK_DIR/bin/$name"
-done
+cat >"$WORK_DIR/bin/logger" <<'SH'
+#!/bin/sh
+printf 'logger %s\n' "$*" >>"$EVENTS"
+SH
 chmod 0755 "$WORK_DIR/bin/"*
 local_paths() {
   sed -e "s#/usr/share/forkop/mirror-migration.sh#$WORK_DIR/bin/mirror-migration#g" \
@@ -240,24 +243,33 @@ sdk="$(called env APK_SCRIPT=pre-deinstall sh "$WORK_DIR/sdk-prerm-pkg" 1.2.3)"
 # ---- OpenWrt's default package scripts around them ---------------------------
 
 # The SDK package's init scripts in an installed root. /etc/init.d/forkop
-# is the real one behind an rc.common stand-in that records what reaches
-# service/initd.uc; the others record their actions.
+# is the real one, its rc.d moved into that root, behind an rc.common
+# stand-in that records what reaches service/initd.uc; the others record
+# their actions.
 INSTALLED="$WORK_DIR/installed"
-mkdir -p "$INSTALLED/etc/init.d" "$INSTALLED/real" "$INSTALLED/opkg-info"
-cp "$SDK/root/etc/init.d/forkop" "$INSTALLED/real/forkop"
+RC_D="$INSTALLED/etc/rc.d"
+mkdir -p "$INSTALLED/etc/init.d" "$INSTALLED/real" "$INSTALLED/opkg-info" "$RC_D"
+sed "s#/etc/rc\\.d#$RC_D#g" "$SDK/root/etc/init.d/forkop" >"$INSTALLED/real/forkop"
+grep -Fq "$RC_D" "$INSTALLED/real/forkop" || fail "could not move the init script's rc.d into the installed root"
 cat >"$WORK_DIR/rc.common" <<'SH'
 #!/bin/sh
-# OpenWrt's /etc/rc.common as far as enable and a procd script's start
-# go; procd's service registration is left out.
+# OpenWrt's /etc/rc.common as far as enable, disable and a procd script's
+# start and stop go, with rc.d in the installed root ($RC_D); procd's
+# service registration is left out.
 initscript=$1
 action=${2:-help}
 shift 2
 enable() {
 	err=1
 	name="$(basename "${initscript}")"
-	[ "$START" ] && ln -sf "../init.d/$name" "$IPKG_INSTROOT/etc/rc.d/S${START}${name##S[0-9][0-9]}" && err=0
-	[ "$STOP" ] && ln -sf "../init.d/$name" "$IPKG_INSTROOT/etc/rc.d/K${STOP}${name##K[0-9][0-9]}" && err=0
+	[ "$START" ] && ln -sf "../init.d/$name" "$IPKG_INSTROOT$RC_D/S${START}${name##S[0-9][0-9]}" && err=0
+	[ "$STOP" ] && ln -sf "../init.d/$name" "$IPKG_INSTROOT$RC_D/K${STOP}${name##K[0-9][0-9]}" && err=0
 	return $err
+}
+disable() {
+	name="$(basename "${initscript}")"
+	rm -f "$IPKG_INSTROOT$RC_D"/S??$name
+	rm -f "$IPKG_INSTROOT$RC_D"/K??$name
 }
 . "$initscript"
 initd_ucode() {
@@ -266,6 +278,9 @@ initd_ucode() {
 start() {
 	start_service "$@"
 	service_started "$@"
+}
+stop() {
+	stop_service "$@"
 }
 "$action" "$@"
 SH
@@ -284,9 +299,11 @@ grep -Fxq /etc/init.d/forkop-torrserver-direct "$INSTALLED/files.list" ||
   fail "the SDK package must ship /etc/init.d/forkop-torrserver-direct"
 local_paths "$SDK/control/postinst-pkg" "$INSTALLED/postinst-pkg"
 
-# lib/functions.sh default_postinst for an installed root: an ipk's own
-# script (opkg's info directory) runs first, in a subshell; then every init
-# script of the package is enabled on a first install and started.
+# lib/functions.sh default_postinst and default_prerm for an installed
+# root: an ipk's own script (opkg's info directory) runs first, in a
+# subshell with the package manager's arguments; then every init script
+# of the package is enabled on a first install and started, or disabled
+# unless the package is upgraded and stopped.
 cat >"$WORK_DIR/functions.sh" <<'SH'
 default_postinst() {
 	local ret=0
@@ -302,50 +319,125 @@ default_postinst() {
 	done
 	return $ret
 }
+default_prerm() {
+	local ret=0
+	if [ -f "$OPKG_INFO/forkop.prerm-pkg" ]; then
+		( . "$OPKG_INFO/forkop.prerm-pkg" )
+		ret=$?
+	fi
+	for i in $(grep -s "^/etc/init.d/" "$INSTALLED/files.list"); do
+		if [ "$PKG_UPGRADE" != "1" ]; then
+			"$INSTALLED$i" disable
+		fi
+		"$INSTALLED$i" stop
+	done
+	return $ret
+}
 add_group_and_user() {
 	return 0
 }
 SH
 cp "$INSTALLED/postinst-pkg" "$INSTALLED/opkg-info/forkop.postinst-pkg"
-export INSTALLED
-# The ipk's postinst (package-pack.mk), and the apk's post-install, whose
-# own script follows default_postinst (25.12); its post-upgrade exports
-# PKG_UPGRADE=1 first.
+cp "$WORK_DIR/sdk-prerm-pkg" "$INSTALLED/opkg-info/forkop.prerm-pkg"
+export INSTALLED RC_D
+unset PKG_ROOT PKG_UPGRADE APK_SCRIPT IPKG_INSTROOT FORKOP_START_REQUEST
+# The ipk's postinst and prerm (package-pack.mk); the apk's post-install,
+# whose own script follows default_postinst (25.12), its post-upgrade,
+# which exports PKG_UPGRADE=1 first, and its pre-deinstall, whose own
+# script follows default_prerm.
 cat >"$WORK_DIR/ipk-postinst" <<SH
 #!/bin/sh
 . "$WORK_DIR/functions.sh"
 default_postinst \$0 \$@
+SH
+cat >"$WORK_DIR/ipk-prerm-sdk" <<SH
+#!/bin/sh
+. "$WORK_DIR/functions.sh"
+default_prerm \$0 \$@
 SH
 {
   printf '#!/bin/sh\n. "%s/functions.sh"\nexport root=""\nexport pkgname="forkop"\n' "$WORK_DIR"
   printf 'add_group_and_user\ndefault_postinst\n'
   sed '/^\s*#!/d' "$INSTALLED/postinst-pkg"
 } >"$WORK_DIR/apk-post-install"
-chmod 0755 "$WORK_DIR/ipk-postinst" "$WORK_DIR/apk-post-install"
+{
+  printf '#!/bin/sh\n. "%s/functions.sh"\nexport root=""\nexport pkgname="forkop"\n' "$WORK_DIR"
+  printf 'default_prerm\n'
+  sed '/^\s*#!/d' "$WORK_DIR/sdk-prerm-pkg"
+} >"$WORK_DIR/apk-pre-deinstall-sdk"
+chmod 0755 "$WORK_DIR/ipk-postinst" "$WORK_DIR/ipk-prerm-sdk" "$WORK_DIR/apk-post-install" \
+  "$WORK_DIR/apk-pre-deinstall-sdk"
 
-for label in "ipk install" "ipk upgrade" "apk install" "apk upgrade"; do
-  : >"$EVENTS"
-  case "$label" in
+# Runs a package script of the SDK package as the package manager does.
+package_script() {
+  case "$1" in
     "ipk install") set -- env OPKG_INFO="$INSTALLED/opkg-info" PKG_ROOT=/ PKG_UPGRADE=0 sh "$WORK_DIR/ipk-postinst" configure ;;
     "ipk upgrade") set -- env OPKG_INFO="$INSTALLED/opkg-info" PKG_ROOT=/ PKG_UPGRADE=1 sh "$WORK_DIR/ipk-postinst" configure ;;
+    "ipk remove") set -- env OPKG_INFO="$INSTALLED/opkg-info" PKG_ROOT=/ PKG_UPGRADE=0 sh "$WORK_DIR/ipk-prerm-sdk" remove ;;
     "apk install") set -- env OPKG_INFO="$INSTALLED/none" APK_SCRIPT=post-install sh "$WORK_DIR/apk-post-install" 1.2.4 ;;
     "apk upgrade") set -- env OPKG_INFO="$INSTALLED/none" APK_SCRIPT=post-upgrade PKG_UPGRADE=1 sh "$WORK_DIR/apk-post-install" 1.2.4 1.2.3 ;;
+    "apk remove") set -- env OPKG_INFO="$INSTALLED/none" APK_SCRIPT=pre-deinstall sh "$WORK_DIR/apk-pre-deinstall-sdk" 1.2.3 ;;
+    *) fail "unknown package script $1" ;;
   esac
   PATH="$WORK_DIR/bin:$PATH" "$@" >/dev/null 2>&1 || true
+}
+# Forkop's autostart as the user left it: enabled from the UI or the
+# command line, outside any package manager, or not.
+set_autostart() {
+  rm -f "${RC_D:?}"/*
+  if [ "$1" = enabled ]; then
+    PATH="$WORK_DIR/bin:$PATH" "$INSTALLED/etc/init.d/forkop" enable >/dev/null 2>&1 || true
+    [ -L "$RC_D/S99forkop" ] || fail "could not enable Forkop for the test"
+  fi
+}
+autostart_enabled() {
+  [ -L "$RC_D/S99forkop" ]
+}
+
+for label in "ipk install" "ipk upgrade" "apk install" "apk upgrade"; do
+  set_autostart disabled
+  : >"$EVENTS"
+  package_script "$label"
   grep -Fxq "forkop package_postinst" "$EVENTS" || fail "$label: the package's own script did not run"
   if grep -q '^initd start-service' "$EVENTS"; then
     fail "$label: OpenWrt's default package script started Forkop; only package_postinst decides that"
   fi
-  if grep -q '^ln .*S99forkop' "$EVENTS"; then
+  if autostart_enabled; then
     fail "$label: OpenWrt's default package script enabled Forkop's autostart"
   fi
   grep -q '^forkop-killswitch start' "$EVENTS" || fail "$label: the default script did not reach the other init scripts"
 done
 
-# Every other start and enable stays as it was: Forkop's own start inside a
-# package script (start-and-wait passes its request), a start with a reason
-# (deferred, triggered), any start or enable outside a package manager, and
-# the enable of an image build.
+# A removal and a new install of the package keep Forkop's autostart as it
+# was: opkg install --force-reinstall (the in-app rollback of a failed
+# upgrade, the usual manual repair) runs "prerm remove" and then installs
+# the package again, as opkg remove and opkg install, or apk del and apk
+# add, do. The default prerm disables every init script of the package,
+# and no postinst enables Forkop again; build.sh's packages, which run no
+# default script, keep the link.
+for manager in ipk apk; do
+  for autostart in enabled disabled; do
+    set_autostart "$autostart"
+    : >"$EVENTS"
+    package_script "$manager remove"
+    package_script "$manager install"
+    grep -Fxq "forkop package_prerm remove" "$EVENTS" || fail "$manager reinstall: the package's own prerm did not run"
+    grep -Fxq "forkop package_postinst" "$EVENTS" || fail "$manager reinstall: the package's own postinst did not run"
+    grep -q '^forkop-killswitch disable' "$EVENTS" ||
+      fail "$manager reinstall: the default prerm did not reach the other init scripts"
+    if [ "$autostart" = enabled ] && ! autostart_enabled; then
+      fail "$manager reinstall: OpenWrt's default package script disabled Forkop's autostart, and nothing enables it again"
+    fi
+    if [ "$autostart" = disabled ] && autostart_enabled; then
+      fail "$manager reinstall: OpenWrt's default package script enabled Forkop's autostart"
+    fi
+  done
+done
+
+# Every other start, enable and disable stays as it was: Forkop's own start
+# inside a package script (start-and-wait passes its request), a start with
+# a reason (deferred, triggered), any start, enable or disable outside a
+# package manager, and the enable and disable of an image build.
 initd_started() {
   : >"$EVENTS"
   PATH="$WORK_DIR/bin:$PATH" "$@" >/dev/null 2>&1 || true
@@ -355,16 +447,23 @@ initd_started env PKG_ROOT=/ FORKOP_START_REQUEST=1.2.3 "$INSTALLED/etc/init.d/f
   fail "Forkop's own start inside a package script must start it"
 initd_started env APK_SCRIPT=post-upgrade "$INSTALLED/etc/init.d/forkop" start deferred ||
   fail "a deferred start inside a package script must start Forkop"
-initd_started env -u PKG_ROOT -u APK_SCRIPT "$INSTALLED/etc/init.d/forkop" start ||
+initd_started "$INSTALLED/etc/init.d/forkop" start ||
   fail "a start outside a package manager must start Forkop"
+set_autostart disabled
+PATH="$WORK_DIR/bin:$PATH" "$INSTALLED/etc/init.d/forkop" enable >/dev/null 2>&1 || true
+autostart_enabled || fail "an enable outside a package manager must enable Forkop"
 : >"$EVENTS"
-PATH="$WORK_DIR/bin:$PATH" env -u PKG_ROOT -u APK_SCRIPT "$INSTALLED/etc/init.d/forkop" enable >/dev/null 2>&1 || true
-grep -Fxq 'ln -sf ../init.d/forkop /etc/rc.d/S99forkop' "$EVENTS" ||
-  fail "an enable outside a package manager must enable Forkop"
-: >"$EVENTS"
+PATH="$WORK_DIR/bin:$PATH" "$INSTALLED/etc/init.d/forkop" disable >/dev/null 2>&1 || true
+! autostart_enabled || fail "a disable outside a package manager must disable Forkop"
+grep -Fxq 'initd cancel-scheduled-start-retry' "$EVENTS" ||
+  fail "a disable outside a package manager must cancel the retry of a failed start"
+IMAGE_RC_D="$WORK_DIR/image$RC_D"
+mkdir -p "$IMAGE_RC_D"
 PATH="$WORK_DIR/bin:$PATH" env PKG_ROOT="$WORK_DIR/image" IPKG_INSTROOT="$WORK_DIR/image" \
   "$INSTALLED/etc/init.d/forkop" enable >/dev/null 2>&1 || true
-grep -Fxq "ln -sf ../init.d/forkop $WORK_DIR/image/etc/rc.d/S99forkop" "$EVENTS" ||
-  fail "an image build must enable Forkop as every init script"
+[ -L "$IMAGE_RC_D/S99forkop" ] || fail "an image build must enable Forkop as every init script"
+PATH="$WORK_DIR/bin:$PATH" env PKG_ROOT="$WORK_DIR/image" IPKG_INSTROOT="$WORK_DIR/image" \
+  "$INSTALLED/etc/init.d/forkop" disable >/dev/null 2>&1 || true
+[ ! -L "$IMAGE_RC_D/S99forkop" ] || fail "an image build must disable Forkop as every init script"
 
 printf 'package recipe parity checks passed\n'

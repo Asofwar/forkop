@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-03 09:16+0000\n"
-"PO-Revision-Date: 2026-10-03 09:16+0000\n"
+"POT-Creation-Date: 2026-10-03 09:43+0000\n"
+"PO-Revision-Date: 2026-10-03 09:43+0000\n"
 "Last-Translator: Asofwar <7397608+Asofwar@users.noreply.github.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -2391,7 +2391,7 @@ msgstr ""
 msgid "Forkop X is running"
 msgstr ""
 
-#: src/forkop/tabs/updates/fullUninstallStatus.ts:20
+#: src/forkop/tabs/updates/fullUninstallStatus.ts:51
 msgid "Forkop X is still active after its stop, so nothing was removed. Still in place: %s. Stop Forkop X or restart the router, then try again."
 msgstr ""
 
@@ -2465,7 +2465,7 @@ msgstr ""
 msgid "Forkop X was not stopped by the user: its start failed or it stopped unexpectedly."
 msgstr ""
 
-#: src/forkop/tabs/updates/fullUninstallStatus.ts:25
+#: src/forkop/tabs/updates/fullUninstallStatus.ts:56
 msgid "Forkop X was removed, but this is still in place: %s. See the removal log in /tmp/forkop-uninstall.*/output.log."
 msgstr ""
 
@@ -3026,8 +3026,16 @@ msgstr ""
 msgid "IPv4 only"
 msgstr ""
 
+#: src/forkop/tabs/updates/fullUninstallStatus.ts:16
+msgid "IPv4 routing rule at priority 105"
+msgstr ""
+
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:392
 msgid "IPv6 only"
+msgstr ""
+
+#: src/forkop/tabs/updates/fullUninstallStatus.ts:18
+msgid "IPv6 routing rule at priority 105"
 msgstr ""
 
 #: src/forkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:17
@@ -3493,6 +3501,10 @@ msgstr ""
 msgid "NFQWS2 strategy cannot be empty"
 msgstr ""
 
+#: src/forkop/tabs/updates/fullUninstallStatus.ts:12
+msgid "nft table %s"
+msgstr ""
+
 #: src/forkop/tabs/diagnostic/helpers/getCheckTitle.ts:9
 msgid "nftables checks"
 msgstr ""
@@ -3913,7 +3925,7 @@ msgstr ""
 msgid "Optional values must be attached with '=' here; a separate token would be ignored by nfqws2."
 msgstr ""
 
-#: src/forkop/tabs/updates/fullUninstallStatus.ts:13
+#: src/forkop/tabs/updates/fullUninstallStatus.ts:44
 msgid "Original repositories could not be restored. Removal was cancelled before deleting packages."
 msgstr ""
 
@@ -4259,7 +4271,7 @@ msgstr ""
 msgid "Regular expression must not contain spaces or commas"
 msgstr ""
 
-#: src/forkop/tabs/updates/fullUninstallStatus.ts:29
+#: src/forkop/tabs/updates/fullUninstallStatus.ts:60
 msgid "Removal did not finish. See the removal log in /tmp/forkop-uninstall.*/output.log."
 msgstr ""
 
@@ -5470,6 +5482,10 @@ msgstr ""
 msgid "The editor has no field for downloaded lists: they cannot be converted and stay as they are."
 msgstr ""
 
+#: src/forkop/tabs/updates/fullUninstallStatus.ts:22
+msgid "the kill-switch loader in /usr/share/nftables.d/ruleset-post"
+msgstr ""
+
 #: src/forkop/tabs/autotune/model.ts:1354
 msgid "The last autotune change is not resolved."
 msgstr ""
@@ -5535,6 +5551,10 @@ msgstr ""
 
 #: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:5140
 msgid "The legacy settings are converted. Save the rule to keep the change."
+msgstr ""
+
+#: src/forkop/tabs/updates/fullUninstallStatus.ts:20
+msgid "the lines marked \"# forkop-\" in /etc/crontabs/root"
 msgstr ""
 
 #: src/forkop/tabs/autotune/model.ts:573

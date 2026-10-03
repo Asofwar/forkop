@@ -4016,7 +4016,7 @@
     "call": "Forkop X is still active after its stop, so nothing was removed. Still in place: %s. Stop Forkop X or restart the router, then try again.",
     "key": "Forkop X is still active after its stop, so nothing was removed. Still in place: %s. Stop Forkop X or restart the router, then try again.",
     "places": [
-      "src/forkop/tabs/updates/fullUninstallStatus.ts:20"
+      "src/forkop/tabs/updates/fullUninstallStatus.ts:51"
     ]
   },
   {
@@ -4144,7 +4144,7 @@
     "call": "Forkop X was removed, but this is still in place: %s. See the removal log in /tmp/forkop-uninstall.*/output.log.",
     "key": "Forkop X was removed, but this is still in place: %s. See the removal log in /tmp/forkop-uninstall.*/output.log.",
     "places": [
-      "src/forkop/tabs/updates/fullUninstallStatus.ts:25"
+      "src/forkop/tabs/updates/fullUninstallStatus.ts:56"
     ]
   },
   {
@@ -5101,10 +5101,24 @@
     ]
   },
   {
+    "call": "IPv4 routing rule at priority 105",
+    "key": "IPv4 routing rule at priority 105",
+    "places": [
+      "src/forkop/tabs/updates/fullUninstallStatus.ts:16"
+    ]
+  },
+  {
     "call": "IPv6 only",
     "key": "IPv6 only",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/settings.js:392"
+    ]
+  },
+  {
+    "call": "IPv6 routing rule at priority 105",
+    "key": "IPv6 routing rule at priority 105",
+    "places": [
+      "src/forkop/tabs/updates/fullUninstallStatus.ts:18"
     ]
   },
   {
@@ -5886,6 +5900,13 @@
     ]
   },
   {
+    "call": "nft table %s",
+    "key": "nft table %s",
+    "places": [
+      "src/forkop/tabs/updates/fullUninstallStatus.ts:12"
+    ]
+  },
+  {
     "call": "nftables checks",
     "key": "nftables checks",
     "places": [
@@ -6576,7 +6597,7 @@
     "call": "Original repositories could not be restored. Removal was cancelled before deleting packages.",
     "key": "Original repositories could not be restored. Removal was cancelled before deleting packages.",
     "places": [
-      "src/forkop/tabs/updates/fullUninstallStatus.ts:13"
+      "src/forkop/tabs/updates/fullUninstallStatus.ts:44"
     ]
   },
   {
@@ -7162,7 +7183,7 @@
     "call": "Removal did not finish. See the removal log in /tmp/forkop-uninstall.*/output.log.",
     "key": "Removal did not finish. See the removal log in /tmp/forkop-uninstall.*/output.log.",
     "places": [
-      "src/forkop/tabs/updates/fullUninstallStatus.ts:29"
+      "src/forkop/tabs/updates/fullUninstallStatus.ts:60"
     ]
   },
   {
@@ -9234,6 +9255,13 @@
     ]
   },
   {
+    "call": "the kill-switch loader in /usr/share/nftables.d/ruleset-post",
+    "key": "the kill-switch loader in /usr/share/nftables.d/ruleset-post",
+    "places": [
+      "src/forkop/tabs/updates/fullUninstallStatus.ts:22"
+    ]
+  },
+  {
     "call": "The last autotune change is not resolved.",
     "key": "The last autotune change is not resolved.",
     "places": [
@@ -9346,6 +9374,13 @@
     "key": "The legacy settings are converted. Save the rule to keep the change.",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:5140"
+    ]
+  },
+  {
+    "call": "the lines marked \"# forkop-\" in /etc/crontabs/root",
+    "key": "the lines marked \"# forkop-\" in /etc/crontabs/root",
+    "places": [
+      "src/forkop/tabs/updates/fullUninstallStatus.ts:20"
     ]
   },
   {

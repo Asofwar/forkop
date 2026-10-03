@@ -571,7 +571,7 @@ refused_uninstall_finished() {
   grep -qE '"state":"(complete|failed)"' "$REFUSED_ROOT"/www/forkop-uninstall.*.json 2>/dev/null
 }
 wait_until 30 refused_uninstall_finished || fail "full uninstall next to a refused stop did not finish"
-grep -Fq '"state":"failed","phase":"stop","left":"nft table inet ForkopTable"' "$REFUSED_ROOT"/www/forkop-uninstall.*.json ||
+grep -Fq '"state":"failed","phase":"stop","left":"table:ForkopTable"' "$REFUSED_ROOT"/www/forkop-uninstall.*.json ||
   fail "full uninstall went on after a refused stop: $(cat "$REFUSED_ROOT"/www/forkop-uninstall.*.json)"
 [ -e "$REFUSED_ROOT/packages/forkop" ] || fail "full uninstall removed Forkop after a refused stop"
 [ -e "$NFT_TABLE_FILE" ] || fail "fixture: the refused stop tore down ForkopTable"

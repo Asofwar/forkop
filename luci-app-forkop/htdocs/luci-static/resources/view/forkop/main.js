@@ -16224,8 +16224,29 @@ function shouldExposeCheckResults({
 }
 
 // src/forkop/tabs/updates/fullUninstallStatus.ts
+function describeLeftItem(item) {
+  if (item.startsWith("table:")) {
+    const table = item.slice("table:".length);
+    return _("nft table %s").replace("%s", () => table);
+  }
+  switch (item) {
+    case "rule:4":
+      return _("IPv4 routing rule at priority 105");
+    case "rule:6":
+      return _("IPv6 routing rule at priority 105");
+    case "cron":
+      return _('the lines marked "# forkop-" in /etc/crontabs/root');
+    case "loader":
+      return _("the kill-switch loader in /usr/share/nftables.d/ruleset-post");
+    default:
+      return item;
+  }
+}
+function describeLeftItems(left) {
+  return left.split(",").map((item) => item.trim()).filter((item) => item !== "").map(describeLeftItem).join(", ");
+}
 function describeFailedRemoval(status2) {
-  const left = typeof status2.left === "string" ? status2.left : "";
+  const left = typeof status2.left === "string" ? describeLeftItems(status2.left) : "";
   if (status2.phase === "preflight") {
     return _(
       "Original repositories could not be restored. Removal was cancelled before deleting packages."

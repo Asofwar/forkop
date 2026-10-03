@@ -62,40 +62,48 @@ installed() {
 # packages take away. With "all" also its lines in the crontab, which would
 # call a removed /usr/bin/forkop, and what the removal itself takes away:
 # the TorrServer Direct table, the kill-switch table and its fw4 loader,
-# and the fail-closed DPI guards. The status the UI reads names it when the
-# removal fails over it.
+# and the fail-closed DPI guards. LEFT says it in words for the log,
+# LEFT_CODES names the same items for the status the UI reads, which says
+# them in the user's language: table:<name>, rule:4, rule:6, cron, loader.
 LEFT=
+LEFT_CODES=
 DPI_GUARD_TABLES="ForkopTableDpiGuard ForkopConfigRestoreDpiGuard"
+left_behind() { # left_behind <code> <words>
+    LEFT="$LEFT, $2"
+    LEFT_CODES="$LEFT_CODES,$1"
+}
 find_left_behind() {
     LEFT=
+    LEFT_CODES=
     if nft -t list table inet ForkopTable >/dev/null 2>&1; then
-        LEFT="$LEFT, nft table inet ForkopTable"
+        left_behind table:ForkopTable "nft table inet ForkopTable"
     fi
     for family in 4 6; do
         if ip "-$family" rule show 2>/dev/null |
             grep -Eq '^105:.*[[:space:]]lookup[[:space:]]+(forkop|105)([[:space:]]|$)'; then
-            LEFT="$LEFT, IPv$family rule 105"
+            left_behind "rule:$family" "IPv$family rule 105"
         fi
     done
     if [ "${1:-}" = all ]; then
         if grep -Eqs '# forkop-(list-update|subscription-update|component-update-check|autotune)' \
             "$ROOT/etc/crontabs/root"; then
-            LEFT="$LEFT, lines marked # forkop- in /etc/crontabs/root"
+            left_behind cron "lines marked # forkop- in /etc/crontabs/root"
         fi
         for table in ForkopTorrServerDirect ForkopKillswitch $DPI_GUARD_TABLES; do
             if nft -t list table inet "$table" >/dev/null 2>&1; then
-                LEFT="$LEFT, nft table inet $table"
+                left_behind "table:$table" "nft table inet $table"
             fi
         done
         loader=/usr/share/nftables.d/ruleset-post/90-forkop-killswitch-loader.nft
-        if [ -e "$ROOT$loader" ]; then LEFT="$LEFT, kill-switch loader $loader"; fi
+        if [ -e "$ROOT$loader" ]; then left_behind loader "kill-switch loader $loader"; fi
     fi
     LEFT="${LEFT#, }"
+    LEFT_CODES="${LEFT_CODES#,}"
 }
 
 state() {
-    if [ -n "$LEFT" ]; then
-        printf '{"state":"%s","phase":"%s","left":"%s"}\n' "$1" "$PHASE" "$LEFT" > "$STATUS.new"
+    if [ -n "$LEFT_CODES" ]; then
+        printf '{"state":"%s","phase":"%s","left":"%s"}\n' "$1" "$PHASE" "$LEFT_CODES" > "$STATUS.new"
     else
         printf '{"state":"%s","phase":"%s"}\n' "$1" "$PHASE" > "$STATUS.new"
     fi

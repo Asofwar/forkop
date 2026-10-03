@@ -176,11 +176,16 @@ refused_at_stop() {
     fail "$CASE: the removal did more than Forkop's stop"
   [ -L "$ROOT/etc/rc.d/S99forkop" ] || fail "$CASE: Forkop's autostart was removed"
 }
-says_left() { # says_left <item>...: the log and the status name each item
-  local item
-  for item in "$@"; do
-    printf '%s\n' "$LOG" | grep -Fq "$item" || fail "$CASE: the log does not say that $item is left: $LOG"
-    printf '%s\n' "$status" | grep -Fq "$item" || fail "$CASE: the status does not say that $item is left: $status"
+# says_left <code> <text>...: the log names each item in words, the status
+# the UI reads by its code (the UI says it in the user's language).
+says_left() {
+  local code text codes
+  codes="$(printf '%s\n' "$status" | sed -n 's/.*"left":"\([^"]*\)".*/\1/p')"
+  while [ "$#" -ge 2 ]; do
+    code="$1" text="$2"
+    shift 2
+    printf '%s\n' "$LOG" | grep -Fq "$text" || fail "$CASE: the log does not say that $text is left: $LOG"
+    case ",$codes," in *",$code,"*) ;; *) fail "$CASE: the status does not name $code: $status" ;; esac
   done
 }
 
@@ -190,7 +195,7 @@ fixture runtime_left
 printf 'table rule4 rule6 cron\n' >"$ROOT/stop-leaves"
 run_removal
 refused_at_stop
-says_left 'nft table inet ForkopTable' 'IPv4 rule 105' 'IPv6 rule 105'
+says_left table:ForkopTable 'nft table inet ForkopTable' rule:4 'IPv4 rule 105' rule:6 'IPv6 rule 105'
 
 # 2. Any one of them is enough: the IPv6 rule once rt_tables lost the name
 #    (it shows "lookup 105"), the table.
@@ -200,7 +205,7 @@ printf 'rule6\n' >"$ROOT/stop-leaves"
 printf '105:\tfrom all fwmark 0x4000000/0x4000000 lookup 105\n' >"$ROOT/rules6"
 run_removal
 refused_at_stop
-says_left 'IPv6 rule 105'
+says_left rule:6 'IPv6 rule 105'
 if printf '%s\n' "$status" | grep -Fq 'ForkopTable'; then
   fail "$CASE: the status names a table that is gone: $status"
 fi
@@ -209,7 +214,7 @@ fixture table_only
 printf 'table\n' >"$ROOT/stop-leaves"
 run_removal
 refused_at_stop
-says_left 'nft table inet ForkopTable'
+says_left table:ForkopTable 'nft table inet ForkopTable'
 
 # 2b. Only Forkop's lines in the crontab stayed: the removal goes on, and
 #     does not report success while they are there.
@@ -220,7 +225,7 @@ run_removal
 printf '%s\n' "$status" | grep -q '"state":"failed","phase":"files"' ||
   fail "$CASE: the removal did not go on to the end, or reported success: $status"
 [ ! -e "$ROOT/packages/forkop" ] || fail "$CASE: the forkop package was not removed"
-says_left '# forkop- in /etc/crontabs/root'
+says_left cron '# forkop- in /etc/crontabs/root'
 
 # 3. A stop that failed (refused: exit 2) says what it left too.
 CASE="refused stop"
@@ -229,7 +234,7 @@ printf 'table rule4\n' >"$ROOT/stop-leaves"
 printf '2\n' >"$ROOT/stop-status"
 run_removal
 refused_at_stop
-says_left 'nft table inet ForkopTable' 'IPv4 rule 105'
+says_left table:ForkopTable 'nft table inet ForkopTable' rule:4 'IPv4 rule 105'
 
 # 4. A stop that took everything down: the removal completes, TorrServer
 #    Direct is stopped and disabled, and no rc.d link of the package's
@@ -259,7 +264,7 @@ touch "$ROOT/nft/ForkopKillswitch"
 run_removal
 printf '%s\n' "$status" | grep -q '"state":"failed","phase":"files"' ||
   fail "$CASE: the removal reported success with the kill-switch table in place: $status"
-says_left 'nft table inet ForkopKillswitch'
+says_left table:ForkopKillswitch 'nft table inet ForkopKillswitch'
 
 # 6. The fail-closed DPI guards outlive Forkop's stop: the guard of a
 #    restore or an autotune apply that ended needs_attention goes only with
@@ -281,6 +286,6 @@ touch "$ROOT/nft/ForkopConfigRestoreDpiGuard" "$ROOT/nft-stays/ForkopConfigResto
 run_removal
 printf '%s\n' "$status" | grep -q '"state":"failed","phase":"files"' ||
   fail "$CASE: the removal reported success with a DPI guard in place: $status"
-says_left 'nft table inet ForkopConfigRestoreDpiGuard'
+says_left table:ForkopConfigRestoreDpiGuard 'nft table inet ForkopConfigRestoreDpiGuard'
 
 printf 'full uninstall runtime leftover checks passed\n'

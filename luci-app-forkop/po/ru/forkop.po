@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-03 09:16+0000\n"
-"PO-Revision-Date: 2026-10-03 09:16+0000\n"
+"POT-Creation-Date: 2026-10-03 09:43+0000\n"
+"PO-Revision-Date: 2026-10-03 09:43+0000\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -2108,8 +2108,14 @@ msgstr "IP: %d"
 msgid "IPv4 only"
 msgstr "Только IPv4"
 
+msgid "IPv4 routing rule at priority 105"
+msgstr "правило маршрутизации IPv4 с приоритетом 105"
+
 msgid "IPv6 only"
 msgstr "Только IPv6"
+
+msgid "IPv6 routing rule at priority 105"
+msgstr "правило маршрутизации IPv6 с приоритетом 105"
 
 msgid "Issues detected"
 msgstr "Обнаружены проблемы"
@@ -2425,6 +2431,9 @@ msgstr "Стратегия NFQWS2"
 
 msgid "NFQWS2 strategy cannot be empty"
 msgstr "Стратегия NFQWS2 не может быть пустой"
+
+msgid "nft table %s"
+msgstr "таблица nft %s"
 
 msgid "nftables checks"
 msgstr "Проверки nftables"
@@ -3797,6 +3806,9 @@ msgstr "Не удалось надёжно определить DPI-правил
 msgid "The editor has no field for downloaded lists: they cannot be converted and stay as they are."
 msgstr "Для загружаемых списков в редакторе нет поля: их нельзя конвертировать, они остаются как есть."
 
+msgid "the kill-switch loader in /usr/share/nftables.d/ruleset-post"
+msgstr "загрузчик kill-switch в /usr/share/nftables.d/ruleset-post"
+
 msgid "The last autotune change is not resolved."
 msgstr "Последнее изменение автоподбора не завершено."
 
@@ -3844,6 +3856,9 @@ msgstr "Устаревшие условия нельзя конвертиров�
 
 msgid "The legacy settings are converted. Save the rule to keep the change."
 msgstr "Устаревшие настройки конвертированы. Сохраните правило, чтобы сохранить изменение."
+
+msgid "the lines marked \"# forkop-\" in /etc/crontabs/root"
+msgstr "строки с пометкой «# forkop-» в /etc/crontabs/root"
 
 msgid "The list could not be read."
 msgstr "Список не удалось прочитать."

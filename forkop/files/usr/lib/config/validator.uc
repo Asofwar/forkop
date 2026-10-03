@@ -1698,6 +1698,28 @@ function validate_runtime_mark_ranges_context(context) {
     }
 }
 
+// Legacy domain conditions (list domain, domain_keyword, domain_regex and
+// their *_text options) reach the generator through
+// routing/rule_conditions.uc, which drops a value the normalizer refuses: a
+// comma or whitespace in a keyword or regular expression, a name that is no
+// domain. Such a configuration started before with the value ignored, so
+// the value is reported, not refused (invariant 17, UC-094).
+function report_ignored_legacy_domain_conditions(section) {
+    if (!section_enabled(section))
+        return;
+
+    let name = section_name(section);
+    for (let key in [ "domain", "domain_keyword", "domain_regex" ]) {
+        for (let value in rule_conditions.legacy_condition_values(section, key)) {
+            if (trim(as_string(value)) == "" || rule_config.domain_value_for_key(value, key) != null)
+                continue;
+
+            log_message("Rule '" + name + "' ignores its legacy " + key + " value '" + as_string(value) +
+                "': it cannot be normalized (a comma or whitespace, or an invalid domain name). Edit the domain conditions of the rule and fix or remove the value", "warn");
+        }
+    }
+}
+
 // Interface Monitoring Delay: the trigger plan (service/initd.uc) takes
 // whole milliseconds and uses the default 2000 for anything else. Such a
 // value was accepted before, so a configuration with it is reported, not
@@ -1791,6 +1813,8 @@ function validate_runtime_config(context) {
     validate_outbound_detours_rows(detour_rows_from_sections(sections));
     validate_subscription_download_sections(sections, context);
 
+    for (let section in sections)
+        report_ignored_legacy_domain_conditions(section);
     for (let section in sections)
         validate_rule(section, sections, context);
 

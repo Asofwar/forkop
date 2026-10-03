@@ -27,6 +27,12 @@ const SING_BOX_INIT = env("FORKOP_SING_BOX_INIT", "/etc/init.d/sing-box");
 const SING_BOX_BIN = env("FORKOP_SING_BOX_BIN", "/usr/bin/sing-box");
 const SING_BOX_CRONET = env("FORKOP_SING_BOX_CRONET", "/usr/lib/libcronet.so");
 const SING_BOX_MANAGED_MARKER = env("SB_MANAGED_SERVICE_MARKER", "Forkop managed sing-box service for binary variants");
+const TORRSERVER_DIRECT_INIT = env("FORKOP_TORRSERVER_DIRECT_INIT", "/etc/init.d/forkop-torrserver-direct");
+const RC_D_DIR = env("FORKOP_RC_D_DIR", "/etc/rc.d");
+// The rc.d links of releases whose forkop-torrserver-direct had START=100
+// and STOP=9: rc.common's disable (S??, K??) never removes them, and its
+// enabled looks for the links of the current values (UC-161).
+const TORRSERVER_DIRECT_LEGACY_LINKS = [ "S100forkop-torrserver-direct", "K9forkop-torrserver-direct" ];
 const PACKAGE_UPGRADE_STATE = env("FORKOP_PACKAGE_UPGRADE_STATE", "/tmp/forkop-package-was-running");
 const UPGRADE_SING_BOX_WAIT_SECONDS = int(env("FORKOP_UPGRADE_SING_BOX_WAIT_SECONDS", "15"));
 // The start after an upgrade runs while the package manager holds its lock;
@@ -198,6 +204,50 @@ function remove_managed_sing_box(keep_running) {
     unlink_if_exists(SING_BOX_CRONET);
 }
 
+// Removes the rc.d links an older release made for TorrServer Direct;
+// true when there were any.
+function remove_torrserver_direct_legacy_links() {
+    let found = false;
+    for (let name in TORRSERVER_DIRECT_LEGACY_LINKS) {
+        let path = RC_D_DIR + "/" + name;
+        if (fs.lstat(path) != null) {
+            fs.unlink(path);
+            found = true;
+        }
+    }
+    return found;
+}
+
+function torrserver_direct_switched_on() {
+    return trim(as_string(uci_core.get(CONFIG_NAME + ".settings.torrserver_direct_enabled"))) == "1";
+}
+
+// A removal leaves nothing to run the package's services: TorrServer Direct
+// stops (its stop removes its nft table), and neither service keeps an rc.d
+// link to a script that goes with the package (UC-083).
+function disable_package_services() {
+    command_success_from_args([ INIT_PATH, "disable" ]);
+    if (path_exists(TORRSERVER_DIRECT_INIT)) {
+        command_success_from_args([ TORRSERVER_DIRECT_INIT, "stop" ]);
+        command_success_from_args([ TORRSERVER_DIRECT_INIT, "disable" ]);
+    }
+    remove_torrserver_direct_legacy_links();
+}
+
+// The TorrServer Direct worker keeps running across an upgrade on the code it
+// was started with: restart it on the new code when it is switched on and
+// enabled (UC-083). The links of an older release become the current ones,
+// or just go when it is switched off (UC-161).
+function torrserver_direct_postinst() {
+    if (!path_exists(TORRSERVER_DIRECT_INIT))
+        return;
+    let on = torrserver_direct_switched_on();
+    if (remove_torrserver_direct_legacy_links() && on)
+        command_success_from_args([ TORRSERVER_DIRECT_INIT, "enable" ]);
+    if (on && command_success_from_args([ TORRSERVER_DIRECT_INIT, "enabled" ]))
+        command_success_from_args([ TORRSERVER_DIRECT_INIT, "restart" ]);
+}
+
 function remember_upgrade_state(action) {
     // An explicit removal is unambiguous: nothing should be restored later.
     if (as_string(action) == "remove") {
@@ -310,8 +360,10 @@ function prerm_cleanup(action, version) {
         // a reinstall that does not start Forkop shows it not started, not
         // as a start that failed (service/initd.uc EXPLICIT_START_FILE;
         // D-15(a)).
-        if (removal)
+        if (removal) {
             command_success_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/service/initd.uc", "clear-explicit-start" ]);
+            disable_package_services();
+        }
         // A stop that failed or was refused (another sing-box makes
         // ownership ambiguous) may have left Forkop's nft table and ip rule
         // in place. An upgrade then keeps their listener, the managed
@@ -459,6 +511,7 @@ function postinst_restore() {
         warn("Forkop configuration is invalid or unavailable to UCI.\n");
         return false;
     }
+    torrserver_direct_postinst();
 
     // Only an explicit start since boot lets a reload start a runtime that
     // is down (service/initd.uc EXPLICIT_START_FILE; D-15(a)), and a previous

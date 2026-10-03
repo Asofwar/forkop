@@ -82,9 +82,11 @@ service_started() {
 # "start" is that default script. Forkop's own start passes
 # FORKOP_START_REQUEST (service/initd.uc start-and-wait), a deferred or
 # triggered start its reason, and an image build (IPKG_INSTROOT) enables and
-# disables Forkop as every other init script. The default script's stop
-# goes through: a plain stop is also package_prerm's own, which takes down
-# what a failed or refused stop for a removal left (UC-028).
+# disables Forkop as every other init script. The default prerm's stop of
+# a removal goes through: there a plain stop is also package_prerm's own,
+# which takes down what a failed or refused stop for the removal left
+# (UC-028). Its stop of an upgrade (PKG_UPGRADE=1) follows package_prerm's
+# own stop for the upgrade and stops nothing (stop_service).
 package_default_action() {
     [ -z "${IPKG_INSTROOT:-}" ] &&
         [ -n "${PKG_ROOT:-}${APK_SCRIPT:-}" ] &&
@@ -122,6 +124,17 @@ disable() {
 }
 
 stop_service() {
+    # The plain stop of OpenWrt's default prerm for an upgrade
+    # (PKG_UPGRADE=1) stops nothing: package_prerm stopped Forkop for the
+    # upgrade just before it (FORKOP_STOP_SOURCE=package) and reported a
+    # stop that failed or was refused. A second, plain stop would be the
+    # user's (service/initd.uc stop_request_source); build.sh's packages
+    # stop Forkop once. The exit leaves procd as package_prerm's stop left it.
+    if [ "${action:-}" = stop ] && [ "${PKG_UPGRADE:-}" = 1 ] && [ -z "${FORKOP_STOP_SOURCE:-}" ] &&
+        package_default_action "$1"; then
+        exit 0
+    fi
+
     initd_ucode stop-service "$$"
     local status="$?"
     # rc.common calls procd_kill even when stop_service returns an error.

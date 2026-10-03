@@ -15,7 +15,12 @@
 # had stopped (D-15) and, on apk, before its configuration was migrated.
 # Their prerm disables Forkop on a removal: a reinstall (opkg install
 # --force-reinstall, remove and install) must keep Forkop's autostart, as
-# build.sh's packages do, once their postinst no longer enables it.
+# build.sh's packages do, once their postinst no longer enables it. Their
+# prerm also stopped Forkop a second time on an opkg upgrade, as the user,
+# after package_prerm's stop for the upgrade; and the SDK prerm took an
+# opkg prerm without an action (some OpenWrt 24 builds, also on an upgrade)
+# for a removal, where build.sh's lets package_prerm decide by the
+# service's state.
 #
 # The SDK recipe runs through GNU make against a stand-in of the SDK's
 # rules.mk and package.mk with OpenWrt's install commands and its way of
@@ -380,6 +385,8 @@ package_script() {
     "ipk install") set -- env OPKG_INFO="$INSTALLED/opkg-info" PKG_ROOT=/ PKG_UPGRADE=0 sh "$WORK_DIR/ipk-postinst" configure ;;
     "ipk upgrade") set -- env OPKG_INFO="$INSTALLED/opkg-info" PKG_ROOT=/ PKG_UPGRADE=1 sh "$WORK_DIR/ipk-postinst" configure ;;
     "ipk remove") set -- env OPKG_INFO="$INSTALLED/opkg-info" PKG_ROOT=/ PKG_UPGRADE=0 sh "$WORK_DIR/ipk-prerm-sdk" remove ;;
+    "ipk prerm upgrade") set -- env OPKG_INFO="$INSTALLED/opkg-info" PKG_ROOT=/ PKG_UPGRADE=1 sh "$WORK_DIR/ipk-prerm-sdk" upgrade 1.2.4 ;;
+    "ipk prerm without an action") set -- env OPKG_INFO="$INSTALLED/opkg-info" PKG_ROOT=/ PKG_UPGRADE=1 sh "$WORK_DIR/ipk-prerm-sdk" ;;
     "apk install") set -- env OPKG_INFO="$INSTALLED/none" APK_SCRIPT=post-install sh "$WORK_DIR/apk-post-install" 1.2.4 ;;
     "apk upgrade") set -- env OPKG_INFO="$INSTALLED/none" APK_SCRIPT=post-upgrade PKG_UPGRADE=1 sh "$WORK_DIR/apk-post-install" 1.2.4 1.2.3 ;;
     "apk remove") set -- env OPKG_INFO="$INSTALLED/none" APK_SCRIPT=pre-deinstall sh "$WORK_DIR/apk-pre-deinstall-sdk" 1.2.3 ;;
@@ -437,8 +444,52 @@ for manager in ipk apk; do
     if [ "$autostart" = disabled ] && autostart_enabled; then
       fail "$manager reinstall: OpenWrt's default package script enabled Forkop's autostart"
     fi
+    # A removal's stops go through: nothing is left to own the runtime.
+    grep -q '^initd stop-service' "$EVENTS" || fail "$manager remove: the default prerm's stop must reach Forkop"
   done
 done
+
+# An opkg upgrade stops Forkop once, as build.sh's packages do: package_prerm
+# stops it for the upgrade (FORKOP_STOP_SOURCE=package), and the default
+# prerm's plain stop that follows must not stop it again. That second stop
+# would be the user's (service/initd.uc stop_request_source): it would end
+# the explicit start and show a Forkop that package_postinst did not start
+# again as stopped by the user, not as failed or not started, and its
+# explicit stop would take down the interception that a refused stop for
+# the upgrade keeps (UC-197).
+for label in "ipk prerm upgrade" "ipk prerm without an action"; do
+  set_autostart enabled
+  : >"$EVENTS"
+  package_script "$label"
+  grep -Eq '^forkop package_prerm( upgrade 1\.2\.4)?$' "$EVENTS" || fail "$label: the package's own prerm did not run"
+  grep -q '^forkop-killswitch stop' "$EVENTS" || fail "$label: the default prerm did not reach the other init scripts"
+  if grep -q '^initd stop-service' "$EVENTS"; then
+    fail "$label: OpenWrt's default prerm stopped Forkop a second time, as the user"
+  fi
+  autostart_enabled || fail "$label: OpenWrt's default prerm disabled Forkop's autostart on an upgrade"
+done
+# Every other stop goes through: package_prerm's own for an upgrade or a
+# removal, its explicit stop after a failed or refused stop for a removal
+# (UC-028), a component change's, and any stop outside a package manager.
+initd_stopped() {
+  : >"$EVENTS"
+  PATH="$WORK_DIR/bin:$PATH" "$@" >/dev/null 2>&1 || true
+  grep -q '^initd stop-service' "$EVENTS"
+}
+initd_stopped env PKG_ROOT=/ PKG_UPGRADE=1 FORKOP_STOP_SOURCE=package "$INSTALLED/etc/init.d/forkop" stop ||
+  fail "package_prerm's stop for an opkg upgrade must stop Forkop"
+initd_stopped env APK_SCRIPT=pre-upgrade PKG_UPGRADE=1 FORKOP_STOP_SOURCE=package "$INSTALLED/etc/init.d/forkop" stop ||
+  fail "package_prerm's stop for an apk upgrade must stop Forkop"
+initd_stopped env PKG_ROOT=/ PKG_UPGRADE=0 "$INSTALLED/etc/init.d/forkop" stop ||
+  fail "package_prerm's explicit stop for an opkg removal must stop Forkop"
+initd_stopped env APK_SCRIPT=pre-deinstall "$INSTALLED/etc/init.d/forkop" stop ||
+  fail "package_prerm's explicit stop for an apk removal must stop Forkop"
+initd_stopped env PKG_ROOT=/ PKG_UPGRADE=1 FORKOP_STOP_SOURCE=component "$INSTALLED/etc/init.d/forkop" stop ||
+  fail "a component change's stop must stop Forkop"
+initd_stopped "$INSTALLED/etc/init.d/forkop" stop ||
+  fail "a stop outside a package manager must stop Forkop"
+initd_stopped env PKG_UPGRADE=1 "$INSTALLED/etc/init.d/forkop" stop ||
+  fail "a stop outside a package manager must stop Forkop, whatever PKG_UPGRADE says"
 
 # Every other start, enable and disable stays as it was: Forkop's own start
 # inside a package script (start-and-wait passes its request), a start with

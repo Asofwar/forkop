@@ -305,6 +305,8 @@ disable() {
 . "$initscript"
 initd_ucode() {
 	printf 'initd %s\n' "$*" >>"$EVENTS"
+	# No sing-box of another program blocks a restart.
+	[ "$1" != restart-blocked ]
 }
 start() {
 	start_service "$@"
@@ -522,6 +524,15 @@ initd_stopped "$INSTALLED/etc/init.d/forkop" stop ||
   fail "a stop outside a package manager must stop Forkop"
 initd_stopped env PKG_UPGRADE=1 "$INSTALLED/etc/init.d/forkop" stop ||
   fail "a stop outside a package manager must stop Forkop, whatever PKG_UPGRADE says"
+# A restart is never the default prerm's: its stop goes through also inside
+# a package script of an upgrade.
+for env_run in "PKG_ROOT=/ PKG_UPGRADE=1" "APK_SCRIPT=post-upgrade PKG_UPGRADE=1"; do
+  # shellcheck disable=SC2086 # the environment of the case
+  initd_stopped env $env_run "$INSTALLED/etc/init.d/forkop" restart ||
+    fail "a restart inside a package script ($env_run) must stop Forkop before it starts it again"
+  grep -q '^initd start-service' "$EVENTS" ||
+    fail "a restart inside a package script ($env_run) must start Forkop again"
+done
 
 # Every other start, enable and disable stays as it was: Forkop's own start
 # inside a package script (start-and-wait passes its request), a start with

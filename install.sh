@@ -6,6 +6,10 @@ REPO_NAME="forkop"
 RELEASE_BASE_URL="${FORKOP_RELEASE_BASE_URL:-https://fold8.ru/forkop}"
 DEFAULT_MIRROR_BASE_URL="https://mirror.infotechtg.ru"
 MIRROR_BASE_URL="${FORKOP_MIRROR_BASE_URL:-$DEFAULT_MIRROR_BASE_URL}"
+# The record of the move of the package feeds to the mirror
+# (mirror-migration.sh); whether they stay as they are (package_feeds_stay).
+MIRROR_MIGRATION_ID="mirror_infotechtg_ru_v1"
+PACKAGE_FEEDS_STAY=""
 
 FLASH_RESERVE_KB=1024
 PACKAGE_INSTALL_OVERHEAD_KB=512
@@ -1806,7 +1810,40 @@ configure_opkg_mirror() {
     msg "OpenWrt package feeds now use $MIRROR_BASE_URL"
 }
 
+# Feeds on the retired mirror, which serves nothing.
+retired_mirror_in_package_feeds() {
+    for repository_file in /etc/apk/repositories /etc/apk/repositories.d/distfeeds.list "$OPKG_DISTFEEDS_FILE"; do
+        [ -f "$repository_file" ] && grep -Eq 'https?://mirror\.51343\.ru/' "$repository_file" && return 0
+    done
+    return 1
+}
+
+# The package feeds move to the mirror once (D-3 (a), UC-081): the Forkop
+# package records the move in forkop.settings.applied_migrations
+# (mirror-migration.sh), and after it they stay as they are, also official
+# feeds the user put back. Only feeds on the retired mirror move again, as
+# in mirror-migration.sh. A mirror named for this run
+# (FORKOP_MIRROR_BASE_URL) is the user's request to move them to it. The
+# record is read through the installer's UCI helper; without ucode there is
+# no Forkop to have recorded it.
+package_feeds_stay() {
+    if [ -z "$PACKAGE_FEEDS_STAY" ]; then
+        PACKAGE_FEEDS_STAY=0
+        if [ -z "${FORKOP_MIRROR_BASE_URL:-}" ] && command_exists ucode &&
+            install_json_ucode uci-get forkop.settings.applied_migrations 2>/dev/null |
+                tr ' ' '\n' | grep -Fxq "$MIRROR_MIGRATION_ID" &&
+            ! retired_mirror_in_package_feeds; then
+            PACKAGE_FEEDS_STAY=1
+        fi
+    fi
+    [ "$PACKAGE_FEEDS_STAY" -eq 1 ]
+}
+
 configure_package_mirror() {
+    if package_feeds_stay; then
+        msg "OpenWrt package feeds were moved to the mirror by an earlier Forkop installation and are left as they are; set FORKOP_MIRROR_BASE_URL to move them to a mirror again"
+        return 0
+    fi
     if [ "$PKG_IS_APK" -eq 1 ]; then
         configure_apk_mirror
     else
@@ -1898,6 +1935,9 @@ mirror_host_name() {
 }
 
 check_mirror_platform_support() {
+    # The feeds stay as they are: the mirror is not asked.
+    ! package_feeds_stay || return 0
+
     platform_index="$TMP_DIR/forkop-platforms.tsv"
     platform_format="ipk"
     [ "$PKG_IS_APK" -eq 0 ] || platform_format="apk"
@@ -2895,7 +2935,11 @@ main() {
 
     msg "Forkop $FORKOP_PACKAGE_VERSION has been installed successfully"
     msg "Forkop release source: ${RELEASE_BASE_URL%/} (${FORKOP_RELEASE_TAG})"
-    msg "Dependency mirror: ${MIRROR_BASE_URL}"
+    if package_feeds_stay; then
+        msg "Package feeds: left as configured"
+    else
+        msg "Dependency mirror: ${MIRROR_BASE_URL}"
+    fi
     if [ "$FORKOP_CONFIG_READY" -eq 1 ]; then
         warn "Open LuCI and review your rules before enabling Forkop"
     else

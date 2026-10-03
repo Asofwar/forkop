@@ -337,6 +337,16 @@ function stop_requested() {
     return file_exists(STOP_REQUESTED_FILE);
 }
 
+// The stop in effect is the user's: one recorded without its source is too
+// (stop_request_source).
+function user_stop_requested() {
+    let request = fs.readfile(STOP_REQUESTED_FILE);
+    if (request == null)
+        return false;
+    let by = match(request, /(^|\n)by=([a-z]*)/);
+    return by == null || by[2] == "user";
+}
+
 function mark_explicit_start() {
     if (!ensure_parent_dir(EXPLICIT_START_FILE))
         return false;
@@ -1364,6 +1374,15 @@ else if (mode == "deferred-start-pending")
 // start; the previous version may have kept no record of it.
 else if (mode == "mark-explicit-start")
     exit((ARGV[1] == "if-running" && !runtime_is_running()) || mark_explicit_start() ? 0 : 1);
+// service/package.uc postinst: the stop request that the start after the
+// upgrade follows (FORKOP_START_AFTER_STOP), its first line or nothing;
+// exit 3 when the stop in effect is the user's: no start follows it
+// (D-15(a)).
+else if (mode == "own-stop-request") {
+    if (user_stop_requested())
+        exit(3);
+    print(stop_request_value(), "\n");
+}
 // service/package.uc prerm: no start follows the removal of the package.
 else if (mode == "clear-explicit-start")
     unlink_file(EXPLICIT_START_FILE);

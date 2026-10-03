@@ -44,6 +44,7 @@ const UPGRADE_SING_BOX_WAIT_SECONDS = int(env("FORKOP_UPGRADE_SING_BOX_WAIT_SECO
 // full timeout. The start carries on after this bound, logs its outcome and
 // schedules its own retry.
 const POSTINST_START_WAIT_SECONDS = env("FORKOP_POSTINST_START_WAIT_SECONDS", "60");
+const POSTINST_USER_STOPPED = "Forkop was not started after the package upgrade: it was stopped by the user during the upgrade; start it to run it again";
 const PROC_DIR = env("FORKOP_PROC_DIR", "/proc");
 const COMPONENT_UPDATE_CHECK_CACHE_DIR = env("FORKOP_COMPONENT_UPDATE_CHECK_CACHE_DIR", "/var/run/forkop/component-update-checks");
 const COMPONENT_UPDATE_CHECK_STATE_FILE = env("FORKOP_COMPONENT_UPDATE_CHECK_STATE_FILE", "/var/run/forkop/component-update-check.timestamp");
@@ -385,6 +386,11 @@ function log_error(message) {
     command_success_from_args([ "logger", "-t", "forkop", "[error] " + message ]);
 }
 
+function log_info(message) {
+    warn(message + "\n");
+    command_success_from_args([ "logger", "-t", "forkop", "[info] " + message ]);
+}
+
 // Only apk passes a failed prerm on, from the incoming package's
 // pre-upgrade (in every release), and keeps the installed Forkop. opkg's
 // prerm and every pre-deinstall go on with the change whatever prerm
@@ -613,6 +619,21 @@ function postinst_restore() {
         return true;
     }
 
+    // The user's stop holds Forkop down until the user starts it again
+    // (D-15(a)), also one made after prerm's stop for the upgrade: the
+    // package manager may take minutes before this postinst. Its record
+    // stays, and the hand-off is consumed. The start below follows prerm's
+    // own stop (FORKOP_START_AFTER_STOP): a stop requested after that one
+    // wins over it also when it comes after this check (service/initd.uc
+    // start_service).
+    let own_stop = command_capture_from_args([ "ucode", "-L", LIB_DIR, initd_module, "own-stop-request" ]);
+    if (own_stop.status == 3) {
+        unlink_if_exists(PACKAGE_UPGRADE_STATE);
+        log_info(POSTINST_USER_STOPPED);
+        return true;
+    }
+    let after_stop = own_stop.status == 0 ? trim(own_stop.output) : "";
+
     // Fail closed: Forkop that ran before the upgrade starts again only on
     // a configuration this release has migrated. The package scripts run
     // postinst also when the migration failed (UC-026); then it refuses the
@@ -647,9 +668,13 @@ function postinst_restore() {
     // OpenWrt's default postinst: a failed start schedules its own retry,
     // and the in-app upgrade checks the runtime itself.
     let started = command_capture_from_args([ "env", "FORKOP_SERVICE_INIT=" + INIT_PATH,
+        "FORKOP_START_AFTER_STOP=" + after_stop,
         "ucode", "-L", LIB_DIR, LIB_DIR + "/service/initd.uc", "start-and-wait", "start", "",
         POSTINST_START_WAIT_SECONDS ]);
-    if (started.status != 0 && match(started.output, /(^|\n)pending\n/) != null)
+    if (started.status != 0 &&
+        command_capture_from_args([ "ucode", "-L", LIB_DIR, initd_module, "own-stop-request" ]).status == 3)
+        log_info(POSTINST_USER_STOPPED);
+    else if (started.status != 0 && match(started.output, /(^|\n)pending\n/) != null)
         warn("Forkop is still starting after the package upgrade; see the Forkop log for its outcome.\n");
     else if (started.status != 0)
         warn("Forkop did not start after the package upgrade; see the Forkop log.\n");

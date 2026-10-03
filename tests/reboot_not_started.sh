@@ -85,6 +85,11 @@ cat >"$WORK/uci.state" <<'EOF'
 forkop.settings=settings
 forkop.settings.dont_touch_dhcp=1
 EOF
+# An upgrade restarts Forkop only on a configuration this release has
+# migrated (UC-026).
+# shellcheck source=tests/helpers/migrated_config.sh
+. "$ROOT/tests/helpers/migrated_config.sh"
+migrated_settings_state "$LIB" "$WORK" >>"$WORK/uci.state" || fail "could not describe a migrated configuration"
 
 # ucode: the restore guard, the validator, health and the UI are modelled;
 # everything else is the real code.

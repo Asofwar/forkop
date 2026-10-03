@@ -279,6 +279,34 @@ installed_size_bytes() {
   du -sk "$1" | awk '{print $1 * 1024}'
 }
 
+# The script that runs when the backend package is installed or upgraded:
+# the ipk's postinst and the apk's post-install and post-upgrade. The SDK
+# recipe runs the same text (forkop/Makefile Package/forkop/postinst;
+# tests/package_recipe_parity.sh compares them).
+#
+# The mirror migration of the package feeds is best effort: an
+# unreachable mirror, or one that does not list this platform yet, must not
+# keep Forkop stopped; the script puts the feeds back itself and runs again
+# on the next package change. package_postinst always runs: it brings back
+# the service state from before the upgrade and starts Forkop only on a
+# configuration this release has migrated (fail closed). The script ends
+# with the first failure of the migration and package_postinst (UC-026).
+write_backend_postinst() {
+  cat > "$1" <<'EOF'
+#!/bin/sh
+[ -n "${IPKG_INSTROOT}" ] && exit 0
+FORKOP_LIB=/usr/lib/forkop ucode -L /usr/lib/forkop /usr/lib/forkop/config/migration.uc migrate
+forkop_migrate_status=$?
+FORKOP_PACKAGE_POSTINST=1 /usr/share/forkop/mirror-migration.sh ||
+	logger -t forkop "[warn] Package mirror migration failed (status $?); the package feeds were left unchanged"
+/usr/bin/forkop package_postinst
+forkop_postinst_status=$?
+[ "$forkop_migrate_status" -eq 0 ] || exit "$forkop_migrate_status"
+exit "$forkop_postinst_status"
+EOF
+  chmod 0755 "$1"
+}
+
 write_backend_ipk_control() {
   local control_dir="$1"
   local installed_size="$2"
@@ -304,13 +332,7 @@ EOF
 /etc/config/forkop
 EOF
 
-  cat > "$control_dir/postinst" <<'EOF'
-#!/bin/sh
-[ -n "${IPKG_INSTROOT}" ] && exit 0
-FORKOP_LIB=/usr/lib/forkop ucode -L /usr/lib/forkop /usr/lib/forkop/config/migration.uc migrate || exit $?
-FORKOP_PACKAGE_POSTINST=1 /usr/share/forkop/mirror-migration.sh || exit $?
-/usr/bin/forkop package_postinst
-EOF
+  write_backend_postinst "$control_dir/postinst"
 
   cat > "$control_dir/prerm" <<'EOF'
 #!/usr/bin/ucode
@@ -447,12 +469,7 @@ write_backend_apk_scripts() {
 exit(0);
 EOF
 
-  cat > "$scripts_dir/backend-post-install.sh" <<'EOF'
-#!/usr/bin/ucode
-if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "")
-    exit(system("FORKOP_LIB=/usr/lib/forkop ucode -L /usr/lib/forkop /usr/lib/forkop/config/migration.uc migrate && FORKOP_PACKAGE_POSTINST=1 /usr/share/forkop/mirror-migration.sh && /usr/bin/forkop package_postinst"));
-exit(0);
-EOF
+  write_backend_postinst "$scripts_dir/backend-post-install.sh"
 
   cat > "$scripts_dir/backend-pre-deinstall.sh" <<'EOF'
 #!/usr/bin/ucode
@@ -476,12 +493,7 @@ if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "")
 exit(0);
 EOF
 
-  cat > "$scripts_dir/backend-post-upgrade.sh" <<'EOF'
-#!/usr/bin/ucode
-if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "")
-    exit(system("FORKOP_LIB=/usr/lib/forkop ucode -L /usr/lib/forkop /usr/lib/forkop/config/migration.uc migrate && FORKOP_PACKAGE_POSTINST=1 /usr/share/forkop/mirror-migration.sh && /usr/bin/forkop package_postinst"));
-exit(0);
-EOF
+  write_backend_postinst "$scripts_dir/backend-post-upgrade.sh"
 
   chmod 0755 "$scripts_dir"/backend-*.sh
 }

@@ -60,13 +60,19 @@ fi
 /usr/bin/forkop package_prerm "$$forkop_action" $${forkop_version:+"$$forkop_version"} >/dev/null 2>&1
 exit 0
 endef
+# The same script as build.sh write_backend_postinst writes (make reads $$
+# as $); tests/package_postinst_chain.sh compares them.
 define Package/forkop/postinst
 #!/bin/sh
-
 [ -n "$${IPKG_INSTROOT}" ] && exit 0
-FORKOP_LIB=/usr/lib/forkop ucode -L /usr/lib/forkop /usr/lib/forkop/config/migration.uc migrate || exit $$?
-FORKOP_PACKAGE_POSTINST=1 /usr/share/forkop/mirror-migration.sh || exit $$?
+FORKOP_LIB=/usr/lib/forkop ucode -L /usr/lib/forkop /usr/lib/forkop/config/migration.uc migrate
+forkop_migrate_status=$$?
+FORKOP_PACKAGE_POSTINST=1 /usr/share/forkop/mirror-migration.sh ||
+	logger -t forkop "[warn] Package mirror migration failed (status $$?); the package feeds were left unchanged"
 /usr/bin/forkop package_postinst
+forkop_postinst_status=$$?
+[ "$$forkop_migrate_status" -eq 0 ] || exit "$$forkop_migrate_status"
+exit "$$forkop_postinst_status"
 endef
 
 define Package/forkop/conffiles

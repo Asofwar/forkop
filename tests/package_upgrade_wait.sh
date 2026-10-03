@@ -35,7 +35,13 @@ chmod 0755 "$WORK_DIR/init" "$WORK_DIR/forkop"
 mkdir -p "$WORK_DIR/run"
 
 printf "config settings 'settings'\n" >"$WORK_DIR/forkop.conf"
-printf 'forkop.settings=settings\n' >"$WORK_DIR/uci.state"
+# The restart needs a configuration this release has migrated (UC-026).
+# shellcheck source=tests/helpers/migrated_config.sh
+. "$ROOT_DIR/tests/helpers/migrated_config.sh"
+{
+  printf 'forkop.settings=settings\n'
+  migrated_settings_state "$FORKOP_LIB" "$WORK_DIR"
+} >"$WORK_DIR/uci.state" || fail "could not describe a migrated configuration"
 
 # A fake /proc: one process whose exe resolves to a binary named sing-box.
 mkdir -p "$WORK_DIR/proc/4242" "$WORK_DIR/proc/7/" "$WORK_DIR/bin"
@@ -50,6 +56,7 @@ run_postinst() {
   FORKOP_LIB="$FORKOP_LIB" \
   FORKOP_BIN="$WORK_DIR/forkop" \
   FORKOP_RUNTIME_STATE_DIR="$WORK_DIR/run" \
+  FORKOP_HISTORY_FILE="$WORK_DIR/history.jsonl" \
   FORKOP_START_WAIT_TIMEOUT_SECONDS=5 \
   FORKOP_TEST_INIT_LOG="$WORK_DIR/init.log" \
   FORKOP_CONFIG_PATH="$WORK_DIR/forkop.conf" \

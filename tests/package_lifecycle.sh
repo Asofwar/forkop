@@ -14,6 +14,10 @@ export FORKOP_PACKAGE_UPGRADE_STATE="$WORK_DIR/package-was-running"
 # host's.
 export FORKOP_RUNTIME_STATE_DIR="$WORK_DIR/run"
 mkdir -p "$FORKOP_RUNTIME_STATE_DIR"
+# A refused start is recorded in the health history; never the host's.
+export FORKOP_HISTORY_FILE="$WORK_DIR/history.jsonl"
+# shellcheck source=tests/helpers/migrated_config.sh
+. "$ROOT_DIR/tests/helpers/migrated_config.sh"
 
 cleanup() {
   rm -rf "$WORK_DIR"
@@ -273,6 +277,12 @@ SH
 chmod 0755 "$WORK_DIR/upgrade-init" "$WORK_DIR/upgrade-forkop"
 mkdir -p "$WORK_DIR/upgrade-run"
 : >"$WORK_DIR/upgrade-start.log"
+# A restart after an upgrade needs a configuration this release has
+# migrated (UC-026); tests/package_postinst_chain.sh covers the others.
+{
+  printf 'forkop.settings=settings\n'
+  migrated_settings_state "$FORKOP_LIB" "$WORK_DIR"
+} >"$WORK_DIR/migrated.state" || fail "could not describe a migrated configuration"
 : >"$WORK_DIR/rt_tables_upgrade"
 FORKOP_PACKAGE_TEST_MODE=1 \
 FORKOP_INIT="$WORK_DIR/upgrade-init" \
@@ -291,7 +301,7 @@ FORKOP_START_WAIT_TIMEOUT_SECONDS=5 \
 FORKOP_START_LOG="$WORK_DIR/upgrade-start.log" \
 FORKOP_CONFIG_PATH="$WORK_DIR/config-forkop" \
 FORKOP_DEFAULT_CONFIG_PATH="$WORK_DIR/default-forkop" \
-FORKOP_UCI_STATE_FILE="$WORK_DIR/config.state" \
+FORKOP_UCI_STATE_FILE="$WORK_DIR/migrated.state" \
   ucode -L "$FORKOP_LIB" "$PACKAGE_UC" postinst ||
     fail "package postinst (case 11) exited non-zero"
 grep -Fxq start "$WORK_DIR/upgrade-start.log" ||

@@ -1869,6 +1869,18 @@ function commit_runtime() {
     return commit_cursor(cursor);
 }
 
+// Whether `migrate` has nothing left to do on the live configuration: every
+// migration of this release is recorded (or declines, as it would again)
+// and config_version is current. A configuration without settings is none
+// this release can run. Nothing is written: the package starts Forkop after
+// an upgrade only on a migrated configuration (service/package.uc, UC-026).
+function migrated_runtime() {
+    let cursor = runtime_cursor();
+    if (!cursor.load(CONFIG_NAME) || type(cursor.get_all(CONFIG_NAME, "settings")) != "object")
+        return false;
+    return !migrate_model(model_from_uci(cursor), "forkop").changed;
+}
+
 function migrate_fixture(path, source) {
     let ctx = migrate_model(model_from_fixture(path), source);
     write_json({
@@ -1888,6 +1900,8 @@ function main(argv) {
         return migrate_runtime("podkop") ? 0 : 1;
     if (mode == "commit")
         return commit_runtime() ? 0 : 1;
+    if (mode == "migrated")
+        return migrated_runtime() ? 0 : 1;
     if (mode == "migrate-fixture") {
         migrate_fixture(argv[1], argv[2] || "forkop");
         return 0;
@@ -1896,6 +1910,7 @@ function main(argv) {
     warn("Usage: config/migration.uc migrate\n");
     warn("       config/migration.uc migrate-podkop\n");
     warn("       config/migration.uc commit\n");
+    warn("       config/migration.uc migrated\n");
     warn("       config/migration.uc migrate-fixture <fixture.json> [forkop|podkop]\n");
     return 1;
 }

@@ -282,6 +282,11 @@ function log_warning(message) {
     command_success_from_args([ "logger", "-t", "forkop", "[warn] " + message ]);
 }
 
+function log_error(message) {
+    warn(message + "\n");
+    command_success_from_args([ "logger", "-t", "forkop", "[error] " + message ]);
+}
+
 // Only apk passes a failed prerm on, from the incoming package's
 // pre-upgrade (in every release), and keeps the installed Forkop. opkg's
 // prerm and every pre-deinstall go on with the change whatever prerm
@@ -432,6 +437,15 @@ function legacy_vpn_guard_cleanup() {
     return firewall_saved;
 }
 
+// Whether the migrations of this release have nothing left to do on the
+// configuration (config/migration.uc migrated). The package scripts run
+// them before postinst; when they could not save their changes (a full or
+// read-only overlay), this release would run on a configuration it does not
+// understand.
+function configuration_migrated() {
+    return command_success_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/config/migration.uc", "migrated" ]);
+}
+
 function postinst_restore() {
     if (env("IPKG_INSTROOT", "") != "")
         return true;
@@ -472,6 +486,21 @@ function postinst_restore() {
     if (!path_exists(PACKAGE_UPGRADE_STATE)) {
         command_success_from_args([ "ucode", "-L", LIB_DIR, initd_module, "mark-explicit-start", "if-running" ]);
         return true;
+    }
+
+    // Fail closed: Forkop that ran before the upgrade starts again only on
+    // a configuration this release has migrated. The package scripts run
+    // postinst also when the migration failed (UC-026); then it refuses the
+    // start here. The stop of the upgrade keeps holding the runtime down (no
+    // reload starts it, D-15), the start counts as failed in the health
+    // history, the log says why, and the package operation fails. The
+    // hand-off is consumed: a later run of these scripts must not start a
+    // Forkop that was stopped since.
+    if (!configuration_migrated()) {
+        unlink_if_exists(PACKAGE_UPGRADE_STATE);
+        command_success_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/diagnostics/health.uc", "record", "start", "failure", "automatic" ]);
+        log_error("Forkop was not started after the package upgrade: its configuration is not migrated to this release (the migration could not be saved); start it once the configuration can be saved, or install the package again");
+        return false;
     }
     command_success_from_args([ "ucode", "-L", LIB_DIR, initd_module, "mark-explicit-start" ]);
 

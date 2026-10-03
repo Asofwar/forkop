@@ -58,7 +58,14 @@ fail() {
 }
 
 mkdir -p "$WORK_DIR/bin" "$WORK_DIR/run/forkop" "$WORK_DIR/tmp" "$WORK_DIR/proc"
-printf 'forkop.settings=settings\n' >"$WORK_DIR/uci.state"
+# An upgrade restarts Forkop only on a configuration this release has
+# migrated (UC-026).
+# shellcheck source=tests/helpers/migrated_config.sh
+. "$ROOT_DIR/tests/helpers/migrated_config.sh"
+{
+  printf 'forkop.settings=settings\n'
+  migrated_settings_state "$LIB" "$WORK_DIR"
+} >"$WORK_DIR/uci.state" || fail "could not describe a migrated configuration"
 printf "config settings 'settings'\n" >"$WORK_DIR/forkop.conf"
 
 export TMPDIR="$WORK_DIR/tmp"

@@ -145,12 +145,21 @@ grep -Fq "list applied_migrations 'mirror_infotechtg_ru_v1'" "$FORKOP_CONFIG" ||
   fail "new installations must mark the own package mirror migration as applied"
 grep -Fq '/usr/lib/forkop/config/migration.uc migrate' "$FORKOP_MAKEFILE" ||
   fail "OpenWrt package postinst must run configuration migrations"
-[ "$(grep -Fc '/usr/lib/forkop/config/migration.uc migrate' "$BUILD_SCRIPT")" -ge 3 ] ||
-  fail "manual IPK/APK package scripts must run configuration migrations after install and upgrade"
 grep -Fq 'FORKOP_PACKAGE_POSTINST=1 /usr/share/forkop/mirror-migration.sh' "$FORKOP_MAKEFILE" ||
   fail "OpenWrt package postinst must prevent nested package-manager updates during mirror migration"
-[ "$(grep -Fc 'FORKOP_PACKAGE_POSTINST=1 /usr/share/forkop/mirror-migration.sh' "$BUILD_SCRIPT")" -eq 3 ] ||
-  fail "manual IPK/APK package lifecycle scripts must prevent nested package-manager updates"
+# The ipk's postinst and the apk's post-install and post-upgrade, as
+# build.sh writes them (one function since UC-026).
+WORK_DIR="$(mktemp -d)"
+trap 'rm -rf "${WORK_DIR:?}"' EXIT
+# shellcheck source=tests/helpers/build_recipe.sh
+. "$ROOT_DIR/tests/helpers/build_recipe.sh"
+build_recipe_scripts "$BUILD_SCRIPT" "$WORK_DIR/scripts" || fail "could not write build.sh's package scripts"
+for script in ipk/postinst apk/backend-post-install.sh apk/backend-post-upgrade.sh; do
+  grep -Fq '/usr/lib/forkop/config/migration.uc migrate' "$WORK_DIR/scripts/$script" ||
+    fail "manual package script $script must run configuration migrations after install and upgrade"
+  grep -Fq 'FORKOP_PACKAGE_POSTINST=1 /usr/share/forkop/mirror-migration.sh' "$WORK_DIR/scripts/$script" ||
+    fail "manual package script $script must prevent nested package-manager updates"
+done
 
 if grep -Rqs 'require("uci")' "$FORKOP_LIB"; then
   require_package_dependency "ucode-mod-uci"

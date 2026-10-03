@@ -119,7 +119,7 @@ R="$FORKOP_UNINSTALL_ROOT"
 [ "$1" != -t ] || shift
 case "$1 $2 $3" in
   "list table inet") [ -e "$R/nft/$4" ]; exit $? ;;
-  "delete table inet") rm -f "$R/nft/$4"; exit 0 ;;
+  "delete table inet") [ ! -e "$R/nft-stays/$4" ] || exit 1; rm -f "$R/nft/$4"; exit 0 ;;
 esac
 exit 1
 SH
@@ -252,5 +252,27 @@ run_removal
 printf '%s\n' "$status" | grep -q '"state":"failed","phase":"files"' ||
   fail "$CASE: the removal reported success with the kill-switch table in place: $status"
 says_left 'nft table inet ForkopKillswitch'
+
+# 6. The fail-closed DPI guards outlive Forkop's stop: the guard of a
+#    restore or an autotune apply that ended needs_attention goes only with
+#    a restore, and nothing marks DPI traffic for either once Forkop is
+#    gone. The removal deletes them, and does not report success while one
+#    stays.
+CASE="DPI guards"
+fixture dpi_guards
+touch "$ROOT/nft/ForkopConfigRestoreDpiGuard" "$ROOT/nft/ForkopTableDpiGuard"
+run_removal
+printf '%s\n' "$status" | grep -q '"state":"complete"' || fail "$CASE: the removal failed: $status"
+if [ -e "$ROOT/nft/ForkopConfigRestoreDpiGuard" ] || [ -e "$ROOT/nft/ForkopTableDpiGuard" ]; then
+  fail "$CASE: a DPI guard of Forkop outlived its removal"
+fi
+CASE="DPI guard stays"
+fixture dpi_guard_stays
+mkdir -p "$ROOT/nft-stays"
+touch "$ROOT/nft/ForkopConfigRestoreDpiGuard" "$ROOT/nft-stays/ForkopConfigRestoreDpiGuard"
+run_removal
+printf '%s\n' "$status" | grep -q '"state":"failed","phase":"files"' ||
+  fail "$CASE: the removal reported success with a DPI guard in place: $status"
+says_left 'nft table inet ForkopConfigRestoreDpiGuard'
 
 printf 'full uninstall runtime leftover checks passed\n'

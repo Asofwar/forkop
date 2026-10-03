@@ -139,7 +139,7 @@ reset_case() {
   : >"$EVENTS"
   rm -f "$STATE"/*-leaves "$STATE/killswitch-stays" "$FORKOP_PACKAGE_UPGRADE_STATE"
   touch "$STATE/nft/ForkopTable" "$STATE/rule" "$STATE/nft/ForkopKillswitch" "$KILLSWITCH_NFT_POLICY"
-  rm -f "$STATE/nft/ForkopTorrServerDirect"
+  rm -f "$STATE/nft/ForkopTorrServerDirect" "$STATE/nft/ForkopConfigRestoreDpiGuard" "$STATE/nft/ForkopTableDpiGuard"
   printf '%s\n%s\n' "$FOREIGN_CRON" "$FORKOP_CRON" >"$FORKOP_CRONTAB_FILE"
   printf '100 main\n105 forkop\n' >"$FORKOP_RT_TABLES"
   cat >"$FORKOP_SING_BOX_INIT" <<'SH'
@@ -213,6 +213,14 @@ touch "$STATE/nft/ForkopTorrServerDirect"
 called 'killswitch release package removal' || fail "a removal did not release the kill-switch"
 left_logged "kill-switch left" 'nft table inet ForkopKillswitch' "saved kill-switch policy $KILLSWITCH_NFT_POLICY" \
   'nft table inet ForkopTorrServerDirect'
+
+# 4b. Removal: the fail-closed DPI guard of a restore that ended
+#     needs_attention, which Forkop's stop leaves and only a restore
+#     releases, and the one of a failed transition.
+reset_case
+touch "$STATE/nft/ForkopConfigRestoreDpiGuard" "$STATE/nft/ForkopTableDpiGuard"
+[ "$(prerm remove)" != 0 ] || fail "prerm reported success with a DPI guard of Forkop in place"
+left_logged "DPI guards left" 'nft table inet ForkopTableDpiGuard' 'nft table inet ForkopConfigRestoreDpiGuard'
 
 # 5. A clean removal reports success and nothing left.
 reset_case

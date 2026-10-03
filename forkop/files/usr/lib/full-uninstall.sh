@@ -62,8 +62,10 @@ installed() {
 # packages take away, and its lines in the crontab, which would call a
 # removed /usr/bin/forkop. With "all" also what the removal itself takes
 # away: the TorrServer Direct table, the kill-switch table and its fw4
-# loader. The status the UI reads names it when the removal fails over it.
+# loader, and the fail-closed DPI guards. The status the UI reads names it
+# when the removal fails over it.
 LEFT=
+DPI_GUARD_TABLES="ForkopTableDpiGuard ForkopConfigRestoreDpiGuard"
 find_left_behind() {
     LEFT=
     if nft -t list table inet ForkopTable >/dev/null 2>&1; then
@@ -80,7 +82,7 @@ find_left_behind() {
         LEFT="$LEFT, scheduled jobs in /etc/crontabs/root"
     fi
     if [ "${1:-}" = all ]; then
-        for table in ForkopTorrServerDirect ForkopKillswitch; do
+        for table in ForkopTorrServerDirect ForkopKillswitch $DPI_GUARD_TABLES; do
             if nft -t list table inet "$table" >/dev/null 2>&1; then
                 LEFT="$LEFT, nft table inet $table"
             fi
@@ -230,6 +232,16 @@ run() {
             "$ROOT/etc/init.d/dnsmasq" restart || true
         fi
     fi
+    # The fail-closed DPI guards outlive Forkop's stop: the one of a failed
+    # transition when its removal failed, the one of a restore or an
+    # autotune apply that ended needs_attention always (only a restore,
+    # gone with the packages, releases it). Nothing marks DPI traffic for
+    # them any more.
+    for table in $DPI_GUARD_TABLES; do
+        if nft -t list table inet "$table" >/dev/null 2>&1; then
+            nft delete table inet "$table" 2>/dev/null || true
+        fi
+    done
     for file in "$ROOT"/usr/lib/lua/luci/i18n/forkop.* \
         "$ROOT"/tmp/luci-indexcache* "$ROOT"/tmp/luci-modulecache/*; do
         [ ! -f "$file" ] || rm -f "$file"

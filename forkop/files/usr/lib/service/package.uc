@@ -353,11 +353,16 @@ function runtime_left() {
 
 // What a removal left of Forkop (UC-028): besides the runtime, the
 // kill-switch it could not lift (its table, and the saved policy its fw4
-// loader would load again on a reinstall) and the TorrServer Direct table.
+// loader would load again on a reinstall), the TorrServer Direct table and
+// the fail-closed DPI guards. Forkop's stop leaves the guard of a restore or
+// an autotune apply that ended needs_attention, which only a restore
+// releases: it stays across a reinstall, and after a removal until a
+// reboot or Full uninstall.
 function removal_left() {
     let left = runtime_left();
     let killswitch_table = constants.KILLSWITCH_NFT_TABLE || "ForkopKillswitch";
-    for (let table in [ killswitch_table, "ForkopTorrServerDirect" ])
+    let table_name = constants.NFT_TABLE_NAME || "ForkopTable";
+    for (let table in [ killswitch_table, "ForkopTorrServerDirect", table_name + "DpiGuard", "ForkopConfigRestoreDpiGuard" ])
         if (nft_table_present(table))
             push(left, "nft table inet " + table);
     let policy = constants.KILLSWITCH_NFT_POLICY || "/etc/forkop/killswitch/policy.nft";

@@ -141,8 +141,10 @@ grep -Fq "list applied_migrations 'secondary_rulesets_mirror_v1'" "$FORKOP_CONFI
   fail "new installations must mark the secondary rule set mirror migration as applied"
 grep -Fq "list applied_migrations 'own_dependency_mirror_v1'" "$FORKOP_CONFIG" ||
   fail "new installations must mark the own dependency mirror migration as applied"
-grep -Fq "list applied_migrations 'mirror_infotechtg_ru_v1'" "$FORKOP_CONFIG" ||
-  fail "new installations must mark the own package mirror migration as applied"
+# The package feeds move to the mirror once, on the first install
+# (D-3 (a), UC-081): mirror-migration.sh records it after the move.
+! grep -Fq "mirror_infotechtg_ru_v1" "$FORKOP_CONFIG" ||
+  fail "new installations must not record the move of package feeds to the mirror before mirror-migration.sh moved them"
 grep -Fq '/usr/lib/forkop/config/migration.uc migrate' "$FORKOP_MAKEFILE" ||
   fail "OpenWrt package postinst must run configuration migrations"
 grep -Fq 'FORKOP_PACKAGE_POSTINST=1 /usr/share/forkop/mirror-migration.sh' "$FORKOP_MAKEFILE" ||

@@ -57,7 +57,8 @@ retired_mirror_in_feeds() {
 # change runs this script, and a recorded migration leaves the feeds, the
 # mirror key and the Forkop feed as they are, also official feeds the user
 # put back, without asking the mirror. Only a feed on the retired mirror,
-# which serves nothing, still moves.
+# which serves nothing, still moves. The configuration the package ships
+# has no record: a first install moves the feeds and records it.
 if migration_applied && ! retired_mirror_in_feeds; then
     exit 0
 fi

@@ -402,15 +402,32 @@ function first_line_value(path, fallback) {
     return line != "" ? line : as_string(fallback);
 }
 
+let stdout_tty = null;
+
+// The test inherits this process's stdout: command_success() would point it
+// at /dev/null, and nolog() never printed (UC-117).
 function stdout_is_tty() {
-    return command_success_from_args([ "test", "-t", "1" ]);
+    if (stdout_tty == null)
+        stdout_tty = system("test -t 1") == 0;
+    return stdout_tty;
 }
 
+// A progress or verdict line for a terminal. Off a terminal stdout stays the
+// bare result its callers parse (the UI, global_check, support_report).
 function nolog(message) {
     if (!stdout_is_tty())
         return;
     let timestamp = replace(command_output_from_args([ "date", "+%Y-%m-%d %H:%M:%S" ]), /[\r\n]+$/g, "");
     print("\033[0;36m[", timestamp, "]\033[0m \033[0;32m", as_string(message), "\033[0m\n");
+}
+
+// Why a diagnostic failed: on a terminal like nolog(), otherwise on stderr,
+// which the UI shows for a command that failed.
+function nolog_failure(message) {
+    if (stdout_is_tty())
+        nolog(message);
+    else
+        warn(as_string(message), "\n");
 }
 
 function log_message(message, level) {
@@ -663,17 +680,17 @@ function cleanup_check_proxy_dir(dir) {
 function check_proxy() {
     let sing_box_config_path = option(settings(), "config_path", "");
     if (!command_exists("sing-box")) {
-        nolog("sing-box is not installed");
+        nolog_failure("sing-box is not installed");
         return 1;
     }
     if (!file_exists(sing_box_config_path)) {
-        nolog("Configuration file not found");
+        nolog_failure("Configuration file not found");
         return 1;
     }
 
     nolog("Checking sing-box configuration...");
     if (!command_success_from_args([ "sing-box", "-c", sing_box_config_path, "check" ])) {
-        nolog("Invalid configuration");
+        nolog_failure("Invalid configuration");
         return 1;
     }
 
@@ -687,7 +704,7 @@ function check_proxy() {
     cleanup_check_proxy_dir(check_proxy_dir);
     ensure_dir(check_proxy_dir);
     if (!status_success([ "prepare-check-proxy-config", sing_box_config_path, check_proxy_config, check_proxy_cache ], null)) {
-        nolog("Failed to prepare temporary configuration");
+        nolog_failure("Failed to prepare temporary configuration");
         cleanup_check_proxy_dir(check_proxy_dir);
         return 1;
     }
@@ -716,8 +733,8 @@ function check_proxy() {
         }
 
         if (attempt == 5) {
-            nolog("Failed to get valid IP address after 5 attempts");
-            nolog(response == "" ? "Error: Empty response" : "Error response: " + response);
+            nolog_failure("Failed to get valid IP address after 5 attempts");
+            nolog_failure(response == "" ? "Error: Empty response" : "Error response: " + response);
             cleanup_check_proxy_dir(check_proxy_dir);
             return 1;
         }
@@ -740,13 +757,13 @@ function domain_lists_contain_cloud_provider() {
 
 function check_nft() {
     if (!command_exists("nft")) {
-        nolog("nft is not installed");
+        nolog_failure("nft is not installed");
         return 1;
     }
 
     nolog("Checking " + NFT_TABLE_NAME + " rules...");
     if (!command_success_from_args([ "nft", "list", "table", "inet", NFT_TABLE_NAME ])) {
-        nolog("❌ " + NFT_TABLE_NAME + " not found");
+        nolog_failure("❌ " + NFT_TABLE_NAME + " not found");
         return 1;
     }
 
@@ -786,14 +803,14 @@ function check_nft() {
 
 function check_logs() {
     if (!command_exists("logread")) {
-        nolog("Error: logread command not found");
+        nolog_failure("Error: logread command not found");
         return 1;
     }
     let rendered = status_capture([ "forkop-logs" ], command_output_from_args([ "logread" ]));
     if (rendered.output != "")
         print(rendered.output);
     if (rendered.status != 0) {
-        nolog("Logs not found");
+        nolog_failure("Logs not found");
         return 1;
     }
     return 0;
@@ -801,14 +818,14 @@ function check_logs() {
 
 function check_sing_box_logs() {
     if (!command_exists("logread")) {
-        nolog("Error: logread command not found");
+        nolog_failure("Error: logread command not found");
         return 1;
     }
     let rendered = status_capture([ "matching-log-tail", "sing-box", "100" ], command_output_from_args([ "logread" ]));
     if (rendered.output != "")
         print(rendered.output);
     if (rendered.status != 0) {
-        nolog("sing-box logs not found");
+        nolog_failure("sing-box logs not found");
         return 1;
     }
     return 0;
@@ -826,7 +843,7 @@ function show_sing_box_config(visibility) {
     let sing_box_config_path = option(settings(), "config_path", "");
     nolog("Current sing-box configuration:");
     if (!file_exists(sing_box_config_path)) {
-        nolog("Configuration file not found");
+        nolog_failure("Configuration file not found");
         return 1;
     }
     if (visibility == "raw")
@@ -892,7 +909,7 @@ function get_dashboard_runtime_metadata() {
 function show_config(visibility) {
     visibility = as_string(visibility || "masked");
     if (!file_exists(FORKOP_CONFIG)) {
-        nolog("Configuration file not found");
+        nolog_failure("Configuration file not found");
         return 1;
     }
     if (visibility == "raw")

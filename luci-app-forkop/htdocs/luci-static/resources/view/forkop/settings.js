@@ -72,7 +72,9 @@ function setupAutomaticUpdateInterval(option, key) {
         ? "1h"
         : normalized;
 
-    if (next !== stored(section_id)) {
+    // Compared with what the field showed: an absent option shows the
+    // default 1d, and a save that leaves it is no change to write.
+    if (next !== (stored(section_id) || "1d")) {
       uci.set(UCI_PACKAGE, section_id, key, next);
     }
   };

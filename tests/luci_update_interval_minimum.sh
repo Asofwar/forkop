@@ -72,6 +72,24 @@ async function check(label, fn) {
         await settings.save();
         assert.equal(env.uci.data.settings[key], stored.settings[key]);
       });
+
+      await check(`${version} ${key}: absent option, unchanged save`, async () => {
+        // The field shows the default 1d; a save that changes nothing must
+        // not write it (no forkop change to apply).
+        const env = createEnvironment({ version, config: config({}) });
+        const settings = await env.openSettings(installed);
+        assert.equal(settings.option(key).formvalue('settings'), '1d');
+        await settings.save();
+        assert.equal(env.uci.data.settings[key], undefined, 'an absent interval was written');
+      });
+
+      await check(`${version} ${key}: absent option, new value`, async () => {
+        const env = createEnvironment({ version, config: config({}) });
+        const settings = await env.openSettings(installed);
+        settings.option(key).getUIElement('settings').setValue('2h');
+        await settings.save();
+        assert.equal(env.uci.data.settings[key], '2h');
+      });
     }
   }
 

@@ -58,8 +58,15 @@ retired_mirror_in_feeds() {
 # mirror key and the Forkop feed as they are, also official feeds the user
 # put back, without asking the mirror. Only a feed on the retired mirror,
 # which serves nothing, still moves. The configuration the package ships
-# has no record: a first install moves the feeds and records it.
+# has no record: a first install moves the feeds and records it. A mirror
+# chosen explicitly for this change (install.sh FORKOP_MIRROR_BASE_URL) is
+# still the one saved for Forkop's own downloads.
 if migration_applied && ! retired_mirror_in_feeds; then
+    if [ -n "${FORKOP_MIRROR_BASE_URL:-}" ] &&
+        [ "$("$UCI_BIN" -q get "$SETTINGS_SECTION.mirror_base_url" 2>/dev/null || true)" != "$MIRROR_BASE_URL" ]; then
+        "$UCI_BIN" -q set "$SETTINGS_SECTION.mirror_base_url=$MIRROR_BASE_URL"
+        "$UCI_BIN" -q commit forkop
+    fi
     exit 0
 fi
 

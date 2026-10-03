@@ -17,7 +17,9 @@
 #    the mirror for nothing;
 #  - an upgrade from a release whose configuration has no record moves the
 #    feeds as every package change did before, once; a move the mirror
-#    could not serve is not recorded and runs again on the next change.
+#    could not serve is not recorded and runs again on the next change;
+#  - a mirror chosen explicitly (install.sh FORKOP_MIRROR_BASE_URL) after
+#    the recorded move is saved, and the feeds stay as they are.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -132,11 +134,14 @@ restore_official_feeds() {
   rm -f "$ROOT/etc/apk/keys/forkop-mirror.pem" "$ROOT/etc/apk/repositories.d/forkop.list"
 }
 
-# Every file of the router and of UCI: name, type, size, time and content.
+# Every file of the router and of UCI: name, type, size, time and content;
+# with arguments, of those parts only (root, config, uci-save).
 state() {
+  local parts=(root config uci-save)
+  [ "$#" -eq 0 ] || parts=("$@")
   (cd "$CASE_DIR" &&
-    find root config uci-save -printf '%p %y %s %T@\n' | LC_ALL=C sort &&
-    find root config uci-save -type f -exec md5sum {} + | LC_ALL=C sort)
+    find "${parts[@]}" -printf '%p %y %s %T@\n' | LC_ALL=C sort &&
+    find "${parts[@]}" -type f -exec md5sum {} + | LC_ALL=C sort)
 }
 
 case_uci() {
@@ -259,3 +264,27 @@ before="$(state)"
 package_change
 expect_left_alone "upgrade after the move from the retired mirror" "$before"
 ok "upgrade from the retired mirror: moved once, restored official feeds stay"
+
+# 4. install.sh run again with another mirror (FORKOP_MIRROR_BASE_URL),
+# after the recorded move: the package scripts still save the mirror Forkop
+# downloads from (lists, rule sets, full uninstall), as before the move was
+# recorded, and leave the feeds and keys alone. The same mirror again
+# writes nothing.
+new_case explicit-opkg opkg "$SHIPPED_CONFIG"
+package_change
+expect_moved "explicit mirror: first install"
+restore_official_feeds
+before="$(state root)"
+FORKOP_MIRROR_BASE_URL=https://alt.example/ package_change
+[ "$RUN_RC" -eq 0 ] || fail "explicit mirror: the package change failed (status $RUN_RC)"
+[ "$(case_uci mirror_base_url)" = https://alt.example ] ||
+  fail "explicit mirror: not saved: '$(case_uci mirror_base_url)'"
+[ "$(recorded)" = 1 ] || fail "explicit mirror: the move is recorded $(recorded) times"
+[ ! -s "$CASE_DIR/uci-save/forkop" ] || fail "explicit mirror: UCI changes were left uncommitted"
+[ "$(state root)" = "$before" ] || fail "explicit mirror: feeds or keys changed:
+$(diff <(printf '%s\n' "$before") <(state root) || true)"
+[ ! -s "$CASE_DIR/events" ] || fail "explicit mirror: asked a mirror or ran the package manager: $(cat "$CASE_DIR/events")"
+before="$(state)"
+FORKOP_MIRROR_BASE_URL=https://alt.example package_change
+expect_left_alone "the explicit mirror saved before" "$before"
+ok "explicit mirror after the recorded move: saved, feeds and keys left alone"

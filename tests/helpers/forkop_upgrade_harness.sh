@@ -4,9 +4,9 @@
 # release servers (curl), the init script, `forkop get_status`, df and the
 # start-and-wait of service/initd.uc. The flow itself is the production code:
 # the harness is components/action.uc with its dispatch replaced, and only
-# the functions that would touch the host's /tmp, LuCI caches and rpcd or
-# scan the host's processes are overridden (other tests run sing-box doubles
-# of their own). The action's PATH holds the stand-ins and the host's tools
+# the functions that would touch the host's /tmp, LuCI caches, rpcd or /etc,
+# or scan the host's processes are overridden (other tests run sing-box
+# doubles of their own). The action's PATH holds the stand-ins and the host's tools
 # without a host apk or opkg: the router's package manager is the stand-in.
 #
 # Sourced by the tests that need it, after ROOT_DIR and WORK_DIR are set.
@@ -15,7 +15,9 @@
 #   upgrade_harness_setup                 build the stand-ins (once)
 #   upgrade_harness_reset apk|opkg        Forkop 1.0.0 installed and running
 #   upgrade_harness_flag NAME [VALUE]     inject a failure (see the stand-ins)
-#   upgrade_harness_run                   the action; JSON response in $UPGRADE_OUT
+#   upgrade_harness_run [COMP ACTION [VERSION]]
+#                                         the action (default: forkop install);
+#                                         JSON response in $UPGRADE_OUT
 #   upgrade_harness_version PACKAGE       the installed version
 #   upgrade_harness_running               Forkop runs
 #
@@ -99,6 +101,11 @@ function refresh_luci_after_forkop_upgrade() {
 function upgrade_sing_box_processes() {
     return file_exists(HARNESS_STATE + "/flags/sing_box_ambiguous") ? null : {};
 }
+// The router's configuration archive is not the host's.
+function save_forkop_configuration_backup(config_dir, backup_dir) {
+    let backup = HARNESS_STATE + "/configuration.tar.gz";
+    return write_file(backup, "backup\n") ? backup : "";
+}
 
 component_action(ARGV[0], ARGV[1], ARGV[2]);
 UCODE
@@ -178,12 +185,14 @@ esac
 exit 0
 SH
 
-    # Release servers: fold8 serves the release to install, GitHub the
-    # metadata of the installed one. A package file names the package and
-    # version it holds, whatever the file is called. Flags: github_down,
-    # download_fail_<version>; while the upgrade asks GitHub (before Forkop
-    # is stopped for it), user_stop_on_github has the user stop Forkop and
-    # crash_on_github takes it down without a stop.
+    # Release servers: fold8 serves the release to install and the catalog
+    # of the version picker, GitHub the metadata of the installed one. A
+    # package file names the package and version it holds, whatever the file
+    # is called. Flags: github_down, download_fail_<version>,
+    # tamper_<package> (the server holds other bytes than the metadata
+    # names); while the upgrade asks GitHub (before Forkop is stopped for it),
+    # user_stop_on_github has the user stop Forkop and crash_on_github takes
+    # it down without a stop.
     cat >"$UPGRADE_BIN/curl" <<'SH'
 #!/bin/sh
 state="$UPGRADE_STATE"
@@ -202,6 +211,10 @@ case "$url" in
     https://releases.invalid/updates/latest.json)
         cat "$state/latest.json" >"$out"
         ;;
+    https://releases.invalid/updates/releases.json)
+        [ -e "$state/releases.json" ] || exit 22
+        cat "$state/releases.json" >"$out"
+        ;;
     https://api.github.com/repos/*/releases/tags/1.0.0)
         [ ! -e "$state/flags/user_stop_on_github" ] || env -u FORKOP_STOP_SOURCE "$FORKOP_SERVICE_INIT" stop
         [ ! -e "$state/flags/crash_on_github" ] || rm -f "$state/running"
@@ -215,6 +228,7 @@ case "$url" in
         version="${version%.*}"
         [ ! -e "$state/flags/download_fail_$version" ] || exit 22
         printf 'name=%s\nversion=%s-r1\n' "$name" "$version" >"$out"
+        [ ! -e "$state/flags/tamper_$name" ] || printf 'tampered\n' >>"$out"
         ;;
     *)
         exit 6
@@ -351,12 +365,30 @@ SH
     UPGRADE_PATH="$UPGRADE_BIN:$upgrade_host_path"
 }
 
-# release_json VERSION EXT
+# The SHA-256 of the package file the release server holds for PACKAGE at
+# VERSION.
+upgrade_harness_package_sha256() {
+    printf 'name=%s\nversion=%s-r1\n' "$1" "$2" | sha256sum | cut -d' ' -f1
+}
+
+# release_json VERSION EXT [DIGESTS]: the release metadata. DIGESTS names
+# the checksums of the assets as the server publishes them: "mirror" (the
+# default; fold8's latest.json and catalog carry sha256 and digest),
+# "github" (the GitHub API's digest "sha256:<hex>" only) or "none".
 upgrade_harness_release_json() {
     printf '{"tag_name":"%s","html_url":"https://releases.invalid/%s","assets":[' "$1" "$1"
-    printf '{"name":"forkop_%s.%s","browser_download_url":"https://releases.invalid/releases/%s/forkop_%s.%s"},' "$1" "$2" "$1" "$1" "$2"
-    printf '{"name":"luci-app-forkop_%s.%s","browser_download_url":"https://releases.invalid/releases/%s/luci-app-forkop_%s.%s"},' "$1" "$2" "$1" "$1" "$2"
-    printf '{"name":"luci-i18n-forkop-ru_%s.%s","browser_download_url":"https://releases.invalid/releases/%s/luci-i18n-forkop-ru_%s.%s"}' "$1" "$2" "$1" "$1" "$2"
+    upgrade_separator=""
+    for upgrade_asset in forkop luci-app-forkop luci-i18n-forkop-ru; do
+        upgrade_sum="$(upgrade_harness_package_sha256 "$upgrade_asset" "$1")"
+        case "${3:-mirror}" in
+            mirror) upgrade_digest="$(printf '"sha256":"%s","digest":"sha256:%s",' "$upgrade_sum" "$upgrade_sum")" ;;
+            github) upgrade_digest="$(printf '"digest":"sha256:%s",' "$upgrade_sum")" ;;
+            *) upgrade_digest="" ;;
+        esac
+        printf '%s{"name":"%s_%s.%s",%s"browser_download_url":"https://releases.invalid/releases/%s/%s_%s.%s"}' \
+            "$upgrade_separator" "$upgrade_asset" "$1" "$2" "$upgrade_digest" "$1" "$upgrade_asset" "$1" "$2"
+        upgrade_separator=","
+    done
     printf ']}\n'
 }
 
@@ -373,7 +405,12 @@ upgrade_harness_reset() {
         *) upgrade_extension=ipk ;;
     esac
     upgrade_harness_release_json 1.1.0 "$upgrade_extension" >"$UPGRADE_STATE/latest.json"
-    upgrade_harness_release_json 1.0.0 "$upgrade_extension" >"$UPGRADE_STATE/previous.json"
+    upgrade_harness_release_json 1.0.0 "$upgrade_extension" github >"$UPGRADE_STATE/previous.json"
+    {
+        printf '{"format":1,"releases":['
+        upgrade_harness_release_json 1.1.0 "$upgrade_extension"
+        printf ']}\n'
+    } >"$UPGRADE_STATE/releases.json"
     for upgrade_package in forkop luci-app-forkop luci-i18n-forkop-ru; do
         printf '1.0.0-r1\n' >"$UPGRADE_STATE/pkg/$upgrade_package"
     done
@@ -388,8 +425,11 @@ upgrade_harness_unflag() {
     rm -f "$UPGRADE_STATE/flags/$1"
 }
 
+# upgrade_harness_run [COMPONENT ACTION [VERSION]]: the component action,
+# the in-app Forkop upgrade by default.
 upgrade_harness_run() {
     upgrade_status=0
+    [ "$#" -gt 0 ] || set -- forkop install
     env UPGRADE_STATE="$UPGRADE_STATE" \
         PATH="$UPGRADE_PATH" \
         FORKOP_LIB="$UPGRADE_LIB" \
@@ -404,7 +444,7 @@ upgrade_harness_run() {
         FORKOP_MANAGED_UPGRADE_SING_BOX_MARKER="$UPGRADE_MARKER" \
         FORKOP_SYSTEM_INFO_CACHE_FILE="$UPGRADE_STATE/system-info.json" \
         FORKOP_UPGRADE_STOP_TIMEOUT_SECONDS=20 \
-        ucode -L "$UPGRADE_LIB" "$UPGRADE_HARNESS" forkop install >"$UPGRADE_OUT" 2>"$UPGRADE_STATE/stderr" ||
+        ucode -L "$UPGRADE_LIB" "$UPGRADE_HARNESS" "$@" >"$UPGRADE_OUT" 2>"$UPGRADE_STATE/stderr" ||
         upgrade_status=$?
     return "$upgrade_status"
 }

@@ -2108,6 +2108,21 @@ function check_forkop() {
     action_success("forkop", "check_update", "Installed version is newer than release", FORKOP_VERSION, latest_version, 0, status, release_url);
 }
 
+// The SHA-256 that the release metadata names for an asset: fold8's
+// latest.json and the version catalog give "sha256", the GitHub API gives
+// "digest" as "sha256:<hex>" (install.sh reads both). "" when it names none.
+function release_asset_sha256(metadata, name) {
+    for (let asset in (type(metadata.assets) == "array" ? metadata.assets : [])) {
+        if (type(asset) != "object" || as_string(asset.name) != as_string(name))
+            continue;
+        let digest = lc(as_string(asset.sha256 || asset.digest || ""));
+        if (substr(digest, 0, 7) == "sha256:")
+            digest = substr(digest, 7);
+        return match(digest, /^[0-9a-f]{64}$/) != null ? digest : "";
+    }
+    return "";
+}
+
 function resolve_forkop_release_json(latest_version, release_json) {
     if (release_json == "")
         return null;
@@ -2119,14 +2134,18 @@ function resolve_forkop_release_json(latest_version, release_json) {
     let fields = split(plan, "\t");
     if (length(fields) < 7 || as_string(fields[1]) == "" || as_string(fields[2]) == "" || as_string(fields[3]) == "" || as_string(fields[4]) == "")
         return null;
+    let metadata = parse_json_object(release_json);
     return {
         release_url: forkop_release_page_url(latest_version, fields[0]),
         backend_name: fields[1],
         backend_url: forkop_release_url(fields[2]),
+        backend_sha256: release_asset_sha256(metadata, fields[1]),
         app_name: fields[3],
         app_url: forkop_release_url(fields[4]),
+        app_sha256: release_asset_sha256(metadata, fields[3]),
         i18n_name: fields[5],
-        i18n_url: forkop_release_url(fields[6])
+        i18n_url: forkop_release_url(fields[6]),
+        i18n_sha256: fields[5] != "" ? release_asset_sha256(metadata, fields[5]) : ""
     };
 }
 
@@ -2564,18 +2583,31 @@ function refresh_luci_after_forkop_upgrade() {
     command_success_from_args([ "killall", "-HUP", "rpcd" ]);
 }
 
-function verify_selected_release_downloads(selected, files, latest_version) {
-    for (let file in files) {
-        if (file == "")
-            continue;
-        let name = replace(file, /^.*\//, "");
-        let expected = "";
-        for (let asset in selected.assets)
-            if (as_string(asset.name) == name)
-                expected = as_string(asset.sha256);
-        let actual = split(trim(command_output_from_args([ "sha256sum", file ])), /[ \t]+/)[0];
-        if (expected == "" || actual != expected)
-            action_fail("forkop", "install", "Release package checksum mismatch", FORKOP_VERSION, latest_version);
+// The packages to install are the ones the release metadata names, the
+// latest release as much as a version picked in the version picker (UC-080).
+// Metadata without a checksum refuses the upgrade, as install.sh does. Both
+// refusals come before anything is staged or Forkop is stopped.
+function release_packages(release, backend_file, app_file, i18n_file) {
+    let packages = [ [ backend_file, release.backend_name, release.backend_sha256 ],
+        [ app_file, release.app_name, release.app_sha256 ] ];
+    if (i18n_file != "")
+        push(packages, [ i18n_file, release.i18n_name, release.i18n_sha256 ]);
+    return packages;
+}
+
+function require_release_checksums(packages, latest_version) {
+    for (let item in packages)
+        if (item[2] == "")
+            action_fail("forkop", "install", "Release metadata has no SHA-256 for " + item[1] +
+                "; automatic upgrade refused", FORKOP_VERSION, latest_version);
+}
+
+function verify_release_downloads(packages, latest_version) {
+    for (let item in packages) {
+        let actual = split(trim(command_output_from_args([ "sha256sum", item[0] ])), /[ \t]+/)[0];
+        if (actual != item[2])
+            action_fail("forkop", "install", "Release package checksum mismatch for " + item[1] +
+                "; automatic upgrade refused", FORKOP_VERSION, latest_version);
     }
 }
 
@@ -2603,13 +2635,15 @@ function install_forkop(requested_version) {
     let backend_file = tmp_dir + "/" + release.backend_name;
     let app_file = tmp_dir + "/" + release.app_name;
     let i18n_file = release.i18n_url != "" ? tmp_dir + "/" + release.i18n_name : "";
+    let packages = release_packages(release, backend_file, app_file, i18n_file);
+    require_release_checksums(packages, latest_version);
     if (!download_with_retry(release.backend_url, backend_file, release.backend_name) ||
         !download_with_retry(release.app_url, app_file, release.app_name) ||
         (release.i18n_url != "" && !download_with_retry(release.i18n_url, i18n_file, release.i18n_name)))
         action_fail("forkop", "install", "Failed to download Forkop release packages", FORKOP_VERSION, latest_version);
+    verify_release_downloads(packages, latest_version);
 
     if (selected != null) {
-        verify_selected_release_downloads(selected, [ backend_file, app_file, i18n_file ], latest_version);
         let backup = save_forkop_configuration_backup("/etc/config", "/etc/forkop-backups");
         if (backup == "")
             action_fail("forkop", "install", "Failed to back up Forkop configuration", FORKOP_VERSION, latest_version);

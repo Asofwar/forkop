@@ -1582,8 +1582,14 @@ function latency_worker(path, latency_type, tag, timeout) {
         return;
     }
 
+    // Only a proxy list takes the job state as its progress file. The third
+    // argument of get_proxy_latency is the test URL (singbox/priority.uc), so
+    // a single proxy and a group get none: the configured URL is used (UC-033).
     let method = latency_clash_method(latency_type).method;
-    let status = command_status(command_from_args([ BIN_PATH, "clash_api", method, tag, timeout, path ]) + " >/dev/null 2>&1");
+    let args = [ BIN_PATH, "clash_api", method, tag, timeout ];
+    if (as_string(latency_type) == "proxy_list")
+        push(args, path);
+    let status = command_status(command_from_args(args) + " >/dev/null 2>&1");
     module_success(STATE_UC, [ "release-runtime-dir-lock", LATENCY_TEST_LOCK_DIR, owner_pid ]);
     if (status == 0)
         write_finished_action_state(path, true, "Latency test completed", status);

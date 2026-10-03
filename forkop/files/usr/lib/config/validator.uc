@@ -1539,6 +1539,12 @@ function validate_rule(section, sections, context) {
         validate_combined_domain_value(value, name);
     validate_combined_domain_text_value(option(section, "domain_suffix_text", ""), name);
     validate_common_rule_references(section, context);
+
+    // The sing-box generator refuses an enabled Connection rule without a
+    // connection, so a configuration with one never started: it is refused
+    // here, before the reload touches the runtime, with the fix (UC-092).
+    if (connections.is_connections_action(action) && !connections.has_connection_sources(section))
+        fail_validation("Connection rule '" + name + "' has no connection. Add a connection URL, a subscription, a network interface or a JSON outbound under 'Where to', or disable the rule. Aborted.");
 }
 
 function download_via_proxy_option_for_purpose(purpose) {

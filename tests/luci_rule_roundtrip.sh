@@ -28,8 +28,15 @@ const GOOGLE = `${B4}/google.srs`;
 const CUSTOM = 'https://example.com/custom.srs';
 const CUSTOM_SUBNETS = 'https://example.com/with-subnets.srs';
 
+// A Connection rule has a connection: the rule modal refuses to save one
+// without (UC-092).
+const CONNECTION_SOURCES = ['selector_proxy_links', 'subscription_urls', 'interfaces', 'interface',
+  'outbound_json', 'outbound_jsons'];
 function rule(values) {
-  return Object.assign({ '.name': 'rule', '.type': 'section', '.anonymous': false, enabled: '1' }, values);
+  const connection = values.action === 'connection' && !CONNECTION_SOURCES.some((key) => key in values)
+    ? { selector_proxy_links: ['socks5://10.0.0.1:1080'] } : {};
+  return Object.assign({ '.name': 'rule', '.type': 'section', '.anonymous': false, enabled: '1' },
+    connection, values);
 }
 // Connection-like actions always store the Mixed Proxy flag (form.Flag, rmempty=false).
 const routed = { mixed_proxy_enabled: '0' };
@@ -414,6 +421,9 @@ async function check(label, fn) {
       const modal = await env.openRule('rule');
       const actionWidget = modal.option('action').getUIElement('rule');
       actionWidget.setValue('connection');
+      // The rule gets a connection, so the refusal is the one of the items.
+      if (option !== 'outbound_jsons')
+        modal.option('selector_proxy_links').getUIElement('rule').setValue(['socks5://10.0.0.1:1080']);
       modal.option(option).getUIElement('rule').setValue(items);
       await assert.rejects(modal.save(), error);
       assert.deepEqual(env.uci.data.rule, fixture, 'a refused save changed UCI');

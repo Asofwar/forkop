@@ -20,10 +20,12 @@ const { createEnvironment } = require(process.argv[2]);
 const ROOT = process.argv[3];
 
 const NAME = 'kill_switch_dns_exempt';
+// A Connection rule has a connection: the rule modal refuses to save one
+// without (UC-092).
 function rule(values) {
   return Object.assign({ '.name': 'rule', '.type': 'section', '.anonymous': false, enabled: '1',
     action: 'connection', mixed_proxy_enabled: '0', domain: 'example.com',
-    excluded_source_ip_cidr: ['192.168.1.9'] }, values);
+    selector_proxy_links: ['socks5://10.0.0.1:1080'], excluded_source_ip_cidr: ['192.168.1.9'] }, values);
 }
 
 const failures = [];

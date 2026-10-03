@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-03 14:29+0000\n"
-"PO-Revision-Date: 2026-10-03 14:29+0000\n"
+"POT-Creation-Date: 2026-10-03 14:41+0000\n"
+"PO-Revision-Date: 2026-10-03 14:41+0000\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -130,6 +130,9 @@ msgstr "Восстановление конфигурации не заверш�
 
 msgid "A configuration restore did not finish. Traffic that needs DPI bypass stays blocked until you restore the last known good snapshot."
 msgstr "Восстановление конфигурации не завершено. Трафик, которому нужен обход DPI, блокируется, пока вы не восстановите снимок последней рабочей конфигурации."
+
+msgid "A Connection rule needs a connection: add a connection URL, a subscription, a network interface or a JSON outbound, or disable the rule."
+msgstr "Правилу «Подключение» нужно подключение: добавьте URL подключения, подписку, сетевой интерфейс или JSON outbound либо выключите правило."
 
 msgid "A domain, or a list of a DPI rule measured through a few of its domains."
 msgstr "Домен или список DPI-правила, который проверяется по нескольким его доменам."

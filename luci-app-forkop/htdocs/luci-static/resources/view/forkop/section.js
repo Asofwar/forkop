@@ -1955,6 +1955,61 @@ function currentLiveDynamicListValues(section_id, optionName) {
   return values;
 }
 
+// The connections of a rule as config/connections.uc
+// has_connection_sources() counts them: the "Where to" lists as the rule
+// modal holds them, and the legacy options they replaced (UC-092).
+const CONNECTION_SOURCE_OPTIONS = [
+  "selector_proxy_links",
+  "subscription_url",
+  "interfaces",
+  "outbound_jsons",
+];
+const LEGACY_CONNECTION_SOURCE_OPTIONS = [
+  "subscription_urls",
+  "interfaces",
+  "interface",
+  "outbound_json",
+];
+
+function modalRuleHasConnection(option, section_id) {
+  for (const sibling of option.section.children) {
+    if (
+      !CONNECTION_SOURCE_OPTIONS.includes(sibling.option) ||
+      !sibling.isActive(section_id)
+    ) {
+      continue;
+    }
+
+    let value;
+    try {
+      value = sibling.formvalue(section_id);
+    } catch (_error) {
+      // Not rendered: what UCI holds counts.
+      value = getConfigListValues(section_id, sibling.option);
+    }
+
+    if (normalizeDynamicListItems(value).length) {
+      return true;
+    }
+  }
+
+  return LEGACY_CONNECTION_SOURCE_OPTIONS.some(
+    (key) => getConfigListValues(section_id, key).length > 0,
+  );
+}
+
+function modalRuleEnabled(option, section_id) {
+  const enabled = option.section.children.find(
+    (sibling) => sibling.option === "enabled",
+  );
+
+  return enabled
+    ? enabled.formvalue(section_id) !== enabled.disabled
+    : !["0", "false", "no", "off"].includes(
+        backendOptionText(uci.get(UCI_PACKAGE, section_id, "enabled")),
+      );
+}
+
 function currentDraftOutboundNames(section_id) {
   const names = [];
 
@@ -8738,6 +8793,21 @@ function createSectionContent(section) {
   };
   o.onchange = function (_event, section_id) {
     refreshDashboardFilterChoiceWidgets(section_id);
+  };
+  // An enabled Connection rule needs a connection: the sing-box generator
+  // refuses one without it, and config/validator.uc refuses it before the
+  // reload (UC-092). A disabled rule may keep none.
+  o.checkBeforeSave = function (section_id) {
+    if (
+      !modalRuleEnabled(this, section_id) ||
+      modalRuleHasConnection(this, section_id)
+    ) {
+      return true;
+    }
+
+    return _(
+      "A Connection rule needs a connection: add a connection URL, a subscription, a network interface or a JSON outbound, or disable the rule.",
+    );
   };
   outboundNameSourceOptions.set("selector_proxy_links", o);
 

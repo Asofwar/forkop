@@ -44,8 +44,10 @@ endef
 # OpenWrt's default_prerm around it also disables the package's init
 # scripts on a removal: /etc/init.d/forkop keeps its autostart, which no
 # postinst brings back after a reinstall, as with build.sh's packages. Its
-# stop of an upgrade leaves Forkop as package_prerm's stop for the upgrade
-# left it: build.sh's packages stop it once.
+# plain stop stops nothing, on an upgrade and on a removal: package_prerm's
+# own stops name their source (/etc/init.d/forkop stop_service), and Forkop
+# stays as they left it, as with build.sh's packages, which run no default
+# script.
 define Package/forkop/prerm
 #!/bin/sh
 

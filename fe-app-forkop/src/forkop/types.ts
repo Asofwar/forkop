@@ -828,7 +828,7 @@ export namespace Forkop {
     error: string;
     // The stable reason of a refusal or failure (UC-119): busy,
     // startup_in_progress, invalid_input, not_found, forbidden, timeout,
-    // failure, or the error code of clash_api.
+    // stale, failure, or the error code of clash_api.
     reason?: string;
   }
 

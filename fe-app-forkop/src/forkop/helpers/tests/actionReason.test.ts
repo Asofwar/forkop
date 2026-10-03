@@ -20,6 +20,7 @@ describe('action reasons', () => {
       'forbidden',
       'timeout',
       'queued',
+      'stale',
       'latency_failed',
       'clash_api_unreachable',
       'clash_api_timeout',
@@ -35,6 +36,9 @@ describe('action reasons', () => {
     expect(actionReasonIsWarning('startup_in_progress')).toBe(true);
     expect(actionReasonIsWarning('timeout')).toBe(true);
     expect(actionReasonIsWarning('failure')).toBe(false);
+    // A worker that is gone leaves the outcome unknown: not a warning that
+    // the action may still finish.
+    expect(actionReasonIsWarning('stale')).toBe(false);
     expect(actionReasonIsWarning('invalid_input')).toBe(false);
     expect(actionReasonIsWarning(undefined)).toBe(false);
   });

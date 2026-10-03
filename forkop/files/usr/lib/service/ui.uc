@@ -654,8 +654,9 @@ function update_latency_progress_state_mode(path, completed, total, failed) {
 }
 
 // A job that did not succeed says why with a stable reason (UC-119):
-// failure, timeout (not confirmed in time), busy, queued, or the error code of
-// clash_api for a latency test.
+// failure, timeout (not confirmed in time), busy, queued, stale (its worker
+// is gone, stale_action_state_value), or the error code of clash_api for a
+// latency test.
 function finished_action_state_value(path, success, message, exit_code, updated_at, reason) {
     let value = object_or_empty(read_json_file(path));
     value.success = arg_bool(success);
@@ -670,13 +671,15 @@ function finished_action_state_value(path, success, message, exit_code, updated_
     return value;
 }
 
+// A worker that exited without writing its outcome leaves the job stale:
+// what the action did is unknown (reason stale, UC-119).
 function stale_action_state_value(path, message, updated_at) {
     let value = object_or_empty(read_json_file(path));
     if (value.running === true) {
         value.success = false;
         value.running = false;
         value.message = as_string(message);
-        value.reason = "failure";
+        value.reason = "stale";
         value.exit_code = null;
         value.updated_at = arg_number(updated_at);
     }

@@ -153,7 +153,7 @@ TABLE
 
 # The stable reasons of job refusals and job states (UC-119); a latency job
 # also passes on the error code of clash_api.
-REASONS="busy startup_in_progress invalid_input not_found forbidden failure timeout queued latency_failed clash_api_timeout clash_api_unreachable clash_api_unavailable clash_api_auth_unavailable clash_api_invalid_response clash_api_error"
+REASONS="busy startup_in_progress invalid_input not_found forbidden failure timeout stale queued latency_failed clash_api_timeout clash_api_unreachable clash_api_unavailable clash_api_auth_unavailable clash_api_invalid_response clash_api_error"
 
 # --- Every command has its contract ----------------------------------------------
 dispatched="$(awk '/function command_spec/,/return commands/' "$CLI" |
@@ -340,6 +340,24 @@ PATH="${WORK:?}/no-runtime:$PATH" FORKOP_UI_SERVICE_ACTION_TIMEOUT_SECONDS=1 FOR
   fail "service-action-wait-worker exited non-zero"
 expect service_action_status 0 failure -- job-state
 grep -Fq 'did not reach expected state' "${WORK:?}/out" || fail "fixture: the start was expected to miss its state: $(cat "${WORK:?}/out")"
+
+# --- Jobs whose worker is gone ------------------------------------------------------
+# A job left running by a worker that exited without writing its outcome is
+# stale: what it did is unknown, which is no failure the action reported.
+stale_job() {
+  printf '{"success":true,"running":true,"kind":"%s","message":"running","started_at":1%s}\n' "$2" "$3" >"$1"
+}
+mkdir -p "$FORKOP_UI_LATENCY_ACTION_DIR" "$UPDATES_JOB_DIR" "$FORKOP_SUBSCRIPTION_UPDATE_JOB_DIR"
+stale_job "$FORKOP_UI_SERVICE_ACTION_DIR/job-stale.json" service ',"action":"restart","source":"ui"'
+expect service_action_status 0 stale -- job-stale
+stale_job "$FORKOP_UI_LATENCY_ACTION_DIR/job-stale.json" latency ',"latency_type":"proxy","section":"main","tag":"proxy-a"'
+expect latency_test_status 0 stale -- job-stale
+stale_job "$UPDATES_JOB_DIR/job-stale.json" component ',"component":"sing_box","action":"check_update"'
+expect component_action_status 0 stale -- job-stale
+stale_job "$FORKOP_SUBSCRIPTION_UPDATE_JOB_DIR/job-stale.json" subscription ',"section":"main","source_index":"0"'
+expect subscription_update_status 0 stale -- job-stale
+rm -f "$FORKOP_UI_SERVICE_ACTION_DIR/job-stale.json" "$FORKOP_UI_LATENCY_ACTION_DIR/job-stale.json" \
+  "$UPDATES_JOB_DIR/job-stale.json" "$FORKOP_SUBSCRIPTION_UPDATE_JOB_DIR/job-stale.json"
 
 # --- Latency tests --------------------------------------------------------------------
 expect latency_test_async 1 invalid_input -- bogus main tag 5000

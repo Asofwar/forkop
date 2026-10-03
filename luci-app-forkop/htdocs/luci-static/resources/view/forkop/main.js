@@ -2500,6 +2500,10 @@ function actionReasonText(reason) {
       return _(
         "Forkop X is busy with another operation: the change applies when it finishes."
       );
+    case "stale":
+      return _(
+        "The action stopped unexpectedly and its outcome is unknown; check the status before trying again."
+      );
     case "latency_failed":
       return _("The latency test measured no delay: no tested proxy answered.");
     case "clash_api_timeout":

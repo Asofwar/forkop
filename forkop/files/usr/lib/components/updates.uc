@@ -1966,7 +1966,8 @@ function subscription_stale_job_state_value(updated_at, section, source_index, s
         running: false,
         kind: "subscription",
         message: "Subscription update worker exited unexpectedly",
-        reason: "failure",
+        // Its outcome is unknown (UC-119).
+        reason: "stale",
         section: as_string(section),
         source_index: as_string(source_index),
         pid: null,
@@ -2523,7 +2524,8 @@ function write_component_stale_job_state(path) {
     value.running = false;
     value.kind = "component";
     value.message = "Component action job is stale or the worker process exited unexpectedly";
-    value.reason = "failure";
+    // Its outcome is unknown (UC-119).
+    value.reason = "stale";
     value.changed = 0;
     value.status = "";
     value.exit_code = null;

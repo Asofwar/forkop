@@ -9064,6 +9064,13 @@
     ]
   },
   {
+    "call": "The action stopped unexpectedly and its outcome is unknown; check the status before trying again.",
+    "key": "The action stopped unexpectedly and its outcome is unknown; check the status before trying again.",
+    "places": [
+      "src/forkop/helpers/actionReason.ts:59"
+    ]
+  },
+  {
     "call": "The action was not confirmed in time and may still be running; check the service status.",
     "key": "The action was not confirmed in time and may still be running; check the service status.",
     "places": [
@@ -9194,35 +9201,35 @@
     "call": "The Clash API credentials could not be prepared.",
     "key": "The Clash API credentials could not be prepared.",
     "places": [
-      "src/forkop/helpers/actionReason.ts:67"
+      "src/forkop/helpers/actionReason.ts:71"
     ]
   },
   {
     "call": "The Clash API of sing-box answered with an error.",
     "key": "The Clash API of sing-box answered with an error.",
     "places": [
-      "src/forkop/helpers/actionReason.ts:70"
+      "src/forkop/helpers/actionReason.ts:74"
     ]
   },
   {
     "call": "The Clash API of sing-box did not answer in time.",
     "key": "The Clash API of sing-box did not answer in time.",
     "places": [
-      "src/forkop/helpers/actionReason.ts:61"
+      "src/forkop/helpers/actionReason.ts:65"
     ]
   },
   {
     "call": "The Clash API of sing-box did not list its proxies.",
     "key": "The Clash API of sing-box did not list its proxies.",
     "places": [
-      "src/forkop/helpers/actionReason.ts:65"
+      "src/forkop/helpers/actionReason.ts:69"
     ]
   },
   {
     "call": "The Clash API of sing-box is not reachable.",
     "key": "The Clash API of sing-box is not reachable.",
     "places": [
-      "src/forkop/helpers/actionReason.ts:63"
+      "src/forkop/helpers/actionReason.ts:67"
     ]
   },
   {
@@ -9473,7 +9480,7 @@
     "call": "The latency test measured no delay: no tested proxy answered.",
     "key": "The latency test measured no delay: no tested proxy answered.",
     "places": [
-      "src/forkop/helpers/actionReason.ts:59"
+      "src/forkop/helpers/actionReason.ts:63"
     ]
   },
   {

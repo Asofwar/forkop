@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-03 15:22+0000\n"
-"PO-Revision-Date: 2026-10-03 15:22+0000\n"
+"POT-Creation-Date: 2026-10-03 15:25+0000\n"
+"PO-Revision-Date: 2026-10-03 15:25+0000\n"
 "Last-Translator: Asofwar <7397608+Asofwar@users.noreply.github.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -5372,6 +5372,10 @@ msgstr ""
 msgid "Testing URL"
 msgstr ""
 
+#: src/forkop/helpers/actionReason.ts:59
+msgid "The action stopped unexpectedly and its outcome is unknown; check the status before trying again."
+msgstr ""
+
 #: src/forkop/helpers/actionReason.ts:51
 msgid "The action was not confirmed in time and may still be running; check the service status."
 msgstr ""
@@ -5445,23 +5449,23 @@ msgstr ""
 msgid "The check was postponed. See the state above."
 msgstr ""
 
-#: src/forkop/helpers/actionReason.ts:67
+#: src/forkop/helpers/actionReason.ts:71
 msgid "The Clash API credentials could not be prepared."
 msgstr ""
 
-#: src/forkop/helpers/actionReason.ts:70
+#: src/forkop/helpers/actionReason.ts:74
 msgid "The Clash API of sing-box answered with an error."
 msgstr ""
 
-#: src/forkop/helpers/actionReason.ts:61
+#: src/forkop/helpers/actionReason.ts:65
 msgid "The Clash API of sing-box did not answer in time."
 msgstr ""
 
-#: src/forkop/helpers/actionReason.ts:65
+#: src/forkop/helpers/actionReason.ts:69
 msgid "The Clash API of sing-box did not list its proxies."
 msgstr ""
 
-#: src/forkop/helpers/actionReason.ts:63
+#: src/forkop/helpers/actionReason.ts:67
 msgid "The Clash API of sing-box is not reachable."
 msgstr ""
 
@@ -5607,7 +5611,7 @@ msgstr ""
 msgid "The last known working configuration is restored; the damaged record is set aside."
 msgstr ""
 
-#: src/forkop/helpers/actionReason.ts:59
+#: src/forkop/helpers/actionReason.ts:63
 msgid "The latency test measured no delay: no tested proxy answered."
 msgstr ""
 

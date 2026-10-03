@@ -45,6 +45,7 @@ import {
 import { renderOverview } from './overviewCards';
 import { runOverviewServiceAction } from './serviceActionFlow';
 import { runUrlTestChange } from './serviceReload';
+import { latencyJobFailure } from './latencyJob';
 import {
   ActionFailureError,
   failureFromError,
@@ -1041,12 +1042,7 @@ async function handleTestLatency(
       throw new ActionFailureError(completion.error, failureReason(completion));
     }
     if (!completion.data.success) {
-      // The job's own text is always "Latency test failed": the reason
-      // says why.
-      throw new ActionFailureError(
-        _('Latency test failed'),
-        completion.data.reason,
-      );
+      throw latencyJobFailure(completion.data);
     }
     await completeLatencyTestJob(jobId, sectionName);
     completed = true;

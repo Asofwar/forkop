@@ -9,7 +9,8 @@ set -euo pipefail
 # a delay test that measured nothing and bad arguments all fail that way. A
 # delay test succeeds only with a numeric delay: {"delay": N} for a proxy, a
 # member map {"tag": N, ...} with at least one delay for a group, and per tag
-# for a proxy list, whose failed tags are counted.
+# for a proxy list, whose failed tags are counted; like a group, a list fails
+# only when no tag measured a delay.
 #
 # The automatic latency test after a start is unchanged: a proxy that sing-box
 # tested and found unreachable is a result, not a failed run (its pending
@@ -239,13 +240,23 @@ clash get_proxy_latencies '["proxy-a","proxy-b","auto"]' 5000 "$progress"
 expect_ok "get_proxy_latencies" 'value.success === true && value.count === 3 && value.failed === false'
 expect_progress 3 0 "get_proxy_latencies all measured"
 
+# A list of a selector section often holds a dead node: the run succeeds
+# while some tag measured a delay, like a group, and counts the others.
 answer proxies_proxy-b_delay '{"message":"An error occurred in the delay test"}'
 answer group_auto_delay '{}'
 reset_progress
 clash get_proxy_latencies '["proxy-a","proxy-b","auto"]' 5000 "$progress"
-expect_failure "get_proxy_latencies with failed tests" latency_failed \
-  'value.count === 3 && value.failed === true && value.failed_count === 2'
+expect_ok "get_proxy_latencies with some failed tests" \
+  'value.success === true && value.count === 3 && value.failed === true && value.failed_count === 2'
 expect_progress 3 2 "get_proxy_latencies counts error bodies as failed"
+
+answer proxies_proxy-a_delay '{"message":"An error occurred in the delay test"}'
+reset_progress
+clash get_proxy_latencies '["proxy-a","proxy-b","auto"]' 5000 "$progress"
+expect_failure "get_proxy_latencies with no tag measured" latency_failed \
+  'value.count === 3 && value.failed === true && value.failed_count === 3'
+expect_progress 3 3 "get_proxy_latencies with no tag measured"
+answer proxies_proxy-a_delay '{"delay":42}'
 
 clash get_proxy_latencies 'not-json' 5000
 expect_failure "get_proxy_latencies with bad tags" invalid_input
@@ -306,6 +317,12 @@ answer proxies_proxy-a_delay '{"delay":42}'
 answer group_auto_delay '{}'
 [ "$(run_latency_job group auto)" = false ] ||
   fail "a group latency test with no member measured must end as failed"
+answer proxies_proxy-b_delay '{"message":"An error occurred in the delay test"}'
+[ "$(run_latency_job proxy_list '["proxy-a","proxy-b"]')" = true ] ||
+  fail "a section latency test where one proxy measured a delay must end as completed"
+answer proxies_proxy-a_delay '{"message":"An error occurred in the delay test"}'
+[ "$(run_latency_job proxy_list '["proxy-a","proxy-b"]')" = false ] ||
+  fail "a section latency test where no proxy measured a delay must end as failed"
 
 # --- the automatic latency test --------------------------------------------------
 # Only the lock and readiness answers of service/state.uc are modelled here.

@@ -2030,7 +2030,9 @@ function clash_api_request(action, arg1, arg2, arg3, auth) {
                 push(ordered_proxy_tags, proxy_tag);
 
         // A tag counts as failed when its test measured no delay, as for a
-        // single proxy or group (UC-118).
+        // single proxy or group (UC-118). Like a group, the list fails only
+        // when no tag measured a delay: a section's list often holds a dead
+        // node, which the dashboard shows without a delay.
         let timeout = as_string(arg2 || "5000");
         for (let proxy_tag in ordered_proxy_tags) {
             let group = lc(as_string(proxy_types[proxy_tag])) == "urltest";
@@ -2042,10 +2044,10 @@ function clash_api_request(action, arg1, arg2, arg3, auth) {
             if (progress_path != "")
                 module_success(SERVICE_UI_UC, [ "latency-progress-state", progress_path, count, total, failed ]);
         }
-        if (failed > 0)
-            return clash_failure("latency_failed", sprintf("%d of %d delay tests measured no delay", failed, count),
+        if (count > 0 && failed == count)
+            return clash_failure("latency_failed", sprintf("None of %d delay tests measured a delay", count),
                 { count, failed: true, failed_count: failed });
-        write_json({ success: true, count, failed: false });
+        write_json({ success: true, count, failed: failed > 0, failed_count: failed });
         return 0;
     }
 

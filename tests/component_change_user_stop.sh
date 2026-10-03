@@ -12,9 +12,12 @@ set -eu
 # fallback) after a failed sing-box change and the restart with the previous
 # Direct Proxy settings each started Forkop again and removed the user's
 # stop. A restart that the user's stop overtook was also reported as a
-# failed start, which rolled the change back. Now the user's stop holds on
-# every path: nothing starts Forkop again, the change stands, and the action
-# does not fail for the start the user cancelled.
+# failed start, which rolled the change back; a start of the new release
+# that it overtook failed the upgrade and kept its recovery set. Now the
+# user's stop holds on every path: nothing starts Forkop again, the change
+# stands, and the action does not fail for the start the user cancelled.
+# Forkop's own stop for its restart is no stop by the user: a restart that
+# fails before its start still fails the change.
 #
 # The actions run against the stand-ins of tests/helpers/forkop_upgrade_harness.sh:
 # the provider removal and the Forkop upgrade end to end, the sing-box change
@@ -195,6 +198,18 @@ for pm in apk opkg; do
     upgrade_harness_run || fail "$case: the upgrade failed: $(upgrade_harness_message)"
     [ "$(upgrade_harness_version forkop)" = 1.1.0-r1 ] || fail "$case: the new release is not installed"
     expect_user_stop_kept "$case"
+
+    # The user's stop overtakes the start of the new release: the upgrade is
+    # done, and its recovery set is no longer needed.
+    upgrade_harness_reset "$pm"
+    upgrade_harness_flag user_stop_on_start
+    case="$pm Forkop upgrade, user stop overtakes the start"
+    upgrade_harness_run || fail "$case: the upgrade failed: $(upgrade_harness_message)"
+    expect_message "$case" "Forkop has been installed"
+    [ "$(upgrade_harness_version forkop)" = 1.1.0-r1 ] || fail "$case: the new release is not installed"
+    expect_user_stop_kept "$case"
+    [ ! -e "$UPGRADE_RECOVERY_DIR" ] || fail "$case: the recovery set of a completed upgrade was kept"
+    [ "$(grep -c '^start-and-wait' "$UPGRADE_STATE/initd.log")" -eq 1 ] || fail "$case: Forkop was started more than once"
 done
 
 # --- a sing-box variant change ----------------------------------------------

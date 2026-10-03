@@ -5,14 +5,16 @@ PKG_NAME:=luci-app-forkop
 FORKOP_SOURCE_VERSION:=$(or $(FORKOP_PACKAGE_VERSION),$(FORKOP_VERSION))
 FORKOP_HAS_RELEASE_VERSION:=$(if $(filter dev,$(FORKOP_SOURCE_VERSION)),,$(FORKOP_SOURCE_VERSION))
 FORKOP_COMPILED_VERSION:=$(if $(FORKOP_HAS_RELEASE_VERSION),$(FORKOP_SOURCE_VERSION),$(or $(FORKOP_SOURCE_VERSION),dev))
-FORKOP_RELEASE_VERSION_VALID:=$(if $(FORKOP_HAS_RELEASE_VERSION),$(shell printf '%s\n' '$(FORKOP_SOURCE_VERSION)' | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$' && printf '1'),1)
+FORKOP_RELEASE_VERSION_VALID:=$(if $(FORKOP_HAS_RELEASE_VERSION),$(shell printf '%s\n' '$(FORKOP_SOURCE_VERSION)' | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9]+)?$$' && printf '1'),1)
 
 ifeq ($(FORKOP_RELEASE_VERSION_VALID),)
-$(error FORKOP_PACKAGE_VERSION and FORKOP_VERSION must use x.y.z format)
+$(error FORKOP_PACKAGE_VERSION and FORKOP_VERSION must use x.y.z format, or x.y.z-N with a numeric package revision N)
 endif
 
-PKG_VERSION:=$(or $(FORKOP_HAS_RELEASE_VERSION),0.0.0)
-PKG_RELEASE:=
+# A release x.y.z-N is version x.y.z, package release N, as in
+# forkop/Makefile.
+PKG_VERSION:=$(or $(firstword $(subst -, ,$(FORKOP_HAS_RELEASE_VERSION))),0.0.0)
+PKG_RELEASE:=$(word 2,$(subst -, ,$(FORKOP_HAS_RELEASE_VERSION)))
 PKG_PO_VERSION:=$(PKG_VERSION)
 
 LUCI_TITLE:=LuCI Forkop app

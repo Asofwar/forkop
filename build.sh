@@ -179,6 +179,9 @@ normalize_package_root_modes() {
   find "$package_root" -type f -exec chmod 0644 {} +
 }
 
+# The files of the backend package. forkop/Makefile Package/forkop/install
+# installs the same ones with the same modes for the OpenWrt SDK
+# (tests/package_recipe_parity.sh compares the two).
 build_backend_root() {
   local output_root="$1"
 
@@ -282,7 +285,8 @@ installed_size_bytes() {
 # The script that runs when the backend package is installed or upgraded:
 # the ipk's postinst and the apk's post-install and post-upgrade. The SDK
 # recipe runs the same text (forkop/Makefile Package/forkop/postinst;
-# tests/package_postinst_chain.sh compares them).
+# tests/package_postinst_chain.sh and tests/package_recipe_parity.sh
+# compare them).
 #
 # The configuration comes first: a missing or empty one is restored from
 # the packaged defaults before the migrations, which fail without it

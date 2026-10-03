@@ -54,9 +54,9 @@ if grep -n -E 'grep -q "105 forkop"|sed -i "/105 forkop|forkop_dont_touch_dhcp=.
   fail "package scripts must not keep backend/LuCI lifecycle business logic in shell"
 fi
 # OpenWrt sources the SDK package's prerm and postinst from /bin/sh
-# (default_prerm, default_postinst); killswitch_owner_package.sh runs the
-# prerm that way.
-for hook in prerm postinst; do
+# (default_prerm, default_postinst) and runs its preinst with it;
+# killswitch_owner_package.sh and package_recipe_parity.sh run them that way.
+for hook in preinst prerm postinst; do
   [ "$(awk -v start="define Package/forkop/$hook" '$0 == start { getline; print; exit }' "$FORKOP_MAKEFILE")" = '#!/bin/sh' ] ||
     fail "forkop Makefile $hook must be a shell script: OpenWrt sources it from /bin/sh"
 done
@@ -75,9 +75,18 @@ grep -Fq 'usr/share/forkop/defaults/forkop' "$BUILD_SCRIPT" ||
 if grep -Fq '/usr/bin/forkop luci_postinst' "$BUILD_SCRIPT"; then
   fail "manual package hooks must let default_postinst run luci_postinst exactly once through uci-defaults"
 fi
-if grep -n -E 'Package/forkop/preinst|copy_legacy_config|FORKOP_LEGACY_CONFIG|mode == "preinst"' \
+if grep -n -E 'copy_legacy_config|FORKOP_LEGACY_CONFIG|mode == "preinst"' \
   "$FORKOP_MAKEFILE" "$BUILD_SCRIPT" "$PACKAGE_UC" >/dev/null 2>&1; then
   fail "package hooks and runtime service must not own configuration migration"
+fi
+# The SDK package's preinst is apk's pre-upgrade: it only stops Forkop for
+# the upgrade, as build.sh's backend-pre-upgrade.sh
+# (tests/package_recipe_parity.sh runs both).
+sdk_preinst="$(awk '$0 == "define Package/forkop/preinst" { copy = 1; next } copy && $0 == "endef" { exit } copy { print }' "$FORKOP_MAKEFILE")"
+printf '%s\n' "$sdk_preinst" | grep -Fq '/usr/bin/forkop package_prerm upgrade' ||
+  fail "forkop Makefile preinst must stop Forkop for an apk upgrade through package_prerm"
+if printf '%s\n' "$sdk_preinst" | grep -n -E '/etc/config|migrat|uci |cp ' >/dev/null; then
+  fail "forkop Makefile preinst must not own configuration migration"
 fi
 
 rt_tables="$WORK_DIR/rt_tables"

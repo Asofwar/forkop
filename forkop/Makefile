@@ -5,14 +5,16 @@ PKG_NAME:=forkop
 FORKOP_SOURCE_VERSION:=$(or $(FORKOP_PACKAGE_VERSION),$(FORKOP_VERSION))
 FORKOP_HAS_RELEASE_VERSION:=$(if $(filter dev,$(FORKOP_SOURCE_VERSION)),,$(FORKOP_SOURCE_VERSION))
 FORKOP_COMPILED_VERSION:=$(if $(FORKOP_HAS_RELEASE_VERSION),$(FORKOP_SOURCE_VERSION),$(or $(FORKOP_SOURCE_VERSION),dev))
-FORKOP_RELEASE_VERSION_VALID:=$(if $(FORKOP_HAS_RELEASE_VERSION),$(shell printf '%s\n' '$(FORKOP_SOURCE_VERSION)' | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$' && printf '1'),1)
+FORKOP_RELEASE_VERSION_VALID:=$(if $(FORKOP_HAS_RELEASE_VERSION),$(shell printf '%s\n' '$(FORKOP_SOURCE_VERSION)' | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9]+)?$$' && printf '1'),1)
 
 ifeq ($(FORKOP_RELEASE_VERSION_VALID),)
-$(error FORKOP_PACKAGE_VERSION and FORKOP_VERSION must use x.y.z format)
+$(error FORKOP_PACKAGE_VERSION and FORKOP_VERSION must use x.y.z format, or x.y.z-N with a numeric package revision N)
 endif
 
-PKG_VERSION:=$(or $(FORKOP_HAS_RELEASE_VERSION),0.0.0)
-PKG_RELEASE:=
+# A release x.y.z-N is version x.y.z, package release N: 1.2.3-4 in the
+# ipk and 1.2.3-r4 in the apk, as build.sh's packages carry it.
+PKG_VERSION:=$(or $(firstword $(subst -, ,$(FORKOP_HAS_RELEASE_VERSION))),0.0.0)
+PKG_RELEASE:=$(word 2,$(subst -, ,$(FORKOP_HAS_RELEASE_VERSION)))
 
 PKG_MAINTAINER:=slayer326 <34569426+slayer326@users.noreply.github.com>
 PKG_LICENSE:=GPL-2.0-or-later
@@ -61,7 +63,11 @@ fi
 exit 0
 endef
 # The same script as build.sh write_backend_postinst writes (make reads $$
-# as $); tests/package_postinst_chain.sh compares them.
+# as $); tests/package_postinst_chain.sh and tests/package_recipe_parity.sh
+# compare them. The SDK runs it from OpenWrt's default_postinst, which also
+# enables the package's init scripts on a first install and starts them:
+# /etc/init.d/forkop leaves both to this script (package_postinst), as with
+# build.sh's packages, which run no default_postinst.
 define Package/forkop/postinst
 #!/bin/sh
 [ -n "$${IPKG_INSTROOT}" ] && exit 0
@@ -76,13 +82,35 @@ forkop_postinst_status=$$?
 exit "$$forkop_postinst_status"
 endef
 
+# apk runs a pre-upgrade script only for a package with Package/preinst
+# (include/package-pack.mk): "export PKG_UPGRADE=1" and this text, run as
+# "pre-upgrade <new version> <old version>" with the installed
+# /usr/bin/forkop. It stops Forkop for the upgrade as build.sh's
+# backend-pre-upgrade.sh, and its failure keeps the installed release. The
+# same text is the apk's pre-install and the ipk's preinst, run before an
+# install or after prerm stopped Forkop for an opkg upgrade: those do nothing.
+define Package/forkop/preinst
+#!/bin/sh
+[ -n "$${IPKG_INSTROOT}" ] && exit 0
+[ "$${APK_SCRIPT}" = pre-upgrade ] || exit 0
+forkop_version="$$1"
+case "$$forkop_version" in
+	*[!A-Za-z0-9.~+_-]*) forkop_version= ;;
+esac
+/usr/bin/forkop package_prerm upgrade $${forkop_version:+"$$forkop_version"} >/dev/null 2>&1
+endef
+
 define Package/forkop/conffiles
 /etc/config/forkop
 endef
 
+# The files of build.sh build_backend_root, with its modes: directories and
+# the library 0755 and 0644, the configuration 0644, the commands and init
+# scripts 0755 (tests/package_recipe_parity.sh compares the two).
 define Package/forkop/install
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./files/etc/init.d/forkop $(1)/etc/init.d/forkop
+	$(INSTALL_BIN) ./files/etc/init.d/forkop-torrserver-direct $(1)/etc/init.d/forkop-torrserver-direct
 	$(INSTALL_BIN) ./files/etc/init.d/forkop-killswitch $(1)/etc/init.d/forkop-killswitch
 	$(INSTALL_DIR) $(1)/lib/upgrade/keep.d
 	$(INSTALL_DATA) ./files/lib/upgrade/keep.d/forkop-killswitch $(1)/lib/upgrade/keep.d/forkop-killswitch
@@ -90,7 +118,7 @@ define Package/forkop/install
 	$(INSTALL_DATA) ./files/usr/share/nftables.d/ruleset-post/90-forkop-killswitch-loader.nft $(1)/usr/share/nftables.d/ruleset-post/90-forkop-killswitch-loader.nft
 
 	$(INSTALL_DIR) $(1)/etc/config
-	$(INSTALL_CONF) ./files/etc/config/forkop $(1)/etc/config/forkop
+	$(INSTALL_DATA) ./files/etc/config/forkop $(1)/etc/config/forkop
 
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) ./files/usr/bin/forkop $(1)/usr/bin/forkop
@@ -100,11 +128,13 @@ define Package/forkop/install
 
 	$(INSTALL_DIR) $(1)/usr/lib/forkop
 	$(CP) ./files/usr/lib/. $(1)/usr/lib/forkop/
+	find $(1)/usr/lib/forkop -type f -exec chmod 0644 {} +
 
 	$(INSTALL_DIR) $(1)/usr/share/forkop/defaults
-	$(INSTALL_CONF) ./files/etc/config/forkop $(1)/usr/share/forkop/defaults/forkop
+	$(INSTALL_DATA) ./files/etc/config/forkop $(1)/usr/share/forkop/defaults/forkop
 	$(INSTALL_BIN) ./files/usr/share/forkop/mirror-migration.sh $(1)/usr/share/forkop/mirror-migration.sh
 
+	find $(1) -mindepth 1 -type d -exec chmod 0755 {} +
 	sed -i -e 's/__COMPILED_VERSION_VARIABLE__/$(FORKOP_COMPILED_VERSION)/g' $(1)/usr/lib/forkop/core/constants.uc
 endef
 

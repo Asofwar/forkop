@@ -191,6 +191,11 @@ cat >"$WORK_DIR/initroot/etc/init.d/forkop-killswitch" <<SH
 #!/bin/sh
 exec "$WORK_DIR/bin/killswitch-init" "\$@"
 SH
+# The package's other init scripts (forkop-torrserver-direct) do nothing.
+for name in $(sed -n 's#^/etc/init\.d/##p' "$WORK_DIR/opkg-info/forkop.list"); do
+  [ -e "$WORK_DIR/initroot/etc/init.d/$name" ] ||
+    printf '#!/bin/sh\nexit 0\n' >"$WORK_DIR/initroot/etc/init.d/$name"
+done
 chmod 0755 "$WORK_DIR/initroot/etc/init.d/"*
 export INIT_ROOT="$WORK_DIR/initroot"
 cat >"$WORK_DIR/functions.sh" <<'SH'

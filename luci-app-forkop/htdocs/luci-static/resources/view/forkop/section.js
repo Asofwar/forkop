@@ -2504,6 +2504,7 @@ function subscriptionUrlSettingsKeys() {
     "subscription_update_interval",
     "download_via_proxy_enabled",
     "download_via_proxy_section",
+    "user_agent",
     "prefix_nodes",
     "node_prefix",
     "include_urltest_groups",
@@ -2516,6 +2517,7 @@ function defaultSubscriptionUrlSettings() {
     subscription_update_interval: "4h",
     download_via_proxy_enabled: "0",
     download_via_proxy_section: "",
+    user_agent: "",
     prefix_nodes: "0",
     node_prefix: "",
     include_urltest_groups: "1",
@@ -2802,6 +2804,25 @@ function addSubscriptionUrlItemOptions(itemSection, options = {}) {
       return _("Current section cannot download its own subscription");
     }
     return unavailableChoiceError(this, value) || true;
+  };
+
+  // D-17 (a), UC-090: a User-Agent set here is sent as it is; empty, the
+  // backend tries compatible profiles (subscription/cache.uc). A value with
+  // control characters is never sent (config/connections.uc).
+  o = itemSection.option(
+    form.Value,
+    "user_agent",
+    _("User-Agent"),
+    _(
+      "Sent with the requests for this subscription. Leave empty to try compatible client profiles automatically.",
+    ),
+  );
+  o.placeholder = _("Automatic");
+  subscriptionUserAgentChoices().forEach((choice) => o.value(choice));
+  o.validate = function (_itemId, value) {
+    return /[\u0000-\u001f\u007f]/.test(`${value || ""}`)
+      ? _("User-Agent must not contain control characters")
+      : true;
   };
 
   o = itemSection.option(
@@ -8473,6 +8494,152 @@ function writeDnsRulesetReferences(section_id, values) {
   uci.unset(UCI_PACKAGE, section_id, RULE_SET_ITEM_SETTINGS_KEY);
 }
 
+// Retired b4geoip rule sets (D-13 (b), UC-093). The update removed them
+// from Built-in rule sets #2: b4geoip-forkop no longer publishes them and
+// every list update failed on them. config/migration.uc keeps their ids in
+// retired_rule_sets, which only this notice reads. A built-in rule set of
+// the same service may stand in, but it matches more than the removed IP
+// set did (domains and other addresses of the service): it is added only
+// when the administrator asks, and the notice can be dismissed instead.
+const RETIRED_RULE_SET_REPLACEMENTS = [
+  "cloudflare",
+  "digitalocean",
+  "hetzner",
+  "ovh",
+];
+
+function retiredRuleSetsState(section_id) {
+  const removed = uniqueDynamicListItems(
+    getConfigListValues(section_id, "retired_rule_sets").filter((value) =>
+      /^[a-z0-9_]{1,32}$/.test(value),
+    ),
+  );
+
+  return removed.length ? { removed } : null;
+}
+
+function renderRetiredRuleSetsNotice(option, section_id) {
+  const state = option.retiredStates ? option.retiredStates[section_id] : null;
+  const node = E("div", { class: "alert-message warning fkp-legacy-settings" });
+
+  if (!state) {
+    return node;
+  }
+
+  const removedText = state.removed.join(", ");
+  if (option.map.readonly) {
+    node.append(
+      E("p", {}, [
+        _(
+          "The update removed retired rule sets from Built-in rule sets #2 of this rule: %s. An administrator can review the notice.",
+        ).format(removedText),
+      ]),
+    );
+    return node;
+  }
+
+  const builtIn = option.section.children.find(
+    (child) => child.option === "community_lists",
+  );
+  const widget = () => (builtIn ? builtIn.getUIElement(section_id) : null);
+  const selected = () => {
+    const element = widget();
+    return element
+      ? normalizeDynamicListItems(element.getValue())
+      : getConfigListValues(section_id, "community_lists");
+  };
+  const replacements = () =>
+    state.removed.filter(
+      (id) =>
+        RETIRED_RULE_SET_REPLACEMENTS.includes(id) &&
+        isBuiltinRulesetValue(id) &&
+        !selected().includes(id),
+    );
+  const actionButton = (label, className, click) =>
+    E(
+      "button",
+      {
+        type: "button",
+        class: ["btn", "cbi-button", className].filter(Boolean).join(" "),
+        click,
+      },
+      label,
+    );
+  // Staged like any other edit of the rule: Save keeps it, Dismiss of the
+  // modal restores the notice.
+  const done = (message) => {
+    uci.unset(UCI_PACKAGE, section_id, "retired_rule_sets");
+    node.textContent = "";
+    node.append(E("p", {}, message));
+  };
+
+  const render = () => {
+    const offered = replacements();
+    const names = offered.map((id) => main.domainListLabel(id)).join(", ");
+    const actions = E("div", { class: "fkp-legacy-settings__actions" });
+
+    node.textContent = "";
+    node.append(
+      E("p", {}, [
+        _(
+          "The update removed the rule sets %s from Built-in rule sets #2 of this rule: their source no longer publishes them. The rule no longer matches their IP addresses.",
+        ).format(removedText),
+      ]),
+    );
+    if (offered.length) {
+      node.append(
+        E("p", {}, [
+          _(
+            "Built-in rule sets of the same services: %s. They match more than the removed sets (domains and other addresses of these services), so they were not added.",
+          ).format(names),
+        ]),
+      );
+      actions.append(
+        actionButton(_("Add…"), "cbi-button-action", () => {
+          actions.textContent = "";
+          actions.append(
+            E("p", {}, [
+              _(
+                "Add %s to Built-in rule sets of this rule? When you save the rule, it also matches these lists.",
+              ).format(names),
+            ]),
+            E("div", { class: "fkp-legacy-settings__buttons" }, [
+              actionButton(_("Cancel"), "", render),
+              " ",
+              actionButton(_("Add"), "cbi-button-action", () => {
+                const element = widget();
+                const add = replacements();
+                if (element) {
+                  element.setValue(selected().concat(add));
+                }
+                done(
+                  _(
+                    "The built-in rule sets are added. Save the rule to keep the change.",
+                  ),
+                );
+              }),
+            ]),
+          );
+        }),
+        " ",
+      );
+    }
+    actions.append(
+      actionButton(_("Dismiss notice"), "", () =>
+        done(
+          _(
+            "The notice is dismissed; nothing else in the rule changes. Save the rule to keep the change.",
+          ),
+        ),
+      ),
+    );
+    node.append(actions);
+  };
+
+  render();
+  return node;
+}
+
 function createSectionContent(section) {
   let o;
 
@@ -9612,6 +9779,27 @@ function createSectionContent(section) {
       ([value, label]) => ({ value, label: _(label) }),
     ),
   );
+
+  // What the update removed from Built-in rule sets #2 (D-13 (b)).
+  const retiredRuleSetsOption = section.taboption(
+    "match",
+    form.DummyValue,
+    "_retired_rule_sets",
+    _("Retired rule sets"),
+  );
+  retiredRuleSetsOption.modalonly = true;
+  retiredRuleSetsOption.load = function (section_id) {
+    this.retiredStates = Object.assign({}, this.retiredStates, {
+      [section_id]: retiredRuleSetsState(section_id),
+    });
+    return Promise.resolve(null);
+  };
+  retiredRuleSetsOption.checkDepends = function (section_id) {
+    return Boolean(this.retiredStates && this.retiredStates[section_id]);
+  };
+  retiredRuleSetsOption.renderWidget = function (section_id) {
+    return renderRetiredRuleSetsNotice(this, section_id);
+  };
 
   const ruleSetOption = section.taboption(
     "match",

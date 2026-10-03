@@ -546,10 +546,35 @@ function subscription_dashboard_metadata_enabled(section, value) {
     return item_bool(section, "subscription_url_settings", value, "show_dashboard_metadata", true);
 }
 
-function subscription_auto_user_agent(section, value) {
-    return true;
+// The User-Agent a subscription source names: user_agent of its
+// subscription_url item (or of the legacy subscription_url_settings map).
+function subscription_configured_user_agent(section, value) {
+    let child = child_item_by_value(section, "subscription_url", "url", value);
+    return trim(child != null
+        ? child_option(child, "user_agent", "")
+        : item_option(section, "subscription_url_settings", value, "user_agent", ""));
 }
 
+// D-17 (a), UC-090: a source that names a User-Agent sends it as it is (the
+// podkop migration keeps the User-Agent of a 'url | UA' entry there);
+// otherwise subscription/cache.uc tries the automatic profiles. An
+// auto_user_agent left on by an earlier version still means automatic
+// (config/migration.uc removes the option), and a User-Agent with control
+// characters is never sent: a line break would add request headers.
+function subscription_auto_user_agent(section, value) {
+    let configured = subscription_configured_user_agent(section, value);
+    if (configured == "" || match(configured, /[[:cntrl:]]/) != null)
+        return true;
+
+    let child = child_item_by_value(section, "subscription_url", "url", value);
+    let automatic = child != null
+        ? raw_option(child, "auto_user_agent")
+        : item_settings(section, "subscription_url_settings", value).auto_user_agent;
+    return bool_value(automatic, false);
+}
+
+// HWID is always generated from the router (subscription/cache.uc); the
+// options of earlier versions are removed by config/migration.uc.
 function subscription_auto_hwid(section, value) {
     return true;
 }
@@ -588,14 +613,7 @@ function subscription_node_prefix(section, value) {
 }
 
 function subscription_user_agent(section, value) {
-    if (subscription_auto_user_agent(section, value))
-        return "";
-
-    let child = child_item_by_value(section, "subscription_url", "url", value);
-    let configured = child != null
-        ? child_option(child, "user_agent", "")
-        : item_option(section, "subscription_url_settings", value, "user_agent", "");
-    return configured != "" ? configured : "sing-box";
+    return subscription_auto_user_agent(section, value) ? "" : subscription_configured_user_agent(section, value);
 }
 
 function subscription_hwid(section, value) {
@@ -1010,6 +1028,7 @@ return {
     subscription_update_enabled,
     subscription_update_interval,
     subscription_dashboard_metadata_enabled,
+    subscription_configured_user_agent,
     subscription_auto_user_agent,
     subscription_auto_hwid,
     subscription_include_urltest_groups,

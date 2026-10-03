@@ -1034,7 +1034,7 @@ function restore_content(target, before) {
     if (schema_behind(result, reference)) return refused("incomplete");
     let migration = versions();
     migration.migrations = filter(result.applied_migrations, (id) => index(schema.applied_migrations, id) < 0);
-    return { content, migration };
+    return { content, migration, notices: migrated.notices ?? [] };
 }
 // expected (optional): the hash, or the user fingerprint, of the
 // configuration the caller means to replace. The automatic rollback of
@@ -1088,6 +1088,13 @@ function do_restore(id, expected) {
         snapshot: metadata(target), changes: diff(before, content)
     }), [ id ]);
     if (migration != null) result.migration = migration;
+    // What the migrations of the copy changed that the user should know
+    // about (retired rule sets, a raised update interval, subscription
+    // options removed: D-13 (b), D-18 (a), D-17 (a)), as a package upgrade
+    // reports it (config/migration.uc report_notices): only once the copy is
+    // in place, not after the previous configuration was put back.
+    if (migration != null && length(restored.notices) > 0 && result.started && config_holds(content))
+        result.notices = restored.notices;
     return result;
 }
 // Apply a candidate configuration prepared elsewhere (DPI autotune stage 5)
@@ -1199,6 +1206,12 @@ else if (mode == "restore") {
     // strategy again, never as a restore (UC-060).
     let rollback = value(ARGV[3]) == "autotune";
     answer = do_restore(value(ARGV[1]), value(ARGV[2]));
+    // The notices of a migrated copy now in place, as after a package
+    // upgrade: the History page names what the migrations changed. Before
+    // the restore event, which stays the last change.
+    if (type(answer.notices) == "array")
+        success([ "ucode", "-L", LIB_DIR, LIB_DIR + "/diagnostics/health.uc", "record", "config_migration", "success",
+            "", "", sprintf("%J", { notices: answer.notices }) ]);
     // Health records a restore only when its transaction started, as for an
     // apply: a refusal before it (busy, staged uci changes, a kept runtime
     // guard, a missing snapshot, no pre-restore snapshot) changed nothing

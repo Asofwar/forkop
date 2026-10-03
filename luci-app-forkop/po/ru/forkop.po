@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-03 15:17+0000\n"
-"PO-Revision-Date: 2026-10-03 15:17+0000\n"
+"POT-Creation-Date: 2026-10-03 15:52+0000\n"
+"PO-Revision-Date: 2026-10-03 15:52+0000\n"
 "Last-Translator: Asofwar\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -218,6 +218,12 @@ msgstr "Активна: осталась после неудавшегося и�
 msgid "Active: restore not finished"
 msgstr "Активна: восстановление не завершено"
 
+msgid "Add"
+msgstr "Добавить"
+
+msgid "Add %s to Built-in rule sets of this rule? When you save the rule, it also matches these lists."
+msgstr "Добавить %s во встроенные наборы правил этого правила? После сохранения правило будет совпадать и с этими списками."
+
 msgid "Add a rule"
 msgstr "Добавить правило"
 
@@ -256,6 +262,9 @@ msgstr "Добавьте URL или локальные пути к списка�
 
 msgid "Add URLs or local paths to .srs / .json lists. Subnets are ignored by default."
 msgstr "Добавьте URL или локальные пути к спискам .srs / .json. Подсети по умолчанию игнорируются."
+
+msgid "Add…"
+msgstr "Добавить…"
 
 msgid "Additional marking rules found"
 msgstr "Найдены дополнительные правила маркировки"
@@ -593,6 +602,12 @@ msgstr "Встроенные наборы правил"
 msgid "Built-in rule sets #2 are not supported for DNS rules. Remove them on the What tab or choose another action."
 msgstr "Встроенные наборы правил #2 не поддерживаются для DNS-правил. Удалите их на вкладке «Что» или выберите другое действие."
 
+msgid "Built-in rule sets of the same services: %s. They match more than the removed sets (domains and other addresses of these services), so they were not added."
+msgstr "Встроенные наборы правил тех же сервисов: %s. Они совпадают с большим, чем удалённые наборы (домены и другие адреса этих сервисов), поэтому не были добавлены."
+
+msgid "Built-in rule sets of the same services: %s. They were not added; the rule editor offers them."
+msgstr "Встроенные наборы правил тех же сервисов: %s. Они не добавлены; редактор правила предлагает их добавить."
+
 msgid "By flag emoji from name"
 msgstr "По эмодзи флага из названия"
 
@@ -854,6 +869,9 @@ msgstr "Доступно обновление компонента"
 msgid "Component update check interval"
 msgstr "Период проверки обновлений"
 
+msgid "Component update check interval was %s, shorter than the 1 h minimum of automatic updates: set to %s."
+msgstr "Период проверки обновлений был %s — меньше минимума автоматических обновлений в 1 ч: установлен %s."
+
 msgid "Components"
 msgstr "Компоненты"
 
@@ -880,6 +898,9 @@ msgstr "Конфигурация"
 
 msgid "Configuration applied successfully"
 msgstr "Конфигурация успешно применена"
+
+msgid "Configuration migrated by the update"
+msgstr "Конфигурация перенесена обновлением"
 
 msgid "Configuration reload"
 msgstr "Перезагрузка конфигурации"
@@ -1156,6 +1177,9 @@ msgstr "Выключен"
 
 msgid "Disabling interception is incompatible with action=zapret2 because Forkop sends matched traffic through NFQUEUE."
 msgstr "Отключение перехвата несовместимо с action=zapret2, потому что Forkop отправляет совпавший трафик через NFQUEUE."
+
+msgid "Dismiss notice"
+msgstr "Скрыть уведомление"
 
 msgid "Display name"
 msgstr "Отображаемое имя"
@@ -2276,6 +2300,9 @@ msgstr "Список из правила"
 msgid "List Update Frequency"
 msgstr "Частота обновления списков"
 
+msgid "List update frequency was %s, shorter than the 1 h minimum of automatic updates: set to %s."
+msgstr "Частота обновления списков была %s — меньше минимума автоматических обновлений в 1 ч: установлена %s."
+
 msgid "Lists and updates"
 msgstr "Списки и обновления"
 
@@ -2455,6 +2482,9 @@ msgstr "Нет активных соединений"
 
 msgid "No autotune events yet"
 msgstr "Событий автоподбора пока нет"
+
+msgid "No built-in rule set replaces them."
+msgstr "Встроенного набора правил на замену нет."
 
 msgid "No bypass (direct)"
 msgstr "Без обхода (direct)"
@@ -3134,6 +3164,9 @@ msgstr "Результат"
 msgid "Resume updates"
 msgstr "Продолжить обновление"
 
+msgid "Retired rule sets"
+msgstr "Выведенные наборы правил"
+
 msgid "Retry"
 msgstr "Повторить"
 
@@ -3205,6 +3238,18 @@ msgstr "правило"
 
 msgid "Rule"
 msgstr "Правило"
+
+msgid "Rule “%s”: a subscription source now sends the User-Agent set in its settings. Earlier versions ignored it and chose one automatically; clear the field to go back to automatic selection."
+msgstr "Правило «%s»: источник подписки теперь отправляет User-Agent, заданный в его настройках. Прежние версии его не учитывали и подбирали User-Agent автоматически; чтобы вернуть автоподбор, очистите это поле."
+
+msgid "Rule “%s”: changed by the update."
+msgstr "Правило «%s»: изменено обновлением."
+
+msgid "Rule “%s”: the retired rule sets %s were removed from Built-in rule sets #2, their source no longer publishes them."
+msgstr "Правило «%s»: из встроенных наборов правил #2 удалены выведенные наборы %s — источник их больше не публикует."
+
+msgid "Rule “%s”: the subscription settings %s were removed. This version always generates the HWID from the router and hides nodes of imported URLTest groups and cascades."
+msgstr "Правило «%s»: удалены настройки подписки %s. Эта версия всегда генерирует HWID по данным роутера и скрывает узлы импортированных групп URLTest и каскадов."
 
 msgid "Rule not calculated"
 msgstr "Правило не рассчитано"
@@ -3361,6 +3406,9 @@ msgstr "Выбрано %d из %d"
 
 msgid "Selector and URLTest outbounds must contain a non-empty outbounds array"
 msgstr "Selector и URLTest outbound должны содержать непустой массив outbounds"
+
+msgid "Sent with the requests for this subscription. Leave empty to try compatible client profiles automatically."
+msgstr "Передаётся в запросах этой подписки. Оставьте пустым, чтобы совместимые профили клиентов подбирались автоматически."
 
 msgid "Server closed the connection without a response"
 msgstr "Сервер закрыл соединение без ответа"
@@ -3734,6 +3782,9 @@ msgstr "Состояние автоподбора восстановлено п�
 msgid "The best strategy is not stable for every target of the rule."
 msgstr "Лучшая стратегия стабильна не для всех целей правила."
 
+msgid "The built-in rule sets are added. Save the rule to keep the change."
+msgstr "Встроенные наборы правил добавлены. Сохраните правило, чтобы сохранить изменение."
+
 msgid "The cascade setting is cleared. Save the rule to keep the change."
 msgstr "Настройка каскада очищена. Сохраните правило, чтобы сохранить изменение."
 
@@ -3817,6 +3868,9 @@ msgstr "Не удалось надёжно определить DPI-правил
 
 msgid "The editor has no field for downloaded lists: they cannot be converted and stay as they are."
 msgstr "Для загружаемых списков в редакторе нет поля: их нельзя конвертировать, они остаются как есть."
+
+msgid "The interval must be at least 1h: automatic updates run at most once an hour. An update started by hand always runs."
+msgstr "Интервал должен быть не меньше 1h: автоматические обновления выполняются не чаще раза в час. Обновление, запущенное вручную, выполняется всегда."
 
 msgid "the kill-switch loader in /usr/share/nftables.d/ruleset-post"
 msgstr "загрузчик kill-switch в /usr/share/nftables.d/ruleset-post"
@@ -3910,6 +3964,9 @@ msgstr "Новая стратегия не применена: служба бы
 
 msgid "The NFQUEUE number is assigned by Forkop for each rule and must not be overridden here."
 msgstr "Номер NFQUEUE назначается Forkop для каждого правила и не должен переопределяться здесь."
+
+msgid "The notice is dismissed; nothing else in the rule changes. Save the rule to keep the change."
+msgstr "Уведомление скрыто, больше в правиле ничего не меняется. Сохраните правило, чтобы сохранить изменение."
 
 msgid "The package is removed from the router."
 msgstr "Пакет будет удалён с роутера."
@@ -4016,6 +4073,9 @@ msgstr "правила подключаются друг через друга �
 msgid "The same result this many checks in a row (2–10)."
 msgstr "Столько проверок подряд с одинаковым результатом (2–10)."
 
+msgid "The saved interval %s is shorter than 1h: it runs every hour, and saving the settings sets it to 1h."
+msgstr "Сохранённый интервал %s меньше 1h: обновление выполняется раз в час, а при сохранении настроек интервал станет 1h."
+
 msgid "The selected section cannot be used here. Choose another section."
 msgstr "Выбранную секцию нельзя использовать здесь. Выберите другую секцию."
 
@@ -4108,6 +4168,12 @@ msgstr "транзитного правила «%s» больше нет"
 
 msgid "The unsupported settings are removed. Save the rule to keep the change."
 msgstr "Неподдерживаемые настройки удалены. Сохраните правило, чтобы сохранить изменение."
+
+msgid "The update removed retired rule sets from Built-in rule sets #2 of this rule: %s. An administrator can review the notice."
+msgstr "Обновление удалило из встроенных наборов правил #2 этого правила выведенные наборы: %s. Администратор может просмотреть уведомление."
+
+msgid "The update removed the rule sets %s from Built-in rule sets #2 of this rule: their source no longer publishes them. The rule no longer matches their IP addresses."
+msgstr "Обновление удалило из встроенных наборов правил #2 этого правила наборы %s: источник их больше не публикует. Правило больше не совпадает с их IP-адресами."
 
 msgid "The value is outside the allowed range."
 msgstr "Значение вне допустимого диапазона."
@@ -4406,6 +4472,12 @@ msgstr "Использовать другую секцию как промежу
 msgid "Use sing-box duration format like 10s, 1m or 2m30s"
 msgstr "Используйте формат длительности sing-box, например 10s, 1m или 2m30s"
 
+msgid "Use sing-box duration format like 1d or 12h"
+msgstr "Используйте формат длительности sing-box, например 1d или 12h"
+
+msgid "Use sing-box duration format like 1d or 12h. Automatic updates run at most once an hour; an update started by hand always runs."
+msgstr "Используйте формат длительности sing-box, например 1d или 12h. Автоматические обновления выполняются не чаще раза в час; обновление, запущенное вручную, выполняется всегда."
+
 msgid "Use sing-box duration format like 1d, 12h or 30m"
 msgstr "Используйте формат длительности sing-box, например 1d, 12h или 30m"
 
@@ -4423,6 +4495,12 @@ msgstr "используется правилом; поле «Сетевой и�
 
 msgid "used by the rule: text mode is on"
 msgstr "используется правилом: включён текстовый режим"
+
+msgid "User-Agent"
+msgstr "User-Agent"
+
+msgid "User-Agent must not contain control characters"
+msgstr "User-Agent не должен содержать управляющих символов"
 
 msgid "Username cannot be empty"
 msgstr "Логин не может быть пустым"

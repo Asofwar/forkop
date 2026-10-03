@@ -215,6 +215,128 @@ describe('history list', () => {
     });
   });
 
+  it('names what a configuration migration changed (D-13)', () => {
+    const [item] = historyItems(
+      [
+        {
+          kind: 'config_migration',
+          status: 'success',
+          timestamp: 5,
+          notices: [
+            {
+              code: 'retired_rule_sets',
+              section: 'games',
+              values: ['cloudflare', 'amazon'],
+              replacements: ['cloudflare'],
+            },
+            {
+              code: 'retired_rule_sets',
+              section: 'cdn',
+              values: ['fastly'],
+              replacements: [],
+            },
+          ],
+        },
+      ],
+      'config',
+    );
+    expect(item.title).toBe('Configuration migrated by the update');
+    expect(item.details).toHaveLength(2);
+    expect(item.details[0]).toContain('“games”');
+    expect(item.details[0]).toContain('cloudflare, amazon');
+    expect(item.details[0]).toContain(
+      'Built-in rule sets of the same services: cloudflare. They were not added',
+    );
+    expect(item.details[1]).toContain('fastly');
+    expect(item.details[1]).toContain('No built-in rule set replaces them.');
+    expect(historyItems(events, 'all').every((i) => !i.details.length)).toBe(
+      true,
+    );
+  });
+
+  it('names removed subscription settings (D-17)', () => {
+    const [item] = historyItems(
+      [
+        {
+          kind: 'config_migration',
+          status: 'success',
+          timestamp: 7,
+          notices: [
+            {
+              code: 'subscription_options_removed',
+              section: 'vpn',
+              values: ['hwid', 'hide_detour_outbounds'],
+              replacements: [],
+            },
+          ],
+        },
+      ],
+      'all',
+    );
+    expect(item.details).toEqual([
+      'Rule “vpn”: the subscription settings hwid, hide_detour_outbounds were removed. This version always generates the HWID from the router and hides nodes of imported URLTest groups and cascades.',
+    ]);
+  });
+
+  it('says a stored subscription User-Agent is now sent (D-17)', () => {
+    const [item] = historyItems(
+      [
+        {
+          kind: 'config_migration',
+          status: 'success',
+          timestamp: 7,
+          notices: [
+            {
+              code: 'subscription_user_agent_in_effect',
+              section: 'vpn',
+              values: ['user_agent'],
+              replacements: [],
+            },
+          ],
+        },
+      ],
+      'all',
+    );
+    expect(item.details).toEqual([
+      'Rule “vpn”: a subscription source now sends the User-Agent set in its settings. Earlier versions ignored it and chose one automatically; clear the field to go back to automatic selection.',
+    ]);
+  });
+
+  it('names a raised update interval (D-18)', () => {
+    const [item] = historyItems(
+      [
+        {
+          kind: 'config_migration',
+          status: 'success',
+          timestamp: 6,
+          notices: [
+            {
+              code: 'update_interval_raised',
+              section: 'settings',
+              values: ['update_interval'],
+              replacements: [],
+              from: '5m',
+              to: '1h',
+            },
+            {
+              code: 'update_interval_raised',
+              section: 'settings',
+              values: ['component_update_check_interval'],
+              replacements: [],
+              from: '30m',
+              to: '1h',
+            },
+          ],
+        },
+      ],
+      'all',
+    );
+    expect(item.details).toEqual([
+      'List update frequency was 5m, shorter than the 1 h minimum of automatic updates: set to 1h.',
+      'Component update check interval was 30m, shorter than the 1 h minimum of automatic updates: set to 1h.',
+    ]);
+  });
+
   it('names manual and automatic autotune applies', () => {
     const titles = historyItems(
       [

@@ -121,6 +121,35 @@ assert.equal(value.overall, 'error');
 assert.equal(value.recovery.pending, true);
 assert.equal(value.recovery.last_event.kind, 'reload');
 JS
+# A config_migration event (a package upgrade migrated the configuration)
+# changes nothing in the runtime: with no start after it (Forkop stopped by
+# the user), it must not hide the failed change before it.
+STOPPED='"ui":{"service":{"forkop":{"running":0,"stopped_by_user":1,"dns_configured":1},"sing_box":{"running":0}}}'
+cat > "$TEST_DIR/fixture.json" <<JSON
+{$STOPPED,"events":[{"kind":"reload","status":"failure","timestamp":100},{"kind":"config_migration","status":"success","timestamp":200}]}
+JSON
+ucode -L "$ROOT/forkop/files/usr/lib" "$ROOT/forkop/files/usr/lib/diagnostics/health.uc" fixture "$TEST_DIR/fixture.json" > "$TEST_DIR/output.json"
+node - "$TEST_DIR/output.json" <<'JS'
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const value = JSON.parse(fs.readFileSync(process.argv[2]));
+assert.equal(value.overall, 'error', 'a config_migration event hid the failed change');
+assert.equal(value.recovery.pending, true);
+assert.equal(value.recovery.last_event.kind, 'reload');
+assert.equal(value.recent_activity[1].kind, 'config_migration', 'the migration must stay in the recent activity');
+JS
+cat > "$TEST_DIR/fixture.json" <<JSON
+{$RUNNING,"events":[{"kind":"start","status":"success","timestamp":100},{"kind":"config_migration","status":"success","timestamp":200}]}
+JSON
+ucode -L "$ROOT/forkop/files/usr/lib" "$ROOT/forkop/files/usr/lib/diagnostics/health.uc" fixture "$TEST_DIR/fixture.json" > "$TEST_DIR/output.json"
+node - "$TEST_DIR/output.json" <<'JS'
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const value = JSON.parse(fs.readFileSync(process.argv[2]));
+assert.equal(value.overall, 'ok');
+assert.equal(value.recovery.pending, false);
+assert.equal(value.recovery.last_event.kind, 'start');
+JS
 printf '{broken' > "$TEST_DIR/fixture.json"
 ucode -L "$ROOT/forkop/files/usr/lib" "$ROOT/forkop/files/usr/lib/diagnostics/health.uc" fixture "$TEST_DIR/fixture.json" > "$TEST_DIR/output.json"
 node - "$TEST_DIR/output.json" <<'JS'

@@ -83,9 +83,13 @@ assert_eq "0 0 * * *" \
   "$(updates_ucode due-check-cron-schedule 86400)" \
   "daily cron schedule"
 
-assert_eq "*/30 * * * * /usr/bin/forkop list_update_if_due # list" \
+# D-18 (a): automatic list updates run at most hourly.
+assert_eq "0 * * * * /usr/bin/forkop list_update_if_due # list" \
   "$(updates_ucode list-update-cron-job 30m /usr/bin/forkop '# list')" \
   "list update cron job"
+assert_eq "0 */2 * * * /usr/bin/forkop list_update_if_due # list" \
+  "$(updates_ucode list-update-cron-job 2h /usr/bin/forkop '# list')" \
+  "list update cron job of two hours"
 assert_eq $'https://mirror.infotechtg.ru/forkop/lists/allow-domains/Subnets/IPv4/telegram.lst\nhttps://mirror.infotechtg.ru/forkop/lists/allow-domains/Subnets/IPv6/telegram.lst' \
   "$(updates_ucode builtin-subnet-urls telegram)" \
   "Telegram built-in subnet families"
@@ -206,7 +210,7 @@ cat >"$WORK_DIR/cron-plan.json" <<'JSON'
 }
 JSON
 
-assert_eq $'list\t*/30 * * * * /usr/bin/forkop list_update_if_due # list\nsubscription-error\tbad_sub\tbad\nsubscription\t*/45 * * * * /usr/bin/forkop subscription_update_if_due # subscription\ncomponent\t0 */2 * * * /usr/bin/forkop component_updates_if_due # component' \
+assert_eq $'list\t0 * * * * /usr/bin/forkop list_update_if_due # list\nsubscription-error\tbad_sub\tbad\nsubscription\t*/45 * * * * /usr/bin/forkop subscription_update_if_due # subscription\ncomponent\t0 */2 * * * /usr/bin/forkop component_updates_if_due # component' \
   "$(updates_ucode cron-refresh-plan-fixture "$WORK_DIR/cron-plan.json" /usr/bin/forkop '# list' '# subscription' '# component')" \
   "cron refresh plan"
 
@@ -269,7 +273,7 @@ const fs = require("fs");
 const value = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
 const expected = [
   "0 1 * * * /bin/true # keep",
-  "*/30 * * * * /usr/bin/forkop list_update_if_due # list",
+  "0 * * * * /usr/bin/forkop list_update_if_due # list",
   "*/45 * * * * /usr/bin/forkop subscription_update_if_due # subscription",
   "0 */2 * * * /usr/bin/forkop component_updates_if_due # component",
   ""
@@ -280,7 +284,7 @@ if (value.crontab !== expected) {
 }
 const messages = value.logs.map(item => item.message);
 if (!messages.includes("The cron job removed") ||
-    !messages.includes("The cron job has been created: */30 * * * * /usr/bin/forkop list_update_if_due # list") ||
+    !messages.includes("The cron job has been created: 0 * * * * /usr/bin/forkop list_update_if_due # list") ||
     !messages.includes("The subscription cron job has been created: */45 * * * * /usr/bin/forkop subscription_update_if_due # subscription") ||
     !messages.includes("The component update check cron job has been created: 0 */2 * * * /usr/bin/forkop component_updates_if_due # component")) {
   console.error("unexpected cron apply logs", JSON.stringify(value.logs));

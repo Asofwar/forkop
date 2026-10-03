@@ -465,6 +465,7 @@ cat >"$WORK_DIR/sing-box-signature.json" <<'JSON'
     "dns_server": "9.9.9.9",
     "bootstrap_dns_server": "1.0.0.1",
     "dns_rewrite_ttl": "120",
+    "enable_output_network_interface": "1",
     "output_network_interface": "wan",
     "disable_quic": "on",
     "list_update_enabled": "1",

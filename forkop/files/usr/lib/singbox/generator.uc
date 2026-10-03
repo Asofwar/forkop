@@ -199,9 +199,11 @@ function settings_update_interval() {
     return update_interval != "" ? update_interval : "1d";
 }
 
+// sing-box refetches remote rule sets at most once an hour, like the list
+// update (D-18 (a)).
 function remote_ruleset_update_interval() {
     let update_interval = settings_update_interval();
-    return update_interval != "" ? update_interval : runtime_constants.DISABLED_UPDATE_INTERVAL;
+    return update_interval != "" ? common.automatic_update_interval(update_interval) : runtime_constants.DISABLED_UPDATE_INTERVAL;
 }
 
 function internal_flag(value) {

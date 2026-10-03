@@ -163,6 +163,21 @@ describe('overview warning', () => {
       )?.title,
     ).toBe('The last configuration change failed');
   });
+
+  it('does not let a configuration migration hide a failed change', () => {
+    // A package upgrade that did not start Forkop again leaves the
+    // migration last; it changes nothing in the runtime.
+    expect(
+      overviewWarning(
+        health({
+          recent_activity: [
+            { kind: 'reload', status: 'failure', timestamp: ts(20) },
+            { kind: 'config_migration', status: 'success', timestamp: ts(10) },
+          ],
+        }),
+      )?.title,
+    ).toBe('The last configuration change failed');
+  });
 });
 
 describe('overview state', () => {

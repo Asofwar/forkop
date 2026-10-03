@@ -3307,16 +3307,11 @@ function hydrateConfigSections(configSections) {
           subscription_update_interval: item.subscription_update_interval,
           download_via_proxy_enabled: item.download_via_proxy_enabled,
           download_via_proxy_section: item.download_via_proxy_section,
-          auto_user_agent: item.auto_user_agent,
           user_agent: item.user_agent,
-          auto_hwid: item.auto_hwid,
-          hwid: item.hwid,
           show_dashboard_metadata: item.show_dashboard_metadata,
           prefix_nodes: item.prefix_nodes,
           node_prefix: item.node_prefix,
-          include_urltest_groups: item.include_urltest_groups,
-          hide_urltest_group_outbounds: item.hide_urltest_group_outbounds,
-          hide_detour_outbounds: item.hide_detour_outbounds
+          include_urltest_groups: item.include_urltest_groups
         };
       });
       next.subscription_url_settings = compactSettingsMap(settings);
@@ -5828,6 +5823,8 @@ function eventKindLabel(kind) {
       return _("Snapshot deleted");
     case "cron_refresh":
       return _("Scheduled jobs update");
+    case "config_migration":
+      return _("Configuration migrated by the update");
     default:
       return _("Other event");
   }
@@ -5894,7 +5891,7 @@ function lastEvent(health2) {
 }
 function lastChangeEvent(health2) {
   const events = (health2?.recent_activity || []).filter(
-    (event) => event.kind !== "cron_refresh"
+    (event) => event.kind !== "cron_refresh" && event.kind !== "config_migration"
   );
   return events.length ? events[events.length - 1] : null;
 }
@@ -17916,6 +17913,7 @@ var CATEGORY = {
   start: "service",
   recovery: "service",
   cron_refresh: "service",
+  config_migration: "config",
   autotune_apply: "autotune",
   autotune_rollback: "autotune",
   autotune_mode: "autotune",
@@ -17932,6 +17930,38 @@ function historyFilterLabel(filter2) {
       return _("Autotune");
     default:
       return _("All");
+  }
+}
+function migrationNoticeText(notice) {
+  switch (notice.code) {
+    case "retired_rule_sets": {
+      const removed = _(
+        "Rule \u201C%s\u201D: the retired rule sets %s were removed from Built-in rule sets #2, their source no longer publishes them."
+      ).replace("%s", notice.section).replace("%s", notice.values.join(", "));
+      return notice.replacements.length ? `${removed} ${_(
+        "Built-in rule sets of the same services: %s. They were not added; the rule editor offers them."
+      ).replace("%s", notice.replacements.join(", "))}` : `${removed} ${_("No built-in rule set replaces them.")}`;
+    }
+    case "subscription_options_removed":
+      return _(
+        "Rule \u201C%s\u201D: the subscription settings %s were removed. This version always generates the HWID from the router and hides nodes of imported URLTest groups and cascades."
+      ).replace("%s", notice.section).replace("%s", notice.values.join(", "));
+    // The User-Agent itself is not in the journal (D-17).
+    case "subscription_user_agent_in_effect":
+      return _(
+        "Rule \u201C%s\u201D: a subscription source now sends the User-Agent set in its settings. Earlier versions ignored it and chose one automatically; clear the field to go back to automatic selection."
+      ).replace("%s", notice.section);
+    case "update_interval_raised":
+      return (notice.values[0] === "component_update_check_interval" ? _(
+        "Component update check interval was %s, shorter than the 1 h minimum of automatic updates: set to %s."
+      ) : _(
+        "List update frequency was %s, shorter than the 1 h minimum of automatic updates: set to %s."
+      )).replace("%s", notice.from ?? "").replace("%s", notice.to ?? "");
+    default:
+      return _("Rule \u201C%s\u201D: changed by the update.").replace(
+        "%s",
+        notice.section
+      );
   }
 }
 function eventTitle(event) {
@@ -17957,7 +17987,8 @@ function historyItems(events, filter2, nowMs = Date.now()) {
     title: eventTitle(event),
     outcome: eventOutcomeView(toEventOutcome(event.status)),
     time: formatTime(event.timestamp),
-    relative: formatRelativeTime(event.timestamp, nowMs)
+    relative: formatRelativeTime(event.timestamp, nowMs),
+    details: (event.notices ?? []).map(migrationNoticeText)
   }));
 }
 function snapshotReasonLabel(reason) {
@@ -18408,7 +18439,14 @@ function renderHistory() {
             item.relative
           ),
           E("span", { class: "fkp-history__what" }, item.title),
-          renderStatus(item.outcome)
+          renderStatus(item.outcome),
+          ...item.details.length ? [
+            E(
+              "ul",
+              { class: "fkp-history__details" },
+              item.details.map((line) => E("li", {}, [line]))
+            )
+          ] : []
         ])
       )
     ) : renderEmptyState(
@@ -18705,6 +18743,13 @@ var styles7 = `
 .fkp-history__snapshot:first-child { border-top: 0; }
 .fkp-history__time { color: var(--fkp-tone-neutral); min-width: 0; }
 .fkp-history__what { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }
+.fkp-history__details {
+    flex: 1 1 100%;
+    margin: 0;
+    padding-left: var(--fkp-space-3);
+    color: var(--fkp-tone-neutral);
+    overflow-wrap: anywhere;
+}
 .fkp-history__lkg {
     padding: 0 var(--fkp-space-2);
     border: 1px solid var(--fkp-tone-success);

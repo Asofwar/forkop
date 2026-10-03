@@ -99,10 +99,13 @@ function lastEvent(health: Forkop.HealthStatus | null) {
 
 // The last configuration change: a failed scheduled jobs update
 // (cron_refresh) is no failed change, also when it is the last event because
-// its start or reload gave way to a stop (diagnostics/health.uc).
+// its start or reload gave way to a stop; a configuration migration by a
+// package upgrade (config_migration) changes nothing in the runtime
+// (diagnostics/health.uc).
 function lastChangeEvent(health: Forkop.HealthStatus | null) {
   const events = (health?.recent_activity || []).filter(
-    (event) => event.kind !== 'cron_refresh',
+    (event) =>
+      event.kind !== 'cron_refresh' && event.kind !== 'config_migration',
   );
   return events.length ? events[events.length - 1] : null;
 }

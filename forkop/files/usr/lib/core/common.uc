@@ -157,6 +157,16 @@ function random_hex_secret() {
     return type(bytes) == "string" && length(bytes) == 32 ? hexenc(bytes) : null;
 }
 
+// D-20 (a), UC-095: the Output Network Interface, as the settings page
+// shows it: in effect only while enable_output_network_interface is on;
+// switched off, sing-box detects the egress interface itself. "" when none
+// is in effect.
+function output_network_interface(settings) {
+    return bool_option(settings, "enable_output_network_interface", false)
+        ? option(settings, "output_network_interface", "")
+        : "";
+}
+
 function int_option(section, key, fallback) {
     let value = option(section, key, fallback);
     if (match(value, /[^0-9]/))
@@ -194,6 +204,7 @@ return {
     list_option,
     bool_option,
     int_option,
+    output_network_interface,
     clash_api_secret,
     random_hex_secret,
     shell_quote,

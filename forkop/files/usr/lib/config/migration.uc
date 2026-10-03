@@ -1522,6 +1522,20 @@ function migrate_vpn_guard_to_kill_switch(ctx) {
     return true;
 }
 
+// D-20 (a), UC-095: the runtime now honours enable_output_network_interface,
+// the switch the settings page has always shown for the Output Network
+// Interface; it used the interface whatever the switch said, and the page
+// dropped the interface when it saved the switch off. A configuration that
+// has an interface without the switch on (the command line, a hand edit,
+// podkop) kept sing-box pinned to it: the switch is turned on, so that it
+// still is. Recorded once: a switch turned off afterwards stays off.
+function migrate_output_network_interface_switch(ctx) {
+    let settings = ctx.model.settings;
+    if (option(settings, "output_network_interface", "") != "" &&
+        !bool_option(settings, "enable_output_network_interface", false))
+        set_option(ctx, settings, "enable_output_network_interface", "1");
+}
+
 const MIGRATIONS = [
     { id: "interface_sections", run: migrate_interface_sections },
     { id: "enable_component_checks", run: migrate_enable_component_checks },
@@ -1533,7 +1547,8 @@ const MIGRATIONS = [
     { id: "own_dependency_mirror_v1", run: migrate_own_dependency_mirror },
     { id: "clash_api_secret_v1", run: migrate_clash_api_secret },
     { id: "urltest_section_names_v1", run: migrate_urltest_section_names },
-    { id: "vpn_guard_kill_switch_v1", run: migrate_vpn_guard_to_kill_switch }
+    { id: "vpn_guard_kill_switch_v1", run: migrate_vpn_guard_to_kill_switch },
+    { id: "output_network_interface_switch_v1", run: migrate_output_network_interface_switch }
 ];
 
 // Whether the migrations raise a config_version: they write 1.0.5 over an

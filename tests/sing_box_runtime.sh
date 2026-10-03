@@ -695,6 +695,7 @@ cat >"$WORK_DIR/mwan3-pinned-fixture.json" <<'JSON'
     "config_path": "/tmp/sing-box/config.json",
     "dns_server": "1.1.1.1",
     "service_listen_address": "127.0.0.1",
+    "enable_output_network_interface": "1",
     "output_network_interface": "wan2"
   },
   "section": [

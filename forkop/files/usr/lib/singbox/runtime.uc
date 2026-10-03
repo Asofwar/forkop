@@ -861,7 +861,7 @@ function init_config(populate_nft, caches_prepared, no_refresh, prepared_deferre
     }
 
     let mwan3_active = module_success([ LIB_DIR + "/config/validator.uc", "mwan3-is-active" ]);
-    let output_interface = option(settings, "output_network_interface", "");
+    let output_interface = common.output_network_interface(settings);
     if (mwan3_active && output_interface != "")
         log_message("mwan3 is active and Output Network Interface is set to '" + output_interface + "'; sing-box egress is pinned to this interface", "warn");
     else if (mwan3_active)

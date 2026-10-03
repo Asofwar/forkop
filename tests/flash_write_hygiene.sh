@@ -101,7 +101,9 @@ printf 'stale\n' >"/etc/init.d/sing-box.forkop.$dead"
 configure
 printf '%s\n' "$dead" >"$WORK/initd.dead2"
 # The copy a component install (components/action.uc) writes is named after
-# its writer as well.
+# its writer as well. It writes the script a start writes (UC-085), which it
+# leaves alone: the script in place is an older one again.
+printf '#!/bin/sh\n# an older managed script\n' >/etc/init.d/sing-box
 (PATH="$WORK/sync-bin:$PATH" LIVE=$$ WRITER='action\.uc' OWNER="$WORK/initd.action-owner" \
   ucode -L "$LIB" "$LIB/components/action.uc" install-managed-sing-box-service-fixture)
 SH

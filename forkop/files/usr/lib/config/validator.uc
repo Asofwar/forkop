@@ -3,7 +3,6 @@
 let fs = require("fs");
 let uci_core = require("core.uci");
 let common = require("core.common");
-let durable = require("core.durable");
 let fixture_uci_data = null;
 let subscription_parser_module = null;
 let zapret_validator_module = null;
@@ -1806,7 +1805,6 @@ function context_from_runtime() {
         sing_box_required_version: constant_value(constants, "SB_REQUIRED_VERSION"),
         sing_box_variant_state_file: constant_value(constants, "SB_VARIANT_STATE_FILE"),
         sing_box_version_state_file: constant_value(constants, "SB_VERSION_STATE_FILE"),
-        sing_box_managed_service_marker: constant_value(constants, "SB_MANAGED_SERVICE_MARKER"),
         zapret_state_dir: constant_value(constants, "ZAPRET_STATE_DIR"),
         zapret_pid_dir: constant_value(constants, "ZAPRET_PID_DIR"),
         zapret_child_pid_dir: constant_value(constants, "ZAPRET_CHILD_PID_DIR"),
@@ -1900,52 +1898,11 @@ function sing_box_supports_tailscale(ctx, version, version_output) {
     return sing_box_output_has_build_tag(version_output, "with_tailscale");
 }
 
-function managed_sing_box_service_script(marker) {
-    marker = as_string(marker);
-    if (marker == "")
-        marker = "Forkop managed sing-box service for binary variants";
-
-    return "#!/bin/sh /etc/rc.common\n" +
-        "# " + marker + "\n" +
-        "\n" +
-        "USE_PROCD=1\n" +
-        "START=99\n" +
-        "PROG=\"/usr/bin/sing-box\"\n" +
-        "\n" +
-        "start_service() {\n" +
-        "    config_load \"sing-box\"\n" +
-        "    local enabled config_file working_directory\n" +
-        "    local log_stderr\n" +
-        "\n" +
-        "    config_get_bool enabled \"main\" \"enabled\" \"0\"\n" +
-        "    [ \"$enabled\" -eq \"1\" ] || return 0\n" +
-        "\n" +
-        "    config_get config_file \"main\" \"conffile\" \"/etc/sing-box/config.json\"\n" +
-        "    config_get working_directory \"main\" \"workdir\" \"/usr/share/sing-box\"\n" +
-        "    config_get_bool log_stderr \"main\" \"log_stderr\" \"1\"\n" +
-        "\n" +
-        "    procd_open_instance\n" +
-        "    procd_set_param command \"$PROG\" run -c \"$config_file\" -D \"$working_directory\"\n" +
-        "    procd_set_param file \"$config_file\"\n" +
-        "    procd_set_param stderr \"$log_stderr\"\n" +
-        "    procd_set_param limits core=\"unlimited\"\n" +
-        "    procd_set_param limits nofile=\"1000000 1000000\"\n" +
-        "    procd_set_param respawn\n" +
-        "    procd_close_instance\n" +
-        "}\n" +
-        "\n" +
-        "service_triggers() {\n" +
-        "    procd_add_reload_trigger \"sing-box\"\n" +
-        "}\n";
-}
-
-// The copy is named after this process, as the copies of singbox/runtime.uc
-// and components/action.uc are: a start removes only copies whose writer is
-// gone. Read back and flushed before and after the rename (core/durable.uc):
-// a full overlay took the write and left an empty init script in place.
-function install_managed_sing_box_service_script(ctx) {
-    return durable.durable_replace("/etc/init.d/sing-box.forkop." + fs.readlink("/proc/self"), "/etc/init.d/sing-box",
-        managed_sing_box_service_script(ctx.sing_box_managed_service_marker), 0755);
+// The script of singbox/managed_service.uc, the one every writer installs
+// (UC-085). Loaded here, as the validator modules are: only the requirements
+// check installs it.
+function install_managed_sing_box_service_script() {
+    return require("singbox.managed_service").install();
 }
 
 function service_exists(service) {
@@ -2076,7 +2033,7 @@ function check_runtime_requirements() {
     }
 
     if (!service_exists("sing-box") && sing_box_compressed_marker_set(ctx))
-        install_managed_sing_box_service_script(ctx);
+        install_managed_sing_box_service_script();
 
     if (!service_exists("sing-box"))
         fail_requirement("Service 'sing-box' is missing. Install a sing-box package or reinstall the compressed sing-box-extended binary variant. Aborted.", "error");

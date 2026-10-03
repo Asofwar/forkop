@@ -5,6 +5,7 @@ let uci_core = require("core.uci");
 let common = require("core.common");
 let durable = require("core.durable");
 let runtime_dns = require("singbox.dns");
+let managed_service = require("singbox.managed_service");
 
 const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || "forkop";
 // Test-only config preparation failure injection. Empty in production.
@@ -392,62 +393,14 @@ function managed_service_installed() {
     return data != null && index(as_string(data), SB_MANAGED_SERVICE_MARKER) >= 0;
 }
 
-function managed_service_text() {
-    return "#!/bin/sh /etc/rc.common\n" +
-        "# " + SB_MANAGED_SERVICE_MARKER + "\n\n" +
-        "USE_PROCD=1\n" +
-        "START=99\n" +
-        "PROG=\"/usr/bin/sing-box\"\n\n" +
-        "start_service() {\n" +
-        "    config_load \"sing-box\"\n" +
-        "    local enabled config_file working_directory\n" +
-        "    local log_stderr\n\n" +
-        "    config_get_bool enabled \"main\" \"enabled\" \"0\"\n" +
-        "    [ \"$enabled\" -eq \"1\" ] || return 0\n\n" +
-        "    config_get config_file \"main\" \"conffile\" \"/etc/sing-box/config.json\"\n" +
-        "    config_get working_directory \"main\" \"workdir\" \"/usr/share/sing-box\"\n" +
-        "    config_get_bool log_stderr \"main\" \"log_stderr\" \"1\"\n\n" +
-        "    procd_open_instance\n" +
-        "    procd_set_param command \"$PROG\" run -c \"$config_file\" -D \"$working_directory\"\n" +
-        "    procd_set_param stderr \"$log_stderr\"\n" +
-        "    procd_set_param limits core=\"unlimited\"\n" +
-        "    procd_set_param limits nofile=\"1000000 1000000\"\n" +
-        "    procd_set_param respawn\n" +
-        "    procd_close_instance\n" +
-        "}\n\n" +
-        "service_triggers() {\n" +
-        "    procd_add_reload_trigger \"sing-box\"\n" +
-        "}\n";
-}
-
 function sing_box_compressed_marker_set() {
     return trim(as_string(fs.readfile(SB_VARIANT_STATE_FILE) || "")) == "extended-compressed";
 }
 
-// Every start installs the script: written only when it differs, and
-// copies that a crash left between their write and their rename (named by
-// the pid of a writer that is gone) are removed (UC-159).
+// Every start installs the script (singbox/managed_service.uc): written
+// only when it differs, stale copies of it removed.
 function install_managed_service_script() {
-    // Also when the script is current: another writer may have installed it
-    // since the crash.
-    for (let path in fs.glob("/etc/init.d/sing-box.forkop.*") || []) {
-        let writer = match(path, /\/sing-box\.forkop\.([0-9]+)$/);
-        if (writer != null && fs.stat("/proc/" + writer[1]) == null)
-            remove_file(path);
-    }
-
-    let text = managed_service_text();
-    let current = fs.stat("/etc/init.d/sing-box");
-    if (current != null && current.type == "file" && (current.mode & 0111) == 0111 &&
-        fs.readfile("/etc/init.d/sing-box") === text)
-        return true;
-
-    // Named after this process, which lives until the rename: the cleanup
-    // above in another start keeps the copy while its writer is at work.
-    // Read back and flushed before and after the rename (core/durable.uc):
-    // written only when it differs, so the flushes are rare.
-    let tmp = "/etc/init.d/sing-box.forkop." + as_string(fs.readlink("/proc/self"));
-    return durable.durable_replace(tmp, "/etc/init.d/sing-box", text, 0755);
+    return managed_service.install();
 }
 
 function remove_managed_service_script() {

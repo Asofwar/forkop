@@ -1876,9 +1876,14 @@ function stop() {
     // (FORKOP_STOP_SOURCE, an upgrade in progress) keeps the ownership
     // guard, because it brings the same runtime back up afterwards. Its
     // refusal changes nothing: no stop request, no ended explicit start, no
-    // stopped refresh workers, no DNS change (UC-215, UC-217).
+    // stopped refresh workers, no DNS change (UC-215, UC-217). A component
+    // change whose own stop already took the runtime down has nothing left
+    // to keep (FORKOP_STOP_CLEANUP, components/action.uc): its next stop ends
+    // what that runtime left as an explicit one does, still as Forkop's own
+    // stop. A managed upgrade in progress keeps the guard.
     let requested_by = as_string(getenv("FORKOP_STOP_SOURCE"));
-    let internal_stop = requested_by == "package" || requested_by == "component" ||
+    let cleanup_stop = requested_by == "component" && getenv("FORKOP_STOP_CLEANUP") == "1";
+    let internal_stop = requested_by == "package" || (requested_by == "component" && !cleanup_stop) ||
         getenv("FORKOP_INTERNAL_SERVICE_STOP") == "1" || managed_upgrade_in_progress();
     if (internal_stop && module_success(STATE_UC, [ "sing-box-process-conflict" ])) {
         log_message("Refusing Forkop stop: sing-box process ownership is ambiguous; preserving the existing runtime", "fatal");

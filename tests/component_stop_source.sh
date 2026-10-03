@@ -72,7 +72,9 @@ function release_component_lock() {}
 // service/state.uc write-managed-upgrade-sing-box-marker
 function module_success(args) { return fs.writefile(args[2], "format=1\n") != null; }
 UCODE
-source_between "$ACTION" '^function forkop_stop_for_component_change_args\(' '^function wait_forkop_running_after_sing_box_change\(' \
+source_function "$ACTION" forkop_stop_for_component_change_args >>"$WORK_DIR/harness.uc" ||
+  fail "forkop_stop_for_component_change_args was not found"
+source_between "$ACTION" '^const SING_BOX_CHANGE_STOP_REFUSED = ' '^function wait_forkop_running_after_sing_box_change\(' \
   >>"$WORK_DIR/harness.uc" || fail "the component stop helpers were not found"
 for function in upgrade_bounded_stop remove_managed_upgrade_sing_box_marker cleanup_action \
   capture_managed_upgrade_sing_box_marker; do

@@ -4,9 +4,9 @@
 # release servers (curl), the init script, `forkop get_status`, df and the
 # start-and-wait of service/initd.uc. The flow itself is the production code:
 # the harness is components/action.uc with its dispatch replaced, and only
-# the functions that would touch the host's /tmp, LuCI caches and rpcd or
-# scan the host's processes are overridden (other tests run sing-box doubles
-# of their own). The action's PATH holds the stand-ins and the host's tools
+# the functions that would touch the host's /tmp, LuCI caches, rpcd, sing-box
+# service or /etc, or scan the host's processes are overridden (other tests
+# run sing-box doubles of their own). The action's PATH holds the stand-ins and the host's tools
 # without a host apk or opkg: the router's package manager is the stand-in.
 #
 # Sourced by the tests that need it, after ROOT_DIR and WORK_DIR are set.
@@ -15,13 +15,18 @@
 #   upgrade_harness_setup                 build the stand-ins (once)
 #   upgrade_harness_reset apk|opkg        Forkop 1.0.0 installed and running
 #   upgrade_harness_flag NAME [VALUE]     inject a failure (see the stand-ins)
-#   upgrade_harness_run                   the action; JSON response in $UPGRADE_OUT
+#   upgrade_harness_run [COMP ACTION [VERSION]]
+#                                         the action (default: forkop install);
+#                                         JSON response in $UPGRADE_OUT
+#   upgrade_harness_exec SCRIPT [ARG...]  a variant of the harness ($UPGRADE_HARNESS
+#                                         ends in its dispatch line), run alike
 #   upgrade_harness_version PACKAGE       the installed version
 #   upgrade_harness_running               Forkop runs
 #
 # Logs under $UPGRADE_STATE: init.log (init.d calls with FORKOP_STOP_SOURCE),
 # initd.log (service/initd.uc calls), pm.log (apk/opkg calls), curl.log,
-# luci-refresh.log (the LuCI refresh after a completed upgrade).
+# luci-refresh.log (the LuCI refresh after a completed upgrade),
+# sing-box-service.log (the standalone sing-box service kept disabled).
 
 UPGRADE_LIB="$WORK_DIR/upgrade/lib"
 UPGRADE_BIN="$WORK_DIR/upgrade/bin"
@@ -99,6 +104,17 @@ function refresh_luci_after_forkop_upgrade() {
 function upgrade_sing_box_processes() {
     return file_exists(HARNESS_STATE + "/flags/sing_box_ambiguous") ? null : {};
 }
+// The router's sing-box service and configuration archive are not the
+// host's.
+function prepare_sing_box_service_disabled() {
+    let log = fs.open(HARNESS_STATE + "/sing-box-service.log", "a");
+    log.write("disable\n");
+    log.close();
+}
+function save_forkop_configuration_backup(config_dir, backup_dir) {
+    let backup = HARNESS_STATE + "/configuration.tar.gz";
+    return write_file(backup, "backup\n") ? backup : "";
+}
 
 component_action(ARGV[0], ARGV[1], ARGV[2]);
 UCODE
@@ -118,23 +134,46 @@ if (ARGV[0] == "start-and-wait") {
 exit(1);
 UCODE
 
+    # service/state.uc: the upgrade marker, and whether a stop is requested.
     cat >"$UPGRADE_LIB/service/state.uc" <<'UCODE'
 let fs = require("fs");
 if (ARGV[0] == "write-managed-upgrade-sing-box-marker") {
     fs.writefile(ARGV[1], "format=1\n");
     exit(0);
 }
+if (ARGV[0] == "stop-requested")
+    exit(fs.stat(getenv("FORKOP_RUNTIME_STATE_DIR") + "/stop.requested") != null ? 0 : 1);
 exit(1);
 UCODE
+
+    # The optional providers: installed while the package database holds
+    # their package.
+    for upgrade_provider in zapret zapret2 byedpi; do
+        mkdir -p "$UPGRADE_LIB/providers/$upgrade_provider"
+        cat >"$UPGRADE_LIB/providers/$upgrade_provider/runtime.uc" <<UCODE
+let fs = require("fs");
+let version = fs.readfile(getenv("UPGRADE_STATE") + "/pkg/$upgrade_provider");
+if (ARGV[0] == "installed")
+    exit(version != null && trim(version) != "" ? 0 : 1);
+if (ARGV[0] == "package-version" && version != null)
+    print(trim(version), "\n");
+exit(0);
+UCODE
+    done
 
     # The init script records every call with the source of a stop. A stop
     # records its request as service/initd.uc does (by=<source>; a stop made
     # while the user's stop is in effect stays the user's; a refused stop
-    # records none), a start removes it. A start refuses, as
-    # service/lifecycle.uc start_inner does, while the upgrade marker is
-    # stale, and consumes it. Flags: stop_status (exit status of a stop: 2 is
-    # a refusal), start_fail, marker_stale (the package manager ran longer
-    # than the marker's age).
+    # records none), a start removes it. A restart is rc.common's: its stop
+    # (the user's unless the caller names a source), then the start, only
+    # once that stop succeeded. A start refuses, as service/lifecycle.uc
+    # start_inner does, while the upgrade marker is stale, and consumes it.
+    # Flags: stop_status (exit status of a stop: 2 is a refusal), start_fail,
+    # start_deferred (the start waits for reload.lock past every wait: it
+    # neither runs nor removes the stop request), marker_stale (the package
+    # manager ran longer than the marker's age), user_stop_on_start (the
+    # user's stop overtakes the next start: it is skipped, as
+    # service/initd.uc skips a start when a stop was requested after it).
     cat >"$UPGRADE_INIT" <<'SH'
 #!/bin/sh
 state="$UPGRADE_STATE"
@@ -154,13 +193,28 @@ case "$1" in
         [ "$status" -ne 0 ] || rm -f "$state/running"
         exit "$status"
         ;;
-    start|restart)
+    restart)
+        "$0" stop || exit
+        exec "$0" start
+        ;;
+    start)
         if [ -e "$state/flags/marker_stale" ] && [ -e "$FORKOP_MANAGED_UPGRADE_SING_BOX_MARKER" ]; then
             rm -f "$FORKOP_MANAGED_UPGRADE_SING_BOX_MARKER"
             printf 'start refused: stale managed upgrade marker\n' >>"$state/init.log"
             exit 1
         fi
         [ ! -e "$state/flags/start_fail" ] || exit 1
+        if [ -e "$state/flags/start_deferred" ]; then
+            printf 'start deferred\n' >>"$state/init.log"
+            exit 0
+        fi
+        if [ -e "$state/flags/user_stop_on_start" ]; then
+            rm -f "$state/flags/user_stop_on_start" "$state/running"
+            mkdir -p "$FORKOP_RUNTIME_STATE_DIR"
+            printf 'requested\nby=user\n' >"$request"
+            printf 'start skipped: the user stopped Forkop\n' >>"$state/init.log"
+            exit 0
+        fi
         rm -f "$request"
         : >"$state/running"
         ;;
@@ -178,12 +232,15 @@ esac
 exit 0
 SH
 
-    # Release servers: fold8 serves the release to install, GitHub the
-    # metadata of the installed one. A package file names the package and
-    # version it holds, whatever the file is called. Flags: github_down,
-    # download_fail_<version>; while the upgrade asks GitHub (before Forkop
-    # is stopped for it), user_stop_on_github has the user stop Forkop and
-    # crash_on_github takes it down without a stop.
+    # Release servers: fold8 serves the release to install and the catalog
+    # of the version picker, GitHub the metadata of the installed one. A
+    # package file names the package and version it holds, whatever the file
+    # is called. Flags: github_down, download_fail_<version>,
+    # tamper_<package> and tamper_<package>_<version> (the server holds
+    # other bytes than the metadata names, for every release or for that
+    # one); while the upgrade asks GitHub (before Forkop is stopped for it),
+    # user_stop_on_github has the user stop Forkop and crash_on_github takes
+    # it down without a stop.
     cat >"$UPGRADE_BIN/curl" <<'SH'
 #!/bin/sh
 state="$UPGRADE_STATE"
@@ -202,6 +259,10 @@ case "$url" in
     https://releases.invalid/updates/latest.json)
         cat "$state/latest.json" >"$out"
         ;;
+    https://releases.invalid/updates/releases.json)
+        [ -e "$state/releases.json" ] || exit 22
+        cat "$state/releases.json" >"$out"
+        ;;
     https://api.github.com/repos/*/releases/tags/1.0.0)
         [ ! -e "$state/flags/user_stop_on_github" ] || env -u FORKOP_STOP_SOURCE "$FORKOP_SERVICE_INIT" stop
         [ ! -e "$state/flags/crash_on_github" ] || rm -f "$state/running"
@@ -215,6 +276,9 @@ case "$url" in
         version="${version%.*}"
         [ ! -e "$state/flags/download_fail_$version" ] || exit 22
         printf 'name=%s\nversion=%s-r1\n' "$name" "$version" >"$out"
+        if [ -e "$state/flags/tamper_$name" ] || [ -e "$state/flags/tamper_${name}_$version" ]; then
+            printf 'tampered\n' >>"$out"
+        fi
         ;;
     *)
         exit 6
@@ -228,17 +292,26 @@ SH
     # preflight_fail, fail_new_<package> and fail_old_<package> (installing
     # 1.1.0 or 1.0.0 of that package fails; apk keeps the packages of the
     # transaction installed before it), postinst_starts (postinst always
-    # starts Forkop).
+    # starts Forkop), user_stop_on_install and user_stop_on_remove (the user
+    # stops Forkop while a package is installed or removed), remove_fail.
     cat >"$UPGRADE_BIN/package-manager" <<'SH'
 #!/bin/sh
 state="$UPGRADE_STATE"
 pm="$(basename "$0")"
 printf '%s %s\n' "$pm" "$*" >>"$state/pm.log"
 
+user_stop() {
+    if [ -e "$state/flags/$1" ]; then
+        rm -f "$state/flags/$1"
+        env -u FORKOP_STOP_SOURCE "$FORKOP_SERVICE_INIT" stop || true
+    fi
+}
+
 install_file() {
     [ -r "$1" ] || { echo "$1: no such file" >&2; return 1; }
     name="$(sed -n 's/^name=//p' "$1")"
     version="$(sed -n 's/^version=//p' "$1")"
+    user_stop user_stop_on_install
     case "$version" in
         1.1.0-*) age=new ;;
         *) age=old ;;
@@ -283,6 +356,16 @@ package_argument() {
     done
 }
 
+remove_packages() {
+    for name in "$@"; do
+        [ -s "$state/pkg/$name" ] || { echo "$name: not installed" >&2; exit 1; }
+        user_stop user_stop_on_remove
+        [ ! -e "$state/flags/remove_fail" ] || { echo "removing $name failed" >&2; exit 1; }
+        rm -f "$state/pkg/$name"
+    done
+    exit 0
+}
+
 if [ "$pm" = apk ]; then
     case "$1" in
         info)
@@ -304,6 +387,11 @@ if [ "$pm" = apk ]; then
             # shellcheck disable=SC2046 # one package file per line
             install_files "$simulate" $(package_argument "$@")
             ;;
+        del)
+            shift
+            # shellcheck disable=SC2046 # one package name per line
+            remove_packages $(package_argument "$@")
+            ;;
     esac
     exit 1
 fi
@@ -321,6 +409,11 @@ case "$1" in
         shift
         # shellcheck disable=SC2046 # one package file per line
         install_files "$simulate" $(package_argument "$@")
+        ;;
+    remove)
+        shift
+        # shellcheck disable=SC2046 # one package name per line
+        remove_packages $(package_argument "$@")
         ;;
 esac
 exit 1
@@ -351,12 +444,30 @@ SH
     UPGRADE_PATH="$UPGRADE_BIN:$upgrade_host_path"
 }
 
-# release_json VERSION EXT
+# The SHA-256 of the package file the release server holds for PACKAGE at
+# VERSION.
+upgrade_harness_package_sha256() {
+    printf 'name=%s\nversion=%s-r1\n' "$1" "$2" | sha256sum | cut -d' ' -f1
+}
+
+# release_json VERSION EXT [DIGESTS]: the release metadata. DIGESTS names
+# the checksums of the assets as the server publishes them: "mirror" (the
+# default; fold8's latest.json and catalog carry sha256 and digest),
+# "github" (the GitHub API's digest "sha256:<hex>" only) or "none".
 upgrade_harness_release_json() {
     printf '{"tag_name":"%s","html_url":"https://releases.invalid/%s","assets":[' "$1" "$1"
-    printf '{"name":"forkop_%s.%s","browser_download_url":"https://releases.invalid/releases/%s/forkop_%s.%s"},' "$1" "$2" "$1" "$1" "$2"
-    printf '{"name":"luci-app-forkop_%s.%s","browser_download_url":"https://releases.invalid/releases/%s/luci-app-forkop_%s.%s"},' "$1" "$2" "$1" "$1" "$2"
-    printf '{"name":"luci-i18n-forkop-ru_%s.%s","browser_download_url":"https://releases.invalid/releases/%s/luci-i18n-forkop-ru_%s.%s"}' "$1" "$2" "$1" "$1" "$2"
+    upgrade_separator=""
+    for upgrade_asset in forkop luci-app-forkop luci-i18n-forkop-ru; do
+        upgrade_sum="$(upgrade_harness_package_sha256 "$upgrade_asset" "$1")"
+        case "${3:-mirror}" in
+            mirror) upgrade_digest="$(printf '"sha256":"%s","digest":"sha256:%s",' "$upgrade_sum" "$upgrade_sum")" ;;
+            github) upgrade_digest="$(printf '"digest":"sha256:%s",' "$upgrade_sum")" ;;
+            *) upgrade_digest="" ;;
+        esac
+        printf '%s{"name":"%s_%s.%s",%s"browser_download_url":"https://releases.invalid/releases/%s/%s_%s.%s"}' \
+            "$upgrade_separator" "$upgrade_asset" "$1" "$2" "$upgrade_digest" "$1" "$upgrade_asset" "$1" "$2"
+        upgrade_separator=","
+    done
     printf ']}\n'
 }
 
@@ -373,7 +484,12 @@ upgrade_harness_reset() {
         *) upgrade_extension=ipk ;;
     esac
     upgrade_harness_release_json 1.1.0 "$upgrade_extension" >"$UPGRADE_STATE/latest.json"
-    upgrade_harness_release_json 1.0.0 "$upgrade_extension" >"$UPGRADE_STATE/previous.json"
+    upgrade_harness_release_json 1.0.0 "$upgrade_extension" github >"$UPGRADE_STATE/previous.json"
+    {
+        printf '{"format":1,"releases":['
+        upgrade_harness_release_json 1.1.0 "$upgrade_extension"
+        printf ']}\n'
+    } >"$UPGRADE_STATE/releases.json"
     for upgrade_package in forkop luci-app-forkop luci-i18n-forkop-ru; do
         printf '1.0.0-r1\n' >"$UPGRADE_STATE/pkg/$upgrade_package"
     done
@@ -388,8 +504,19 @@ upgrade_harness_unflag() {
     rm -f "$UPGRADE_STATE/flags/$1"
 }
 
+# upgrade_harness_run [COMPONENT ACTION [VERSION]]: the component action,
+# the in-app Forkop upgrade by default.
 upgrade_harness_run() {
+    [ "$#" -gt 0 ] || set -- forkop install
+    upgrade_harness_exec "$UPGRADE_HARNESS" "$@"
+}
+
+# upgrade_harness_exec SCRIPT [ARG...]: a ucode script (the harness or a
+# variant of it) run as the action runs.
+upgrade_harness_exec() {
     upgrade_status=0
+    upgrade_script="$1"
+    shift
     env UPGRADE_STATE="$UPGRADE_STATE" \
         PATH="$UPGRADE_PATH" \
         FORKOP_LIB="$UPGRADE_LIB" \
@@ -404,7 +531,7 @@ upgrade_harness_run() {
         FORKOP_MANAGED_UPGRADE_SING_BOX_MARKER="$UPGRADE_MARKER" \
         FORKOP_SYSTEM_INFO_CACHE_FILE="$UPGRADE_STATE/system-info.json" \
         FORKOP_UPGRADE_STOP_TIMEOUT_SECONDS=20 \
-        ucode -L "$UPGRADE_LIB" "$UPGRADE_HARNESS" forkop install >"$UPGRADE_OUT" 2>"$UPGRADE_STATE/stderr" ||
+        ucode -L "$UPGRADE_LIB" "$upgrade_script" "$@" >"$UPGRADE_OUT" 2>"$UPGRADE_STATE/stderr" ||
         upgrade_status=$?
     return "$upgrade_status"
 }

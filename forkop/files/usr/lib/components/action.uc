@@ -37,6 +37,9 @@ let last_logged_output = "";
 let forkop_stopped_for_sing_box_change = false;
 let forkop_stopped_for_upgrade = false;
 let managed_upgrade_marker_written = false;
+// Forkop's own stop for the restart after the change was refused
+// (forkop_restart_and_wait).
+let forkop_restart_refused = false;
 
 function as_string(value) {
     return value == null ? "" : "" + value;
@@ -71,6 +74,10 @@ function command_success(command) {
 
 function command_success_from_args(args) {
     return command_success(command_from_args(args));
+}
+
+function command_status_from_args(args) {
+    return command_status("(" + command_from_args(args) + ") >/dev/null 2>&1");
 }
 
 function command_output(command) {
@@ -187,6 +194,10 @@ function module_output(args) {
 
 function module_success(args) {
     return command_success(module_command(args));
+}
+
+function module_success_env(assignments, args) {
+    return command_success(command_env(assignments) + " " + module_command(args));
 }
 
 function helper_output(mode, args) {
@@ -346,11 +357,16 @@ function forkop_status_running_with_timeout() {
 // run; service/initd.uc start-and-wait waits for the start's own result and
 // then checks the runtime (UC-013). An older release that this action has
 // just installed has no start-and-wait: then the runtime is polled after
-// init.d, as restore_forkop_opkg_service does.
-function forkop_start_and_wait(action) {
+// init.d, as restore_forkop_opkg_service does. A start that follows
+// Forkop's own stop names that stop's request (after_stop): a stop requested
+// after it wins over the start (service/initd.uc start_service).
+function forkop_start_and_wait(action, after_stop) {
     let initd_module = LIB_DIR + "/service/initd.uc";
-    if (index(read_file(initd_module), '"start-and-wait"') >= 0)
-        return module_success([ initd_module, "start-and-wait", action ]);
+    if (index(read_file(initd_module), '"start-and-wait"') >= 0) {
+        if (as_string(after_stop) == "")
+            return module_success([ initd_module, "start-and-wait", action ]);
+        return module_success_env({ FORKOP_START_AFTER_STOP: after_stop }, [ initd_module, "start-and-wait", action ]);
+    }
     if (!command_success_from_args([ SERVICE_INIT, action ]))
         return false;
     for (let attempt = 0; attempt < 45; attempt++) {
@@ -361,24 +377,89 @@ function forkop_start_and_wait(action) {
     return false;
 }
 
-function restart_forkop_after_failed_sing_box_change() {
-    if (!forkop_stopped_for_sing_box_change || !forkop_was_running || !file_exists(SERVICE_INIT))
-        return;
-    updates_log("Restarting Forkop after failed sing-box component change");
-    if (!forkop_start_and_wait("start") && !forkop_start_and_wait("restart"))
-        updates_log("Forkop did not start again after the failed sing-box component change", "error");
-}
-
 // The user's stop holds Forkop down until an explicit start (D-15). A stop
 // made while the action ran stays the user's through Forkop's own stops for
 // the change (service/initd.uc stop_request_source); the start that puts
 // back the state noted when the action began must not undo it.
-function forkop_stopped_by_user() {
-    let request = fs.readfile(STOP_REQUESTED_FILE);
-    if (request == null)
-        return false;
+function stop_request_by_user(request) {
     let by = match(request, /(^|\n)by=([a-z]*)/);
     return by == null || by[2] == "user";
+}
+
+function forkop_stopped_by_user() {
+    let request = fs.readfile(STOP_REQUESTED_FILE);
+    return request != null && stop_request_by_user(request);
+}
+
+// The stop request after Forkop's own stop, read once: its first line, ""
+// when none is recorded, null when it is the user's stop (D-15).
+function own_stop_request() {
+    let request = fs.readfile(STOP_REQUESTED_FILE);
+    if (request == null)
+        return "";
+    if (stop_request_by_user(request))
+        return null;
+    return split(request, "\n")[0];
+}
+
+// Forkop's own stop for a component change, followed by a start: not the
+// user's stop (service/initd.uc stop_request_source). With cleanup, Forkop
+// is down already, stopped for this change: no runtime runs that the
+// ownership guard would keep, and the stop ends what is left of it (a
+// sing-box that runs Forkop's configuration) as the user's Stop does
+// (FORKOP_STOP_CLEANUP, service/lifecycle.uc stop).
+function forkop_stop_for_component_change_args(cleanup) {
+    let args = [ "env", "FORKOP_STOP_SOURCE=component" ];
+    if (cleanup)
+        push(args, "FORKOP_STOP_CLEANUP=1");
+    push(args, SERVICE_INIT, "stop");
+    return args;
+}
+
+// The restart that applies a change: Forkop's own stop for it, then the
+// awaited start. The stop of an init.d restart is recorded as the user's,
+// and a restart that failed before its start removed that record (its stop
+// failed, its start was deferred past the wait) then read as the user's
+// stop: the failed change as one that the user's stop overtook (UC-235).
+// A stop that the user made meanwhile holds: no start follows it. The stop
+// and the start each take procd's lock, and a user's stop that waited for
+// it behind Forkop's own stop runs before the start, also after the request
+// was read here: the start compares with Forkop's own stop request and
+// leaves Forkop down after any later stop. 0 when Forkop runs again, 2 when
+// its own stop was refused: another sing-box makes the ownership of the
+// runtime ambiguous, and service/lifecycle.uc changed nothing (UC-215).
+// That is no failed start, and a second restart is refused alike.
+function forkop_restart_and_wait() {
+    let status = command_status_from_args(forkop_stop_for_component_change_args(forkop_stopped_for_sing_box_change));
+    if (status != 0)
+        return status == 2 ? 2 : 1;
+    let after_stop = own_stop_request();
+    if (after_stop == null)
+        return 1;
+    return forkop_start_and_wait("start", after_stop) ? 0 : 1;
+}
+
+const FORKOP_RESTART_REFUSED = "Forkop was not restarted: another sing-box process makes the ownership of its runtime ambiguous; the change applies at its next start";
+
+// How a change ends that did not bring Forkop back.
+function forkop_not_restarted_text() {
+    return forkop_restart_refused ? FORKOP_RESTART_REFUSED : "Forkop did not start again";
+}
+
+// Nor does its restart fallback: a start that the user's stop overtook
+// failed for the stop, which wins (UC-235).
+function restart_forkop_after_failed_sing_box_change() {
+    if (!forkop_stopped_for_sing_box_change || !forkop_was_running || !file_exists(SERVICE_INIT))
+        return;
+    if (forkop_stopped_by_user()) {
+        updates_log("Forkop was stopped by the user during the sing-box component change; it is not started again");
+        return;
+    }
+    updates_log("Restarting Forkop after failed sing-box component change");
+    if (forkop_start_and_wait("start") || forkop_stopped_by_user())
+        return;
+    if (forkop_restart_and_wait() != 0 && !forkop_stopped_by_user())
+        updates_log("Forkop did not start again after the failed sing-box component change", "error");
 }
 
 // Forkop's own stop for an in-app upgrade is followed by a start. When the
@@ -922,43 +1003,12 @@ function managed_sing_box_service_installed() {
     return file_exists("/etc/init.d/sing-box") && index(read_file("/etc/init.d/sing-box"), SB_MANAGED_SERVICE_MARKER) >= 0;
 }
 
-function managed_sing_box_service_text() {
-    return "#!/bin/sh /etc/rc.common\n" +
-        "# " + SB_MANAGED_SERVICE_MARKER + "\n\n" +
-        "USE_PROCD=1\n" +
-        "START=99\n" +
-        "PROG=\"/usr/bin/sing-box\"\n\n" +
-        "start_service() {\n" +
-        "    config_load \"sing-box\"\n" +
-        "    local enabled config_file working_directory\n" +
-        "    local log_stderr\n\n" +
-        "    config_get_bool enabled \"main\" \"enabled\" \"0\"\n" +
-        "    [ \"$enabled\" -eq \"1\" ] || return 0\n\n" +
-        "    config_get config_file \"main\" \"conffile\" \"/etc/sing-box/config.json\"\n" +
-        "    config_get working_directory \"main\" \"workdir\" \"/usr/share/sing-box\"\n" +
-        "    config_get_bool log_stderr \"main\" \"log_stderr\" \"1\"\n\n" +
-        "    procd_open_instance\n" +
-        "    procd_set_param command \"$PROG\" run -c \"$config_file\" -D \"$working_directory\"\n" +
-        "    procd_set_param file \"$config_file\"\n" +
-        "    procd_set_param stderr \"$log_stderr\"\n" +
-        "    procd_set_param limits core=\"unlimited\"\n" +
-        "    procd_set_param limits nofile=\"1000000 1000000\"\n" +
-        "    procd_set_param respawn\n" +
-        "    procd_close_instance\n" +
-        "}\n\n" +
-        "service_triggers() {\n" +
-        "    procd_add_reload_trigger \"sing-box\"\n" +
-        "}\n";
-}
-
-// Read back and flushed before and after the rename (core/durable.uc): a
-// full overlay took the write and left an empty init script in place. The
-// copy is named after this process, which lives until the rename, as the
-// copy of singbox/runtime.uc is: a start removes the copies whose writer is
-// gone (owner_pid() names a short-lived shell, gone at once).
+// The script of singbox/managed_service.uc, the one every writer installs
+// (UC-085): written only when it differs, read back and flushed before and
+// after the rename, stale copies of it removed. Loaded here, as only the
+// sing-box actions install it.
 function install_managed_sing_box_service_script() {
-    return durable.durable_replace("/etc/init.d/sing-box.forkop." + fs.readlink("/proc/self"), "/etc/init.d/sing-box",
-        managed_sing_box_service_text(), 0755);
+    return require("singbox.managed_service").install();
 }
 
 function remove_managed_sing_box_service_script() {
@@ -1008,6 +1058,9 @@ function capture_managed_upgrade_sing_box_marker() {
 }
 
 // False when Forkop was running before the change and did not start again.
+// A Forkop that the user stopped while the change ran stays stopped (D-15,
+// UC-235), also when the user's stop overtook the restart: the stop won,
+// the change itself did not fail.
 function restart_forkop_after_successful_change() {
     if (!file_exists(SERVICE_INIT))
         return true;
@@ -1016,17 +1069,27 @@ function restart_forkop_after_successful_change() {
         prepare_sing_box_service_disabled();
         return true;
     }
-    updates_log("Restarting Forkop after successful component change");
-    if (forkop_start_and_wait("restart"))
+    if (forkop_stopped_by_user()) {
+        updates_log("Forkop was stopped by the user during the component change; it is not started again");
+        prepare_sing_box_service_disabled();
         return true;
+    }
+    updates_log("Restarting Forkop after successful component change");
+    let status = forkop_restart_and_wait();
+    if (status == 0)
+        return true;
+    if (forkop_stopped_by_user()) {
+        updates_log("Forkop was stopped by the user during its restart after the component change");
+        prepare_sing_box_service_disabled();
+        return true;
+    }
+    if (status == 2) {
+        forkop_restart_refused = true;
+        updates_log(FORKOP_RESTART_REFUSED, "warn");
+        return false;
+    }
     updates_log("Forkop did not start again after the component change", "error");
     return false;
-}
-
-// Forkop's own stop for a component change, followed by a start: not the
-// user's stop (service/initd.uc stop_request_source).
-function forkop_stop_for_component_change_args() {
-    return [ "env", "FORKOP_STOP_SOURCE=component", SERVICE_INIT, "stop" ];
 }
 
 const SING_BOX_CHANGE_STOP_REFUSED = "Forkop was not stopped: another sing-box process makes the ownership of its runtime ambiguous; the current sing-box variant was kept";
@@ -1062,7 +1125,10 @@ function wait_forkop_running_after_sing_box_change() {
     // A cold start after a package upgrade can take minutes on slow routers:
     // lists, rule-sets and the runtime config are all rebuilt. Giving up too
     // early reported a failure for a start that was still making progress.
+    // A Forkop that the user stopped is not waited for (UC-235).
     while (waited < 180) {
+        if (forkop_stopped_by_user())
+            return true;
         if (forkop_status_running_with_timeout()) {
             command_success_from_args([ "sleep", "8" ]);
             if (forkop_status_running_with_timeout())
@@ -1291,7 +1357,7 @@ function install_zapret_like(component, action, runtime_module, resolve_fn, labe
     if (current_version == "")
         current_version = "unknown";
     if (!restarted)
-        action_fail(component, action, label + " package has been installed, but Forkop did not start again", current_version, pkg.version, "", release.release_url || "");
+        action_fail(component, action, label + " package has been installed, but " + forkop_not_restarted_text(), current_version, pkg.version, "", release.release_url || "");
     action_success(component, action, label + " package has been installed", current_version, pkg.version, 1, "latest", release.release_url || "");
 }
 
@@ -1338,7 +1404,7 @@ function install_byedpi(action) {
     if (current_version == "")
         current_version = "unknown";
     if (!restarted)
-        action_fail("byedpi", action, "ByeDPI package has been installed, but Forkop did not start again", current_version, pkg.version);
+        action_fail("byedpi", action, "ByeDPI package has been installed, but " + forkop_not_restarted_text(), current_version, pkg.version);
     action_success("byedpi", action, "ByeDPI package has been installed", current_version, pkg.version, 1, "latest", release.release_url || "");
 }
 
@@ -1410,7 +1476,7 @@ function remove_optional_component(component, package_name, label, runtime_modul
     if (provider_installed(runtime_module))
         action_fail(component, "remove", label + " package was removed, but provider files are still present", current_version);
     if (!restart_forkop_after_successful_change())
-        action_fail(component, "remove", label + " package has been removed, but Forkop did not start again", current_version);
+        action_fail(component, "remove", label + " package has been removed, but " + forkop_not_restarted_text(), current_version);
     action_success(component, "remove", label + " package has been removed", current_version, "", 1);
 }
 
@@ -2108,23 +2174,49 @@ function check_forkop() {
     action_success("forkop", "check_update", "Installed version is newer than release", FORKOP_VERSION, latest_version, 0, status, release_url);
 }
 
+// The SHA-256 that the release metadata names for an asset: fold8's
+// latest.json and the version catalog give "sha256", the GitHub API gives
+// "digest" as "sha256:<hex>" (install.sh reads both). "" when it names none.
+function release_asset_sha256(metadata, name) {
+    for (let asset in (type(metadata.assets) == "array" ? metadata.assets : [])) {
+        if (type(asset) != "object" || as_string(asset.name) != as_string(name))
+            continue;
+        let digest = lc(as_string(asset.sha256 || asset.digest || ""));
+        if (substr(digest, 0, 7) == "sha256:")
+            digest = substr(digest, 7);
+        return match(digest, /^[0-9a-f]{64}$/) != null ? digest : "";
+    }
+    return "";
+}
+
+// "" when the file cannot be read: it matches no checksum.
+function file_sha256(path) {
+    return split(trim(command_output_from_args([ "sha256sum", path ])), /[ \t]+/)[0];
+}
+
 function resolve_forkop_release_json(latest_version, release_json) {
     if (release_json == "")
         return null;
     let asset_ext = is_apk() ? "apk" : "ipk";
     let i18n_required = pkg_is_installed("luci-i18n-forkop-ru") ? "1" : "0";
-    let plan = trim(helper_output_input(release_json, "forkop-release-plan", [ latest_version, asset_ext, i18n_required ]));
+    // Without the language pack the plan ends in two empty fields: only the
+    // line end goes, never the tabs that delimit them (UC-027).
+    let plan = replace(helper_output_input(release_json, "forkop-release-plan", [ latest_version, asset_ext, i18n_required ]), /\n+$/, "");
     let fields = split(plan, "\t");
     if (length(fields) < 7 || as_string(fields[1]) == "" || as_string(fields[2]) == "" || as_string(fields[3]) == "" || as_string(fields[4]) == "")
         return null;
+    let metadata = parse_json_object(release_json);
     return {
         release_url: forkop_release_page_url(latest_version, fields[0]),
         backend_name: fields[1],
         backend_url: forkop_release_url(fields[2]),
+        backend_sha256: release_asset_sha256(metadata, fields[1]),
         app_name: fields[3],
         app_url: forkop_release_url(fields[4]),
+        app_sha256: release_asset_sha256(metadata, fields[3]),
         i18n_name: fields[5],
-        i18n_url: forkop_release_url(fields[6])
+        i18n_url: forkop_release_url(fields[6]),
+        i18n_sha256: fields[5] != "" ? release_asset_sha256(metadata, fields[5]) : ""
     };
 }
 
@@ -2202,7 +2294,12 @@ function forkop_recovery_files(with_i18n, extension) {
 // The service state from before the upgrade. Stopping a Forkop that the
 // package scripts started is Forkop's own stop for the upgrade, not the
 // user's (D-15); a start is awaited (UC-013). A stop by the user since then
-// holds (D-15).
+// holds (D-15), also one that overtook that start: the stop won, and the
+// package set is in place (UC-235). This action's upgrade marker names no
+// transition any more: the old sing-box was proven gone before the package
+// step, which can outlast the marker's age (a slow router, the downloads of
+// the mirror migration), and a stale marker would refuse this start
+// (UC-217).
 function restore_forkop_opkg_service(was_running) {
     if (!was_running) {
         if (!forkop_status_running_with_timeout())
@@ -2216,7 +2313,14 @@ function restore_forkop_opkg_service(was_running) {
         updates_log("Forkop was stopped by the user; the restored release is not started");
         return true;
     }
-    return forkop_start_and_wait("start");
+    remove_managed_upgrade_sing_box_marker();
+    if (forkop_start_and_wait("start"))
+        return true;
+    if (forkop_stopped_by_user()) {
+        updates_log("Forkop was stopped by the user during its start; it is not started again");
+        return true;
+    }
+    return false;
 }
 
 function finish_forkop_opkg_recovery(service_state) {
@@ -2324,6 +2428,17 @@ function prepare_forkop_package_set(backend_file, app_file, i18n_file) {
         (with_i18n && !download_with_retry(previous.i18n_url, old_files[2], previous.i18n_name))) {
         command_success_from_args([ "rm", "-rf", FORKOP_OPKG_RECOVERY_DIR ]);
         return "Failed to stage previous Forkop release packages; automatic upgrade refused";
+    }
+    // The rollback installs this set: it is checked as the new one is,
+    // wherever its GitHub metadata names a digest (UC-080). Older assets
+    // name none (digest null); their set is staged unchecked.
+    let old_names = [ previous.backend_name, previous.app_name, previous.i18n_name ];
+    let old_sums = [ previous.backend_sha256, previous.app_sha256, previous.i18n_sha256 ];
+    for (let i = 0; i < length(old_files); i++) {
+        if (old_sums[i] && file_sha256(old_files[i]) != old_sums[i]) {
+            command_success_from_args([ "rm", "-rf", FORKOP_OPKG_RECOVERY_DIR ]);
+            return "Previous Forkop release package checksum mismatch for " + old_names[i] + "; automatic upgrade refused";
+        }
     }
 
     let new_files = [ backend_file, app_file ];
@@ -2562,18 +2677,30 @@ function refresh_luci_after_forkop_upgrade() {
     command_success_from_args([ "killall", "-HUP", "rpcd" ]);
 }
 
-function verify_selected_release_downloads(selected, files, latest_version) {
-    for (let file in files) {
-        if (file == "")
-            continue;
-        let name = replace(file, /^.*\//, "");
-        let expected = "";
-        for (let asset in selected.assets)
-            if (as_string(asset.name) == name)
-                expected = as_string(asset.sha256);
-        let actual = split(trim(command_output_from_args([ "sha256sum", file ])), /[ \t]+/)[0];
-        if (expected == "" || actual != expected)
-            action_fail("forkop", "install", "Release package checksum mismatch", FORKOP_VERSION, latest_version);
+// The packages to install are the ones the release metadata names, the
+// latest release as much as a version picked in the version picker (UC-080).
+// Metadata without a checksum refuses the upgrade, as install.sh does. Both
+// refusals come before anything is staged or Forkop is stopped.
+function release_packages(release, backend_file, app_file, i18n_file) {
+    let packages = [ [ backend_file, release.backend_name, release.backend_sha256 ],
+        [ app_file, release.app_name, release.app_sha256 ] ];
+    if (i18n_file != "")
+        push(packages, [ i18n_file, release.i18n_name, release.i18n_sha256 ]);
+    return packages;
+}
+
+function require_release_checksums(packages, latest_version) {
+    for (let item in packages)
+        if (item[2] == "")
+            action_fail("forkop", "install", "Release metadata has no SHA-256 for " + item[1] +
+                "; automatic upgrade refused", FORKOP_VERSION, latest_version);
+}
+
+function verify_release_downloads(packages, latest_version) {
+    for (let item in packages) {
+        if (file_sha256(item[0]) != item[2])
+            action_fail("forkop", "install", "Release package checksum mismatch for " + item[1] +
+                "; automatic upgrade refused", FORKOP_VERSION, latest_version);
     }
 }
 
@@ -2601,13 +2728,15 @@ function install_forkop(requested_version) {
     let backend_file = tmp_dir + "/" + release.backend_name;
     let app_file = tmp_dir + "/" + release.app_name;
     let i18n_file = release.i18n_url != "" ? tmp_dir + "/" + release.i18n_name : "";
+    let packages = release_packages(release, backend_file, app_file, i18n_file);
+    require_release_checksums(packages, latest_version);
     if (!download_with_retry(release.backend_url, backend_file, release.backend_name) ||
         !download_with_retry(release.app_url, app_file, release.app_name) ||
         (release.i18n_url != "" && !download_with_retry(release.i18n_url, i18n_file, release.i18n_name)))
         action_fail("forkop", "install", "Failed to download Forkop release packages", FORKOP_VERSION, latest_version);
+    verify_release_downloads(packages, latest_version);
 
     if (selected != null) {
-        verify_selected_release_downloads(selected, [ backend_file, app_file, i18n_file ], latest_version);
         let backup = save_forkop_configuration_backup("/etc/config", "/etc/forkop-backups");
         if (backup == "")
             action_fail("forkop", "install", "Failed to back up Forkop configuration", FORKOP_VERSION, latest_version);
@@ -2654,7 +2783,8 @@ function install_forkop(requested_version) {
     if (new_version == "")
         new_version = latest_version;
     if (!restarted)
-        action_fail("forkop", "install", "Forkop has been installed, but did not start again", new_version, latest_version, "", release.release_url);
+        action_fail("forkop", "install", forkop_restart_refused ? "Forkop has been installed, but " + FORKOP_RESTART_REFUSED :
+            "Forkop has been installed, but did not start again", new_version, latest_version, "", release.release_url);
     updates_log("Forkop updated to " + new_version);
     action_success("forkop", "install", "Forkop has been installed", new_version, latest_version, 1, "latest", release.release_url);
 }
@@ -2751,18 +2881,30 @@ function set_direct_proxy(action) {
         !uci_core.commit(CONFIG_NAME))
         action_fail("direct_proxy", action, "Failed to save Direct Proxy settings", current_enabled, target_enabled);
 
+    let restart_status = 0;
     if (!forkop_active_for_setting_change())
         updates_log("Forkop is not running; the Direct Proxy setting applies at its next start");
-    else if (!forkop_start_and_wait("restart")) {
-        uci_core.set(enabled_path, current_enabled);
-        if (current_port != "")
-            uci_core.set(port_path, current_port);
-        else
-            uci_core.delete(port_path);
-        uci_core.commit(CONFIG_NAME);
-        if (!forkop_start_and_wait("restart"))
-            updates_log("Forkop did not start again with the previous Direct Proxy settings", "error");
-        action_fail("direct_proxy", action, "Failed to apply Direct Proxy settings", current_enabled, target_enabled);
+    else if ((restart_status = forkop_restart_and_wait()) != 0) {
+        // The user's stop overtook the restart: it wins, and the setting
+        // applies at the next start. The restart with the previous settings
+        // would start Forkop again (D-15, UC-235).
+        if (forkop_stopped_by_user())
+            updates_log("Forkop was stopped by the user during its restart; the Direct Proxy setting applies at its next start");
+        else {
+            uci_core.set(enabled_path, current_enabled);
+            if (current_port != "")
+                uci_core.set(port_path, current_port);
+            else
+                uci_core.delete(port_path);
+            uci_core.commit(CONFIG_NAME);
+            // A refused stop changed nothing: Forkop runs on with the
+            // previous settings, and their restart would be refused alike.
+            if (restart_status == 2)
+                action_fail("direct_proxy", action, "Failed to apply Direct Proxy settings: " + FORKOP_RESTART_REFUSED, current_enabled, target_enabled);
+            if (!forkop_stopped_by_user() && forkop_restart_and_wait() != 0 && !forkop_stopped_by_user())
+                updates_log("Forkop did not start again with the previous Direct Proxy settings", "error");
+            action_fail("direct_proxy", action, "Failed to apply Direct Proxy settings", current_enabled, target_enabled);
+        }
     }
 
     remove_file(SYSTEM_INFO_CACHE_FILE);

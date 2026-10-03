@@ -836,6 +836,14 @@ function start_result_path(request) {
     return RUNTIME_STATE_DIR + "/start-result." + as_string(request);
 }
 
+// The stop request of the caller's own stop that this start follows
+// (FORKOP_START_AFTER_STOP: the first line of stop.requested after that
+// stop, components/action.uc), or "".
+function start_after_stop_value() {
+    let request = as_string(getenv("FORKOP_START_AFTER_STOP") || "");
+    return match(request, /^[A-Za-z0-9._-]+$/) != null ? request : "";
+}
+
 // The outcome of this start for the start-and-wait caller that requested it,
 // and for the WAN-up retry (reason "triggered") in the log. Written before a
 // queued reload is drained: that reload waits for procd's lock, which the
@@ -900,6 +908,12 @@ function start_service(reason, owner_pid) {
         if (stop_request_before == null)
             return 0;
     }
+    // A start that follows its caller's own stop compares with that stop: a
+    // stop requested after it wins also when it ran before this start, as a
+    // user's stop that waited for procd's lock behind that stop does
+    // (D-15(a), UC-235).
+    else if (reason != "triggered" && start_after_stop_value() != "")
+        stop_request_before = start_after_stop_value();
     // The explicit start is recorded when it is asked for, before it waits
     // for reload.lock, and also when it then fails: a runtime that is down
     // after it did not stay down on request, and a reload repairs it. So is

@@ -2830,7 +2830,8 @@ migrate_legacy_configuration() {
     if [ -n "$LEGACY_CONFIG_BACKUP" ]; then
         cp "$LEGACY_CONFIG_BACKUP" /etc/config/forkop ||
             fail "Failed to restore the legacy configuration for migration"
-        chmod 0644 /etc/config/forkop ||
+        # It holds secrets: only root reads it, as the package installs it.
+        chmod 0600 /etc/config/forkop ||
             fail "Failed to set permissions on the Forkop configuration"
 
         msg "Migrating the legacy configuration to Forkop"

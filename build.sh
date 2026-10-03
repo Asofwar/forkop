@@ -201,7 +201,7 @@ build_backend_root() {
   install -d "$output_root/usr/share/nftables.d/ruleset-post"
   install -m 0644 "$ROOT_DIR/forkop/files/usr/share/nftables.d/ruleset-post/90-forkop-killswitch-loader.nft" \
     "$output_root/usr/share/nftables.d/ruleset-post/90-forkop-killswitch-loader.nft"
-  install -m 0644 "$ROOT_DIR/forkop/files/etc/config/forkop" "$output_root/etc/config/forkop"
+  install -m 0600 "$ROOT_DIR/forkop/files/etc/config/forkop" "$output_root/etc/config/forkop"
   install -m 0644 "$ROOT_DIR/forkop/files/etc/config/forkop" "$output_root/usr/share/forkop/defaults/forkop"
   install -m 0755 "$ROOT_DIR/forkop/files/usr/share/forkop/mirror-migration.sh" "$output_root/usr/share/forkop/mirror-migration.sh"
   install -m 0755 "$ROOT_DIR/forkop/files/usr/bin/forkop" "$output_root/usr/bin/forkop"
@@ -219,6 +219,9 @@ build_backend_root() {
     "$output_root/usr/bin/forkop" \
     "$output_root/usr/libexec/forkop-ro" \
     "$output_root/usr/share/forkop/mirror-migration.sh"
+  # It holds secrets (the Clash API secret, subscription URLs, WAN
+  # credentials): only root reads it.
+  chmod 0600 "$output_root/etc/config/forkop"
 }
 
 build_app_root() {

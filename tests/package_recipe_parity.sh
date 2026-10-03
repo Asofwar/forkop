@@ -6,7 +6,8 @@
 #
 # Before, the SDK package lacked /etc/init.d/forkop-torrserver-direct
 # (TorrServer Direct could not be enabled), installed the configuration
-# 0600, copied the library with whatever modes the checkout had, refused an
+# 0600 where build.sh installed it 0644 (both install it 0600 now: it holds
+# secrets), copied the library with whatever modes the checkout had, refused an
 # x.y.z-N release version (so did the LuCI app's recipe), never stopped
 # Forkop before an apk upgrade (apk runs no pre-upgrade script of a package
 # without Package/preinst), and OpenWrt's default package scripts, which
@@ -130,6 +131,12 @@ diff -u "$WORK_DIR/build.list" "$WORK_DIR/sdk.list" >"$WORK_DIR/list.diff" ||
   fail "the SDK package's files or modes differ from build.sh's: $(cat "$WORK_DIR/list.diff")"
 diff -r "$WORK_DIR/build-root" "$SDK/root" >"$WORK_DIR/content.diff" ||
   fail "the SDK package's file contents differ from build.sh's: $(head -n 20 "$WORK_DIR/content.diff")"
+# The configuration holds secrets (the Clash API secret, subscription URLs,
+# WAN credentials): only root reads it. Its packaged defaults hold none.
+grep -Fxq 'f 600 ./etc/config/forkop' "$WORK_DIR/build.list" ||
+  fail "the packages install /etc/config/forkop $(grep -F ' ./etc/config/forkop' "$WORK_DIR/build.list"), not 0600"
+grep -Fxq 'f 644 ./usr/share/forkop/defaults/forkop' "$WORK_DIR/build.list" ||
+  fail "the packages install the default configuration $(grep -F ' ./usr/share/forkop/defaults/forkop' "$WORK_DIR/build.list"), not 0644"
 grep -Fq '1.2.3' "$SDK/root/usr/lib/forkop/core/constants.uc" ||
   fail "the SDK package does not carry its version in core/constants.uc"
 cmp -s "$BUILD/ipk/conffiles" "$SDK/control/conffiles" ||

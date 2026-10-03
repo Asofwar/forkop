@@ -116,8 +116,9 @@ define Package/forkop/conffiles
 endef
 
 # The files of build.sh build_backend_root, with its modes: directories and
-# the library 0755 and 0644, the configuration 0644, the commands and init
-# scripts 0755 (tests/package_recipe_parity.sh compares the two).
+# the library 0755 and 0644, the configuration 0600 (it holds secrets), its
+# packaged defaults 0644, the commands and init scripts 0755
+# (tests/package_recipe_parity.sh compares the two).
 define Package/forkop/install
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./files/etc/init.d/forkop $(1)/etc/init.d/forkop
@@ -129,7 +130,7 @@ define Package/forkop/install
 	$(INSTALL_DATA) ./files/usr/share/nftables.d/ruleset-post/90-forkop-killswitch-loader.nft $(1)/usr/share/nftables.d/ruleset-post/90-forkop-killswitch-loader.nft
 
 	$(INSTALL_DIR) $(1)/etc/config
-	$(INSTALL_DATA) ./files/etc/config/forkop $(1)/etc/config/forkop
+	$(INSTALL_CONF) ./files/etc/config/forkop $(1)/etc/config/forkop
 
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) ./files/usr/bin/forkop $(1)/usr/bin/forkop

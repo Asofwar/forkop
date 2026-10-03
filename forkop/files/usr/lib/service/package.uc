@@ -561,14 +561,29 @@ function legacy_vpn_guard_cleanup() {
     return firewall_saved;
 }
 
+// The configuration holds secrets (the Clash API secret, D-1; subscription
+// URLs, WAN credentials): only root reads it, 0600 as the packages install
+// it. Releases before installed it 0644, and a configuration kept across the
+// upgrade keeps its mode: it is narrowed here, on the first package change
+// that finds it wider. libuci and Forkop's own writers keep the mode
+// (core/durable.uc durable_rewrite). A configuration that cannot be changed
+// (a read-only overlay) is still read as it is: the package change goes on.
+function protect_config_mode() {
+    let info = fs.stat(CONFIG_PATH);
+    if (info != null && (info.mode & 0077) != 0 && !fs.chmod(CONFIG_PATH, 0600))
+        warn("Unable to make the Forkop configuration readable by root only.\n");
+}
+
 // A missing or empty configuration comes back from the packaged defaults.
 // The package scripts restore it before the migrations, which fail without
 // it (build.sh write_backend_postinst, mode restore-config; UC-077), and
 // postinst checks again.
 function restore_missing_config() {
     let config = fs.readfile(CONFIG_PATH);
-    if (config != null && trim(as_string(config)) != "")
+    if (config != null && trim(as_string(config)) != "") {
+        protect_config_mode();
         return true;
+    }
 
     let defaults = fs.readfile(DEFAULT_CONFIG_PATH);
     if (defaults == null || trim(as_string(defaults)) == "") {
@@ -576,7 +591,7 @@ function restore_missing_config() {
         return false;
     }
     if (fs.writefile(CONFIG_PATH, defaults) == null ||
-        !command_success_from_args([ "chmod", "0644", CONFIG_PATH ])) {
+        !command_success_from_args([ "chmod", "0600", CONFIG_PATH ])) {
         warn("Unable to restore missing Forkop configuration.\n");
         return false;
     }

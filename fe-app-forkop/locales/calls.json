@@ -4016,7 +4016,14 @@
     "call": "Forkop X is still active after its stop, so nothing was removed. Still in place: %s. Stop Forkop X or restart the router, then try again.",
     "key": "Forkop X is still active after its stop, so nothing was removed. Still in place: %s. Stop Forkop X or restart the router, then try again.",
     "places": [
-      "src/forkop/tabs/updates/fullUninstallStatus.ts:53"
+      "src/forkop/tabs/updates/fullUninstallStatus.ts:61"
+    ]
+  },
+  {
+    "call": "Forkop X is still changing its configuration (a snapshot restore, an autotune run or another change), so nothing was removed. Try again once it has finished.",
+    "key": "Forkop X is still changing its configuration (a snapshot restore, an autotune run or another change), so nothing was removed. Try again once it has finished.",
+    "places": [
+      "src/forkop/tabs/updates/fullUninstallStatus.ts:54"
     ]
   },
   {
@@ -4144,7 +4151,7 @@
     "call": "Forkop X was removed, but this is still in place: %s. See the removal log in /tmp/forkop-uninstall.*/output.log.",
     "key": "Forkop X was removed, but this is still in place: %s. See the removal log in /tmp/forkop-uninstall.*/output.log.",
     "places": [
-      "src/forkop/tabs/updates/fullUninstallStatus.ts:58"
+      "src/forkop/tabs/updates/fullUninstallStatus.ts:66"
     ]
   },
   {
@@ -7183,7 +7190,7 @@
     "call": "Removal did not finish. See the removal log in /tmp/forkop-uninstall.*/output.log.",
     "key": "Removal did not finish. See the removal log in /tmp/forkop-uninstall.*/output.log.",
     "places": [
-      "src/forkop/tabs/updates/fullUninstallStatus.ts:62"
+      "src/forkop/tabs/updates/fullUninstallStatus.ts:70"
     ]
   },
   {

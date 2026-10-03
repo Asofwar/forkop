@@ -9,6 +9,10 @@ MIRROR="${FORKOP_MIRROR_BASE_URL:-}"
 if [ -z "$MIRROR" ]; then MIRROR="$(uci -q get forkop.settings.mirror_base_url 2>/dev/null || true)"; fi
 MIRROR="${MIRROR:-https://mirror.infotechtg.ru}"
 BIN="$ROOT/usr/bin/forkop"
+# The removal's own variables have names that no environment exports: an
+# inherited variable it assigned (a LIB, a RUNNING) would change the
+# environment of the init and package scripts it runs.
+UNINSTALL_LIB="$ROOT/usr/lib/forkop"
 LOCK="$ROOT/tmp/forkop-full-uninstall.lock"
 COMPONENT_LOCK="$ROOT/var/run/forkop/component-action.lock"
 PACKAGES="luci-i18n-forkop-ru luci-app-forkop forkop sing-box sing-box-tiny sing-box-extended"
@@ -55,6 +59,53 @@ installed() {
     if [ "$MANAGER" = apk ]; then apk info -e "$1" >/dev/null 2>&1
     else opkg status "$1" 2>/dev/null | grep -q '^Status: .* installed$'; fi
 }
+
+# The configuration transactions of Forkop (UC-084): a snapshot create,
+# delete, restore or apply (the last two also autotune's) and the snapshot of
+# a start or reload, an autotune run, apply or rollback with the probes it
+# runs, a change of the autotune policy or its targets (which also writes
+# the crontab), an URLTest override. Each runs as
+# `ucode -L <lib> <lib>/<module> <mode> ...`, the identity under which the
+# snapshot and autotune locks accept an owner. transaction_of <pid> prints
+# "<module> <mode>" for such a process and nothing for any other.
+transaction_of() {
+    # A process may end in between: no message, no transaction.
+    tr '\0' '\n' 2>/dev/null <"/proc/$1/cmdline" | (
+        read -r _ && read -r flag && read -r lib && read -r module || exit 0
+        read -r mode || mode=
+        [ "$flag" = -L ] && [ "$lib" = "$UNINSTALL_LIB" ] || exit 0
+        case "${module#"$UNINSTALL_LIB/"} $mode" in
+            "config/snapshots.uc create" | "config/snapshots.uc delete" | \
+            "config/snapshots.uc restore" | "config/snapshots.uc apply" | \
+            "config/snapshots.uc confirm-working" | \
+            "autotune/apply.uc apply" | "autotune/apply.uc rollback" | \
+            "autotune/isolation.uc run" | "autotune/isolation.uc tune" | "autotune/isolation.uc cleanup" | \
+            "autotune/manager.uc run" | "autotune/manager.uc run-async" | "autotune/manager.uc run-job" | \
+            "autotune/manager.uc if-due" | "autotune/manager.uc apply" | \
+            "autotune/manager.uc apply-async" | "autotune/manager.uc apply-job" | \
+            "autotune/manager.uc rollback" | "autotune/manager.uc policy-set" | \
+            "autotune/manager.uc target-set" | "autotune/manager.uc target-remove" | \
+            "config/urltest_override.uc save" | "config/urltest_override.uc reset")
+                printf '%s %s\n' "${module#"$UNINSTALL_LIB/"}" "$mode" ;;
+        esac
+    )
+}
+
+# transaction_running: such a transaction runs; UNINSTALL_TRANSACTIONS names
+# each one.
+transaction_running() {
+    UNINSTALL_TRANSACTIONS=
+    for cmdline in $(grep -lsF -- "$UNINSTALL_LIB/" /proc/[0-9]*/cmdline); do
+        pid="${cmdline#/proc/}"
+        pid="${pid%/cmdline}"
+        found="$(transaction_of "$pid")"
+        if [ -n "$found" ]; then
+            UNINSTALL_TRANSACTIONS="${UNINSTALL_TRANSACTIONS:+$UNINSTALL_TRANSACTIONS, }$found (pid $pid)"
+        fi
+    done
+    [ -n "$UNINSTALL_TRANSACTIONS" ]
+}
+UNINSTALL_TRANSACTION_WAIT=60
 
 # LEFT: what of Forkop is still in place (UC-028), comma-separated: its nft
 # table and its fwmark rule at priority 105 (by the table's name, or by
@@ -157,6 +208,29 @@ run() {
     if command -v apk >/dev/null 2>&1; then MANAGER=apk
     elif command -v opkg >/dev/null 2>&1; then MANAGER=opkg
     else return 1; fi
+
+    # A configuration transaction that began before the removal took its
+    # lock may still run (UC-084): it would write /etc/config/forkop, the
+    # snapshots or the crontab again after the files below are gone, or keep
+    # its nft guard. The CLI refuses new ones from now on (usr/bin/forkop).
+    # Wait for the running ones, bounded, before anything is stopped: they
+    # take neither the removal's lock nor the component lock (one whose
+    # reload the CLI now refuses ends sooner), so waiting while holding both
+    # cannot deadlock. One still running then fails the removal with
+    # nothing stopped or removed.
+    if transaction_running; then
+        PHASE=transactions
+        state running
+        waited=0
+        while transaction_running; do
+            if [ "$waited" -ge "$UNINSTALL_TRANSACTION_WAIT" ]; then
+                echo "Forkop is still changing its configuration: $UNINSTALL_TRANSACTIONS. Nothing was removed; run the removal again once it has finished." >&2
+                return 1
+            fi
+            sleep 1
+            waited=$((waited + 1))
+        done
+    fi
 
     PHASE=stop
     state running

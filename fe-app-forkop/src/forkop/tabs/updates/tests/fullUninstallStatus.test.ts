@@ -31,6 +31,15 @@ describe('failed full removal', () => {
     );
   });
 
+  it('says that a configuration change kept the removal from starting', () => {
+    const message = describeFailedRemoval({
+      state: 'failed',
+      phase: 'transactions',
+    });
+    expect(message).toContain('still changing its configuration');
+    expect(message).toContain('nothing was removed');
+  });
+
   it('keeps the left list as text', () => {
     expect(
       describeFailedRemoval({

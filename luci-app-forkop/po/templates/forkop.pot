@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-03 10:11+0000\n"
-"PO-Revision-Date: 2026-10-03 10:11+0000\n"
+"POT-Creation-Date: 2026-10-03 10:16+0000\n"
+"PO-Revision-Date: 2026-10-03 10:16+0000\n"
 "Last-Translator: Asofwar <7397608+Asofwar@users.noreply.github.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -2391,8 +2391,12 @@ msgstr ""
 msgid "Forkop X is running"
 msgstr ""
 
-#: src/forkop/tabs/updates/fullUninstallStatus.ts:53
+#: src/forkop/tabs/updates/fullUninstallStatus.ts:61
 msgid "Forkop X is still active after its stop, so nothing was removed. Still in place: %s. Stop Forkop X or restart the router, then try again."
+msgstr ""
+
+#: src/forkop/tabs/updates/fullUninstallStatus.ts:54
+msgid "Forkop X is still changing its configuration (a snapshot restore, an autotune run or another change), so nothing was removed. Try again once it has finished."
 msgstr ""
 
 #: src/forkop/tabs/autotune/model.ts:886
@@ -2465,7 +2469,7 @@ msgstr ""
 msgid "Forkop X was not stopped by the user: its start failed or it stopped unexpectedly."
 msgstr ""
 
-#: src/forkop/tabs/updates/fullUninstallStatus.ts:58
+#: src/forkop/tabs/updates/fullUninstallStatus.ts:66
 msgid "Forkop X was removed, but this is still in place: %s. See the removal log in /tmp/forkop-uninstall.*/output.log."
 msgstr ""
 
@@ -4271,7 +4275,7 @@ msgstr ""
 msgid "Regular expression must not contain spaces or commas"
 msgstr ""
 
-#: src/forkop/tabs/updates/fullUninstallStatus.ts:62
+#: src/forkop/tabs/updates/fullUninstallStatus.ts:70
 msgid "Removal did not finish. See the removal log in /tmp/forkop-uninstall.*/output.log."
 msgstr ""
 

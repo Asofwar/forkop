@@ -47,6 +47,14 @@ export function describeFailedRemoval(status: FullUninstallStatus): string {
       'Original repositories could not be restored. Removal was cancelled before deleting packages.',
     );
   }
+  // A configuration change that began before the removal (a snapshot
+  // restore, an autotune run) did not end in time: nothing was stopped or
+  // removed (full-uninstall.sh; UC-084).
+  if (status.phase === 'transactions') {
+    return _(
+      'Forkop X is still changing its configuration (a snapshot restore, an autotune run or another change), so nothing was removed. Try again once it has finished.',
+    );
+  }
   // The stop left Forkop's interception in place: nothing was disabled,
   // stopped or removed after it.
   if (status.phase === 'stop' && left) {

@@ -16254,6 +16254,11 @@ function describeFailedRemoval(status2) {
       "Original repositories could not be restored. Removal was cancelled before deleting packages."
     );
   }
+  if (status2.phase === "transactions") {
+    return _(
+      "Forkop X is still changing its configuration (a snapshot restore, an autotune run or another change), so nothing was removed. Try again once it has finished."
+    );
+  }
   if (status2.phase === "stop" && left) {
     return _(
       "Forkop X is still active after its stop, so nothing was removed. Still in place: %s. Stop Forkop X or restart the router, then try again."

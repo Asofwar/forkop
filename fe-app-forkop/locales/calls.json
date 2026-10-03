@@ -22,7 +22,7 @@
     "call": "%d connections now",
     "key": "%d connections now",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:326"
+      "src/forkop/tabs/dashboard/overview.ts:329"
     ]
   },
   {
@@ -88,21 +88,21 @@
     "call": "%d node groups",
     "key": "%d node groups",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:319"
+      "src/forkop/tabs/dashboard/overview.ts:322"
     ]
   },
   {
     "call": "%d rules",
     "key": "%d rules",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:317"
+      "src/forkop/tabs/dashboard/overview.ts:320"
     ]
   },
   {
     "call": "%d rules · %d node groups",
     "key": "%d rules · %d node groups",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:313"
+      "src/forkop/tabs/dashboard/overview.ts:316"
     ]
   },
   {
@@ -256,28 +256,28 @@
     "call": "A configuration change is being applied. Traffic that needs DPI bypass may be blocked until it finishes.",
     "key": "A configuration change is being applied. Traffic that needs DPI bypass may be blocked until it finishes.",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:124"
+      "src/forkop/tabs/dashboard/overview.ts:127"
     ]
   },
   {
     "call": "A configuration change was not confirmed. Traffic that needs DPI bypass may be blocked; see the recovery details for the next step.",
     "key": "A configuration change was not confirmed. Traffic that needs DPI bypass may be blocked; see the recovery details for the next step.",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:128"
+      "src/forkop/tabs/dashboard/overview.ts:131"
     ]
   },
   {
     "call": "A configuration restore did not finish: restore the last known good snapshot to finish it.",
     "key": "A configuration restore did not finish: restore the last known good snapshot to finish it.",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:411"
+      "src/forkop/tabs/dashboard/overview.ts:414"
     ]
   },
   {
     "call": "A configuration restore did not finish. Traffic that needs DPI bypass stays blocked until you restore the last known good snapshot.",
     "key": "A configuration restore did not finish. Traffic that needs DPI bypass stays blocked until you restore the last known good snapshot.",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:120"
+      "src/forkop/tabs/dashboard/overview.ts:123"
     ]
   },
   {
@@ -298,14 +298,14 @@
     "call": "A failed change left the DPI guard in place: restart Forkop X to remove it.",
     "key": "A failed change left the DPI guard in place: restart Forkop X to remove it.",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:397"
+      "src/forkop/tabs/dashboard/overview.ts:400"
     ]
   },
   {
     "call": "A failed change left the DPI guard in place. Traffic that needs DPI bypass stays blocked until you restart Forkop X.",
     "key": "A failed change left the DPI guard in place. Traffic that needs DPI bypass stays blocked until you restart Forkop X.",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:116"
+      "src/forkop/tabs/dashboard/overview.ts:119"
     ]
   },
   {
@@ -794,7 +794,7 @@
     "call": "An interrupted package update is being recovered. Avoid changes until it completes.",
     "key": "An interrupted package update is being recovered. Avoid changes until it completes.",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:153"
+      "src/forkop/tabs/dashboard/overview.ts:156"
     ]
   },
   {
@@ -809,7 +809,7 @@
     "key": "and %d more",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:342",
-      "src/forkop/tabs/history/model.ts:416"
+      "src/forkop/tabs/history/model.ts:421"
     ]
   },
   {
@@ -859,7 +859,7 @@
     "call": "Another snapshot operation is already in progress. Try again in a moment.",
     "key": "Another snapshot operation is already in progress. Try again in a moment.",
     "places": [
-      "src/forkop/tabs/history/model.ts:434"
+      "src/forkop/tabs/history/model.ts:439"
     ]
   },
   {
@@ -880,7 +880,7 @@
     "call": "Applied by reload",
     "key": "Applied by reload",
     "places": [
-      "src/forkop/tabs/history/model.ts:320"
+      "src/forkop/tabs/history/model.ts:325"
     ]
   },
   {
@@ -937,8 +937,8 @@
     "call": "Applying changes…",
     "key": "Applying changes…",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:192",
-      "src/forkop/tabs/dashboard/overview.ts:245"
+      "src/forkop/tabs/dashboard/overview.ts:195",
+      "src/forkop/tabs/dashboard/overview.ts:248"
     ]
   },
   {
@@ -1087,14 +1087,14 @@
     "call": "Autostart is off",
     "key": "Autostart is off",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:285"
+      "src/forkop/tabs/dashboard/overview.ts:288"
     ]
   },
   {
     "call": "Autostart is on",
     "key": "Autostart is on",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:285"
+      "src/forkop/tabs/dashboard/overview.ts:288"
     ]
   },
   {
@@ -1179,70 +1179,70 @@
     "call": "Autotune: %s applied automatically",
     "key": "Autotune: %s applied automatically",
     "places": [
-      "src/forkop/tabs/history/model.ts:269"
+      "src/forkop/tabs/history/model.ts:274"
     ]
   },
   {
     "call": "Autotune: %s applied manually",
     "key": "Autotune: %s applied manually",
     "places": [
-      "src/forkop/tabs/history/model.ts:268"
+      "src/forkop/tabs/history/model.ts:273"
     ]
   },
   {
     "call": "Autotune: automatic apply",
     "key": "Autotune: automatic apply",
     "places": [
-      "src/forkop/tabs/history/model.ts:264"
+      "src/forkop/tabs/history/model.ts:269"
     ]
   },
   {
     "call": "Autotune: automatic apply of %s",
     "key": "Autotune: automatic apply of %s",
     "places": [
-      "src/forkop/tabs/history/model.ts:274"
+      "src/forkop/tabs/history/model.ts:279"
     ]
   },
   {
     "call": "Autotune: automatic rollback",
     "key": "Autotune: automatic rollback",
     "places": [
-      "src/forkop/tabs/history/model.ts:282"
+      "src/forkop/tabs/history/model.ts:287"
     ]
   },
   {
     "call": "Autotune: automatic rollback of %s",
     "key": "Autotune: automatic rollback of %s",
     "places": [
-      "src/forkop/tabs/history/model.ts:286"
+      "src/forkop/tabs/history/model.ts:291"
     ]
   },
   {
     "call": "Autotune: manual apply",
     "key": "Autotune: manual apply",
     "places": [
-      "src/forkop/tabs/history/model.ts:263"
+      "src/forkop/tabs/history/model.ts:268"
     ]
   },
   {
     "call": "Autotune: manual apply of %s",
     "key": "Autotune: manual apply of %s",
     "places": [
-      "src/forkop/tabs/history/model.ts:273"
+      "src/forkop/tabs/history/model.ts:278"
     ]
   },
   {
     "call": "Autotune: manual rollback",
     "key": "Autotune: manual rollback",
     "places": [
-      "src/forkop/tabs/history/model.ts:281"
+      "src/forkop/tabs/history/model.ts:286"
     ]
   },
   {
     "call": "Autotune: manual rollback of %s",
     "key": "Autotune: manual rollback of %s",
     "places": [
-      "src/forkop/tabs/history/model.ts:285"
+      "src/forkop/tabs/history/model.ts:290"
     ]
   },
   {
@@ -1273,21 +1273,21 @@
     "call": "Before applying changes",
     "key": "Before applying changes",
     "places": [
-      "src/forkop/tabs/history/model.ts:323"
+      "src/forkop/tabs/history/model.ts:328"
     ]
   },
   {
     "call": "Before autotune",
     "key": "Before autotune",
     "places": [
-      "src/forkop/tabs/history/model.ts:329"
+      "src/forkop/tabs/history/model.ts:334"
     ]
   },
   {
     "call": "Before restore",
     "key": "Before restore",
     "places": [
-      "src/forkop/tabs/history/model.ts:325"
+      "src/forkop/tabs/history/model.ts:330"
     ]
   },
   {
@@ -1622,7 +1622,7 @@
     "call": "Change in progress",
     "key": "Change in progress",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:419"
+      "src/forkop/tabs/dashboard/overview.ts:422"
     ]
   },
   {
@@ -1872,7 +1872,7 @@
       "src/forkop/ui/status.ts:140",
       "src/forkop/tabs/autotune/initController.ts:993",
       "src/forkop/tabs/autotune/initController.ts:1215",
-      "src/forkop/tabs/dashboard/overview.ts:239",
+      "src/forkop/tabs/dashboard/overview.ts:242",
       "src/forkop/tabs/diagnostic/connectivityMatrix.ts:104",
       "src/forkop/tabs/diagnostic/dpiPlayground.ts:48",
       "src/forkop/tabs/diagnostic/siteCheck.ts:243",
@@ -2087,7 +2087,7 @@
     "call": "Component update check interval was %s, shorter than the 1 h minimum of automatic updates: set to %s.",
     "key": "Component update check interval was %s, shorter than the 1 h minimum of automatic updates: set to %s.",
     "places": [
-      "src/forkop/tabs/history/model.ts:234"
+      "src/forkop/tabs/history/model.ts:239"
     ]
   },
   {
@@ -2108,7 +2108,7 @@
     "call": "Concurrent edit",
     "key": "Concurrent edit",
     "places": [
-      "src/forkop/tabs/history/model.ts:334"
+      "src/forkop/tabs/history/model.ts:339"
     ]
   },
   {
@@ -2173,14 +2173,14 @@
     "call": "Configuration restored and reloaded",
     "key": "Configuration restored and reloaded",
     "places": [
-      "src/forkop/tabs/history/model.ts:643"
+      "src/forkop/tabs/history/model.ts:648"
     ]
   },
   {
     "call": "Configuration restored, but Forkop X is stopped: it was not started or checked. The restored configuration takes effect when Forkop X is started.",
     "key": "Configuration restored, but Forkop X is stopped: it was not started or checked. The restored configuration takes effect when Forkop X is started.",
     "places": [
-      "src/forkop/tabs/history/model.ts:653"
+      "src/forkop/tabs/history/model.ts:658"
     ]
   },
   {
@@ -2402,7 +2402,7 @@
     "call": "Could not create snapshot",
     "key": "Could not create snapshot",
     "places": [
-      "src/forkop/tabs/history/model.ts:512"
+      "src/forkop/tabs/history/model.ts:517"
     ]
   },
   {
@@ -2762,7 +2762,7 @@
     "call": "Diagnostics has not been run yet",
     "key": "Diagnostics has not been run yet",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:293"
+      "src/forkop/tabs/dashboard/overview.ts:296"
     ]
   },
   {
@@ -3334,7 +3334,7 @@
     "call": "DPI protection is holding traffic",
     "key": "DPI protection is holding traffic",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:145"
+      "src/forkop/tabs/dashboard/overview.ts:148"
     ]
   },
   {
@@ -4067,7 +4067,7 @@
     "call": "Forkop X is running",
     "key": "Forkop X is running",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:261"
+      "src/forkop/tabs/dashboard/overview.ts:264"
     ]
   },
   {
@@ -4102,7 +4102,7 @@
     "call": "Forkop X is stopped: the configuration is replaced and checked, but Forkop X is not started. It takes effect when you start Forkop X.",
     "key": "Forkop X is stopped: the configuration is replaced and checked, but Forkop X is not started. It takes effect when you start Forkop X.",
     "places": [
-      "src/forkop/tabs/history/model.ts:582"
+      "src/forkop/tabs/history/model.ts:587"
     ]
   },
   {
@@ -4116,8 +4116,8 @@
     "call": "Forkop X kept or restored the previous configuration.",
     "key": "Forkop X kept or restored the previous configuration.",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:162",
-      "src/forkop/tabs/dashboard/overview.ts:441"
+      "src/forkop/tabs/dashboard/overview.ts:165",
+      "src/forkop/tabs/dashboard/overview.ts:444"
     ]
   },
   {
@@ -4138,7 +4138,7 @@
     "call": "Forkop X needs attention",
     "key": "Forkop X needs attention",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:248"
+      "src/forkop/tabs/dashboard/overview.ts:251"
     ]
   },
   {
@@ -4160,7 +4160,7 @@
     "call": "Forkop X reloads the configuration. If the reload fails, the previous configuration is restored automatically.",
     "key": "Forkop X reloads the configuration. If the reload fails, the previous configuration is restored automatically.",
     "places": [
-      "src/forkop/tabs/history/model.ts:585"
+      "src/forkop/tabs/history/model.ts:590"
     ]
   },
   {
@@ -4181,7 +4181,7 @@
     "call": "Forkop X stays stopped until you start it: reloads, restores and updates do not start it.",
     "key": "Forkop X stays stopped until you start it: reloads, restores and updates do not start it.",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:198"
+      "src/forkop/tabs/dashboard/overview.ts:201"
     ]
   },
   {
@@ -4195,14 +4195,14 @@
     "call": "Forkop X was not started since the router booted: reloads, restores and updates do not start it.",
     "key": "Forkop X was not started since the router booted: reloads, restores and updates do not start it.",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:210"
+      "src/forkop/tabs/dashboard/overview.ts:213"
     ]
   },
   {
     "call": "Forkop X was not stopped by the user: its start failed or it stopped unexpectedly.",
     "key": "Forkop X was not stopped by the user: its start failed or it stopped unexpectedly.",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:227"
+      "src/forkop/tabs/dashboard/overview.ts:230"
     ]
   },
   {
@@ -4364,7 +4364,7 @@
     "call": "Health state unavailable",
     "key": "Health state unavailable",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:268"
+      "src/forkop/tabs/dashboard/overview.ts:271"
     ]
   },
   {
@@ -4503,7 +4503,7 @@
     "call": "If the VPN kill-switch is enabled, its sections stay blocked until Forkop X is started.",
     "key": "If the VPN kill-switch is enabled, its sections stay blocked until Forkop X is started.",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:173"
+      "src/forkop/tabs/dashboard/overview.ts:176"
     ]
   },
   {
@@ -5394,7 +5394,7 @@
     "call": "Last diagnostics: %s",
     "key": "Last diagnostics: %s",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:289"
+      "src/forkop/tabs/dashboard/overview.ts:292"
     ]
   },
   {
@@ -5416,7 +5416,7 @@
     "key": "Last known good",
     "places": [
       "src/forkop/tabs/history/initController.ts:383",
-      "src/forkop/tabs/history/model.ts:327"
+      "src/forkop/tabs/history/model.ts:332"
     ]
   },
   {
@@ -5444,7 +5444,7 @@
     "call": "Last reload: %s",
     "key": "Last reload: %s",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:361"
+      "src/forkop/tabs/dashboard/overview.ts:364"
     ]
   },
   {
@@ -5554,7 +5554,7 @@
     "call": "List update frequency was %s, shorter than the 1 h minimum of automatic updates: set to %s.",
     "key": "List update frequency was %s, shorter than the 1 h minimum of automatic updates: set to %s.",
     "places": [
-      "src/forkop/tabs/history/model.ts:237"
+      "src/forkop/tabs/history/model.ts:242"
     ]
   },
   {
@@ -5675,7 +5675,7 @@
     "call": "Manual",
     "key": "Manual",
     "places": [
-      "src/forkop/tabs/history/model.ts:315"
+      "src/forkop/tabs/history/model.ts:320"
     ]
   },
   {
@@ -6069,7 +6069,7 @@
     "call": "no data",
     "key": "no data",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:342"
+      "src/forkop/tabs/dashboard/overview.ts:345"
     ]
   },
   {
@@ -6158,14 +6158,14 @@
     "call": "No recovery needed",
     "key": "No recovery needed",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:447"
+      "src/forkop/tabs/dashboard/overview.ts:450"
     ]
   },
   {
     "call": "No reload recorded yet",
     "key": "No reload recorded yet",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:368",
+      "src/forkop/tabs/dashboard/overview.ts:371",
       "src/forkop/tabs/history/model.ts:156"
     ]
   },
@@ -6421,7 +6421,7 @@
     "key": "Not running",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/killswitch.js:143",
-      "src/forkop/tabs/dashboard/overview.ts:224",
+      "src/forkop/tabs/dashboard/overview.ts:227",
       "src/forkop/tabs/diagnostic/diagnostic.store.ts:131",
       "src/forkop/tabs/diagnostic/initController.ts:106",
       "src/forkop/tabs/diagnostic/initController.ts:330",
@@ -6434,7 +6434,7 @@
     "key": "not set",
     "places": [
       "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/configform.js:332",
-      "src/forkop/tabs/history/model.ts:360"
+      "src/forkop/tabs/history/model.ts:365"
     ]
   },
   {
@@ -6442,7 +6442,7 @@
     "key": "Not started",
     "places": [
       "src/forkop/ui/status.ts:137",
-      "src/forkop/tabs/dashboard/overview.ts:208"
+      "src/forkop/tabs/dashboard/overview.ts:211"
     ]
   },
   {
@@ -6573,7 +6573,7 @@
     "call": "Only the first %d changes are listed; %d changes in total.",
     "key": "Only the first %d changes are listed; %d changes in total.",
     "places": [
-      "src/forkop/tabs/history/model.ts:403"
+      "src/forkop/tabs/history/model.ts:408"
     ]
   },
   {
@@ -6690,7 +6690,7 @@
     "call": "Other",
     "key": "Other",
     "places": [
-      "src/forkop/tabs/history/model.ts:336",
+      "src/forkop/tabs/history/model.ts:341",
       "src/forkop/tabs/monitoring/connectionView.ts:122"
     ]
   },
@@ -6762,8 +6762,8 @@
     "call": "Package recovery has not finished",
     "key": "Package recovery has not finished",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:152",
-      "src/forkop/tabs/dashboard/overview.ts:431"
+      "src/forkop/tabs/dashboard/overview.ts:155",
+      "src/forkop/tabs/dashboard/overview.ts:434"
     ]
   },
   {
@@ -7129,7 +7129,7 @@
     "call": "Protection is active",
     "key": "Protection is active",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:423"
+      "src/forkop/tabs/dashboard/overview.ts:426"
     ]
   },
   {
@@ -7226,7 +7226,7 @@
     "call": "Recovery details",
     "key": "Recovery details",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:140",
+      "src/forkop/tabs/dashboard/overview.ts:143",
       "src/forkop/tabs/dashboard/overviewCards.ts:291"
     ]
   },
@@ -7483,7 +7483,7 @@
     "call": "Restart required",
     "key": "Restart required",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:393"
+      "src/forkop/tabs/dashboard/overview.ts:396"
     ]
   },
   {
@@ -7504,42 +7504,42 @@
     "call": "Restore did not finish: a failed change left the DPI guard in place, and the DPI guard stays active. Restart Forkop X, then restore the snapshot again.",
     "key": "Restore did not finish: a failed change left the DPI guard in place, and the DPI guard stays active. Restart Forkop X, then restore the snapshot again.",
     "places": [
-      "src/forkop/tabs/history/model.ts:762"
+      "src/forkop/tabs/history/model.ts:767"
     ]
   },
   {
     "call": "Restore did not finish: the configuration was changed while the snapshot was being applied.",
     "key": "Restore did not finish: the configuration was changed while the snapshot was being applied.",
     "places": [
-      "src/forkop/tabs/history/model.ts:753"
+      "src/forkop/tabs/history/model.ts:758"
     ]
   },
   {
     "call": "Restore did not finish: the configuration was changed while the snapshot was being applied. Forkop X was reloaded, but it is not known whether with the snapshot or with the change.",
     "key": "Restore did not finish: the configuration was changed while the snapshot was being applied. Forkop X was reloaded, but it is not known whether with the snapshot or with the change.",
     "places": [
-      "src/forkop/tabs/history/model.ts:752"
+      "src/forkop/tabs/history/model.ts:757"
     ]
   },
   {
     "call": "Restore did not finish: the service was busy and only queued the reload. The DPI guard stays active; restore again when the service is idle.",
     "key": "Restore did not finish: the service was busy and only queued the reload. The DPI guard stays active; restore again when the service is idle.",
     "places": [
-      "src/forkop/tabs/history/model.ts:770"
+      "src/forkop/tabs/history/model.ts:775"
     ]
   },
   {
     "call": "Restore failed; check the recovery state before retrying",
     "key": "Restore failed; check the recovery state before retrying",
     "places": [
-      "src/forkop/tabs/history/model.ts:779"
+      "src/forkop/tabs/history/model.ts:784"
     ]
   },
   {
     "call": "Restore failed; previous configuration and runtime recovered",
     "key": "Restore failed; previous configuration and runtime recovered",
     "places": [
-      "src/forkop/tabs/history/model.ts:668"
+      "src/forkop/tabs/history/model.ts:673"
     ]
   },
   {
@@ -7553,7 +7553,7 @@
     "call": "Restore required",
     "key": "Restore required",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:407"
+      "src/forkop/tabs/dashboard/overview.ts:410"
     ]
   },
   {
@@ -7567,106 +7567,106 @@
     "call": "Restore the snapshot you need to finish.",
     "key": "Restore the snapshot you need to finish.",
     "places": [
-      "src/forkop/tabs/history/model.ts:752"
+      "src/forkop/tabs/history/model.ts:757"
     ]
   },
   {
     "call": "Restore was not applied: Forkop X was stopped during the restore. The previous configuration is kept.",
     "key": "Restore was not applied: Forkop X was stopped during the restore. The previous configuration is kept.",
     "places": [
-      "src/forkop/tabs/history/model.ts:726"
+      "src/forkop/tabs/history/model.ts:731"
     ]
   },
   {
     "call": "Restore was not applied: Forkop X was stopped, and the configuration was changed during the restore.",
     "key": "Restore was not applied: Forkop X was stopped, and the configuration was changed during the restore.",
     "places": [
-      "src/forkop/tabs/history/model.ts:749"
+      "src/forkop/tabs/history/model.ts:754"
     ]
   },
   {
     "call": "Restore was not applied: the configuration file could not be written. The previous configuration is kept.",
     "key": "Restore was not applied: the configuration file could not be written. The previous configuration is kept.",
     "places": [
-      "src/forkop/tabs/history/model.ts:699",
-      "src/forkop/tabs/history/model.ts:700"
+      "src/forkop/tabs/history/model.ts:704",
+      "src/forkop/tabs/history/model.ts:705"
     ]
   },
   {
     "call": "Restore was not applied: the service was busy and only queued the reload. The previous configuration is kept.",
     "key": "Restore was not applied: the service was busy and only queued the reload. The previous configuration is kept.",
     "places": [
-      "src/forkop/tabs/history/model.ts:665"
+      "src/forkop/tabs/history/model.ts:670"
     ]
   },
   {
     "call": "Restore was not applied: the snapshot configuration did not pass validation. The previous configuration is kept; Forkop X stays stopped.",
     "key": "Restore was not applied: the snapshot configuration did not pass validation. The previous configuration is kept; Forkop X stays stopped.",
     "places": [
-      "src/forkop/tabs/history/model.ts:723"
+      "src/forkop/tabs/history/model.ts:728"
     ]
   },
   {
     "call": "Restore was not started: a failed change left the DPI guard in place, and nothing can be reloaded until Forkop X is restarted. Restart Forkop X, then restore the snapshot if it is still needed.",
     "key": "Restore was not started: a failed change left the DPI guard in place, and nothing can be reloaded until Forkop X is restarted. Restart Forkop X, then restore the snapshot if it is still needed.",
     "places": [
-      "src/forkop/tabs/history/model.ts:677"
+      "src/forkop/tabs/history/model.ts:682"
     ]
   },
   {
     "call": "Restore was not started: the configuration was changed while the restore was starting. Nothing was changed; check the change and try again.",
     "key": "Restore was not started: the configuration was changed while the restore was starting. Nothing was changed; check the change and try again.",
     "places": [
-      "src/forkop/tabs/history/model.ts:536"
+      "src/forkop/tabs/history/model.ts:541"
     ]
   },
   {
     "call": "Restore was not started: the current configuration could not be read. Nothing was changed.",
     "key": "Restore was not started: the current configuration could not be read. Nothing was changed.",
     "places": [
-      "src/forkop/tabs/history/model.ts:532"
+      "src/forkop/tabs/history/model.ts:537"
     ]
   },
   {
     "call": "Restore was not started: the current configuration could not be saved as a snapshot first. Nothing was changed. Check the free space on the router.",
     "key": "Restore was not started: the current configuration could not be saved as a snapshot first. Nothing was changed. Check the free space on the router.",
     "places": [
-      "src/forkop/tabs/history/model.ts:524"
+      "src/forkop/tabs/history/model.ts:529"
     ]
   },
   {
     "call": "Restore was not started: the DPI guard that protects traffic during the restore could not be installed. Nothing was changed.",
     "key": "Restore was not started: the DPI guard that protects traffic during the restore could not be installed. Nothing was changed.",
     "places": [
-      "src/forkop/tabs/history/model.ts:540"
+      "src/forkop/tabs/history/model.ts:545"
     ]
   },
   {
     "call": "Restore was not started: the router has uncommitted uci changes of Forkop X (made with \"uci set\" without a commit). Commit or revert them, then restore again.",
     "key": "Restore was not started: the router has uncommitted uci changes of Forkop X (made with \"uci set\" without a commit). Commit or revert them, then restore again.",
     "places": [
-      "src/forkop/tabs/history/model.ts:687"
+      "src/forkop/tabs/history/model.ts:692"
     ]
   },
   {
     "call": "Restore was not started: the snapshot is missing or damaged. Nothing was changed.",
     "key": "Restore was not started: the snapshot is missing or damaged. Nothing was changed.",
     "places": [
-      "src/forkop/tabs/history/model.ts:528"
+      "src/forkop/tabs/history/model.ts:533"
     ]
   },
   {
     "call": "Restore was not started: the snapshot storage could not be locked. Nothing was changed.",
     "key": "Restore was not started: the snapshot storage could not be locked. Nothing was changed.",
     "places": [
-      "src/forkop/tabs/history/model.ts:544"
+      "src/forkop/tabs/history/model.ts:549"
     ]
   },
   {
     "call": "Restore was not started: the snapshot was saved by an older version of Forkop X, and its configuration could not be migrated to this version. Nothing was changed.",
     "key": "Restore was not started: the snapshot was saved by an older version of Forkop X, and its configuration could not be migrated to this version. Nothing was changed.",
     "places": [
-      "src/forkop/tabs/history/model.ts:550"
+      "src/forkop/tabs/history/model.ts:555"
     ]
   },
   {
@@ -7832,7 +7832,7 @@
     "call": "Router DNS is not pointed to Forkop X",
     "key": "Router DNS is not pointed to Forkop X",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:279"
+      "src/forkop/tabs/dashboard/overview.ts:282"
     ]
   },
   {
@@ -7853,7 +7853,7 @@
     "call": "Routing is paused while Forkop X is stopped.",
     "key": "Routing is paused while Forkop X is stopped.",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:324"
+      "src/forkop/tabs/dashboard/overview.ts:327"
     ]
   },
   {
@@ -7880,10 +7880,17 @@
     ]
   },
   {
+    "call": "Rule “%s”: a subscription source now sends the User-Agent set in its settings. Earlier versions ignored it and chose one automatically; clear the field to go back to automatic selection.",
+    "key": "Rule “%s”: a subscription source now sends the User-Agent set in its settings. Earlier versions ignored it and chose one automatically; clear the field to go back to automatic selection.",
+    "places": [
+      "src/forkop/tabs/history/model.ts:233"
+    ]
+  },
+  {
     "call": "Rule “%s”: changed by the update.",
     "key": "Rule “%s”: changed by the update.",
     "places": [
-      "src/forkop/tabs/history/model.ts:244"
+      "src/forkop/tabs/history/model.ts:249"
     ]
   },
   {
@@ -8465,14 +8472,14 @@
     "call": "sing-box is not running",
     "key": "sing-box is not running",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:275"
+      "src/forkop/tabs/dashboard/overview.ts:278"
     ]
   },
   {
     "call": "sing-box is running",
     "key": "sing-box is running",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:274"
+      "src/forkop/tabs/dashboard/overview.ts:277"
     ]
   },
   {
@@ -8536,35 +8543,35 @@
     "call": "Snapshot not saved: at most %d manual snapshots are kept, so that the automatic snapshots taken before a restore, Save & Apply or autotune always have room. Delete a manual snapshot you no longer need, then try again.",
     "key": "Snapshot not saved: at most %d manual snapshots are kept, so that the automatic snapshots taken before a restore, Save & Apply or autotune always have room. Delete a manual snapshot you no longer need, then try again.",
     "places": [
-      "src/forkop/tabs/history/model.ts:476"
+      "src/forkop/tabs/history/model.ts:481"
     ]
   },
   {
     "call": "Snapshot not saved: at most %d manual snapshots are kept, so that the automatic snapshots taken before a restore, Save & Apply or autotune always have room. There are %d manual snapshots now: delete %d you no longer need, then try again.",
     "key": "Snapshot not saved: at most %d manual snapshots are kept, so that the automatic snapshots taken before a restore, Save & Apply or autotune always have room. There are %d manual snapshots now: delete %d you no longer need, then try again.",
     "places": [
-      "src/forkop/tabs/history/model.ts:470"
+      "src/forkop/tabs/history/model.ts:475"
     ]
   },
   {
     "call": "Snapshot not saved: it could not be written. Check the free space on the router.",
     "key": "Snapshot not saved: it could not be written. Check the free space on the router.",
     "places": [
-      "src/forkop/tabs/history/model.ts:494"
+      "src/forkop/tabs/history/model.ts:499"
     ]
   },
   {
     "call": "Snapshot not saved: the configuration file could not be read.",
     "key": "Snapshot not saved: the configuration file could not be read.",
     "places": [
-      "src/forkop/tabs/history/model.ts:485"
+      "src/forkop/tabs/history/model.ts:490"
     ]
   },
   {
     "call": "Snapshot not saved: the snapshot storage could not be locked. Try again in a moment.",
     "key": "Snapshot not saved: the snapshot storage could not be locked. Try again in a moment.",
     "places": [
-      "src/forkop/tabs/history/model.ts:502"
+      "src/forkop/tabs/history/model.ts:507"
     ]
   },
   {
@@ -8578,7 +8585,7 @@
     "call": "Snapshot saved",
     "key": "Snapshot saved",
     "places": [
-      "src/forkop/tabs/history/model.ts:452"
+      "src/forkop/tabs/history/model.ts:457"
     ]
   },
   {
@@ -8592,7 +8599,7 @@
     "call": "Snapshots: %d",
     "key": "Snapshots: %d",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:372"
+      "src/forkop/tabs/dashboard/overview.ts:375"
     ]
   },
   {
@@ -8776,7 +8783,7 @@
     "call": "Starting…",
     "key": "Starting…",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:193",
+      "src/forkop/tabs/dashboard/overview.ts:196",
       "src/forkop/tabs/dashboard/overviewCards.ts:155",
       "src/forkop/tabs/shared/startService.ts:28",
       "src/forkop/tabs/shared/startService.ts:40"
@@ -8796,9 +8803,9 @@
     "call": "State unavailable",
     "key": "State unavailable",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:242",
-      "src/forkop/tabs/dashboard/overview.ts:353",
-      "src/forkop/tabs/dashboard/overview.ts:379"
+      "src/forkop/tabs/dashboard/overview.ts:245",
+      "src/forkop/tabs/dashboard/overview.ts:356",
+      "src/forkop/tabs/dashboard/overview.ts:382"
     ]
   },
   {
@@ -8849,7 +8856,7 @@
     "key": "Stopped by user",
     "places": [
       "src/forkop/ui/status.ts:136",
-      "src/forkop/tabs/dashboard/overview.ts:196"
+      "src/forkop/tabs/dashboard/overview.ts:199"
     ]
   },
   {
@@ -9201,14 +9208,14 @@
     "call": "The change is kept and saved as a snapshot (\"Concurrent edit\").",
     "key": "The change is kept and saved as a snapshot (\"Concurrent edit\").",
     "places": [
-      "src/forkop/tabs/history/model.ts:740"
+      "src/forkop/tabs/history/model.ts:745"
     ]
   },
   {
     "call": "The change is kept in the configuration, but no snapshot of it could be saved.",
     "key": "The change is kept in the configuration, but no snapshot of it could be saved.",
     "places": [
-      "src/forkop/tabs/history/model.ts:741"
+      "src/forkop/tabs/history/model.ts:746"
     ]
   },
   {
@@ -9279,14 +9286,14 @@
     "call": "The configuration of the snapshot was migrated from Forkop X %s to %s.",
     "key": "The configuration of the snapshot was migrated from Forkop X %s to %s.",
     "places": [
-      "src/forkop/tabs/history/model.ts:617"
+      "src/forkop/tabs/history/model.ts:622"
     ]
   },
   {
     "call": "The configuration of the snapshot was migrated to Forkop X %s.",
     "key": "The configuration of the snapshot was migrated to Forkop X %s.",
     "places": [
-      "src/forkop/tabs/history/model.ts:622"
+      "src/forkop/tabs/history/model.ts:627"
     ]
   },
   {
@@ -9350,15 +9357,15 @@
     "call": "The DPI guard of an earlier restore stays active.",
     "key": "The DPI guard of an earlier restore stays active.",
     "places": [
-      "src/forkop/tabs/history/model.ts:699",
-      "src/forkop/tabs/history/model.ts:713"
+      "src/forkop/tabs/history/model.ts:704",
+      "src/forkop/tabs/history/model.ts:718"
     ]
   },
   {
     "call": "The DPI guard stays active. Restore the snapshot you need to finish.",
     "key": "The DPI guard stays active. Restore the snapshot you need to finish.",
     "places": [
-      "src/forkop/tabs/history/model.ts:753"
+      "src/forkop/tabs/history/model.ts:758"
     ]
   },
   {
@@ -9443,7 +9450,7 @@
     "call": "The last change was rolled back automatically.",
     "key": "The last change was rolled back automatically.",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:264"
+      "src/forkop/tabs/dashboard/overview.ts:267"
     ]
   },
   {
@@ -9473,8 +9480,8 @@
     "call": "The last configuration change failed",
     "key": "The last configuration change failed",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:161",
-      "src/forkop/tabs/dashboard/overview.ts:438"
+      "src/forkop/tabs/dashboard/overview.ts:164",
+      "src/forkop/tabs/dashboard/overview.ts:441"
     ]
   },
   {
@@ -9909,7 +9916,7 @@
     "call": "The service is busy with another operation (list or subscription update, reload or start). Nothing was changed; try again when it finishes.",
     "key": "The service is busy with another operation (list or subscription update, reload or start). Nothing was changed; try again when it finishes.",
     "places": [
-      "src/forkop/tabs/history/model.ts:431"
+      "src/forkop/tabs/history/model.ts:436"
     ]
   },
   {
@@ -10144,7 +10151,7 @@
     "call": "There are unsaved changes of Forkop X in this session. Save & Apply or revert them, then restore the snapshot.",
     "key": "There are unsaved changes of Forkop X in this session. Save & Apply or revert them, then restore the snapshot.",
     "places": [
-      "src/forkop/tabs/history/model.ts:571"
+      "src/forkop/tabs/history/model.ts:576"
     ]
   },
   {
@@ -10300,14 +10307,14 @@
     "call": "This snapshot was saved by an older version of Forkop X. Before the restore, its configuration is migrated to the current version %s, as an upgrade migrates it: settings retired since then are updated. The snapshot itself is not changed; the changes listed above compare the snapshot as it was saved.",
     "key": "This snapshot was saved by an older version of Forkop X. Before the restore, its configuration is migrated to the current version %s, as an upgrade migrates it: settings retired since then are updated. The snapshot itself is not changed; the changes listed above compare the snapshot as it was saved.",
     "places": [
-      "src/forkop/tabs/history/model.ts:604"
+      "src/forkop/tabs/history/model.ts:609"
     ]
   },
   {
     "call": "This snapshot was saved by Forkop X %s. Before the restore, its configuration is migrated to the current version %s, as an upgrade migrates it: settings retired since then are updated. The snapshot itself is not changed; the changes listed above compare the snapshot as it was saved.",
     "key": "This snapshot was saved by Forkop X %s. Before the restore, its configuration is migrated to the current version %s, as an upgrade migrates it: settings retired since then are updated. The snapshot itself is not changed; the changes listed above compare the snapshot as it was saved.",
     "places": [
-      "src/forkop/tabs/history/model.ts:599"
+      "src/forkop/tabs/history/model.ts:604"
     ]
   },
   {
@@ -10439,9 +10446,9 @@
     "call": "Traffic goes through the router without Forkop X.",
     "key": "Traffic goes through the router without Forkop X.",
     "places": [
-      "src/forkop/tabs/dashboard/overview.ts:203",
-      "src/forkop/tabs/dashboard/overview.ts:215",
-      "src/forkop/tabs/dashboard/overview.ts:234"
+      "src/forkop/tabs/dashboard/overview.ts:206",
+      "src/forkop/tabs/dashboard/overview.ts:218",
+      "src/forkop/tabs/dashboard/overview.ts:237"
     ]
   },
   {

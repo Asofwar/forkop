@@ -99,7 +99,36 @@ assert.deepEqual(out.notices.filter((notice) => notice.code === 'subscription_op
   { code: 'subscription_options_removed', section: 'legacy', values: ['auto_hwid', 'hwid'] },
   { code: 'subscription_options_removed', section: 'vpn', values: ['auto_hwid', 'hwid', 'hide_detour_outbounds'] },
 ], 'only values that asked for something else are named, never a URL or a value');
+// Earlier versions never sent a stored User-Agent (they chose one
+// automatically); now it is sent, so the rules whose sources keep one that
+// will be sent are named (never the User-Agent or the URL). s3 turned it off,
+// s5 has control characters and is not sent: no change for them.
+assert.deepEqual(out.notices.filter((notice) => notice.code === 'subscription_user_agent_in_effect'), [
+  { code: 'subscription_user_agent_in_effect', section: 'legacy', values: ['user_agent'] },
+  { code: 'subscription_user_agent_in_effect', section: 'vpn', values: ['user_agent'] },
+]);
+assert(!/Clash|Legacy|example/.test(JSON.stringify(out.notices)), 'a notice must not carry a User-Agent or a URL');
 NODE
+# Only an automatic or unsendable User-Agent: nothing changes, no notice.
+cat >"$WORK_DIR/automatic.json" <<'JSON'
+{
+  "settings": { ".name": "settings", ".type": "settings", "config_version": "1.0.5", "yacd_secret_key": "s" },
+  "section": [ { ".name": "vpn", ".type": "section", "enabled": "1", "action": "connection" } ],
+  "subscription_url": [
+    { ".name": "s3", ".type": "subscription_url", "section": "vpn", "url": "https://three.example/sub",
+      "auto_user_agent": "1", "user_agent": "Ignored/1.0" },
+    { ".name": "s5", ".type": "subscription_url", "section": "vpn", "url": "https://five.example/sub",
+      "user_agent": "Bad\nX-Injected: 1" },
+    { ".name": "s6", ".type": "subscription_url", "section": "vpn", "url": "https://six.example/sub",
+      "auto_user_agent": "0", "user_agent": "  " }
+  ]
+}
+JSON
+ucode -L "$FORKOP_LIB" "$FORKOP_LIB/config/migration.uc" migrate-fixture "$WORK_DIR/automatic.json" >"$WORK_DIR/automatic.out.json"
+node -e '
+  const out = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+  if (out.notices.some((notice) => notice.code === "subscription_user_agent_in_effect")) process.exit(1);
+' "$WORK_DIR/automatic.out.json" || fail "a User-Agent that is not sent was named: $(cat "$WORK_DIR/automatic.out.json")"
 # The User-Agents after the migration are the same.
 node -e '
   const fs = require("fs");
@@ -134,6 +163,8 @@ for (const item of items)
   for (const key of ['auto_user_agent', 'auto_hwid', 'hide_urltest_group_outbounds', 'hide_detour_outbounds'])
     assert.equal(item[key], undefined, `podkop migration writes ${key}`);
 assert.deepEqual(out.notices.filter((notice) => notice.code === 'subscription_options_removed'), []);
+// podkop sent the User-Agent of a 'url | UA' entry: nothing to tell.
+assert.deepEqual(out.notices.filter((notice) => notice.code === 'subscription_user_agent_in_effect'), []);
 fs.writeFileSync(process.argv[3], JSON.stringify(out.config));
 NODE
 node - "$(agents "$WORK_DIR/podkop.migrated.json")" <<'NODE'
@@ -176,9 +207,12 @@ grep -q "User-Agent of a subscription source in rule 'vpn' contains control char
 # The history keeps the notice.
 FORKOP_HISTORY_FILE="$WORK_DIR/history.jsonl" FORKOP_RUNTIME_STATE_DIR="$WORK_DIR/runtime" \
   ucode -L "$FORKOP_LIB" "$FORKOP_LIB/diagnostics/health.uc" record config_migration success "" "" \
-  '{"notices":[{"code":"subscription_options_removed","section":"vpn","values":["hwid","hide_detour_outbounds"]}]}'
+  '{"notices":[{"code":"subscription_options_removed","section":"vpn","values":["hwid","hide_detour_outbounds"]},{"code":"subscription_user_agent_in_effect","section":"vpn","values":["user_agent"]}]}'
 FORKOP_HISTORY_FILE="$WORK_DIR/history.jsonl" FORKOP_RUNTIME_STATE_DIR="$WORK_DIR/runtime" \
   ucode -L "$FORKOP_LIB" "$FORKOP_LIB/diagnostics/health.uc" history | grep -q '"subscription_options_removed"' ||
   fail "the history must keep the subscription notice"
+FORKOP_HISTORY_FILE="$WORK_DIR/history.jsonl" FORKOP_RUNTIME_STATE_DIR="$WORK_DIR/runtime" \
+  ucode -L "$FORKOP_LIB" "$FORKOP_LIB/diagnostics/health.uc" history | grep -q '"subscription_user_agent_in_effect"' ||
+  fail "the history must keep the User-Agent notice"
 
 printf 'subscription_user_agent_explicit: ok\n'

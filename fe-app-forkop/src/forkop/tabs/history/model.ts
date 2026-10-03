@@ -228,6 +228,11 @@ export function migrationNoticeText(notice: Forkop.MigrationNotice) {
       )
         .replace('%s', notice.section)
         .replace('%s', notice.values.join(', '));
+    // The User-Agent itself is not in the journal (D-17).
+    case 'subscription_user_agent_in_effect':
+      return _(
+        'Rule “%s”: a subscription source now sends the User-Agent set in its settings. Earlier versions ignored it and chose one automatically; clear the field to go back to automatic selection.',
+      ).replace('%s', notice.section);
     case 'update_interval_raised':
       return (
         notice.values[0] === 'component_update_check_interval'

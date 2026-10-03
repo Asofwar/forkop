@@ -1591,10 +1591,12 @@ function migrate_update_interval_minimum(ctx) {
 // (config/connections.uc), so auto_user_agent goes, and with it a
 // user_agent that it switched off; HWID is always generated and the nodes
 // of imported URLTest groups and cascades are always hidden, so auto_hwid,
-// hwid and the hide_* options go too. Nothing a source sends or shows
-// changes; a value that asked for something else, which the runtime did
-// not do either, is named in a notice (option names only: a URL may carry
-// a token).
+// hwid and the hide_* options go too. Removing them changes nothing a
+// source sends or shows; a value that asked for something else, which the
+// runtime did not do either, is named in a notice (option names only: a URL
+// may carry a token). What does change is the User-Agent a source keeps:
+// earlier versions never sent it, this one does, and a notice names the
+// rule (never the User-Agent, nor the URL).
 const SUBSCRIPTION_IGNORED_DEFAULTS = {
     auto_hwid: "1", hwid: "", hide_urltest_group_outbounds: "1", hide_detour_outbounds: "1"
 };
@@ -1605,15 +1607,23 @@ function subscription_option_true(value) {
 }
 
 // Removes the ignored options from `settings` (an item's options), returns
-// the names of those that asked for something else.
+// the names of those that asked for something else, and user_agent when the
+// source keeps a User-Agent that is now sent: earlier versions chose one
+// automatically whatever it said (config/connections.uc; one with control
+// characters is still not sent).
 function strip_ignored_subscription_options(settings, remove) {
     let named = [];
     let automatic = settings.auto_user_agent;
+    let agent = trim(as_string(settings.user_agent ?? ""));
     if (automatic != null) {
-        if (subscription_option_true(automatic) && settings.user_agent != null)
+        if (subscription_option_true(automatic) && settings.user_agent != null) {
             remove("user_agent");
+            agent = "";
+        }
         remove("auto_user_agent");
     }
+    if (agent != "" && match(agent, /[[:cntrl:]]/) == null)
+        push(named, "user_agent");
     for (let key in [ "auto_hwid", "hwid", "hide_urltest_group_outbounds", "hide_detour_outbounds" ]) {
         let value = settings[key];
         if (value == null)
@@ -1637,9 +1647,14 @@ function migrate_subscription_ignored_options(ctx) {
                 push(named[section], key);
     };
 
-    for (let child in ctx.model.subscription_url || [])
+    // A source with an item of its own reads its User-Agent there, never in
+    // the legacy map (config/connections.uc).
+    let items = {};
+    for (let child in ctx.model.subscription_url || []) {
+        items[option(child, "section", "") + "\n" + option(child, "url", "")] = true;
         note(option(child, "section", ""), strip_ignored_subscription_options(child,
             (key) => delete_option(ctx, child, key)));
+    }
 
     for (let section in ctx.model.sections) {
         let raw = option(section, "subscription_url_settings", "");
@@ -1658,10 +1673,13 @@ function migrate_subscription_ignored_options(ctx) {
         for (let url, settings in map) {
             if (type(settings) != "object")
                 continue;
-            note(section_name(section), strip_ignored_subscription_options(settings, (key) => {
+            let keys = strip_ignored_subscription_options(settings, (key) => {
                 delete settings[key];
                 changed = true;
-            }));
+            });
+            if (items[section_name(section) + "\n" + url])
+                keys = filter(keys, (key) => key != "user_agent");
+            note(section_name(section), keys);
         }
         if (changed)
             set_option(ctx, section, "subscription_url_settings", sprintf("%J", map));
@@ -1671,6 +1689,10 @@ function migrate_subscription_ignored_options(ctx) {
         let values = filter(keys(SUBSCRIPTION_IGNORED_DEFAULTS), (key) => index(named[section], key) >= 0);
         if (section != "" && length(values) > 0)
             push(ctx.notices, { code: "subscription_options_removed", section, values });
+        // A podkop configuration had its User-Agent sent by podkop: nothing
+        // changes for it.
+        if (section != "" && !ctx.podkop && index(named[section], "user_agent") >= 0)
+            push(ctx.notices, { code: "subscription_user_agent_in_effect", section, values: [ "user_agent" ] });
     }
 }
 
@@ -1757,6 +1779,7 @@ function migrate_podkop_model(model, constants) {
     }
     migrate_subscription_download_via_proxy_settings(ctx);
     migrate_download_via_proxy_flags(ctx);
+    ctx.podkop = true;
     apply_migrations(ctx);
 
     return ctx;
@@ -2008,6 +2031,9 @@ function notice_text(notice) {
     if (notice.code == "subscription_options_removed")
         return "rule '" + notice.section + "': removed the subscription options " + join(", ", notice.values) +
             ", which this version does not use (HWID is generated from the router, nodes of URLTest groups and cascades are hidden)";
+    if (notice.code == "subscription_user_agent_in_effect")
+        return "rule '" + notice.section + "': a subscription source sends the User-Agent set in its settings, " +
+            "which earlier versions ignored (they chose one automatically)";
     if (notice.code == "update_interval_raised")
         return "settings." + notice.values[0] + " was " + notice.from + ", shorter than the 1h minimum of automatic updates: set to " + notice.to;
     return notice.code;

@@ -17946,6 +17946,11 @@ function migrationNoticeText(notice) {
       return _(
         "Rule \u201C%s\u201D: the subscription settings %s were removed. This version always generates the HWID from the router and hides nodes of imported URLTest groups and cascades."
       ).replace("%s", notice.section).replace("%s", notice.values.join(", "));
+    // The User-Agent itself is not in the journal (D-17).
+    case "subscription_user_agent_in_effect":
+      return _(
+        "Rule \u201C%s\u201D: a subscription source now sends the User-Agent set in its settings. Earlier versions ignored it and chose one automatically; clear the field to go back to automatic selection."
+      ).replace("%s", notice.section);
     case "update_interval_raised":
       return (notice.values[0] === "component_update_check_interval" ? _(
         "Component update check interval was %s, shorter than the 1 h minimum of automatic updates: set to %s."

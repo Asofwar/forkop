@@ -278,6 +278,30 @@ describe('history list', () => {
     ]);
   });
 
+  it('says a stored subscription User-Agent is now sent (D-17)', () => {
+    const [item] = historyItems(
+      [
+        {
+          kind: 'config_migration',
+          status: 'success',
+          timestamp: 7,
+          notices: [
+            {
+              code: 'subscription_user_agent_in_effect',
+              section: 'vpn',
+              values: ['user_agent'],
+              replacements: [],
+            },
+          ],
+        },
+      ],
+      'all',
+    );
+    expect(item.details).toEqual([
+      'Rule “vpn”: a subscription source now sends the User-Agent set in its settings. Earlier versions ignored it and chose one automatically; clear the field to go back to automatic selection.',
+    ]);
+  });
+
   it('names a raised update interval (D-18)', () => {
     const [item] = historyItems(
       [

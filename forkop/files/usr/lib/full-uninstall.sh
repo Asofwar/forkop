@@ -187,6 +187,21 @@ state() {
     mv "$STATUS.new" "$STATUS"
 }
 
+quote() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
+
+# A short-lived, non-sensitive status file stays readable after LuCI is
+# removed, so the browser never has to guess whether the removal succeeded:
+# finish() removes it 300 seconds after the end. /www is on flash, and a
+# router that restarts before then takes that job with it, so a one-shot
+# uci-defaults script removes the status at the next boot instead (OpenWrt
+# runs it once and deletes it when it succeeds); the job removes the script
+# together with the status.
+status_boot_cleanup() {
+    mkdir -p "$ROOT/etc/uci-defaults"
+    printf '# The status of a full removal of Forkop.\nrm -f %s %s\n' \
+        "$(quote "$STATUS")" "$(quote "$STATUS.new")" > "$UNINSTALL_BOOT_CLEANUP"
+}
+
 finish() {
     code=$?
     trap - EXIT
@@ -195,9 +210,7 @@ finish() {
     rmdir "$COMPONENT_LOCK" 2>/dev/null || true
     rm -f "$LOCK/pid"
     rmdir "$LOCK" 2>/dev/null || true
-    # A short-lived, non-sensitive status file remains readable after LuCI is
-    # uninstalled, so the browser never has to guess whether removal succeeded.
-    (sleep 300; rm -f "$STATUS" "$STATUS.new") </dev/null >/dev/null 2>&1 &
+    (sleep 300; rm -f "$STATUS" "$STATUS.new" "$UNINSTALL_BOOT_CLEANUP") </dev/null >/dev/null 2>&1 &
     exit "$code"
 }
 
@@ -391,7 +404,9 @@ case "${1:-}" in
         printf '%s\n' "$$" > "$COMPONENT_LOCK/pid"
         JOB="$(mktemp -d "$ROOT/tmp/forkop-uninstall.XXXXXX")"
         STATUS="$ROOT/www/$(basename "$JOB").json"
+        UNINSTALL_BOOT_CLEANUP="$ROOT/etc/uci-defaults/99_$(basename "$JOB")"
         cp "$0" "$JOB/worker.sh"
+        status_boot_cleanup
         state running
         sh "$JOB/worker.sh" worker "$JOB" "$STATUS" "$$" > "$JOB/output.log" 2>&1 </dev/null 1000>&- &
         trap - EXIT
@@ -408,6 +423,7 @@ case "${1:-}" in
     worker)
         JOB="$2"
         STATUS="$3"
+        UNINSTALL_BOOT_CLEANUP="$ROOT/etc/uci-defaults/99_$(basename "$JOB")"
         # Until the starter ($4) has named this worker in the lock records or
         # has exited, it may still write them.
         waited=0

@@ -76,8 +76,27 @@ fixture hour 1h 90m
   fail "100ms must be scheduled hourly, not as 0 s: $(plan subsecond)"
 [ "$(plan hours)" = $'list\t0 */2 * * * /usr/bin/forkop list_update_if_due # list\ncomponent\t0 0 * * * /usr/bin/forkop component_updates_if_due # comp' ] ||
   fail "intervals of an hour or more are kept: $(plan hours)"
-[ "$(plan hour)" = $'list\t0 * * * * /usr/bin/forkop list_update_if_due # list\ncomponent\t* * * * * /usr/bin/forkop component_updates_if_due # comp' ] ||
-  fail "1h and 90m are kept as they are: $(plan hour)"
+[ "$(plan hour)" = $'list\t0 * * * * /usr/bin/forkop list_update_if_due # list\ncomponent\t*/30 * * * * /usr/bin/forkop component_updates_if_due # comp' ] ||
+  fail "1h and 90m are kept as they are, 90m checked every 30 minutes: $(plan hour)"
+
+# An interval of an hour or more that is no whole number of hours is not
+# checked every minute: at the largest step that divides both it and the
+# hour, at least every 5 minutes (the update itself still runs once per
+# interval).
+schedule() {
+  ucode -L "$FORKOP_LIB" "$UPDATES" due-check-cron-schedule "$1"
+}
+[ "$(schedule 5400)" = '*/30 * * * *' ] || fail "90m: $(schedule 5400)"
+[ "$(schedule 8100)" = '*/15 * * * *' ] || fail "2h15m: $(schedule 8100)"
+[ "$(schedule 90000)" = '0 * * * *' ] || fail "25h: $(schedule 90000)"
+[ "$(schedule 129600)" = '0 * * * *' ] || fail "36h: $(schedule 129600)"
+[ "$(schedule 3660)" = '*/5 * * * *' ] || fail "61m: $(schedule 3660)"
+[ "$(schedule 3630)" = '0 * * * *' ] || fail "1h30s: $(schedule 3630)"
+# Shorter intervals (subscriptions) and whole hours or days keep theirs.
+[ "$(schedule 1800)" = '*/30 * * * *' ] || fail "30m: $(schedule 1800)"
+[ "$(schedule 60)" = '* * * * *' ] || fail "1m: $(schedule 60)"
+[ "$(schedule 7200)" = '0 */2 * * *' ] || fail "2h: $(schedule 7200)"
+[ "$(schedule 172800)" = '0 0 * * *' ] || fail "2d: $(schedule 172800)"
 
 # The due check: with a 1m interval a list updated two minutes ago is not
 # due, one updated an hour ago is.

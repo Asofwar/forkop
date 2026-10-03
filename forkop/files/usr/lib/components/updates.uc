@@ -12,6 +12,9 @@ const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
 const STATE_UC = getenv("FORKOP_STATE_UC") || LIB_DIR + "/service/state.uc";
 const BIN_PATH = getenv("FORKOP_BIN") || "/usr/bin/forkop";
 const CRONTAB_FILE = getenv("FORKOP_CRONTAB_FILE") || "/etc/crontabs/root";
+// The shortest step of the due check of an interval of an hour or more
+// (due_check_cron_schedule_text).
+const DUE_CHECK_MIN_STEP_MINUTES = 5;
 const TMP_SING_BOX_FOLDER = getenv("TMP_SING_BOX_FOLDER") || "/tmp/sing-box";
 const TMP_RULESET_FOLDER = getenv("TMP_RULESET_FOLDER") || TMP_SING_BOX_FOLDER + "/rulesets";
 const RUNTIME_LIST_GENERATION_DIR = getenv("FORKOP_RUNTIME_LIST_GENERATION_DIR") || TMP_SING_BOX_FOLDER + "/list-generation";
@@ -1367,6 +1370,19 @@ function due_check_cron_schedule_text(value) {
         let hours = seconds / 3600;
         if (hours >= 1 && hours <= 23)
             return hours == 1 ? "0 * * * *" : "0 */" + hours + " * * *";
+    }
+
+    // An hour or more that is no whole number of hours or days (90m, 25h):
+    // checked at the largest step that divides both it and the hour, at
+    // least every DUE_CHECK_MIN_STEP_MINUTES, never every minute (D-18 (a));
+    // the due check still runs the update once per interval.
+    if (seconds >= 3600) {
+        let step = 60, minutes = int(seconds / 60);
+        while (minutes % step != 0 || 60 % step != 0)
+            step--;
+        if (step < DUE_CHECK_MIN_STEP_MINUTES)
+            step = DUE_CHECK_MIN_STEP_MINUTES;
+        return step == 60 ? "0 * * * *" : "*/" + step + " * * * *";
     }
 
     if (seconds % 60 == 0) {

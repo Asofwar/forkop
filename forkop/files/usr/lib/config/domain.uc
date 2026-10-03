@@ -126,27 +126,40 @@ function unicode_lower_codepoint(cp) {
     if (cp < 0x80)
         return cp >= 0x41 && cp <= 0x5a ? cp + 0x20 : cp;
 
-    for (let range in UNICODE_FOLD_RANGES) {
-        if (cp < range[0])
-            break;
-        if (cp <= range[1] && (cp - range[0]) % range[3] == 0)
-            return cp + range[2];
+    // The ranges are sorted and do not overlap: the one that can hold cp is
+    // the last one that starts at or before it.
+    let low = 0;
+    let high = length(UNICODE_FOLD_RANGES) - 1;
+    let found = -1;
+    while (low <= high) {
+        let middle = int((low + high) / 2);
+        if (UNICODE_FOLD_RANGES[middle][0] <= cp) {
+            found = middle;
+            low = middle + 1;
+        }
+        else
+            high = middle - 1;
     }
 
-    return cp;
+    if (found < 0)
+        return cp;
+
+    let range = UNICODE_FOLD_RANGES[found];
+    return cp <= range[1] && (cp - range[0]) % range[3] == 0 ? cp + range[2] : cp;
 }
 
-// The code point at offset, folded: cp is the folded code point, cps the
+// A non-ASCII code point, folded: cp is the folded code point, cps the
 // folded code points when there are several, raw the code point as written.
 function folded_codepoint(raw, next) {
-    let expansion = UNICODE_FOLD_EXPANSIONS[raw];
-    return { cp: unicode_lower_codepoint(raw), cps: expansion, raw, next };
+    if (raw == 0x130 || raw == 0x1e9e)
+        return { cp: raw, cps: UNICODE_FOLD_EXPANSIONS[raw], raw, next };
+    return { cp: unicode_lower_codepoint(raw), raw, next };
 }
 
 function utf8_next_codepoint(value, offset) {
     let b1 = byte_at(value, offset);
     if (b1 < 0x80)
-        return folded_codepoint(b1, offset + 1);
+        return { cp: b1 >= 0x41 && b1 <= 0x5a ? b1 + 0x20 : b1, next: offset + 1 };
 
     if (b1 >= 0xc2 && b1 <= 0xdf) {
         let b2 = valid_continuation(value, offset + 1);

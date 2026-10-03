@@ -156,6 +156,17 @@ function evaluate(input) {
   forAll("suffix_to_ascii is idempotent", seed, results.filter((r) => r !== null), (value, i) =>
     assert.equal(again[i], value));
 
+  // config/domain.uc finds a code point's range by binary search: the table
+  // must be sorted and free of overlaps.
+  const source = require("node:fs").readFileSync(`${lib}/config/domain.uc`, "utf8");
+  const table = source.slice(source.indexOf("const UNICODE_FOLD_RANGES = ["), source.indexOf("];", source.indexOf("const UNICODE_FOLD_RANGES")));
+  const rows = [...table.matchAll(/\[ (0x[0-9a-f]+), (0x[0-9a-f]+), (-?\d+), (\d+) \]/g)].map((m) => [parseInt(m[1], 16), parseInt(m[2], 16)]);
+  assert.ok(rows.length > 100, "the folding table of config/domain.uc is read");
+  rows.forEach(([first, last], i) => {
+    assert.ok(first <= last, `range ${i} is ordered`);
+    if (i > 0) assert.ok(first > rows[i - 1][1], `range ${i} starts after range ${i - 1} ends`);
+  });
+
   // 3. Every cased code point UTS46 maps to one code point folds as UTS46 maps
   // it (a doubled letter: one label, one script direction).
   const folds = mappings.filter(([cp, m]) => m.length === 1 || MULTI_FOLDED.has(cp));

@@ -727,9 +727,11 @@ export const ForkopShellMethods = {
       return response;
     }
 
+    // Still running at the bound: not confirmed in time, not failed (UC-119).
     return {
       success: false,
       error: _('Operation timed out'),
+      reason: 'timeout',
     } as Forkop.MethodFailureResponse;
   },
   uiActionAck: async (

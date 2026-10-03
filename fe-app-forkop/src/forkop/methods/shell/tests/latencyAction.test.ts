@@ -69,6 +69,30 @@ describe('ForkopShellMethods.latencyAction', () => {
     });
   });
 
+  // UC-119: like a service action, a test still running at the waiter's
+  // bound is not confirmed in time, which is no failure of the test.
+  it('reports a latency test still running at its bound as not confirmed', async () => {
+    mocks.executeShellCommand.mockResolvedValue({
+      stdout: JSON.stringify({
+        success: false,
+        running: true,
+        message: 'Latency test is running',
+        section: 'main',
+        tag: 'proxy-1',
+      }),
+      stderr: '',
+      code: 0,
+    });
+
+    const waiting = ForkopShellMethods.waitLatencyTestJob('job-1');
+    await vi.advanceTimersByTimeAsync(60 * 1000);
+
+    await expect(waiting).resolves.toMatchObject({
+      success: false,
+      reason: 'timeout',
+    });
+  });
+
   it('passes an optional timeout to latency jobs', async () => {
     mocks.executeShellCommand.mockResolvedValue({
       stdout: JSON.stringify({ success: true, job_id: 'latency-1' }),

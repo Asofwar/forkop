@@ -3090,7 +3090,8 @@ var ForkopShellMethods = {
     }
     return {
       success: false,
-      error: _("Operation timed out")
+      error: _("Operation timed out"),
+      reason: "timeout"
     };
   },
   uiActionAck: async (kind, jobId) => {

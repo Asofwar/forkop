@@ -335,11 +335,20 @@ run_command() {
     command_starttime="$(process_starttime "$command_pid" 2>/dev/null || true)"
 
     (
-        local sleep_pid current_starttime
-        trap 'kill "$sleep_pid" 2>/dev/null || true; wait "$sleep_pid" 2>/dev/null || true; exit 0' TERM INT
+        local sleep_pid="" stopped="" current_starttime
+        # run_command stops the watchdog with TERM once the command is done.
+        # The sleep goes with KILL: a child that has not exec'd sleep yet
+        # runs this handler, takes TERM as caught and would sleep to the
+        # deadline. A TERM before its pid is known kills it right after.
+        trap 'stopped=1; [ -z "$sleep_pid" ] || kill -KILL "$sleep_pid" 2>/dev/null' TERM INT
         sleep "$seconds" &
         sleep_pid=$!
+        [ -z "$stopped" ] || kill -KILL "$sleep_pid" 2>/dev/null
         wait "$sleep_pid" || exit 0
+        # The sleep is reaped and its pid may name another process: a TERM
+        # from here on only ends the watchdog.
+        trap 'exit 0' TERM INT
+        [ -z "$stopped" ] || exit 0
         current_starttime="$(process_starttime "$command_pid" 2>/dev/null || true)"
         [ -n "$command_starttime" ] && [ "$current_starttime" = "$command_starttime" ] || exit 0
         : > "$result.timeout"

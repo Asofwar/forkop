@@ -404,6 +404,9 @@ let runtime_table = false;
 // component_change_user_stop.sh runs those paths end to end.
 let user_stopped = false;
 function forkop_stopped_by_user() { return user_stopped; }
+// The stop request after Forkop's own stop: the user's, or Forkop's own one
+// that the start after it names (FORKOP_START_AFTER_STOP).
+function own_stop_request() { return user_stopped ? null : "1.000000001.42"; }
 let constants = { NFT_TABLE_NAME: "ForkopTable" };
 function as_string(value) { return value == null ? "" : "" + value; }
 function die_check(message) { warn("FAIL: " + message + "\n"); exit(1); }
@@ -462,6 +465,12 @@ function module_success(args) {
         "unexpected module " + join(" ", args));
     push(calls, "wait:" + args[2]);
     return next_result();
+}
+// The start after Forkop's own stop compares with that stop's request.
+function module_success_env(assignments, args) {
+    check(length(keys(assignments)) == 1 && assignments.FORKOP_START_AFTER_STOP == "1.000000001.42",
+        "the start after Forkop's own stop does not name its request: " + sprintf("%J", assignments));
+    return module_success(args);
 }
 function action_fail(component, action, message) {
     outcome = { success: false, message };

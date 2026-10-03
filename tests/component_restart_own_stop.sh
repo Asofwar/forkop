@@ -17,6 +17,13 @@ set -euo pipefail
 # own stop for the change (by=component) followed by an awaited start: such
 # failures stay failures, and a stop by the user still holds.
 #
+# That stop and that start are two init.d calls, each under procd's lock. A
+# user's Stop that waited for the lock behind Forkop's own stop ran between
+# them, after the action had read the stop request, and the start took the
+# user's request for the one before it: it removed it and started Forkop
+# against the user's stop. The start now compares with Forkop's own stop
+# request (FORKOP_START_AFTER_STOP), and any stop recorded after it wins.
+#
 # The init script is the real one behind an rc.common stand-in that holds fd
 # 1000 like procd.sh; service/initd.uc is the real one; its backend `forkop`
 # fails or succeeds on demand. The component action is components/action.uc
@@ -143,12 +150,22 @@ cat >"$WORK_DIR/bin/init" <<'SH'
 #!/bin/sh
 exec bash "$TEST_WORK/rc" "$@"
 SH
+#
+# The user's Stop alongside Forkop's own stop for the restart
+# (FORKOP_STOP_SOURCE=component): with user-stop.queued it is requested while
+# that stop runs and waits for procd's lock behind it (LuCI's System >
+# Startup, `service forkop stop`); once it has the lock it takes
+# FORKOP_TEST_USER_STOP_DELAY before it records its request, as a slow router
+# does. With user-stop.after it runs right after that stop, before the
+# action goes on.
 cat >"$WORK_DIR/rc" <<'SH'
 #!/usr/bin/env bash
 action="$1"
 shift
 exec 1000>"$RC_PROCD_LOCK"
+[ -z "${FORKOP_TEST_USER_STOP_DELAY:-}" ] || : >"$TEST_WORK/user-stop.waiting"
 flock 1000
+[ -z "${FORKOP_TEST_USER_STOP_DELAY:-}" ] || sleep "$FORKOP_TEST_USER_STOP_DELAY"
 initscript="$REAL_INITD"
 # shellcheck disable=SC1090
 . "$REAL_INITD"
@@ -157,12 +174,36 @@ FORKOP_INITD_UC="$TEST_LIB/service/initd.uc"
 stop() { stop_service "$@"; }
 start() { start_service "$@"; service_started; }
 printf '%s source=%s\n' "$action" "${FORKOP_STOP_SOURCE:-}" >>"$TEST_WORK/init.log"
+own_stop=""
+[ "$action" != stop ] || [ "${FORKOP_STOP_SOURCE:-}" != component ] || own_stop=1
+if [ -n "$own_stop" ] && [ -e "$TEST_WORK/user-stop.queued" ]; then
+  rm -f "$TEST_WORK/user-stop.queued"
+  (
+    exec 1000>&-
+    status=0
+    env -u FORKOP_STOP_SOURCE FORKOP_TEST_USER_STOP_DELAY=0.5 "$FORKOP_SERVICE_INIT" stop || status=$?
+    printf '%s\n' "$status" >"$TEST_WORK/user-stop.done"
+  ) </dev/null >/dev/null 2>&1 &
+  for _ in $(seq 100); do
+    [ ! -e "$TEST_WORK/user-stop.waiting" ] || break
+    sleep 0.05
+  done
+  sleep 0.2
+fi
 case "$action" in
   start) start "$@" ;;
   stop) stop "$@" ;;
   restart) restart "$@" ;;
   *) exit 64 ;;
 esac
+status=$?
+if [ -n "$own_stop" ] && [ -e "$TEST_WORK/user-stop.after" ]; then
+  rm -f "$TEST_WORK/user-stop.after"
+  exec 1000>&-
+  env -u FORKOP_STOP_SOURCE "$FORKOP_SERVICE_INIT" stop </dev/null >/dev/null 2>&1
+  printf '%s\n' "$?" >"$TEST_WORK/user-stop.done"
+fi
+exit "$status"
 SH
 
 # No sing-box of another program runs; the runtime is "stably running"
@@ -249,6 +290,7 @@ reset_case() {
   release_reload_lock
   kill_retry_workers
   rm -f "$WORK_DIR"/start.status "$WORK_DIR"/stop.status "$WORK_DIR"/start.user-stop "$WORK_DIR"/starts \
+    "$WORK_DIR"/user-stop.queued "$WORK_DIR"/user-stop.after "$WORK_DIR"/user-stop.waiting "$WORK_DIR"/user-stop.done \
     "$WORK_DIR"/uci.committed "$WORK_DIR"/out "$FORKOP_RUNTIME_STATE_DIR"/stop.requested \
     "$FORKOP_RUNTIME_STATE_DIR"/start.retry "$FORKOP_RUNTIME_STATE_DIR"/start-result.*
   : >"$WORK_DIR/syslog"
@@ -336,5 +378,33 @@ probe failed-sing-box || fail "$case: the probe failed"
 grep -q '\[error\] Updates: Forkop did not start again after the failed sing-box component change' "$WORK_DIR/syslog" ||
   fail "$case: the failed restart was not logged as an error"
 expect_not_user_stop "$case"
+
+# The user's Stop with Forkop's own stop for the restart: it holds, and the
+# change is no failure (D-15(a)). No start runs, and the explicit start stays
+# ended: no reload brings the runtime back.
+expect_user_stop_holds() {
+  wait_until 20 test -e "$WORK_DIR/user-stop.done" || fail "$1: the user's stop did not finish"
+  [ "$(cat "$WORK_DIR/user-stop.done")" = 0 ] || fail "$1: the user's stop failed"
+  grep -qx 'restarted=yes' "$WORK_DIR/out" || fail "$1: the user's stop was reported as a failed restart"
+  [ "$(stop_request_by)" = user ] || fail "$1: the user's stop is no longer recorded ($(stop_request_by))"
+  [ ! -e "$WORK_DIR/runtime.up" ] || fail "$1: Forkop runs after the user stopped it"
+  [ ! -s "$WORK_DIR/starts" ] || fail "$1: Forkop was started after the user's stop"
+  [ ! -e "$FORKOP_RUNTIME_STATE_DIR/start.explicit" ] || fail "$1: the start after the user's stop recorded an explicit start"
+}
+
+# 7. The user's Stop waits for procd's lock behind Forkop's own stop, and
+#    records its request only after the action has read the stop request.
+reset_case
+: >"$WORK_DIR/user-stop.queued"
+case="restart, the user's stop waits behind its own stop"
+probe restart || fail "$case: the probe failed"
+expect_user_stop_holds "$case"
+
+# 8. The user's Stop runs between the restart's own stop and its start.
+reset_case
+: >"$WORK_DIR/user-stop.after"
+case="restart, the user's stop between its stop and its start"
+probe restart || fail "$case: the probe failed"
+expect_user_stop_holds "$case"
 
 printf 'component_restart_own_stop: PASS\n'

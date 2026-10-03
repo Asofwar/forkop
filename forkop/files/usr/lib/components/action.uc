@@ -189,6 +189,10 @@ function module_success(args) {
     return command_success(module_command(args));
 }
 
+function module_success_env(assignments, args) {
+    return command_success(command_env(assignments) + " " + module_command(args));
+}
+
 function helper_output(mode, args) {
     let command_args = [ LIB_DIR + "/components/updater.uc", mode ];
     for (let arg in (type(args) == "array" ? args : []))
@@ -346,11 +350,16 @@ function forkop_status_running_with_timeout() {
 // run; service/initd.uc start-and-wait waits for the start's own result and
 // then checks the runtime (UC-013). An older release that this action has
 // just installed has no start-and-wait: then the runtime is polled after
-// init.d, as restore_forkop_opkg_service does.
-function forkop_start_and_wait(action) {
+// init.d, as restore_forkop_opkg_service does. A start that follows
+// Forkop's own stop names that stop's request (after_stop): a stop requested
+// after it wins over the start (service/initd.uc start_service).
+function forkop_start_and_wait(action, after_stop) {
     let initd_module = LIB_DIR + "/service/initd.uc";
-    if (index(read_file(initd_module), '"start-and-wait"') >= 0)
-        return module_success([ initd_module, "start-and-wait", action ]);
+    if (index(read_file(initd_module), '"start-and-wait"') >= 0) {
+        if (as_string(after_stop) == "")
+            return module_success([ initd_module, "start-and-wait", action ]);
+        return module_success_env({ FORKOP_START_AFTER_STOP: after_stop }, [ initd_module, "start-and-wait", action ]);
+    }
     if (!command_success_from_args([ SERVICE_INIT, action ]))
         return false;
     for (let attempt = 0; attempt < 45; attempt++) {
@@ -365,12 +374,25 @@ function forkop_start_and_wait(action) {
 // made while the action ran stays the user's through Forkop's own stops for
 // the change (service/initd.uc stop_request_source); the start that puts
 // back the state noted when the action began must not undo it.
-function forkop_stopped_by_user() {
-    let request = fs.readfile(STOP_REQUESTED_FILE);
-    if (request == null)
-        return false;
+function stop_request_by_user(request) {
     let by = match(request, /(^|\n)by=([a-z]*)/);
     return by == null || by[2] == "user";
+}
+
+function forkop_stopped_by_user() {
+    let request = fs.readfile(STOP_REQUESTED_FILE);
+    return request != null && stop_request_by_user(request);
+}
+
+// The stop request after Forkop's own stop, read once: its first line, ""
+// when none is recorded, null when it is the user's stop (D-15).
+function own_stop_request() {
+    let request = fs.readfile(STOP_REQUESTED_FILE);
+    if (request == null)
+        return "";
+    if (stop_request_by_user(request))
+        return null;
+    return split(request, "\n")[0];
 }
 
 // Forkop's own stop for a component change, followed by a start: not the
@@ -384,11 +406,18 @@ function forkop_stop_for_component_change_args() {
 // and a restart that failed before its start removed that record (its stop
 // failed, its start was deferred past the wait) then read as the user's
 // stop: the failed change as one that the user's stop overtook (UC-235).
-// A stop that the user made meanwhile holds: no start follows it.
+// A stop that the user made meanwhile holds: no start follows it. The stop
+// and the start each take procd's lock, and a user's stop that waited for
+// it behind Forkop's own stop runs before the start, also after the request
+// was read here: the start compares with Forkop's own stop request and
+// leaves Forkop down after any later stop.
 function forkop_restart_and_wait() {
-    if (!command_success_from_args(forkop_stop_for_component_change_args()) || forkop_stopped_by_user())
+    if (!command_success_from_args(forkop_stop_for_component_change_args()))
         return false;
-    return forkop_start_and_wait("start");
+    let after_stop = own_stop_request();
+    if (after_stop == null)
+        return false;
+    return forkop_start_and_wait("start", after_stop);
 }
 
 // Nor does its restart fallback: a start that the user's stop overtook

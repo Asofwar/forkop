@@ -12,6 +12,7 @@ import {
   registerRuntimeStateResumeRefresh,
   startRuntimeUiStatePolling,
 } from './runtimeUiState.service';
+import { startServiceActionOutcomeNotices } from './serviceActionOutcome.service';
 
 type CoreServiceOptions = {
   waitForLogWatcherStart?: () => Promise<unknown>;
@@ -115,4 +116,5 @@ export function coreService(options: CoreServiceOptions = {}) {
 
   registerRuntimeStateResumeRefresh();
   startRuntimeUiStatePolling();
+  startServiceActionOutcomeNotices();
 }

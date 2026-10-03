@@ -2,28 +2,49 @@ import { ForkopShellMethods } from '../../methods';
 import { confirmAction } from '../../ui/confirmAction';
 import { refreshRuntimeUiState } from '../../services/runtimeUiState.service';
 import { store } from '../../services/store.service';
+import { markUiActionOwned } from '../../services/uiActionNotification.service';
+import {
+  beginAwaitedServiceAction,
+  endAwaitedServiceAction,
+} from '../../services/serviceActionOutcome.service';
+import { ActionFailureError, failureReason } from '../../helpers/actionReason';
+import { Forkop } from '../../types';
 
 export type ForkopServiceAction = 'start' | 'restart' | 'stop';
 
-// Runs a service action through the same job as Diagnostics; pages follow
-// the resulting state through the runtime UI state poller.
-export async function runForkopServiceAction(action: ForkopServiceAction) {
+// Runs a service action through the same job as Diagnostics and resolves to
+// the finished job. A refusal, or a job not confirmed in time, throws an
+// ActionFailureError with its reason (UC-119, UC-120). The job is owned by
+// this browser tab: when the page is gone before it finishes, its failure
+// is still reported (services/serviceActionOutcome.service).
+export async function runServiceActionJob(action: Forkop.ServiceAction) {
   const start = await ForkopShellMethods.serviceActionStart(action);
   if (!start.success) {
-    throw new Error(start.error);
+    throw new ActionFailureError(start.error, failureReason(start));
   }
 
   const jobId = start.data.job_id;
+  let finished = false;
+  markUiActionOwned('service', jobId);
+  beginAwaitedServiceAction(jobId);
   try {
     const result = await ForkopShellMethods.waitServiceActionJob(jobId);
     if (!result.success) {
-      throw new Error(result.error);
+      throw new ActionFailureError(result.error, failureReason(result));
     }
-    if (result.data.success === false) {
-      throw new Error(result.data.message || '');
-    }
+    finished = true;
+    return result.data;
   } finally {
+    endAwaitedServiceAction(jobId, finished);
     void ForkopShellMethods.uiActionAck('service', jobId);
+  }
+}
+
+// Pages follow the resulting state through the runtime UI state poller.
+export async function runForkopServiceAction(action: ForkopServiceAction) {
+  const state = await runServiceActionJob(action);
+  if (state.success === false) {
+    throw new ActionFailureError(state.message || '', state.reason);
   }
 }
 

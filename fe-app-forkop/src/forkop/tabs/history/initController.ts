@@ -16,6 +16,7 @@ import {
 } from '../../ui/states';
 import {
   createSnapshotToast,
+  deleteSnapshotToast,
   diffRows,
   diffTruncatedText,
   historyFilterLabel,
@@ -25,7 +26,6 @@ import {
   restoreMigrationNote,
   restorePreview,
   restoreResultToast,
-  snapshotBusyText,
   snapshotDiff,
   snapshotRows,
   unsavedChangesBlockRestore,
@@ -305,10 +305,8 @@ async function deleteSnapshot(id: string, label: string) {
 
   await runSnapshotAction(async () => {
     const result = await ForkopShellMethods.snapshotDelete(id);
-    const status = result.success ? result.data.status : undefined;
-    if (status === 'busy') showToast(snapshotBusyText(), 'warning', 6000);
-    else if (status === 'deleted') showToast(_('Snapshot deleted'), 'success');
-    else showToast(_('Could not delete snapshot'), 'error');
+    const toast = deleteSnapshotToast(result.success ? result.data : undefined);
+    showToast(toast.text, toast.type, toast.duration);
   });
 }
 

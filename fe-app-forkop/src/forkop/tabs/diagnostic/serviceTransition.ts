@@ -91,13 +91,6 @@ export function getAvailableActionsDisabledState({
   };
 }
 
-export function serviceActionErrorText(error: unknown) {
-  const detail = error instanceof Error ? error.message.trim() : '';
-  return detail
-    ? `${_('Service action failed')}: ${detail}`
-    : _('Service action failed');
-}
-
 export function shouldShowRestartAction({
   forkopRunning,
   restartBlocked = false,

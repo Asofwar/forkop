@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { serviceActionNotice } from '../../../helpers/serviceActionNotice';
 import {
-  serviceActionErrorText,
   getAvailableActionsDisabledState,
   hasComponentActionLoading,
   hasLocalMutatingServiceActionLoading,
@@ -142,11 +142,12 @@ describe('diagnostic service transitions', () => {
 
 describe('service action errors', () => {
   it('names the failure and keeps the backend detail', () => {
-    expect(serviceActionErrorText(new Error(' init failed '))).toBe(
+    const text = (error: unknown) => serviceActionNotice(error).text;
+    expect(text(new Error(' init failed '))).toBe(
       'Service action failed: init failed',
     );
-    expect(serviceActionErrorText(new Error(''))).toBe('Service action failed');
-    expect(serviceActionErrorText('x')).toBe('Service action failed');
+    expect(text(new Error(''))).toBe('Service action failed');
+    expect(text('x')).toBe('Service action failed');
   });
 
   it('withholds restart while sing-box ownership is unclear', () => {

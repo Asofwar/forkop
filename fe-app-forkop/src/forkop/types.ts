@@ -826,6 +826,10 @@ export namespace Forkop {
   export interface MethodFailureResponse {
     success: false;
     error: string;
+    // The stable reason of a refusal or failure (UC-119): busy,
+    // startup_in_progress, invalid_input, not_found, forbidden, timeout,
+    // failure, or the error code of clash_api.
+    reason?: string;
   }
 
   export type MethodResponse<T> =
@@ -944,6 +948,7 @@ export namespace Forkop {
     success: boolean;
     job_id: string;
     message: string;
+    reason?: string;
   }
 
   export interface UiActionState {
@@ -956,6 +961,8 @@ export namespace Forkop {
     updated_at?: number | null;
     exit_code?: number | null;
     job_id?: string;
+    // Why a finished job did not succeed (service/ui.uc, UC-119).
+    reason?: string;
   }
 
   export interface ServiceActionState extends UiActionState {
@@ -1029,6 +1036,8 @@ export namespace Forkop {
     started_at?: number;
     updated_at?: number | null;
     exit_code?: number | null;
+    // Why the action did not succeed (components/action.uc, UC-119).
+    reason?: string;
   }
 
   export interface ComponentUpdateCheckCache {

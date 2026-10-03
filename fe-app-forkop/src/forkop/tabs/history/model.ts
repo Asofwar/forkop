@@ -396,6 +396,40 @@ export function snapshotBusyText(reason?: string) {
 // names its limit with the refusal; this only stands in for a missing one.
 const MANUAL_SNAPSHOT_LIMIT = 8;
 
+// What "Delete" did. A refusal says why (UC-119): the last known good
+// snapshot is never deleted, and one that is gone or unreadable cannot be.
+export function deleteSnapshotToast(
+  result: Pick<Forkop.SnapshotResult, 'status' | 'reason'> | undefined,
+): SnapshotToast {
+  if (result?.status === 'deleted')
+    return { text: _('Snapshot deleted'), type: 'success', duration: 3000 };
+  if (result?.status === 'busy')
+    return {
+      text: snapshotBusyText(result.reason),
+      type: 'warning',
+      duration: 6000,
+    };
+  if (result?.reason === 'lkg_protected')
+    return {
+      text: _(
+        'The last known good snapshot cannot be deleted: it is the configuration Forkop X returns to after a failed change.',
+      ),
+      type: 'warning',
+      duration: 8000,
+    };
+  if (result?.reason === 'invalid_snapshot')
+    return {
+      text: _('The snapshot was not found or cannot be read.'),
+      type: 'error',
+      duration: 6000,
+    };
+  return {
+    text: _('Could not delete snapshot'),
+    type: 'error',
+    duration: 3000,
+  };
+}
+
 // What "Create snapshot" did. A refusal says why and what to do, never only
 // that the snapshot could not be created (UC-022).
 export function createSnapshotToast(

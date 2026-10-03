@@ -44,16 +44,20 @@ import {
 } from './overview';
 import { renderOverview } from './overviewCards';
 import { runOverviewServiceAction } from './serviceActionFlow';
+import { runUrlTestChange } from './serviceReload';
 import {
-  serviceReloadOutcome,
-  urlTestChangeToast,
-  type ServiceReloadOutcome,
-} from './serviceReload';
+  ActionFailureError,
+  failureFromError,
+  failureReason,
+  failureText,
+  failureToastType,
+} from '../../helpers/actionReason';
 import { readLastRun } from '../diagnostic/partials/renderRunAction';
-import { serviceActionErrorText } from '../diagnostic/serviceTransition';
+import { serviceActionNotice } from '../../helpers/serviceActionNotice';
 import {
   confirmStopForkop,
   runForkopServiceAction,
+  runServiceActionJob,
   setForkopAutostart,
   type ForkopServiceAction,
 } from '../shared/serviceControl';
@@ -162,7 +166,10 @@ async function handleServiceAction(action: ForkopServiceAction) {
   const mountId = dashboardMountId;
   await runOverviewServiceAction({
     run: () => runForkopServiceAction(action),
-    onError: (error) => showToast(serviceActionErrorText(error), 'error', 6000),
+    onError: (error) => {
+      const notice = serviceActionNotice(error);
+      showToast(notice.text, notice.type, 6000);
+    },
     refreshRuntime: () => refreshRuntimeUiState({ force: true }),
     refreshHealth: () => refreshHealth(mountId),
     setBusy: (busy) => {
@@ -1015,7 +1022,10 @@ async function handleTestLatency(
     );
 
     if (!startResponse.success) {
-      throw new Error(startResponse.error);
+      throw new ActionFailureError(
+        startResponse.error,
+        failureReason(startResponse),
+      );
     }
 
     jobId = startResponse.data.job_id;
@@ -1028,18 +1038,28 @@ async function handleTestLatency(
     ownsJobFollow = true;
     const completion = await ForkopShellMethods.waitLatencyTestJob(jobId);
     if (!completion.success) {
-      throw new Error(completion.error);
+      throw new ActionFailureError(completion.error, failureReason(completion));
     }
     if (!completion.data.success) {
-      throw new Error(completion.data.message || _('Latency test failed'));
+      // The job's own text is always "Latency test failed": the reason
+      // says why.
+      throw new ActionFailureError(
+        _('Latency test failed'),
+        completion.data.reason,
+      );
     }
     await completeLatencyTestJob(jobId, sectionName);
     completed = true;
   } catch (error) {
     logger.error('[DASHBOARD]', 'handleTestLatency: failed', error);
     if (!pageUnloading) {
-      const message = error instanceof Error ? error.message : '';
-      showToast(message || _('Latency test failed'), 'error');
+      // Another test running is a warning; why a test failed is translated
+      // (UC-119).
+      const failure = failureFromError(error);
+      showToast(
+        failureText(failure, _('Latency test failed')),
+        failureToastType(failure),
+      );
     }
   } finally {
     if (ownsJobFollow) {
@@ -1349,53 +1369,55 @@ function renderUrlTestEditorModal(outbound: Forkop.Outbound) {
     ]);
 
   // A reload that init.d only queued, or skipped for a stopped Forkop X, is
-  // not reported as applied (UC-061).
-  const reload = async () => {
-    setBusy(true, _('Applying Forkop configuration…'));
-    const response = await ForkopShellMethods.serviceActionStart('reload');
-    if (!response.success) throw new Error('reload failed');
-    const jobId = response.data.job_id;
-    if (!jobId) throw new Error('reload failed');
-    const result = await ForkopShellMethods.waitServiceActionJob(jobId);
-    void ForkopShellMethods.uiActionAck('service', jobId);
-    if (!result.success) throw new Error('reload failed');
-    setBusy(true, _('Refreshing Dashboard…'));
-    await fetchDashboardSections({ force: true });
-    return serviceReloadOutcome(result.data);
-  };
-  const toast = (outcome: ServiceReloadOutcome, reset: boolean) => {
-    const { text, type, duration } = urlTestChangeToast(outcome, reset);
-    showToast(text, type, duration);
-  };
-  const save = async () => {
-    setBusy(true, _('Saving URLTest settings…'));
-    const response = await ForkopShellMethods.saveUrlTestOverride(
-      info.sectionName || '',
-      info.code,
-      url.value.trim(),
-      interval.value.trim(),
-      tolerance.value.trim(),
-      idleTimeout.value.trim(),
-      interrupt.checked,
+  // not reported as applied (UC-061); one that failed or was refused keeps
+  // the editor open (UC-116).
+  const apply = async (change: () => Promise<void>, isReset: boolean) => {
+    const result = await runUrlTestChange(
+      {
+        change,
+        reload: async () => {
+          setBusy(true, _('Applying Forkop configuration…'));
+          return runServiceActionJob('reload');
+        },
+        refresh: async () => {
+          setBusy(true, _('Refreshing Dashboard…'));
+          await fetchDashboardSections({ force: true });
+        },
+      },
+      isReset,
     );
-    if ((response.code ?? 0) !== 0)
-      throw new Error(response.stderr || 'save failed');
-    const outcome = await reload();
-    ui.hideModal();
-    toast(outcome, false);
+    if (result.close) {
+      ui.hideModal();
+    } else {
+      setBusy(false);
+    }
+    showToast(result.toast.text, result.toast.type, result.toast.duration);
   };
-  const reset = async () => {
-    setBusy(true, _('Removing user settings…'));
-    const response = await ForkopShellMethods.resetUrlTestOverride(
-      info.sectionName || '',
-      info.code,
-    );
-    if ((response.code ?? 0) !== 0)
-      throw new Error(response.stderr || 'reset failed');
-    const outcome = await reload();
-    ui.hideModal();
-    toast(outcome, true);
-  };
+  const save = () =>
+    apply(async () => {
+      setBusy(true, _('Saving URLTest settings…'));
+      const response = await ForkopShellMethods.saveUrlTestOverride(
+        info.sectionName || '',
+        info.code,
+        url.value.trim(),
+        interval.value.trim(),
+        tolerance.value.trim(),
+        idleTimeout.value.trim(),
+        interrupt.checked,
+      );
+      if ((response.code ?? 0) !== 0)
+        throw new Error(response.stderr || 'save failed');
+    }, false);
+  const reset = () =>
+    apply(async () => {
+      setBusy(true, _('Removing user settings…'));
+      const response = await ForkopShellMethods.resetUrlTestOverride(
+        info.sectionName || '',
+        info.code,
+      );
+      if ((response.code ?? 0) !== 0)
+        throw new Error(response.stderr || 'reset failed');
+    }, true);
   const action = (fn: () => Promise<void>) => async (event: MouseEvent) => {
     activeButton = event.currentTarget as HTMLButtonElement;
     activeButtonLabel = activeButton.textContent || '';

@@ -1,6 +1,6 @@
 import { showToast } from '../../../helpers/showToast';
 import { isReadonlyMode } from '../../services/accessMode.service';
-import { serviceActionErrorText } from '../diagnostic/serviceTransition';
+import { serviceActionNotice } from '../../helpers/serviceActionNotice';
 import { runForkopServiceAction } from './serviceControl';
 
 let starting = false;
@@ -29,7 +29,8 @@ export function renderStartServiceAction(): HTMLElement[] {
         try {
           await runForkopServiceAction('start');
         } catch (error) {
-          showToast(serviceActionErrorText(error), 'error', 6000);
+          const notice = serviceActionNotice(error);
+          showToast(notice.text, notice.type, 6000);
         } finally {
           starting = false;
           button.disabled = false;

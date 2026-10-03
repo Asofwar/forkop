@@ -2,6 +2,7 @@ import { callBaseMethod } from './callBaseMethod';
 import { ClashAPI, Forkop } from '../../types';
 import { executeShellCommand } from '../../../helpers';
 import { isTransientRpcError } from '../../helpers/isTransientRpcError';
+import { failureReason } from '../../helpers/actionReason';
 
 const SUBSCRIPTION_UPDATE_RPC_TIMEOUT_MS = 15000;
 const SUBSCRIPTION_UPDATE_POLL_INTERVAL_MS = 1500;
@@ -164,25 +165,42 @@ async function isComponentActionStillRunning(
   );
 }
 
-function componentActionFailure(
+// A refusal or failure keeps the backend's stable reason (UC-119) next to
+// its English text; a backend without reasons gets one from that text.
+function actionFailure(
   response: Awaited<ReturnType<typeof executeShellCommand>>,
-  parsedResponse?: Pick<Forkop.ComponentActionResult, 'message'> | null,
+  parsedResponse: { message?: string; reason?: string } | null | undefined,
+  fallback: string,
 ) {
+  const error = parsedResponse?.message || response.stderr || fallback;
+  const reason = failureReason({
+    reason: parsedResponse?.reason,
+    error: parsedResponse?.message || response.stderr,
+  });
+
   return {
     success: false,
-    error: parsedResponse?.message || response.stderr || _('Failed to execute'),
+    error,
+    ...(reason ? { reason } : {}),
   } as Forkop.MethodFailureResponse;
+}
+
+function componentActionFailure(
+  response: Awaited<ReturnType<typeof executeShellCommand>>,
+  parsedResponse?: Pick<
+    Forkop.ComponentActionResult,
+    'message' | 'reason'
+  > | null,
+) {
+  return actionFailure(response, parsedResponse, _('Failed to execute'));
 }
 
 function uiActionFailure(
   response: Awaited<ReturnType<typeof executeShellCommand>>,
-  parsedResponse?: { message?: string } | null,
+  parsedResponse?: { message?: string; reason?: string } | null,
   fallback: string = _('Failed to execute'),
 ) {
-  return {
-    success: false,
-    error: parsedResponse?.message || response.stderr || fallback,
-  } as Forkop.MethodFailureResponse;
+  return actionFailure(response, parsedResponse, fallback);
 }
 
 function createTransientRpcGraceTracker(graceMs: number) {
@@ -592,16 +610,27 @@ export const ForkopShellMethods = {
       data: parsedResponse,
     } as Forkop.MethodSuccessResponse<Forkop.ServiceActionState>;
   },
+  // A lost RPC reply while the job runs is no failure, and a job still
+  // running at the bound is not confirmed rather than failed (UC-120).
   waitServiceActionJob: async (jobId: string, startedAt = Date.now()) => {
+    const transientRpc = createTransientRpcGraceTracker(
+      UI_ACTION_TRANSIENT_RPC_GRACE_MS,
+    );
+
     while (Date.now() - startedAt < SERVICE_ACTION_TIMEOUT_MS) {
       await sleep(SERVICE_ACTION_POLL_INTERVAL_MS);
 
       const response = await ForkopShellMethods.serviceActionStatus(jobId);
 
       if (!response.success) {
+        if (transientRpc.shouldContinue(response.error)) {
+          continue;
+        }
+
         return response;
       }
 
+      transientRpc.reset();
       if (response.data.running) {
         continue;
       }
@@ -612,6 +641,7 @@ export const ForkopShellMethods = {
     return {
       success: false,
       error: _('Operation timed out'),
+      reason: 'timeout',
     } as Forkop.MethodFailureResponse;
   },
   latencyTestStart: async (
@@ -900,13 +930,11 @@ export const ForkopShellMethods = {
       !parsedResponse?.success ||
       !parsedResponse.job_id
     ) {
-      return {
-        success: false,
-        error:
-          parsedResponse?.message ||
-          response.stderr ||
-          _('Subscription update failed'),
-      } as Forkop.MethodFailureResponse;
+      return uiActionFailure(
+        response,
+        parsedResponse,
+        _('Subscription update failed'),
+      );
     }
 
     return {

@@ -2461,6 +2461,95 @@ function isTransientRpcError(message) {
   );
 }
 
+// src/forkop/helpers/actionReason.ts
+var ActionFailureError = class extends Error {
+  constructor(message, reason) {
+    super(message);
+    this.name = "ActionFailureError";
+    this.reason = reason;
+  }
+};
+var LEGACY_REFUSALS = [
+  ["Another service action is already running", "busy"],
+  ["Another latency test is already running", "busy"],
+  ["Another component action is already running", "busy"],
+  ["Forkop startup is still in progress", "startup_in_progress"]
+];
+var WARNING_REASONS = ["busy", "startup_in_progress", "timeout", "queued"];
+function actionReasonText(reason) {
+  switch (reason) {
+    case "busy":
+      return _(
+        "Another action of this kind is already running. Try again when it finishes."
+      );
+    case "startup_in_progress":
+      return _(
+        "Forkop X is still starting. Try again when the start finishes."
+      );
+    case "invalid_input":
+      return _("The request was refused: invalid input.");
+    case "not_found":
+      return _("The action was not found; it may have finished already.");
+    case "forbidden":
+      return _("Not available in read-only mode.");
+    case "timeout":
+      return _(
+        "The action was not confirmed in time and may still be running; check the service status."
+      );
+    case "queued":
+      return _(
+        "Forkop X is busy with another operation: the change applies when it finishes."
+      );
+    case "latency_failed":
+      return _("The latency test measured no delay: the proxy did not answer.");
+    case "clash_api_timeout":
+      return _("The Clash API of sing-box did not answer in time.");
+    case "clash_api_unreachable":
+      return _("The Clash API of sing-box is not reachable.");
+    case "clash_api_unavailable":
+      return _("The Clash API of sing-box did not list its proxies.");
+    case "clash_api_auth_unavailable":
+      return _("The Clash API credentials could not be prepared.");
+    case "clash_api_invalid_response":
+    case "clash_api_error":
+      return _("The Clash API of sing-box answered with an error.");
+    default:
+      return null;
+  }
+}
+function actionReasonIsWarning(reason) {
+  return Boolean(reason && WARNING_REASONS.includes(reason));
+}
+function failureReason(failure) {
+  if (failure.reason) {
+    return failure.reason;
+  }
+  const texts = [failure.error, failure.message].filter(
+    (text) => typeof text === "string" && text !== ""
+  );
+  if (texts.some((text) => text.includes(READONLY_REFUSED))) {
+    return "forbidden";
+  }
+  for (const [text, reason] of LEGACY_REFUSALS) {
+    if (texts.some((item) => item.includes(text))) {
+      return reason;
+    }
+  }
+  return void 0;
+}
+function failureFromError(error) {
+  if (error instanceof ActionFailureError) {
+    return { reason: error.reason, error: error.message };
+  }
+  return { error: error instanceof Error ? error.message : "" };
+}
+function failureText(failure, fallback) {
+  return actionReasonText(failureReason(failure)) || (failure.error || failure.message || "").trim() || fallback;
+}
+function failureToastType(failure) {
+  return actionReasonIsWarning(failureReason(failure)) ? "warning" : "error";
+}
+
 // src/forkop/methods/shell/index.ts
 var SUBSCRIPTION_UPDATE_RPC_TIMEOUT_MS = 15e3;
 var SUBSCRIPTION_UPDATE_POLL_INTERVAL_MS = 1500;
@@ -2572,17 +2661,23 @@ async function isComponentActionStillRunning(jobId, component, action) {
     (state) => state.job_id === jobId && state.component === component && state.action === action && state.running === true
   );
 }
-function componentActionFailure(response, parsedResponse) {
+function actionFailure(response, parsedResponse, fallback) {
+  const error = parsedResponse?.message || response.stderr || fallback;
+  const reason = failureReason({
+    reason: parsedResponse?.reason,
+    error: parsedResponse?.message || response.stderr
+  });
   return {
     success: false,
-    error: parsedResponse?.message || response.stderr || _("Failed to execute")
+    error,
+    ...reason ? { reason } : {}
   };
 }
+function componentActionFailure(response, parsedResponse) {
+  return actionFailure(response, parsedResponse, _("Failed to execute"));
+}
 function uiActionFailure(response, parsedResponse, fallback = _("Failed to execute")) {
-  return {
-    success: false,
-    error: parsedResponse?.message || response.stderr || fallback
-  };
+  return actionFailure(response, parsedResponse, fallback);
 }
 function createTransientRpcGraceTracker(graceMs) {
   let failureStartedAt = 0;
@@ -2899,13 +2994,22 @@ var ForkopShellMethods = {
       data: parsedResponse
     };
   },
+  // A lost RPC reply while the job runs is no failure, and a job still
+  // running at the bound is not confirmed rather than failed (UC-120).
   waitServiceActionJob: async (jobId, startedAt = Date.now()) => {
+    const transientRpc = createTransientRpcGraceTracker(
+      UI_ACTION_TRANSIENT_RPC_GRACE_MS
+    );
     while (Date.now() - startedAt < SERVICE_ACTION_TIMEOUT_MS) {
       await sleep(SERVICE_ACTION_POLL_INTERVAL_MS);
       const response = await ForkopShellMethods.serviceActionStatus(jobId);
       if (!response.success) {
+        if (transientRpc.shouldContinue(response.error)) {
+          continue;
+        }
         return response;
       }
+      transientRpc.reset();
       if (response.data.running) {
         continue;
       }
@@ -2913,7 +3017,8 @@ var ForkopShellMethods = {
     }
     return {
       success: false,
-      error: _("Operation timed out")
+      error: _("Operation timed out"),
+      reason: "timeout"
     };
   },
   latencyTestStart: async (latencyType, section, tag, timeout) => {
@@ -3127,10 +3232,11 @@ var ForkopShellMethods = {
     });
     const parsedResponse = parseSubscriptionUpdateStartResult(response);
     if ((response.code ?? 0) !== 0 || !parsedResponse?.success || !parsedResponse.job_id) {
-      return {
-        success: false,
-        error: parsedResponse?.message || response.stderr || _("Subscription update failed")
-      };
+      return uiActionFailure(
+        response,
+        parsedResponse,
+        _("Subscription update failed")
+      );
     }
     return {
       success: true,
@@ -5300,6 +5406,167 @@ function startRuntimeUiStatePolling() {
   });
 }
 
+// src/forkop/helpers/serviceActionNotice.ts
+function serviceActionNotice(error) {
+  const failure = failureFromError(error);
+  const reason = failureReason(failure);
+  const reasonText = actionReasonText(reason);
+  if (reasonText && actionReasonIsWarning(reason)) {
+    return { text: reasonText, type: "warning" };
+  }
+  const detail = reasonText || (failure.error || "").trim();
+  return {
+    text: detail ? `${_("Service action failed")}: ${detail}` : _("Service action failed"),
+    type: "error"
+  };
+}
+function finishedServiceActionNotice(state) {
+  if (state.running !== false || state.success !== false) {
+    return null;
+  }
+  const reason = state.outcome === "queued" ? "queued" : state.reason;
+  return serviceActionNotice(
+    new ActionFailureError(state.message || "", reason)
+  );
+}
+
+// src/forkop/services/uiActionNotification.service.ts
+var UI_ACTION_NOTIFICATION_STORAGE_KEY = "forkop:owned-ui-action-notifications:v1";
+var MAX_STORED_UI_ACTION_NOTIFICATIONS = 100;
+function getSessionStorage2() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+function getNotificationKey(kind, jobId) {
+  return `${kind}:${jobId}`;
+}
+function isStoredNotification(value) {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value;
+  return (candidate.kind === "component" || candidate.kind === "subscription" || candidate.kind === "service") && typeof candidate.jobId === "string" && typeof candidate.notified === "boolean" && typeof candidate.updatedAt === "number";
+}
+function readStoredNotifications(storage) {
+  if (!storage) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(
+      storage.getItem(UI_ACTION_NOTIFICATION_STORAGE_KEY) || "[]"
+    );
+    return Array.isArray(parsed) ? parsed.filter(isStoredNotification) : [];
+  } catch {
+    return [];
+  }
+}
+function writeStoredNotifications(storage, notifications) {
+  if (!storage) {
+    return;
+  }
+  try {
+    storage.setItem(
+      UI_ACTION_NOTIFICATION_STORAGE_KEY,
+      JSON.stringify(
+        notifications.sort((a, b) => a.updatedAt - b.updatedAt).slice(-MAX_STORED_UI_ACTION_NOTIFICATIONS)
+      )
+    );
+  } catch {
+  }
+}
+var UiActionNotificationTracker = class {
+  constructor(storage = getSessionStorage2()) {
+    this.notifications = /* @__PURE__ */ new Map();
+    this.storage = storage;
+    for (const notification of readStoredNotifications(storage)) {
+      this.notifications.set(
+        getNotificationKey(notification.kind, notification.jobId),
+        notification
+      );
+    }
+  }
+  markOwned(kind, jobId) {
+    if (!jobId) {
+      return;
+    }
+    const key = getNotificationKey(kind, jobId);
+    const current = this.notifications.get(key);
+    this.notifications.set(key, {
+      kind,
+      jobId,
+      notified: current?.notified ?? false,
+      updatedAt: Date.now()
+    });
+    this.persist();
+  }
+  shouldNotify(kind, jobId) {
+    if (!jobId) {
+      return false;
+    }
+    const key = getNotificationKey(kind, jobId);
+    const current = this.notifications.get(key);
+    if (!current || current.notified) {
+      return false;
+    }
+    this.notifications.set(key, {
+      ...current,
+      notified: true,
+      updatedAt: Date.now()
+    });
+    this.persist();
+    return true;
+  }
+  persist() {
+    writeStoredNotifications(
+      this.storage,
+      Array.from(this.notifications.values())
+    );
+  }
+};
+var uiActionNotifications = new UiActionNotificationTracker();
+function markUiActionOwned(kind, jobId) {
+  uiActionNotifications.markOwned(kind, jobId);
+}
+function shouldNotifyOwnedUiAction(kind, jobId) {
+  return uiActionNotifications.shouldNotify(kind, jobId);
+}
+
+// src/forkop/services/serviceActionOutcome.service.ts
+var awaitedServiceActionJobs = /* @__PURE__ */ new Set();
+function beginAwaitedServiceAction(jobId) {
+  awaitedServiceActionJobs.add(jobId);
+}
+function endAwaitedServiceAction(jobId, reported2) {
+  awaitedServiceActionJobs.delete(jobId);
+  if (reported2) {
+    shouldNotifyOwnedUiAction("service", jobId);
+  }
+}
+function notifyFinishedServiceActions(uiState) {
+  for (const state of uiState.actions?.service || []) {
+    const jobId = state.job_id;
+    if (!jobId || awaitedServiceActionJobs.has(jobId)) {
+      continue;
+    }
+    const notice = finishedServiceActionNotice(state);
+    if (notice && shouldNotifyOwnedUiAction("service", jobId)) {
+      showToast(notice.text, notice.type, 6e3);
+    }
+  }
+}
+var unsubscribe = null;
+function startServiceActionOutcomeNotices() {
+  if (!unsubscribe) {
+    unsubscribe = subscribeRuntimeUiState(notifyFinishedServiceActions);
+  }
+}
+
 // src/forkop/services/core.service.ts
 var LOG_WATCHER_INTERVAL_MS = 1e4;
 var LOG_WATCHER_START_DELAY_MS = 5e3;
@@ -5379,6 +5646,7 @@ function coreService(options = {}) {
   }
   registerRuntimeStateResumeRefresh();
   startRuntimeUiStatePolling();
+  startServiceActionOutcomeNotices();
 }
 
 // src/forkop/services/socket.service.ts
@@ -5533,113 +5801,6 @@ var SocketManager = class _SocketManager {
   }
 };
 var socket = SocketManager.getInstance();
-
-// src/forkop/services/uiActionNotification.service.ts
-var UI_ACTION_NOTIFICATION_STORAGE_KEY = "forkop:owned-ui-action-notifications:v1";
-var MAX_STORED_UI_ACTION_NOTIFICATIONS = 100;
-function getSessionStorage2() {
-  if (typeof window === "undefined") {
-    return null;
-  }
-  try {
-    return window.sessionStorage;
-  } catch {
-    return null;
-  }
-}
-function getNotificationKey(kind, jobId) {
-  return `${kind}:${jobId}`;
-}
-function isStoredNotification(value) {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-  const candidate = value;
-  return (candidate.kind === "component" || candidate.kind === "subscription") && typeof candidate.jobId === "string" && typeof candidate.notified === "boolean" && typeof candidate.updatedAt === "number";
-}
-function readStoredNotifications(storage) {
-  if (!storage) {
-    return [];
-  }
-  try {
-    const parsed = JSON.parse(
-      storage.getItem(UI_ACTION_NOTIFICATION_STORAGE_KEY) || "[]"
-    );
-    return Array.isArray(parsed) ? parsed.filter(isStoredNotification) : [];
-  } catch {
-    return [];
-  }
-}
-function writeStoredNotifications(storage, notifications) {
-  if (!storage) {
-    return;
-  }
-  try {
-    storage.setItem(
-      UI_ACTION_NOTIFICATION_STORAGE_KEY,
-      JSON.stringify(
-        notifications.sort((a, b) => a.updatedAt - b.updatedAt).slice(-MAX_STORED_UI_ACTION_NOTIFICATIONS)
-      )
-    );
-  } catch {
-  }
-}
-var UiActionNotificationTracker = class {
-  constructor(storage = getSessionStorage2()) {
-    this.notifications = /* @__PURE__ */ new Map();
-    this.storage = storage;
-    for (const notification of readStoredNotifications(storage)) {
-      this.notifications.set(
-        getNotificationKey(notification.kind, notification.jobId),
-        notification
-      );
-    }
-  }
-  markOwned(kind, jobId) {
-    if (!jobId) {
-      return;
-    }
-    const key = getNotificationKey(kind, jobId);
-    const current = this.notifications.get(key);
-    this.notifications.set(key, {
-      kind,
-      jobId,
-      notified: current?.notified ?? false,
-      updatedAt: Date.now()
-    });
-    this.persist();
-  }
-  shouldNotify(kind, jobId) {
-    if (!jobId) {
-      return false;
-    }
-    const key = getNotificationKey(kind, jobId);
-    const current = this.notifications.get(key);
-    if (!current || current.notified) {
-      return false;
-    }
-    this.notifications.set(key, {
-      ...current,
-      notified: true,
-      updatedAt: Date.now()
-    });
-    this.persist();
-    return true;
-  }
-  persist() {
-    writeStoredNotifications(
-      this.storage,
-      Array.from(this.notifications.values())
-    );
-  }
-};
-var uiActionNotifications = new UiActionNotificationTracker();
-function markUiActionOwned(kind, jobId) {
-  uiActionNotifications.markOwned(kind, jobId);
-}
-function shouldNotifyOwnedUiAction(kind, jobId) {
-  return uiActionNotifications.shouldNotify(kind, jobId);
-}
 
 // src/forkop/fetchers/fetchServicesInfo.ts
 var latestServicesInfoRequestId = 0;
@@ -6520,7 +6681,14 @@ async function runOverviewServiceAction(steps) {
 function serviceReloadOutcome(state) {
   if (state.outcome === "queued") return "queued";
   if (state.outcome === "stopped") return "stopped";
-  return state.success === false ? "failed" : "reloaded";
+  if (state.success !== false) return "reloaded";
+  return state.reason === "timeout" ? "unconfirmed" : "failed";
+}
+function serviceReloadRefusalOutcome(error) {
+  const reason = failureReason(failureFromError(error));
+  if (reason === "busy" || reason === "startup_in_progress") return "busy";
+  if (reason === "timeout") return "unconfirmed";
+  return "failed";
 }
 function urlTestChangeToast(outcome, reset) {
   const done = reset ? _("URLTest settings reset") : _("URLTest settings saved");
@@ -6537,6 +6705,18 @@ function urlTestChangeToast(outcome, reset) {
         type: "warning",
         duration: 8e3
       };
+    case "busy":
+      return {
+        text: `${done}. ${_("Forkop X is busy with another service action, so the change is not applied yet; apply it again when that action finishes.")}`,
+        type: "warning",
+        duration: 1e4
+      };
+    case "unconfirmed":
+      return {
+        text: `${done}. ${_("Applying the change was not confirmed in time; check the service status.")}`,
+        type: "warning",
+        duration: 1e4
+      };
     case "failed":
       return {
         text: `${done}. ${_("Forkop X could not apply the change; see the Forkop X log.")}`,
@@ -6546,6 +6726,24 @@ function urlTestChangeToast(outcome, reset) {
     default:
       return { text: done, type: "success", duration: 3e3 };
   }
+}
+async function runUrlTestChange(steps, reset) {
+  await steps.change();
+  let outcome;
+  let finished = false;
+  try {
+    outcome = serviceReloadOutcome(await steps.reload());
+    finished = true;
+  } catch (error) {
+    outcome = serviceReloadRefusalOutcome(error);
+  }
+  if (finished) {
+    await steps.refresh().catch(() => void 0);
+  }
+  return {
+    close: outcome !== "failed" && outcome !== "busy",
+    toast: urlTestChangeToast(outcome, reset)
+  };
 }
 
 // src/partials/button/styles.ts
@@ -6991,52 +7189,6 @@ function lastRunText(storage) {
   return value > 0 ? `${_("Last check")}: ${new Date(value).toLocaleString()}` : _("No check has been run yet");
 }
 
-// src/forkop/tabs/diagnostic/serviceTransition.ts
-function isServiceTransitionStatus(status2) {
-  return ["starting", "stopping", "restarting", "reloading"].includes(status2);
-}
-function hasLocalMutatingServiceActionLoading(actions) {
-  return actions.restart.loading || actions.start.loading || actions.stop.loading || actions.enable.loading || actions.disable.loading;
-}
-function shouldSkipServicesInfoAutoRefresh({
-  force,
-  localMutatingActionLoading
-}) {
-  return !force && localMutatingActionLoading;
-}
-function shouldResetDiagnosticsChecks({
-  resetChecks,
-  diagnosticsRunLoading
-}) {
-  return resetChecks && !diagnosticsRunLoading;
-}
-function shouldDisableDiagnosticRunAction({
-  providerInfoLoaded,
-  servicesInfoLoading,
-  forkopRunning,
-  mutatingServiceActionLoading
-}) {
-  return !providerInfoLoaded || servicesInfoLoading || !forkopRunning || mutatingServiceActionLoading;
-}
-function hasComponentActionLoading(actions) {
-  return Object.values(actions).some((action) => action.loading);
-}
-function getAvailableActionsDisabledState({
-  servicesInfoLoading,
-  mutatingServiceActionLoading,
-  componentActionLoading
-}) {
-  return {
-    serviceControlsDisabled: servicesInfoLoading || mutatingServiceActionLoading || componentActionLoading,
-    utilityActionsDisabled: mutatingServiceActionLoading || componentActionLoading,
-    viewLogsDisabled: false
-  };
-}
-function serviceActionErrorText(error) {
-  const detail = error instanceof Error ? error.message.trim() : "";
-  return detail ? `${_("Service action failed")}: ${detail}` : _("Service action failed");
-}
-
 // src/forkop/ui/confirmAction.ts
 function confirmAction(options) {
   return new Promise((resolve) => {
@@ -7090,22 +7242,31 @@ function confirmAction(options) {
 }
 
 // src/forkop/tabs/shared/serviceControl.ts
-async function runForkopServiceAction(action) {
+async function runServiceActionJob(action) {
   const start = await ForkopShellMethods.serviceActionStart(action);
   if (!start.success) {
-    throw new Error(start.error);
+    throw new ActionFailureError(start.error, failureReason(start));
   }
   const jobId = start.data.job_id;
+  let finished = false;
+  markUiActionOwned("service", jobId);
+  beginAwaitedServiceAction(jobId);
   try {
     const result = await ForkopShellMethods.waitServiceActionJob(jobId);
     if (!result.success) {
-      throw new Error(result.error);
+      throw new ActionFailureError(result.error, failureReason(result));
     }
-    if (result.data.success === false) {
-      throw new Error(result.data.message || "");
-    }
+    finished = true;
+    return result.data;
   } finally {
+    endAwaitedServiceAction(jobId, finished);
     void ForkopShellMethods.uiActionAck("service", jobId);
+  }
+}
+async function runForkopServiceAction(action) {
+  const state = await runServiceActionJob(action);
+  if (state.success === false) {
+    throw new ActionFailureError(state.message || "", state.reason);
   }
 }
 function confirmStopForkop() {
@@ -7229,7 +7390,10 @@ async function handleServiceAction(action) {
   const mountId3 = dashboardMountId;
   await runOverviewServiceAction({
     run: () => runForkopServiceAction(action),
-    onError: (error) => showToast(serviceActionErrorText(error), "error", 6e3),
+    onError: (error) => {
+      const notice = serviceActionNotice(error);
+      showToast(notice.text, notice.type, 6e3);
+    },
     refreshRuntime: () => refreshRuntimeUiState({ force: true }),
     refreshHealth: () => refreshHealth(mountId3),
     setBusy: (busy2) => {
@@ -7866,7 +8030,10 @@ async function handleTestLatency(latencyType, sectionName, tag, timeout) {
       timeout
     );
     if (!startResponse.success) {
-      throw new Error(startResponse.error);
+      throw new ActionFailureError(
+        startResponse.error,
+        failureReason(startResponse)
+      );
     }
     jobId = startResponse.data.job_id;
     if (followedLatencyJobs.has(jobId)) {
@@ -7877,18 +8044,24 @@ async function handleTestLatency(latencyType, sectionName, tag, timeout) {
     ownsJobFollow = true;
     const completion = await ForkopShellMethods.waitLatencyTestJob(jobId);
     if (!completion.success) {
-      throw new Error(completion.error);
+      throw new ActionFailureError(completion.error, failureReason(completion));
     }
     if (!completion.data.success) {
-      throw new Error(completion.data.message || _("Latency test failed"));
+      throw new ActionFailureError(
+        _("Latency test failed"),
+        completion.data.reason
+      );
     }
     await completeLatencyTestJob(jobId, sectionName);
     completed = true;
   } catch (error) {
     logger.error("[DASHBOARD]", "handleTestLatency: failed", error);
     if (!pageUnloading) {
-      const message = error instanceof Error ? error.message : "";
-      showToast(message || _("Latency test failed"), "error");
+      const failure = failureFromError(error);
+      showToast(
+        failureText(failure, _("Latency test failed")),
+        failureToastType(failure)
+      );
     }
   } finally {
     if (ownsJobFollow) {
@@ -8149,24 +8322,29 @@ function renderUrlTestEditorModal(outbound) {
     E("label", {}, label),
     control
   ]);
-  const reload = async () => {
-    setBusy(true, _("Applying Forkop configuration\u2026"));
-    const response = await ForkopShellMethods.serviceActionStart("reload");
-    if (!response.success) throw new Error("reload failed");
-    const jobId = response.data.job_id;
-    if (!jobId) throw new Error("reload failed");
-    const result = await ForkopShellMethods.waitServiceActionJob(jobId);
-    void ForkopShellMethods.uiActionAck("service", jobId);
-    if (!result.success) throw new Error("reload failed");
-    setBusy(true, _("Refreshing Dashboard\u2026"));
-    await fetchDashboardSections({ force: true });
-    return serviceReloadOutcome(result.data);
+  const apply = async (change, isReset) => {
+    const result = await runUrlTestChange(
+      {
+        change,
+        reload: async () => {
+          setBusy(true, _("Applying Forkop configuration\u2026"));
+          return runServiceActionJob("reload");
+        },
+        refresh: async () => {
+          setBusy(true, _("Refreshing Dashboard\u2026"));
+          await fetchDashboardSections({ force: true });
+        }
+      },
+      isReset
+    );
+    if (result.close) {
+      ui.hideModal();
+    } else {
+      setBusy(false);
+    }
+    showToast(result.toast.text, result.toast.type, result.toast.duration);
   };
-  const toast = (outcome, reset2) => {
-    const { text, type, duration } = urlTestChangeToast(outcome, reset2);
-    showToast(text, type, duration);
-  };
-  const save = async () => {
+  const save = () => apply(async () => {
     setBusy(true, _("Saving URLTest settings\u2026"));
     const response = await ForkopShellMethods.saveUrlTestOverride(
       info.sectionName || "",
@@ -8179,11 +8357,8 @@ function renderUrlTestEditorModal(outbound) {
     );
     if ((response.code ?? 0) !== 0)
       throw new Error(response.stderr || "save failed");
-    const outcome = await reload();
-    ui.hideModal();
-    toast(outcome, false);
-  };
-  const reset = async () => {
+  }, false);
+  const reset = () => apply(async () => {
     setBusy(true, _("Removing user settings\u2026"));
     const response = await ForkopShellMethods.resetUrlTestOverride(
       info.sectionName || "",
@@ -8191,10 +8366,7 @@ function renderUrlTestEditorModal(outbound) {
     );
     if ((response.code ?? 0) !== 0)
       throw new Error(response.stderr || "reset failed");
-    const outcome = await reload();
-    ui.hideModal();
-    toast(outcome, true);
-  };
+  }, true);
   const action = (fn) => async (event) => {
     activeButton = event.currentTarget;
     activeButtonLabel = activeButton.textContent || "";
@@ -11567,7 +11739,8 @@ function renderStartServiceAction() {
         try {
           await runForkopServiceAction("start");
         } catch (error) {
-          showToast(serviceActionErrorText(error), "error", 6e3);
+          const notice = serviceActionNotice(error);
+          showToast(notice.text, notice.type, 6e3);
         } finally {
           starting = false;
           button.disabled = false;
@@ -11635,6 +11808,48 @@ function initDpiPlayground() {
     } finally {
       button.disabled = false;
     }
+  };
+}
+
+// src/forkop/tabs/diagnostic/serviceTransition.ts
+function isServiceTransitionStatus(status2) {
+  return ["starting", "stopping", "restarting", "reloading"].includes(status2);
+}
+function hasLocalMutatingServiceActionLoading(actions) {
+  return actions.restart.loading || actions.start.loading || actions.stop.loading || actions.enable.loading || actions.disable.loading;
+}
+function shouldSkipServicesInfoAutoRefresh({
+  force,
+  localMutatingActionLoading
+}) {
+  return !force && localMutatingActionLoading;
+}
+function shouldResetDiagnosticsChecks({
+  resetChecks,
+  diagnosticsRunLoading
+}) {
+  return resetChecks && !diagnosticsRunLoading;
+}
+function shouldDisableDiagnosticRunAction({
+  providerInfoLoaded,
+  servicesInfoLoading,
+  forkopRunning,
+  mutatingServiceActionLoading
+}) {
+  return !providerInfoLoaded || servicesInfoLoading || !forkopRunning || mutatingServiceActionLoading;
+}
+function hasComponentActionLoading(actions) {
+  return Object.values(actions).some((action) => action.loading);
+}
+function getAvailableActionsDisabledState({
+  servicesInfoLoading,
+  mutatingServiceActionLoading,
+  componentActionLoading
+}) {
+  return {
+    serviceControlsDisabled: servicesInfoLoading || mutatingServiceActionLoading || componentActionLoading,
+    utilityActionsDisabled: mutatingServiceActionLoading || componentActionLoading,
+    viewLogsDisabled: false
   };
 }
 
@@ -16751,7 +16966,8 @@ async function completeComponentActionJob(key, jobId, response) {
   }
   const shouldNotify = shouldNotifyOwnedUiAction("component", jobId);
   if (!response.success || response.data.success === false) {
-    const message = response.success ? response.data.message || _("Failed to execute") : response.error || _("Failed to execute");
+    const failure = response.success ? { reason: response.data.reason, error: response.data.message } : response;
+    const message = failure.error || _("Failed to execute");
     if (isTransientRpcError(message)) {
       setActionLoading(key, false);
       void refreshComponentActionState();
@@ -16760,7 +16976,10 @@ async function completeComponentActionJob(key, jobId, response) {
     handledComponentJobs.add(jobId);
     setActionLoading(key, false);
     if (shouldNotify) {
-      showToast(message, "error");
+      showToast(
+        failureText(failure, _("Failed to execute")),
+        failureToastType(failure)
+      );
     }
     await ackComponentActionJob(jobId);
     return;
@@ -16827,10 +17046,8 @@ async function followAlreadyRunningComponentAction(button) {
   await followComponentActionState(state);
   return true;
 }
-function isComponentActionAlreadyRunningError(message) {
-  return Boolean(
-    message && message.includes("Another component action is already running")
-  );
+function isComponentActionAlreadyRunningError(failure) {
+  return failureReason(failure) === "busy";
 }
 function handleComponentUiState(uiState) {
   for (const state of uiState.actions.component || []) {
@@ -16907,9 +17124,14 @@ async function handleComponentAction(button) {
       button.version
     );
     if (!startResponse.success) {
-      if (isComponentActionAlreadyRunningError(startResponse.error)) {
+      if (isComponentActionAlreadyRunningError(startResponse)) {
         setActionLoading(button.key, false);
         if (!await followAlreadyRunningComponentAction(button)) {
+          showToast(
+            actionReasonText("busy") || startResponse.error,
+            "warning",
+            6e3
+          );
           await refreshComponentActionState();
         }
         return;
@@ -18043,6 +18265,35 @@ function snapshotBusyText(reason) {
   );
 }
 var MANUAL_SNAPSHOT_LIMIT = 8;
+function deleteSnapshotToast(result) {
+  if (result?.status === "deleted")
+    return { text: _("Snapshot deleted"), type: "success", duration: 3e3 };
+  if (result?.status === "busy")
+    return {
+      text: snapshotBusyText(result.reason),
+      type: "warning",
+      duration: 6e3
+    };
+  if (result?.reason === "lkg_protected")
+    return {
+      text: _(
+        "The last known good snapshot cannot be deleted: it is the configuration Forkop X returns to after a failed change."
+      ),
+      type: "warning",
+      duration: 8e3
+    };
+  if (result?.reason === "invalid_snapshot")
+    return {
+      text: _("The snapshot was not found or cannot be read."),
+      type: "error",
+      duration: 6e3
+    };
+  return {
+    text: _("Could not delete snapshot"),
+    type: "error",
+    duration: 3e3
+  };
+}
 function createSnapshotToast(result) {
   switch (result?.status) {
     case "created":
@@ -18521,10 +18772,8 @@ async function deleteSnapshot(id, label) {
   if (!confirmed) return;
   await runSnapshotAction(async () => {
     const result = await ForkopShellMethods.snapshotDelete(id);
-    const status2 = result.success ? result.data.status : void 0;
-    if (status2 === "busy") showToast(snapshotBusyText(), "warning", 6e3);
-    else if (status2 === "deleted") showToast(_("Snapshot deleted"), "success");
-    else showToast(_("Could not delete snapshot"), "error");
+    const toast = deleteSnapshotToast(result.success ? result.data : void 0);
+    showToast(toast.text, toast.type, toast.duration);
   });
 }
 async function createSnapshot() {

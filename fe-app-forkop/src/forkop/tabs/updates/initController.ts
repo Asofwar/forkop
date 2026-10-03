@@ -2,6 +2,12 @@ import { onMount, preserveScrollForPage } from '../../../helpers';
 import { FORKOP_ACTION_PROVIDERS_AVAILABILITY_EVENT } from '../../../constants';
 import { normalizeCompiledVersion } from '../../../helpers/normalizeCompiledVersion';
 import { showToast } from '../../../helpers/showToast';
+import {
+  actionReasonText,
+  failureReason,
+  failureText,
+  failureToastType,
+} from '../../helpers/actionReason';
 import { copyToClipboard } from '../../../helpers/copyToClipboard';
 import {
   renderDownloadIcon24,
@@ -537,9 +543,10 @@ async function completeComponentActionJob(
   const shouldNotify = shouldNotifyOwnedUiAction('component', jobId);
 
   if (!response.success || response.data.success === false) {
-    const message = response.success
-      ? response.data.message || _('Failed to execute')
-      : response.error || _('Failed to execute');
+    const failure = response.success
+      ? { reason: response.data.reason, error: response.data.message }
+      : response;
+    const message = failure.error || _('Failed to execute');
 
     if (isTransientRpcError(message)) {
       setActionLoading(key, false);
@@ -550,7 +557,11 @@ async function completeComponentActionJob(
     handledComponentJobs.add(jobId);
     setActionLoading(key, false);
     if (shouldNotify) {
-      showToast(message, 'error');
+      // Busy is a translated warning, not a failure (UC-119).
+      showToast(
+        failureText(failure, _('Failed to execute')),
+        failureToastType(failure),
+      );
     }
     await ackComponentActionJob(jobId);
     return;
@@ -638,10 +649,12 @@ async function followAlreadyRunningComponentAction(
   return true;
 }
 
-function isComponentActionAlreadyRunningError(message: string | undefined) {
-  return Boolean(
-    message && message.includes('Another component action is already running'),
-  );
+// The backend refuses a start while another component action holds its
+// lock (UC-119); an older backend said so only in English.
+function isComponentActionAlreadyRunningError(
+  failure: Forkop.MethodFailureResponse,
+) {
+  return failureReason(failure) === 'busy';
 }
 
 function handleComponentUiState(uiState: Forkop.UiState) {
@@ -742,9 +755,15 @@ async function handleComponentAction(button: ComponentActionButton) {
     );
 
     if (!startResponse.success) {
-      if (isComponentActionAlreadyRunningError(startResponse.error)) {
+      if (isComponentActionAlreadyRunningError(startResponse)) {
         setActionLoading(button.key, false);
         if (!(await followAlreadyRunningComponentAction(button))) {
+          // Another component action runs: nothing was started.
+          showToast(
+            actionReasonText('busy') || startResponse.error,
+            'warning',
+            6000,
+          );
           await refreshComponentActionState();
         }
         return;

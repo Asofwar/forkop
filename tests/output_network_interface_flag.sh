@@ -146,4 +146,50 @@ node -e '
 ' "$WORK_DIR/switch-absent.migrated.json" "$WORK_DIR/turned-off.json"
 expect_migrated turned-off '{"flag":"0","iface":"wan2","recorded":true}'
 
+# The warning a start logs under mwan3 (singbox/runtime.uc init-config)
+# names the interface only while it is in effect. The settings come from
+# the core/uci.uc state fixture; mwan3 is reported active, and the
+# subscription caches step fails, so init-config stops right after the
+# warning (nothing else runs; all paths stay in the work directory).
+REAL_UCODE="$(command -v ucode)"
+mkdir -p "$WORK_DIR/bin" "$WORK_DIR/run" "$WORK_DIR/tmp"
+cat >"$WORK_DIR/bin/ucode" <<'STUB'
+#!/bin/sh
+case "${3:-}" in
+  */config/validator.uc) [ "${4:-}" = mwan3-is-active ] && exit 0 ;;
+esac
+exit 1
+STUB
+cat >"$WORK_DIR/bin/logger" <<'STUB'
+#!/bin/sh
+printf '%s\n' "$*" >>"${LOGGER_LOG:?}"
+STUB
+chmod +x "$WORK_DIR/bin/ucode" "$WORK_DIR/bin/logger"
+runtime_warning() { # runtime_warning <enable flag or ''>
+  {
+    printf 'forkop.settings=settings\n'
+    printf 'forkop.settings.config_path=%s\n' "$WORK_DIR/run/config.json"
+    printf 'forkop.settings.output_network_interface=wan2\n'
+    [ -z "$1" ] || printf 'forkop.settings.enable_output_network_interface=%s\n' "$1"
+  } >"$WORK_DIR/uci.state"
+  : >"$WORK_DIR/logger.log"
+  PATH="$WORK_DIR/bin:$PATH" TMPDIR="$WORK_DIR/tmp" LOGGER_LOG="$WORK_DIR/logger.log" \
+    FORKOP_UCI_STATE_FILE="$WORK_DIR/uci.state" FORKOP_UCI_LOG_FILE="$WORK_DIR/uci.log" \
+    FORKOP_RUNTIME_STATE_DIR="$WORK_DIR/run" TMP_SING_BOX_FOLDER="$WORK_DIR/run/sing-box" \
+    "$REAL_UCODE" -L "$FORKOP_LIB" "$FORKOP_LIB/singbox/runtime.uc" init-config 0 0 0 >/dev/null 2>&1 || true
+  grep 'mwan3 is active' "$WORK_DIR/logger.log" || true
+}
+case "$(runtime_warning 1)" in
+  *"Output Network Interface is set to 'wan2'"*"pinned"*) ;;
+  *) fail "switch on: the mwan3 warning must name the pinned interface: $(cat "$WORK_DIR/logger.log")" ;;
+esac
+for flag in 0 ''; do
+  warning="$(runtime_warning "$flag")"
+  case "$warning" in
+    *pinned*|*wan2*) fail "switch '$flag': the mwan3 warning names an interface that is not in effect: $warning" ;;
+    *"auto_detect_interface"*) ;;
+    *) fail "switch '$flag': no mwan3 warning: $(cat "$WORK_DIR/logger.log")" ;;
+  esac
+done
+
 printf 'output_network_interface_flag: ok\n'

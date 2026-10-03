@@ -439,11 +439,13 @@ function forkop_restart_and_wait() {
     return forkop_start_and_wait("start", after_stop) ? 0 : 1;
 }
 
-const FORKOP_RESTART_REFUSED = "Forkop was not restarted: another sing-box process makes the ownership of its runtime ambiguous; the change applies at its next start";
+const FORKOP_RESTART_REFUSED = "Forkop was not restarted: another sing-box process makes the ownership of its runtime ambiguous";
+// For a change that stays in place.
+const FORKOP_RESTART_REFUSED_APPLIES_LATER = FORKOP_RESTART_REFUSED + "; the change applies at its next start";
 
-// How a change ends that did not bring Forkop back.
+// How a change ends that did not bring Forkop back; the change stays.
 function forkop_not_restarted_text() {
-    return forkop_restart_refused ? FORKOP_RESTART_REFUSED : "Forkop did not start again";
+    return forkop_restart_refused ? FORKOP_RESTART_REFUSED_APPLIES_LATER : "Forkop did not start again";
 }
 
 // Nor does its restart fallback: a start that the user's stop overtook
@@ -2791,7 +2793,7 @@ function install_forkop(requested_version) {
     if (new_version == "")
         new_version = latest_version;
     if (!restarted)
-        action_fail("forkop", "install", forkop_restart_refused ? "Forkop has been installed, but " + FORKOP_RESTART_REFUSED :
+        action_fail("forkop", "install", forkop_restart_refused ? "Forkop has been installed, but " + FORKOP_RESTART_REFUSED_APPLIES_LATER :
             "Forkop has been installed, but did not start again", new_version, latest_version, "", release.release_url);
     updates_log("Forkop updated to " + new_version);
     action_success("forkop", "install", "Forkop has been installed", new_version, latest_version, 1, "latest", release.release_url);
@@ -2908,7 +2910,8 @@ function set_direct_proxy(action) {
             // A refused stop changed nothing: Forkop runs on with the
             // previous settings, and their restart would be refused alike.
             if (restart_status == 2)
-                action_fail("direct_proxy", action, "Failed to apply Direct Proxy settings: " + FORKOP_RESTART_REFUSED, current_enabled, target_enabled);
+                action_fail("direct_proxy", action, "Failed to apply Direct Proxy settings: " + FORKOP_RESTART_REFUSED +
+                    "; Forkop runs on with the previous Direct Proxy settings", current_enabled, target_enabled);
             if (!forkop_stopped_by_user() && forkop_restart_and_wait() != 0 && !forkop_stopped_by_user())
                 updates_log("Forkop did not start again with the previous Direct Proxy settings", "error");
             action_fail("direct_proxy", action, "Failed to apply Direct Proxy settings", current_enabled, target_enabled);

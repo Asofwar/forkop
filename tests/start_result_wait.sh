@@ -399,6 +399,7 @@ let forkop_was_running = true;
 let forkop_stopped_for_sing_box_change = false;
 let forkop_restart_refused = false;
 const FORKOP_RESTART_REFUSED = "Forkop was not restarted: refused";
+const FORKOP_RESTART_REFUSED_APPLIES_LATER = FORKOP_RESTART_REFUSED + "; the change applies at its next start";
 // service/lifecycle.uc refuses Forkop's own stop (exit 2): the ownership
 // of the runtime is ambiguous.
 let stop_refused = false;
@@ -557,7 +558,7 @@ reset([]);
 stop_refused = true;
 run(function() { remove_optional_component("zapret", "zapret", "zapret", "/lib/providers/zapret/runtime.uc"); });
 check(outcome != null && !outcome.success, "a component removal was reported as success although Forkop was not restarted");
-check(outcome.message == "zapret package has been removed, but " + FORKOP_RESTART_REFUSED, "the refused restart is not reported: " + outcome.message);
+check(outcome.message == "zapret package has been removed, but " + FORKOP_RESTART_REFUSED_APPLIES_LATER, "the refused restart is not reported: " + outcome.message);
 check(join(",", calls) == "init:remove,log:info,init:stop-refused,log:warn", "a refused restart went on: " + join(",", calls));
 
 // After a failed sing-box change, a start that fails falls back to a restart.

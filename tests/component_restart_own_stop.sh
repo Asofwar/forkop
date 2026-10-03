@@ -503,6 +503,12 @@ probe direct-proxy && fail "$case: the action succeeded"
 grep -q '"success": *false' "$WORK_DIR/out" || fail "$case: the refused restart was reported as success"
 grep -q 'Forkop was not restarted: another sing-box process' "$WORK_DIR/out" ||
   fail "$case: the action does not report the refusal"
+# The setting was rolled back: it does not apply at the next start.
+if grep -q 'applies at its next start' "$WORK_DIR/out" "$WORK_DIR/syslog"; then
+  fail "$case: the refusal claims that the rolled-back setting applies at the next start"
+fi
+grep -q 'Forkop runs on with the previous Direct Proxy settings' "$WORK_DIR/out" ||
+  fail "$case: the refusal does not say that Forkop runs on with the previous settings"
 grep -q '"forkop.settings.direct_proxy_enabled": *"1"' "$WORK_DIR/uci.committed" ||
   fail "$case: the new Direct Proxy setting was kept: $(cat "$WORK_DIR/uci.committed")"
 expect_refused_restart "$case"

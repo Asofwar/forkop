@@ -80,6 +80,9 @@ function installed_package_version(name) { return versions[name] || ""; }
 function forkop_status_running_with_timeout() { return service_running; }
 // The user's stop during the upgrade: tests/forkop_upgrade_user_stop.sh.
 function forkop_stopped_by_user() { return false; }
+// Forkop's own stop request that the start follows:
+// tests/component_restart_own_stop.sh.
+function own_stop_request() { return "1.000000001.42"; }
 // The upgrade marker before the start: tests/forkop_upgrade_refusal_restart.sh.
 function remove_managed_upgrade_sing_box_marker() {}
 function previous_forkop_release(version) {

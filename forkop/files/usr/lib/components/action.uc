@@ -447,16 +447,19 @@ function forkop_not_restarted_text() {
 }
 
 // Nor does its restart fallback: a start that the user's stop overtook
-// failed for the stop, which wins (UC-235).
+// failed for the stop, which wins (UC-235). The start follows Forkop's own
+// stop for the change, as forkop_restart_and_wait's does: a user's stop
+// that comes after the check here, before the start, wins as well.
 function restart_forkop_after_failed_sing_box_change() {
     if (!forkop_stopped_for_sing_box_change || !forkop_was_running || !file_exists(SERVICE_INIT))
         return;
-    if (forkop_stopped_by_user()) {
+    let after_stop = own_stop_request();
+    if (after_stop == null) {
         updates_log("Forkop was stopped by the user during the sing-box component change; it is not started again");
         return;
     }
     updates_log("Restarting Forkop after failed sing-box component change");
-    if (forkop_start_and_wait("start") || forkop_stopped_by_user())
+    if (forkop_start_and_wait("start", after_stop) || forkop_stopped_by_user())
         return;
     if (forkop_restart_and_wait() != 0 && !forkop_stopped_by_user())
         updates_log("Forkop did not start again after the failed sing-box component change", "error");
@@ -468,20 +471,23 @@ function restart_forkop_after_failed_sing_box_change() {
 // here and its start awaited (UC-196, UC-013), unless the package scripts or
 // the rollback already did. The upgrade marker names no transition any more,
 // and a stale one would refuse this start (UC-217). Only a start: the stop of
-// an init.d restart would be recorded as the user's.
+// an init.d restart would be recorded as the user's. It follows the stop
+// request in effect, Forkop's own: a user's stop requested after the check
+// here wins over it (service/initd.uc start_service; D-15(a)).
 function restart_forkop_after_failed_upgrade() {
     if (!forkop_stopped_for_upgrade || !forkop_was_running || !file_exists(SERVICE_INIT))
         return;
     forkop_stopped_for_upgrade = false;
     if (forkop_status_running_with_timeout())
         return;
-    if (forkop_stopped_by_user()) {
+    let after_stop = own_stop_request();
+    if (after_stop == null) {
         updates_log("Forkop was stopped by the user during the upgrade; it is not started again");
         return;
     }
     remove_managed_upgrade_sing_box_marker();
     updates_log("Starting Forkop again after the failed Forkop upgrade");
-    if (!forkop_start_and_wait("start"))
+    if (!forkop_start_and_wait("start", after_stop) && !forkop_stopped_by_user())
         updates_log("Forkop did not start again after the failed Forkop upgrade", "error");
 }
 
@@ -2299,7 +2305,8 @@ function forkop_recovery_files(with_i18n, extension) {
 // transition any more: the old sing-box was proven gone before the package
 // step, which can outlast the marker's age (a slow router, the downloads of
 // the mirror migration), and a stale marker would refuse this start
-// (UC-217).
+// (UC-217). The start follows the stop request in effect, Forkop's own: a
+// user's stop requested after the check here wins over it as well.
 function restore_forkop_opkg_service(was_running) {
     if (!was_running) {
         if (!forkop_status_running_with_timeout())
@@ -2309,12 +2316,13 @@ function restore_forkop_opkg_service(was_running) {
     }
     if (forkop_status_running_with_timeout())
         return true;
-    if (forkop_stopped_by_user()) {
+    let after_stop = own_stop_request();
+    if (after_stop == null) {
         updates_log("Forkop was stopped by the user; the restored release is not started");
         return true;
     }
     remove_managed_upgrade_sing_box_marker();
-    if (forkop_start_and_wait("start"))
+    if (forkop_start_and_wait("start", after_stop))
         return true;
     if (forkop_stopped_by_user()) {
         updates_log("Forkop was stopped by the user during its start; it is not started again");

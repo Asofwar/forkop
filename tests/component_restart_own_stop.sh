@@ -23,6 +23,12 @@ set -euo pipefail
 # user's request for the one before it: it removed it and started Forkop
 # against the user's stop. The start now compares with Forkop's own stop
 # request (FORKOP_START_AFTER_STOP), and any stop recorded after it wins.
+# So does every other start after Forkop's own stop: the start after a failed
+# sing-box change, after a failed upgrade and the start that puts back the
+# service state of a package set (restore_forkop_opkg_service). Each checked
+# for the user's stop and then started without that request: a user's Stop
+# that got procd's lock right before the start was taken for the stop before
+# it and undone.
 #
 # The init script is the real one behind an rc.common stand-in that holds fd
 # 1000 like procd.sh; service/initd.uc is the real one; its backend `forkop`
@@ -167,11 +173,18 @@ SH
 # Startup, `service forkop stop`); once it has the lock it takes
 # FORKOP_TEST_USER_STOP_DELAY before it records its request, as a slow router
 # does. With user-stop.after it runs right after that stop, before the
-# action goes on.
+# action goes on. With user-stop.before-start it gets procd's lock right
+# before the next start, after the action has checked for the user's stop.
 cat >"$WORK_DIR/rc" <<'SH'
 #!/usr/bin/env bash
 action="$1"
 shift
+if [ "$action" = start ] && [ -e "$TEST_WORK/user-stop.before-start" ]; then
+  rm -f "$TEST_WORK/user-stop.before-start"
+  env -u FORKOP_STOP_SOURCE -u FORKOP_STOP_CLEANUP -u FORKOP_START_REQUEST -u FORKOP_START_AFTER_STOP \
+    "$FORKOP_SERVICE_INIT" stop </dev/null >/dev/null 2>&1
+  printf '%s\n' "$?" >"$TEST_WORK/user-stop.done"
+fi
 exec 1000>"$RC_PROCD_LOCK"
 [ -z "${FORKOP_TEST_USER_STOP_DELAY:-}" ] || printf '%s\n' "$$" >"$TEST_WORK/user-stop.waiting"
 flock 1000
@@ -280,6 +293,29 @@ else if (scenario == "failed-sing-box") {
     restart_forkop_after_failed_sing_box_change();
     print("done\n");
 }
+else if (scenario == "failed-sing-box-start") {
+    // Forkop's own stop for the change; the change fails, and the start
+    // after it would bring Forkop back.
+    if (!stop_forkop_before_sing_box_change())
+        die("the stop for the sing-box change was refused");
+    restart_forkop_after_failed_sing_box_change();
+    print("done\n");
+}
+else if (scenario == "failed-upgrade") {
+    // Forkop's own stop for an in-app upgrade; the upgrade fails.
+    if (!command_success_from_args(forkop_stop_for_component_change_args()))
+        die("the stop for the upgrade failed");
+    forkop_stopped_for_upgrade = true;
+    restart_forkop_after_failed_upgrade();
+    print("done\n");
+}
+else if (scenario == "restore-service") {
+    // Forkop's own stop for a package set that is put back; Forkop ran
+    // before it.
+    if (!command_success_from_args(forkop_stop_for_component_change_args()))
+        die("the stop for the package set failed");
+    print("restored=", restore_forkop_opkg_service(true) ? "yes" : "no", "\n");
+}
 else if (scenario == "sing-box-stray") {
     // Forkop's own stop for the change; then a sing-box that runs Forkop's
     // configuration is left behind (with failed: the new variant does not
@@ -315,6 +351,7 @@ reset_case() {
   kill_retry_workers
   rm -f "$WORK_DIR"/start.status "$WORK_DIR"/stop.status "$WORK_DIR"/start.user-stop "$WORK_DIR"/starts \
     "$WORK_DIR"/user-stop.queued "$WORK_DIR"/user-stop.after "$WORK_DIR"/user-stop.waiting "$WORK_DIR"/user-stop.done \
+    "$WORK_DIR"/user-stop.before-start \
     "$WORK_DIR"/stray \
     "$WORK_DIR"/uci.committed "$WORK_DIR"/out "$FORKOP_RUNTIME_STATE_DIR"/stop.requested \
     "$FORKOP_RUNTIME_STATE_DIR"/start.retry "$FORKOP_RUNTIME_STATE_DIR"/start-result.*
@@ -488,6 +525,36 @@ for mode in successful failed; do
   expect_not_user_stop "$case"
   if grep -q 'did not start again\|was not restarted' "$WORK_DIR/syslog"; then
     fail "$case: the restart was reported as failed"
+  fi
+done
+
+# 12. The start after Forkop's own stop for a failed sing-box change, after a
+#     failed upgrade and the start that puts back a package set's service
+#     state: without the user's stop each brings Forkop back; the user's
+#     Stop that gets procd's lock right before the start holds (D-15(a)).
+for scenario in failed-sing-box-start failed-upgrade restore-service; do
+  reset_case
+  case="$scenario, no stop by the user"
+  probe "$scenario" || fail "$case: the probe failed"
+  [ -e "$WORK_DIR/runtime.up" ] || fail "$case: Forkop was not started again"
+  [ "$(grep -c '^start$' "$WORK_DIR/starts" 2>/dev/null || true)" -eq 1 ] || fail "$case: Forkop was not started once"
+  [ "$scenario" != restore-service ] || grep -qx 'restored=yes' "$WORK_DIR/out" ||
+    fail "$case: the service state was not reported as restored"
+
+  reset_case
+  : >"$WORK_DIR/user-stop.before-start"
+  case="$scenario, the user's stop right before the start"
+  probe "$scenario" || fail "$case: the probe failed"
+  wait_until 20 test -e "$WORK_DIR/user-stop.done" || fail "$case: the user's stop did not run"
+  [ "$(cat "$WORK_DIR/user-stop.done")" = 0 ] || fail "$case: the user's stop failed"
+  [ "$(stop_request_by)" = user ] || fail "$case: the user's stop is no longer recorded ($(stop_request_by))"
+  [ ! -e "$WORK_DIR/runtime.up" ] || fail "$case: Forkop runs after the user stopped it"
+  [ ! -s "$WORK_DIR/starts" ] || fail "$case: Forkop was started after the user's stop"
+  [ ! -e "$FORKOP_RUNTIME_STATE_DIR/start.explicit" ] || fail "$case: the start after the user's stop recorded an explicit start"
+  [ "$scenario" != restore-service ] || grep -qx 'restored=yes' "$WORK_DIR/out" ||
+    fail "$case: the user's stop was reported as a service state not restored"
+  if grep -q 'did not start again' "$WORK_DIR/syslog"; then
+    fail "$case: the user's stop was reported as a failed start"
   fi
 done
 

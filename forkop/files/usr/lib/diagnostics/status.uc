@@ -990,10 +990,6 @@ function stdin_json() {
     write_json(value);
 }
 
-function json_error(message) {
-    write_json({ error: as_string(message) });
-}
-
 function mask_ipv6_line(line) {
     let matched = match(line, /([0-9a-fA-F]+:[0-9a-fA-F]+:[0-9a-fA-F]+):.*/);
     return matched ? matched[1] + ":XXXX:XXXX:XXXX" : line;
@@ -1670,9 +1666,15 @@ function http_response_with_status() {
     };
 }
 
+// The failure envelope of clash_api (diagnostics/runtime.uc clash_failure,
+// UC-118); http_code and body stay for callers that read them.
 function write_clash_api_error(status, body) {
+    let answer = parse_json_or_null(body);
     let result = {
         success: false,
+        error: "clash_api_error",
+        message: type(answer) == "object" && type(answer.message) == "string" && answer.message != "" ?
+            answer.message : "The Clash API answered with HTTP status " + as_string(status),
         http_code: status
     };
 
@@ -1716,7 +1718,8 @@ function clash_close_connection_result(connection_id) {
     }
 
     if (response.status == 404) {
-        write_json({ success: false, error: "connection_not_found", connection_id: as_string(connection_id) });
+        write_json({ success: false, error: "connection_not_found", message: as_string(connection_id) + " does not exist",
+            connection_id: as_string(connection_id) });
         exit(1);
     }
 
@@ -1736,45 +1739,6 @@ function clash_close_all_connections_result() {
 
 function clash_set_group_proxy_payload(proxy_tag) {
     write_json({ name: as_string(proxy_tag) });
-}
-
-function clash_proxy_tags_lines(proxy_tags_json) {
-    let proxy_tags = parse_json_or_null(proxy_tags_json);
-    if (type(proxy_tags) != "array")
-        exit(1);
-
-    for (let proxy_tag in proxy_tags) {
-        if (type(proxy_tag) != "string" || proxy_tag == "")
-            exit(1);
-        print(proxy_tag, "\n");
-    }
-}
-
-function clash_proxy_latencies_result(count, failed) {
-    let has_failed = as_string(failed) != "0";
-    write_json({
-        success: !has_failed,
-        count: int(as_string(count || "0"), 10) || 0,
-        failed: has_failed
-    });
-    if (has_failed)
-        exit(1);
-}
-
-function clash_unknown_action() {
-    write_json({
-        error: "unknown action",
-        available: [
-            "get_proxies",
-            "get_connections",
-            "get_proxy_latency",
-            "get_proxy_latencies",
-            "get_group_latency",
-            "set_group_proxy",
-            "close_connection",
-            "close_all_connections"
-        ]
-    });
 }
 
 let mode = ARGV[0];
@@ -1833,8 +1797,6 @@ else if (mode == "server-port-conflict-owners")
     netstat_server_port_conflict_owners(ARGV[1], ARGV[2], ARGV[3]);
 else if (mode == "server-required-port-conflict-owners")
     server_required_port_conflict_owners(ARGV[1], ARGV[2], ARGV[3]);
-else if (mode == "json-error")
-    json_error(ARGV[1]);
 else if (mode == "ui-capabilities-json")
     write_ui_capabilities_json(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6], ARGV[7]);
 else if (mode == "service-status-json")
@@ -1907,12 +1869,6 @@ else if (mode == "clash-close-all-connections-result")
     clash_close_all_connections_result();
 else if (mode == "clash-set-group-proxy-payload")
     clash_set_group_proxy_payload(ARGV[1]);
-else if (mode == "clash-proxy-tags-lines")
-    clash_proxy_tags_lines(ARGV[1]);
-else if (mode == "clash-proxy-latencies-result")
-    clash_proxy_latencies_result(ARGV[1], ARGV[2]);
-else if (mode == "clash-unknown-action")
-    clash_unknown_action();
 else {
     warn("Usage: diagnostics/status.uc <operation> ...\n");
     exit(1);

@@ -1692,18 +1692,74 @@ function clash_urlencode(value) {
     return replace(status_output([ "url-encode", value ], null), /[\r\n]+$/g, "");
 }
 
-function clash_json_error(message) {
-    let result = status_capture([ "json-error", message ], null);
-    if (result.output != "")
-        print(result.output);
+const CLASH_FAILURE_MESSAGES = {
+    clash_api_timeout: "The Clash API did not answer in time",
+    clash_api_unreachable: "The Clash API is not reachable",
+    clash_api_unavailable: "The Clash API did not list its proxies",
+    clash_api_auth_unavailable: "The Clash API credentials could not be prepared",
+    clash_api_invalid_response: "The Clash API answer is not JSON",
+    clash_api_error: "The Clash API answered with an error",
+    latency_failed: "The delay test measured no delay"
+};
+
+// Every failure of clash_api has one envelope and exit code 1 (UC-118):
+// {"success": false, "error": <code>, "message": <text>} and the fields of
+// its own a caller may still read.
+function clash_failure(code, message, extra) {
+    let value = { success: false, error: as_string(code),
+        message: as_string(message || CLASH_FAILURE_MESSAGES[code] || code) };
+    for (let key, item in object_or_empty(extra))
+        value[key] = item;
+    write_json(value);
     return 1;
 }
 
-function clash_json_output(args) {
+// The JSON answer of a controller request: { value }, or { error, message }
+// when the controller gave none or answered an error. sing-box answers an
+// error with {"message": ...} and an HTTP error status, which curl -s does
+// not fail on.
+function clash_answer(args) {
     let response = clash_request(args);
     if (!response.ok)
-        return clash_json_error(response.error);
-    print(status_output([ "stdin-json" ], response.output));
+        return { error: response.error };
+    let value = parse_json_or_null(response.output);
+    if (value == null)
+        return { error: "clash_api_invalid_response" };
+    if (type(value) == "object" && type(value.message) == "string")
+        return { error: "clash_api_error", message: value.message };
+    return { value };
+}
+
+// A delay test measured something only with a number (UC-033): the "delay"
+// of GET /proxies/<tag>/delay, or a member delay of the map that
+// GET /group/<tag>/delay answers (an empty map: no member answered).
+function clash_delay_measured(value, group) {
+    let measured = (delay) => (type(delay) == "int" || type(delay) == "double") && delay > 0;
+    if (type(value) != "object")
+        return false;
+    if (!group)
+        return measured(value.delay);
+    for (let tag, delay in value)
+        if (measured(delay))
+            return true;
+    return false;
+}
+
+// The answer of a delay request; a test that sing-box ran and that measured
+// nothing fails as latency_failed, with the message sing-box gave.
+function clash_delay_answer(args, group) {
+    let answer = clash_answer(args);
+    if (answer.error == "clash_api_error")
+        return { error: "latency_failed", message: answer.message };
+    if (answer.error == null && !clash_delay_measured(answer.value, group))
+        return { error: "latency_failed" };
+    return answer;
+}
+
+function clash_print_answer(answer) {
+    if (answer.error != null)
+        return clash_failure(answer.error, answer.message);
+    write_json(answer.value);
     return 0;
 }
 
@@ -1868,6 +1924,29 @@ function latency_test_url() {
     return value == "" ? DEFAULT_LATENCY_TEST_URL : value;
 }
 
+// The arguments of a delay request to a proxy or URLTest group endpoint.
+function clash_delay_args(endpoint, timeout, url, auth, group) {
+    let args = clash_curl(clash_delay_max_time(timeout, group));
+    push(args, "-G", endpoint);
+    for (let item in auth) push(args, item);
+    push(args, "--data-urlencode");
+    push(args, "url=" + url);
+    push(args, "--data-urlencode");
+    push(args, "timeout=" + timeout);
+    return args;
+}
+
+// The tags of a JSON array of non-empty strings, or null.
+function clash_proxy_tags(proxy_tags_json) {
+    let tags = parse_json_or_null(proxy_tags_json);
+    if (type(tags) != "array")
+        return null;
+    for (let tag in tags)
+        if (type(tag) != "string" || tag == "")
+            return null;
+    return tags;
+}
+
 function clash_api_request(action, arg1, arg2, arg3, auth) {
     let base_url = clash_api_url();
     let test_url = latency_test_url();
@@ -1876,45 +1955,41 @@ function clash_api_request(action, arg1, arg2, arg3, auth) {
         let args = clash_curl();
         for (let item in auth) push(args, item);
         push(args, base_url + "/proxies");
-        return clash_json_output(args);
+        let answer = clash_answer(args);
+        if (answer.error == null && type(answer.value) == "object" && type(answer.value.proxies) != "object")
+            answer = { error: "clash_api_invalid_response" };
+        return clash_print_answer(answer);
     }
 
     if (action == "get_connections") {
         let args = clash_curl();
         for (let item in auth) push(args, item);
         push(args, base_url + "/connections");
-        return clash_json_output(args);
+        let answer = clash_answer(args);
+        if (answer.error == null && type(answer.value) != "object")
+            answer = { error: "clash_api_invalid_response" };
+        return clash_print_answer(answer);
     }
 
     if (action == "get_proxy_latency") {
         if (as_string(arg1) == "")
-            return clash_json_error("proxy_tag required");
+            return clash_failure("invalid_input", "proxy_tag required");
+        // A URL of its own: the health check of a Priority group
+        // (singbox/priority.uc); otherwise the configured test URL.
         let url = as_string(arg3 || "");
         if (url == "")
             url = test_url;
         let timeout = as_string(arg2 || "2000");
-        let args = clash_curl(clash_delay_max_time(timeout));
-        push(args, "-G", base_url + "/proxies/" + clash_urlencode(arg1) + "/delay");
-        for (let item in auth) push(args, item);
-        push(args, "--data-urlencode");
-        push(args, "url=" + url);
-        push(args, "--data-urlencode");
-        push(args, "timeout=" + timeout);
-        return clash_json_output(args);
+        return clash_print_answer(clash_delay_answer(clash_delay_args(
+            base_url + "/proxies/" + clash_urlencode(arg1) + "/delay", timeout, url, auth), false));
     }
 
     if (action == "get_proxy_latencies") {
         if (as_string(arg1) == "")
-            return clash_json_error("proxy_tags_json required");
-        let tags = status_capture([ "clash-proxy-tags-lines", arg1 ], null);
-        if (tags.status != 0)
-            return clash_json_error("proxy_tags_json must be a JSON array of non-empty strings");
-        let proxy_tags = [];
-        for (let proxy_tag in split(tags.output, "\n")) {
-            proxy_tag = as_string(proxy_tag);
-            if (proxy_tag != "")
-                push(proxy_tags, proxy_tag);
-        }
+            return clash_failure("invalid_input", "proxy_tags_json required");
+        let proxy_tags = clash_proxy_tags(arg1);
+        if (proxy_tags == null)
+            return clash_failure("invalid_input", "proxy_tags_json must be a JSON array of non-empty strings");
 
         let count = 0;
         let failed = 0;
@@ -1927,7 +2002,7 @@ function clash_api_request(action, arg1, arg2, arg3, auth) {
         // requests either: fail once instead of waiting out every tag.
         let proxies = clash_proxies(base_url, auth);
         if (proxies == null)
-            return clash_json_error("clash_api_unavailable");
+            return clash_failure("clash_api_unavailable");
         let proxy_types = clash_proxy_types(proxies);
         let ordered_proxy_tags = [];
         for (let proxy_tag in proxy_tags)
@@ -1937,48 +2012,41 @@ function clash_api_request(action, arg1, arg2, arg3, auth) {
             if (lc(as_string(proxy_types[proxy_tag])) == "urltest")
                 push(ordered_proxy_tags, proxy_tag);
 
+        // A tag counts as failed when its test measured no delay, as for a
+        // single proxy or group (UC-118).
         let timeout = as_string(arg2 || "5000");
         for (let proxy_tag in ordered_proxy_tags) {
-            let args = clash_curl(clash_delay_max_time(timeout, proxies[proxy_tag]));
-            push(args, "-G", clash_latency_endpoint(base_url, proxy_tag, proxy_types[proxy_tag]));
-            for (let item in auth) push(args, item);
-            push(args, "--data-urlencode");
-            push(args, "url=" + test_url);
-            push(args, "--data-urlencode");
-            push(args, "timeout=" + timeout);
-            if (status_capture([ "stdin-json" ], command_output(command_from_args(args))).status != 0)
+            let group = lc(as_string(proxy_types[proxy_tag])) == "urltest";
+            let answer = clash_delay_answer(clash_delay_args(clash_latency_endpoint(base_url, proxy_tag,
+                proxy_types[proxy_tag]), timeout, test_url, auth, proxies[proxy_tag]), group);
+            if (answer.error != null)
                 failed++;
             count++;
             if (progress_path != "")
                 module_success(SERVICE_UI_UC, [ "latency-progress-state", progress_path, count, total, failed ]);
         }
-        let result = status_capture([ "clash-proxy-latencies-result", count, failed ], null);
-        if (result.output != "")
-            print(result.output);
-        return result.status;
+        if (failed > 0)
+            return clash_failure("latency_failed", sprintf("%d of %d delay tests measured no delay", failed, count),
+                { count, failed: true, failed_count: failed });
+        write_json({ success: true, count, failed: false });
+        return 0;
     }
 
     if (action == "get_group_latency") {
         if (as_string(arg1) == "")
-            return clash_json_error("group_tag required");
+            return clash_failure("invalid_input", "group_tag required");
         // The bound depends on the group's type and members.
         let proxies = clash_proxies(base_url, auth);
         if (proxies == null)
-            return clash_json_error("clash_api_unavailable");
+            return clash_failure("clash_api_unavailable");
         let timeout = as_string(arg2 || "5000");
-        let args = clash_curl(clash_delay_max_time(timeout, proxies[arg1]));
-        push(args, "-G", base_url + "/group/" + clash_urlencode(arg1) + "/delay");
-        for (let item in auth) push(args, item);
-        push(args, "--data-urlencode");
-        push(args, "url=" + test_url);
-        push(args, "--data-urlencode");
-        push(args, "timeout=" + timeout);
-        return clash_json_output(args);
+        return clash_print_answer(clash_delay_answer(clash_delay_args(
+            base_url + "/group/" + clash_urlencode(arg1) + "/delay", timeout, test_url, auth, proxies[arg1]), true));
     }
 
     if (action == "set_group_proxy") {
         if (as_string(arg1) == "" || as_string(arg2) == "")
-            return clash_json_error("group_tag and proxy_tag required");
+            return clash_failure("invalid_input", "group_tag and proxy_tag required");
         let payload = status_output([ "clash-set-group-proxy-payload", arg2 ], null);
         let args = clash_curl();
         push(args, "-X", "PUT", "-w", "\n%{http_code}", base_url + "/proxies/" + clash_urlencode(arg1));
@@ -1987,7 +2055,7 @@ function clash_api_request(action, arg1, arg2, arg3, auth) {
         push(args, payload);
         let response = clash_request(args);
         if (!response.ok)
-            return clash_json_error(response.error);
+            return clash_failure(response.error);
         let result = status_capture([ "clash-set-group-proxy-result", arg1, arg2 ], response.output);
         if (result.output != "")
             print(result.output);
@@ -1996,13 +2064,13 @@ function clash_api_request(action, arg1, arg2, arg3, auth) {
 
     if (action == "close_connection") {
         if (as_string(arg1) == "")
-            return clash_json_error("connection_id required");
+            return clash_failure("invalid_input", "connection_id required");
         let args = clash_curl();
         push(args, "-X", "DELETE", "-w", "\n%{http_code}", base_url + "/connections/" + clash_urlencode(arg1));
         for (let item in auth) push(args, item);
         let response = clash_request(args);
         if (!response.ok)
-            return clash_json_error(response.error);
+            return clash_failure(response.error);
         let result = status_capture([ "clash-close-connection-result", arg1 ], response.output);
         if (result.output != "")
             print(result.output);
@@ -2015,26 +2083,45 @@ function clash_api_request(action, arg1, arg2, arg3, auth) {
         for (let item in auth) push(args, item);
         let response = clash_request(args);
         if (!response.ok)
-            return clash_json_error(response.error);
+            return clash_failure(response.error);
         let result = status_capture([ "clash-close-all-connections-result" ], response.output);
         if (result.output != "")
             print(result.output);
         return result.status;
     }
 
-    let unknown = status_capture([ "clash-unknown-action" ], null);
-    if (unknown.output != "")
-        print(unknown.output);
-    return 1;
+    return clash_failure("invalid_input", "unknown action", { available: [
+        "get_proxies",
+        "get_connections",
+        "get_proxy_latency",
+        "get_proxy_latencies",
+        "get_group_latency",
+        "set_group_proxy",
+        "close_connection",
+        "close_all_connections"
+    ] });
 }
 
 function clash_api(action, arg1, arg2, arg3) {
     let auth = clash_auth_args();
     let status = auth == null
-        ? clash_json_error("clash_api_auth_unavailable")
+        ? clash_failure("clash_api_auth_unavailable")
         : clash_api_request(action, arg1, arg2, arg3, auth);
     clash_auth_close();
     return status;
+}
+
+// One proxy of the automatic latency test. A test that sing-box ran is done,
+// whatever it measured: sing-box keeps that outcome for the dashboard, and an
+// unreachable proxy is no reason to test the whole set again. Only a request
+// the controller did not answer leaves the test to be retried.
+function automatic_latency_tested(proxy_tag) {
+    let auth = clash_auth_args();
+    let answer = auth == null ? { error: "clash_api_auth_unavailable" } :
+        clash_delay_answer(clash_delay_args(clash_api_url() + "/proxies/" + clash_urlencode(proxy_tag) + "/delay",
+            "5000", latency_test_url(), auth), false);
+    clash_auth_close();
+    return answer.error == null || answer.error == "latency_failed";
 }
 
 // init.d queues every reload that finds reload.lock held (service/initd.uc).
@@ -2153,7 +2240,7 @@ function automatic_latency_test(start_kind) {
     let completed = 0;
     let batch_size = AUTOMATIC_LATENCY_BATCH_SIZE > 0 ? AUTOMATIC_LATENCY_BATCH_SIZE : 4;
     for (let proxy_tag in proxy_tags) {
-        if (clash_api("get_proxy_latency", proxy_tag, "5000", "") != 0)
+        if (!automatic_latency_tested(proxy_tag))
             status = 1;
         completed++;
 

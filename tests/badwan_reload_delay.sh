@@ -14,7 +14,8 @@ set -euo pipefail
 #   at all. The plan falls back to the default 2000 ms for it, the validator
 #   reports it in the system log without refusing a configuration that
 #   started before (invariant 17), and the Settings page refuses it, as any
-#   value outside 0..60000 ms, before it is saved.
+#   value outside 0..60000 ms, when it is entered. A value saved before is
+#   left as it is: it does not refuse the save of the rest of the page.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB="$ROOT_DIR/forkop/files/usr/lib"
@@ -147,8 +148,10 @@ if [ "$failures" -ne 0 ]; then
   exit 1
 fi
 
-# The Settings page refuses what the plan would ignore, and values above a
-# minute, before they are saved.
+# The Settings page refuses an entered value the plan would ignore, and one
+# above a minute. A value saved before, which the backend keeps using (a
+# number) or replaces with the default and reports (anything else), does not
+# refuse the save of the rest of the page while it is left unchanged.
 node - "$ROOT_DIR/tests/helpers/luci_form_harness.js" <<'NODE'
 const assert = require('node:assert/strict');
 const { createEnvironment } = require(process.argv[2]);
@@ -172,14 +175,24 @@ const capabilities = { loaded: true, zapretInstalled: true, zapret2Installed: tr
     for (const value of ['', '2s', '1.5', '-1', '60001', '2000 ', 'abc'])
       assert.notEqual(delay.validate('settings', value), true, `${version}: '${value}' must be refused`);
 
-    // A saved value the runtime ignores is refused on the next save.
-    const stale = createEnvironment({ version, config: config('2s') });
-    const page = await stale.openSettings(capabilities);
-    await assert.rejects(page.save());
-    assert.equal(stale.uci.data.settings.badwan_reload_delay, '2s');
-    page.option('badwan_reload_delay').getUIElement('settings').setValue('2000');
-    await page.save();
-    assert.equal(stale.uci.data.settings.badwan_reload_delay, '2000');
+    for (const stored of ['2s', '120000']) {
+      const stale = createEnvironment({ version, config: config(stored) });
+      const page = await stale.openSettings(capabilities);
+      const field = page.option('badwan_reload_delay');
+      assert.equal(field.validate('settings', stored), true,
+        `${version}: the saved '${stored}' left unchanged must be accepted`);
+      page.option('dns_rewrite_ttl').getUIElement('settings').setValue('30');
+      await page.save();
+      assert.equal(stale.uci.data.settings.dns_rewrite_ttl, '30', `${version}: the rest of the page saves next to '${stored}'`);
+      assert.equal(stale.uci.data.settings.badwan_reload_delay, stored, `${version}: '${stored}' is kept as it was`);
+
+      // Edited, it is checked as any new value.
+      field.getUIElement('settings').setValue(`${stored}0`);
+      await assert.rejects(page.save(), undefined, `${version}: '${stored}0' must be refused`);
+      field.getUIElement('settings').setValue('2000');
+      await page.save();
+      assert.equal(stale.uci.data.settings.badwan_reload_delay, '2000');
+    }
   }
 })().catch((error) => {
   console.error(error.stack || error.message);

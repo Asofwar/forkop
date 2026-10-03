@@ -2999,6 +2999,19 @@ function normalize_component_name(component) {
     return component;
 }
 
+// components/catalog.uc, loaded on use: a library without it (a test's
+// partial copy) leaves the decision to the dispatch below.
+function component_action_in_catalog(component, action) {
+    let catalog = null;
+    try {
+        catalog = require("components.catalog");
+    }
+    catch (e) {
+        return true;
+    }
+    return catalog.supported(component, action);
+}
+
 function component_action(component, action, version) {
     component = normalize_component_name(component);
     action = as_string(action);
@@ -3008,6 +3021,12 @@ function component_action(component, action, version) {
             "", "", "", "", "busy");
     if (!init_tmp_dir())
         action_fail(component != "" ? component : "unknown", action != "" ? action : "unknown", "Failed to create temporary directory");
+    // Only what the catalog lists runs, the list the UI's background start
+    // refuses by (UC-119): an action added to the dispatch below and not to
+    // the catalog is refused here as well, not only in the UI.
+    if (!component_action_in_catalog(component, action))
+        action_fail(component != "" ? component : "unknown", action != "" ? action : "unknown", "Unknown component action",
+            "", "", "", "", "invalid_input");
     if (component == "forkop" && action == "install" &&
         file_exists(FORKOP_OPKG_RECOVERY_DIR + "/pending")) {
         // Restoring the backend runs its prerm, which stops Forkop for the

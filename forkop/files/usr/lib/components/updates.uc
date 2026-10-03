@@ -2333,24 +2333,19 @@ function valid_component_name(component) {
         component == "packet_steering" || component == "direct_proxy" || component == "torrserver_direct";
 }
 
-// The actions components/action.uc component_action runs, by component (its
-// dispatch). The UI's background start refuses any other before it starts a
-// job (UC-119).
-const COMPONENT_ACTIONS = {
-    forkop: [ "check_update", "install" ],
-    sing_box: [ "check_update", "install", "install_extended", "install_extended_compressed", "install_tiny", "install_stable" ],
-    zapret: [ "check_update", "install", "remove" ],
-    zapret2: [ "check_update", "install", "remove" ],
-    byedpi: [ "check_update", "install", "remove" ],
-    zapret_manager: [ "install", "remove" ],
-    packet_steering: [ "enable", "restore" ],
-    direct_proxy: [ "enable", "disable" ],
-    torrserver_direct: [ "enable", "disable" ]
-};
-
+// The UI's background start refuses an action components/action.uc does not
+// run before it starts a job (UC-119); both read components/catalog.uc. It
+// is loaded on use, like core.runtime_lock below: a library without it (a
+// test's partial copy) leaves the decision to the action, as before.
 function component_action_supported(component, action) {
-    let actions = COMPONENT_ACTIONS[normalize_component_name(component)];
-    return type(actions) == "array" && index(actions, as_string(action)) >= 0;
+    let catalog = null;
+    try {
+        catalog = require("components.catalog");
+    }
+    catch (e) {
+        return true;
+    }
+    return catalog.supported(normalize_component_name(component), as_string(action));
 }
 
 // Another component action holds the lock of components/action.uc. The job

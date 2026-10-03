@@ -392,9 +392,14 @@ live_process
 state acquire-runtime-dir-lock "$UPDATES_LOCK_DIR" "$LIVE" || fail "fixture: could not take the component lock"
 expect component_action_async 1 busy -- sing_box check_update
 expect component_action 1 busy -- sing_box check_update
+# An action outside components/catalog.uc, the one list the UI start and the
+# action itself check, is refused by the UI start before any lock: no refusal
+# as busy that a retry could not help.
+expect component_action_async 1 invalid_input -- forkop remove
 state release-runtime-dir-lock "$UPDATES_LOCK_DIR" "$LIVE"
 [ -z "$(ls -A "$UPDATES_JOB_DIR")" ] || fail "a refused component action started a job"
 expect component_action 1 invalid_input -- bogus nothing
+expect component_action 1 invalid_input -- forkop remove
 # The release catalog cannot be fetched (curl, wget and uclient-fetch fail).
 expect forkop_releases 1 failure --
 expect component_action_status 1 invalid_input -- ../x
